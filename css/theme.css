@@ -1,0 +1,46 @@
+/* System theme detection */
+@media (prefers-color-scheme: dark) {
+    [data-theme="system"] {
+        --bg-color: #1a1a1a;
+        --text-color: #ffffff;
+        --card-bg: #2d2d2d;
+        --border-color: #444444;
+    }
+}
+
+@media (prefers-color-scheme: light) {
+    [data-theme="system"] {
+        --bg-color: #ffffff;
+        --text-color: #333333;
+        --card-bg: #ffffff;
+        --border-color: #dee2e6;
+    }
+}
+
+/* Dark theme specific styles */
+[data-theme="dark"] .card-header {
+    background-color: #2d2d2d;
+    border-bottom-color: #444444;
+}
+
+[data-theme="dark"] .sidebar {
+    background-color: #2d2d2d !important;
+}
+
+[data-theme="dark"] .sidebar .nav-link {
+    color: #ffffff;
+}
+
+[data-theme="dark"] .sidebar .nav-link:hover {
+    background-color: #444444;
+}
+
+[data-theme="dark"] .table {
+    --bs-table-bg: transparent;
+    --bs-table-striped-bg: rgba(255, 255, 255, 0.05);
+    --bs-table-hover-bg: rgba(255, 255, 255, 0.075);
+}
+
+[data-theme="dark"] .bg-light {
+    background-color: #2d2d2d !important;
+}
