@@ -1,115 +1,164 @@
 <?php
-require_once 'config/database.php';
-require_once 'includes/auth.php';
+require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/auth.php';
 
+// Redirect if already logged in
 if (isLoggedIn()) {
     header("Location: dashboard.php");
     exit;
 }
 
 $error = '';
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $username = trim($_POST['username']);
-    $password = trim($_POST['password']);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $username = $_POST['username'] ?? '';
+    $password = $_POST['password'] ?? '';
     
-    if (!empty($username) && !empty($password)) {
+    if ($username && $password) {
         try {
-            $database = new Database();
-            $db = $database->getConnection();
-
-            if (!$db) {
-                $error = "Unable to connect to the database. Please run the setup script or check your DB settings.";
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ?");
+            $stmt->execute([$username]);
+            $user = $stmt->fetch();
+            
+            if ($user && password_verify($password, $user['password_hash'])) {
+                loginUser($user['id'], $user['username'], $user['role']);
+                header("Location: dashboard.php");
+                exit;
             } else {
-                $query = "SELECT id, username, password_hash, role FROM users WHERE username = :username";
-                $stmt = $db->prepare($query);
-                $stmt->bindParam(':username', $username);
-                $stmt->execute();
-
-                if ($stmt->rowCount() == 1) {
-                    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-                    if (password_verify($password, $row['password_hash'])) {
-                        loginUser($row['id'], $row['username'], $row['role']);
-                        header("Location: dashboard.php");
-                        exit;
-                    } else {
-                        $error = "Invalid password.";
-                    }
-                } else {
-                    $error = "No account found with that username.";
-                }
+                $error = "Invalid username or password";
             }
         } catch (PDOException $e) {
-            // If tables are missing (error 1146), show a helpful setup link instead of crashing.
-            $msg = $e->getMessage();
-            if (strpos($msg, '1146') !== false || stripos($msg, 'Base table or view not found') !== false) {
-                $error = 'Required database tables were not found. Please run <a href="setup_db.php">setup_db.php</a> to initialize the database.';
-            } else {
-                // Avoid exposing full SQL errors in production; show helpful guidance instead.
-                $error = "A database error occurred: " . htmlspecialchars($msg);
-            }
+            $error = "Login error. Please try again.";
         }
     } else {
-        $error = "Please enter both username and password.";
+        $error = "Please enter both username and password";
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - <?php echo APP_NAME; ?></title>
+    <title>Login - ISP Management</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .login-container {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 400px;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .login-header i {
+            font-size: 60px;
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        .login-header h2 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 600;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .btn-login:hover {
+            transform: translateY(-2px);
+        }
+        .alert {
+            padding: 12px 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .login-footer {
+            text-align: center;
+            margin-top: 20px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
 </head>
-<body class="login-body">
-    <div class="container">
-        <div class="row justify-content-center align-items-center min-vh-100">
-            <div class="col-md-6 col-lg-4">
-                <div class="card shadow-lg">
-                    <div class="card-header bg-primary text-white text-center">
-                        <h4><i class="fas fa-wifi me-2"></i><?php echo APP_NAME; ?></h4>
-                        <p class="mb-0">ISP Management System</p>
-                    </div>
-                    <div class="card-body p-4">
-                        <?php if (!empty($error)): ?>
-                            <div class="alert alert-danger"><?php echo $error; ?></div>
-                        <?php endif; ?>
-                        
-                        <form method="POST" action="">
-                            <div class="mb-3">
-                                <label for="username" class="form-label">Username</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="fas fa-user"></i></span>
-                                    <input type="text" class="form-control" id="username" name="username" required 
-                                           value="<?php echo isset($_POST['username']) ? htmlspecialchars($_POST['username']) : ''; ?>">
-                                </div>
-                            </div>
-                            <div class="mb-3">
-                                <label for="password" class="form-label">Password</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                                    <input type="password" class="form-control" id="password" name="password" required>
-                                </div>
-                            </div>
-                            <div class="d-grid">
-                                <button type="submit" class="btn btn-primary btn-lg">Login</button>
-                            </div>
-                        </form>
-                        
-                        <div class="mt-3 text-center">
-                            <p class="text-muted"><strong>Demo Credentials:</strong><br>
-                            Username: admin<br>
-                            Password: admin123</p>
-                        </div>
-                    </div>
-                </div>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <i class="fas fa-wifi"></i>
+            <h2>ISP Management</h2>
+            <p style="color: #666;">Sign in to your account</p>
+        </div>
+        
+        <?php if ($error): ?>
+            <div class="alert">
+                <i class="fas fa-exclamation-circle me-2"></i><?php echo htmlspecialchars($error); ?>
             </div>
+        <?php endif; ?>
+        
+        <form method="POST">
+            <div class="form-group">
+                <label><i class="fas fa-user me-2"></i>Username</label>
+                <input type="text" name="username" required autofocus placeholder="Enter your username">
+            </div>
+            
+            <div class="form-group">
+                <label><i class="fas fa-lock me-2"></i>Password</label>
+                <input type="password" name="password" required placeholder="Enter your password">
+            </div>
+            
+            <button type="submit" class="btn-login">
+                <i class="fas fa-sign-in-alt me-2"></i>Sign In
+            </button>
+        </form>
+        
+        <div class="login-footer">
+            <small>Default: admin / admin123</small>
         </div>
     </div>
-    
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

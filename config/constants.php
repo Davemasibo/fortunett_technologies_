@@ -19,4 +19,9 @@ define('PAYMENT_MPESA', 'mpesa');
 define('PAYMENT_CASH', 'cash');
 define('PAYMENT_BANK', 'bank_transfer');
 define('PAYMENT_CARD', 'card');
+define('APP_NAME', 'Fortunnet Technologies');
+define('APP_VERSION', '1.0.0');
+define('THEME_LIGHT', 'light');
+define('THEME_DARK', 'dark');
+define('THEME_SYSTEM', 'system');
 ?>

@@ -40,7 +40,8 @@ $status_distribution = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <?php include 'includes/header.php'; ?>
 <?php include 'includes/sidebar.php'; ?>
 
-<div class="col-md-9 col-lg-10 main-content">
+<div class="main-content-wrapper">
+    <div style="padding: 30px;">
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
         <h1 class="h2">Dashboard</h1>
         <div class="btn-toolbar mb-2 mb-md-0">
