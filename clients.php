@@ -1,486 +1,335 @@
 <?php
-require_once 'config/database.php';
-require_once 'includes/auth.php';
+require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/auth.php';
 redirectIfNotLoggedIn();
 
-$database = new Database();
-$db = $database->getConnection();
+include 'includes/header.php';
+include 'includes/sidebar.php';
 
-$action = $_GET['action'] ?? '';
-$message = '';
-
-// Ensure clients.user_type column exists (runtime safe migration)
-try {
-    $db->query("SELECT user_type FROM clients LIMIT 1");
-} catch (Exception $e) {
-    try {
-        $db->exec("ALTER TABLE clients ADD COLUMN user_type ENUM('pppoe','hotspot') DEFAULT 'pppoe' AFTER mikrotik_username");
-    } catch (Exception $ignored) {}
-}
-
-// Ensure clients.auth_password exists
-try {
-    $db->query("SELECT auth_password FROM clients LIMIT 1");
-} catch (Exception $e) {
-    try { $db->exec("ALTER TABLE clients ADD COLUMN auth_password VARCHAR(100) NULL AFTER user_type"); } catch (Exception $ignored) {}
-}
-
-// Handle form submissions
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    if (isset($_POST['add_client'])) {
-        $full_name = trim($_POST['full_name']);
-        $email = trim($_POST['email']);
-        $phone = trim($_POST['phone']);
-        $address = trim($_POST['address']);
-        $mikrotik_username = trim($_POST['mikrotik_username']);
-$subscription_plan = trim($_POST['subscription_plan']);
-        $user_type = $_POST['user_type'] ?? 'pppoe';
-        $auth_password = trim($_POST['auth_password'] ?? '');
-        
-        $query = "INSERT INTO clients (full_name, email, phone, address, mikrotik_username, subscription_plan, user_type, auth_password, status) 
-                  VALUES (:full_name, :email, :phone, :address, :mikrotik_username, :subscription_plan, :user_type, :auth_password, :status)";
-        $stmt = $db->prepare($query);
-        
-        $stmt->bindParam(':full_name', $full_name);
-        $stmt->bindParam(':email', $email);
-        $stmt->bindParam(':phone', $phone);
-        $stmt->bindParam(':address', $address);
-        $stmt->bindParam(':mikrotik_username', $mikrotik_username);
-        $stmt->bindParam(':subscription_plan', $subscription_plan);
-        $stmt->bindParam(':user_type', $user_type);
-        $stmt->bindParam(':auth_password', $auth_password);
-        $status = ($_POST['user_type'] === 'pppoe' || $_POST['user_type'] === 'hotspot') ? 'active' : 'inactive';
-        $stmt->bindParam(':status', $status);
-        
-        try {
-            if ($stmt->execute()) {
-                $message = "Client added successfully!";
-            } else {
-                $message = "Error adding client. Please try again.";
-            }
-        } catch (Exception $e) {
-            $message = 'Error: ' . $e->getMessage();
-        }
-    }
-    if (isset($_POST['update_client'])) {
-        $id = (int)$_POST['id'];
-        $full_name = trim($_POST['full_name']);
-        $email = trim($_POST['email']);
-        $phone = trim($_POST['phone']);
-        $address = trim($_POST['address']);
-        $mikrotik_username = trim($_POST['mikrotik_username']);
-        $subscription_plan = trim($_POST['subscription_plan']);
-        $user_type = $_POST['user_type'] ?? 'pppoe';
-        $status = $_POST['status'] ?? 'inactive';
-        $auth_password = trim($_POST['auth_password'] ?? '');
-
-        try {
-            $stmt = $db->prepare("UPDATE clients SET full_name = :full_name, email = :email, phone = :phone, address = :address, mikrotik_username = :mikrotik_username, subscription_plan = :subscription_plan, user_type = :user_type, auth_password = :auth_password, status = :status WHERE id = :id");
-            $stmt->bindParam(':full_name', $full_name);
-            $stmt->bindParam(':email', $email);
-            $stmt->bindParam(':phone', $phone);
-            $stmt->bindParam(':address', $address);
-            $stmt->bindParam(':mikrotik_username', $mikrotik_username);
-            $stmt->bindParam(':subscription_plan', $subscription_plan);
-            $stmt->bindParam(':user_type', $user_type);
-            $stmt->bindParam(':auth_password', $auth_password);
-            $stmt->bindParam(':status', $status);
-            $stmt->bindParam(':id', $id);
-            $stmt->execute();
-            $message = "Client updated successfully!";
-            $action = '';
-        } catch (Exception $e) {
-            $message = 'Error updating client: ' . $e->getMessage();
-        }
-    }
-    if (isset($_POST['send_sms'])) {
-        $client_id = (int)$_POST['id'];
-        $text = trim($_POST['text'] ?? '');
-        // Talksasa integration point: send $text to client's phone
-        $stmt = $db->prepare("SELECT phone FROM clients WHERE id = :id");
-        $stmt->bindParam(':id', $client_id);
-        $stmt->execute();
-        $to = $stmt->fetchColumn();
-        // TODO: Implement API call using credentials saved in sms.php/settings
-        $message = 'SMS queued to ' . htmlspecialchars($to);
-        $action = 'view';
-        $_GET['id'] = (string)$client_id;
-    }
-    if (isset($_POST['delete_client']) && isset($_POST['id'])) {
-        try {
-            $stmt = $db->prepare("DELETE FROM clients WHERE id = :id");
-            $stmt->bindParam(':id', $_POST['id']);
-            $stmt->execute();
-            $message = "Client deleted successfully.";
-        } catch (Exception $e) {
-            $message = 'Error deleting client: ' . $e->getMessage();
-        }
-    }
-}
-
-// Get all clients
-$query = "SELECT * FROM clients ORDER BY created_at DESC";
-$stmt = $db->prepare($query);
-$stmt->execute();
-$clients = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// Load available packages (for the modal dropdown)
+$packages = $pdo->query("SELECT id, name, type, price FROM packages ORDER BY created_at DESC")->fetchAll();
 ?>
 
-<?php include 'includes/header.php'; ?>
-<?php include 'includes/sidebar.php'; ?>
-
 <div class="main-content-wrapper">
-    <div style="padding: 30px;">
-    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">Clients Management</h1>
-        <div class="btn-toolbar mb-2 mb-md-0">
-            <a href="?action=add" class="btn btn-primary">Add New Client</a>
+    <div class="container-fluid py-4">
+        <!-- ...existing header/card... -->
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="h4 mb-0">Users</h2>
+                    <div class="text-muted small">All users including Hotspot and PPPoE</div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button id="importBtn" class="btn btn-outline-secondary">Import Users</button>
+                    <button id="createBtn" class="btn btn-warning" onclick="openCreateModal()"><i class="fas fa-plus me-1"></i>Create User</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="mb-3">
+            <div class="btn-group" role="group">
+                <button class="tab-btn btn btn-link text-decoration-none active" data-type="all">All <span id="countAll" class="badge bg-light text-dark ms-2">0</span></button>
+                <button class="tab-btn btn btn-link text-decoration-none" data-type="hotspot">Hotspot <span id="countHotspot" class="badge bg-light text-dark ms-2">0</span></button>
+                <button class="tab-btn btn btn-link text-decoration-none" data-type="pppoe">PPPoE <span id="countPppoe" class="badge bg-light text-dark ms-2">0</span></button>
+                <button class="tab-btn btn btn-link text-decoration-none" data-type="paused">Paused <span id="countPaused" class="badge bg-light text-dark ms-2">0</span></button>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="form-check">
+                    <input id="selectAll" class="form-check-input" type="checkbox">
+                </div>
+                <div class="ms-auto d-flex gap-2">
+                    <input id="searchInput" class="form-control form-control-sm" placeholder="Search" style="min-width:260px;">
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th></th>
+                            <th>Username</th>
+                            <th>Phone</th>
+                            <th>Package</th>
+                            <th>Expiry</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTbody">
+                        <!-- rows populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
 
-    <?php if ($message): ?>
-        <div class="alert alert-info"><?php echo $message; ?></div>
-    <?php endif; ?>
-
-    <?php if ($action == 'add'): ?>
-        <!-- Add Client Form -->
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0">Add New Client</h5>
-            </div>
-            <div class="card-body">
-                <form method="POST" action="">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="full_name" class="form-label">Full Name *</label>
-                                <input type="text" class="form-control" id="full_name" name="full_name" required>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="mikrotik_username" class="form-label">MikroTik Username *</label>
-                                <input type="text" class="form-control" id="mikrotik_username" name="mikrotik_username" required>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="email" class="form-label">Email</label>
-                                <input type="email" class="form-control" id="email" name="email">
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="phone" class="form-label">Phone *</label>
-                                <input type="tel" class="form-control" id="phone" name="phone" required>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-md-4">
-                            <div class="mb-3">
-                                <label for="user_type" class="form-label">User Type *</label>
-                                <select class="form-select" id="user_type" name="user_type" required>
-                                    <option value="pppoe">PPPoE</option>
-                                    <option value="hotspot">Hotspot</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="mb-3">
-                                <label for="auth_password" class="form-label">Password *</label>
-                                <input type="text" class="form-control" id="auth_password" name="auth_password" placeholder="Set client password" required>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="mb-3">
-                                <label for="address" class="form-label">Address</label>
-                                <input type="text" class="form-control" id="address" name="address">
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <?php
-                        // Fetch available package names for selection
-                        $pkgStmt = $db->query("SELECT name FROM packages ORDER BY name ASC");
-                        $availablePackages = $pkgStmt ? $pkgStmt->fetchAll(PDO::FETCH_COLUMN) : [];
-                    ?>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="subscription_plan" class="form-label">Package</label>
-                                <select class="form-select" id="subscription_plan" name="subscription_plan">
-                                    <?php foreach ($availablePackages as $p): ?>
-                                        <option value="<?php echo htmlspecialchars($p); ?>"><?php echo htmlspecialchars($p); ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                        <a href="clients.php" class="btn btn-secondary me-md-2">Cancel</a>
-                        <button type="submit" name="add_client" class="btn btn-primary">Add Client</button>
-                    </div>
-                </form>
-            </div>
+<!-- Bootstrap Modal (Create / Edit) -->
+<div class="modal fade" id="clientModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form id="userForm" class="needs-validation" novalidate onsubmit="event.preventDefault(); saveUser();">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalTitle">Create User</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-    <?php elseif ($action == 'view' && isset($_GET['id'])): ?>
-        <?php
-            $viewId = (int)$_GET['id'];
-            $stmt = $db->prepare("SELECT * FROM clients WHERE id = :id LIMIT 1");
-            $stmt->bindParam(':id', $viewId);
-            $stmt->execute();
-            $client_view = $stmt->fetch(PDO::FETCH_ASSOC);
-        ?>
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="card-title mb-0"><?php echo htmlspecialchars($client_view['full_name']); ?>
-                    <small class="text-muted">(<?php echo strtoupper($client_view['user_type'] ?? ''); ?>)</small>
-                </h5>
-                <div>
-                    <a href="?action=edit&id=<?php echo $client_view['id']; ?>" class="btn btn-sm btn-primary">Edit</a>
-                    <a href="payments.php?client_id=<?php echo $client_view['id']; ?>" class="btn btn-sm btn-success">Payments</a>
+        <div class="modal-body">
+            <input type="hidden" id="clientId">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Username</label>
+                    <input type="text" id="name" name="name" class="form-control" required>
                 </div>
-            </div>
-            <div class="card-body">
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">Account Number</label>
-                        <div class="form-control">F<?php echo 4900 + (int)$client_view['id']; ?></div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Full Name</label>
-                        <div class="form-control"><?php echo htmlspecialchars($client_view['full_name']); ?></div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Username</label>
-                        <div class="form-control"><?php echo htmlspecialchars($client_view['mikrotik_username']); ?></div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Status</label>
-                        <div class="form-control"><?php echo ucfirst($client_view['status']); ?></div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Package</label>
-                        <div class="form-control"><?php echo htmlspecialchars($client_view['subscription_plan']); ?></div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Phone</label>
-                        <div class="form-control"><?php echo htmlspecialchars($client_view['phone']); ?></div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Email</label>
-                        <div class="form-control"><?php echo htmlspecialchars($client_view['email']); ?></div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Address</label>
-                        <div class="form-control"><?php echo htmlspecialchars($client_view['address']); ?></div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Password</label>
-                        <div class="input-group">
-                            <input type="password" class="form-control" value="<?php echo htmlspecialchars($client_view['auth_password'] ?? ''); ?>" readonly>
-                            <button class="btn btn-outline-secondary" type="button" onclick="this.previousElementSibling.type = this.previousElementSibling.type==='password'?'text':'password'">Show</button>
-                        </div>
-                    </div>
+                <div class="col-md-6">
+                    <label class="form-label">Phone</label>
+                    <input type="text" id="phone" name="phone" class="form-control">
                 </div>
-                <hr>
-                <form method="POST" class="mt-3">
-                    <input type="hidden" name="id" value="<?php echo $client_view['id']; ?>">
-                    <div class="row g-3">
-                        <div class="col-md-8">
-                            <label class="form-label">Send SMS</label>
-                            <textarea name="text" rows="2" class="form-control" placeholder="Choose a template or write a message"></textarea>
-                            <div class="form-text">Templates: credentials, payment reminder, expiry notice.</div>
-                        </div>
-                        <div class="col-md-4 d-flex align-items-end">
-                            <button type="submit" name="send_sms" class="btn btn-primary w-100">Send SMS</button>
-                        </div>
-                    </div>
-                </form>
-            </div>
-        </div>
-    <?php elseif ($action == 'edit' && isset($_GET['id'])): ?>
-        <?php
-            $editId = (int)$_GET['id'];
-            $stmt = $db->prepare("SELECT * FROM clients WHERE id = :id LIMIT 1");
-            $stmt->bindParam(':id', $editId);
-            $stmt->execute();
-            $edit_client = $stmt->fetch(PDO::FETCH_ASSOC);
-        ?>
-        <!-- Edit Client Form -->
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0">Edit Client</h5>
-            </div>
-            <div class="card-body">
-                <form method="POST" action="">
-                    <input type="hidden" name="id" value="<?php echo $edit_client['id']; ?>">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="full_name" class="form-label">Full Name *</label>
-                                <input type="text" class="form-control" id="full_name" name="full_name" value="<?php echo htmlspecialchars($edit_client['full_name']); ?>" required>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="mikrotik_username" class="form-label">MikroTik Username *</label>
-                                <input type="text" class="form-control" id="mikrotik_username" name="mikrotik_username" value="<?php echo htmlspecialchars($edit_client['mikrotik_username']); ?>" required>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="email" class="form-label">Email</label>
-                                <input type="email" class="form-control" id="email" name="email" value="<?php echo htmlspecialchars($edit_client['email']); ?>">
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="phone" class="form-label">Phone *</label>
-                                <input type="tel" class="form-control" id="phone" name="phone" value="<?php echo htmlspecialchars($edit_client['phone']); ?>" required>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-4">
-                            <div class="mb-3">
-                                <label for="user_type" class="form-label">User Type *</label>
-                                <select class="form-select" id="user_type" name="user_type" required>
-                                    <option value="pppoe" <?php echo ($edit_client['user_type'] ?? '')==='pppoe'?'selected':''; ?>>PPPoE</option>
-                                    <option value="hotspot" <?php echo ($edit_client['user_type'] ?? '')==='hotspot'?'selected':''; ?>>Hotspot</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="mb-3">
-                                <label for="auth_password" class="form-label">Password *</label>
-                                <input type="text" class="form-control" id="auth_password" name="auth_password" value="<?php echo htmlspecialchars($edit_client['auth_password'] ?? ''); ?>" required>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="mb-3">
-                                <label for="address" class="form-label">Address</label>
-                                <input type="text" class="form-control" id="address" name="address" value="<?php echo htmlspecialchars($edit_client['address']); ?>">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <?php
-                            $pkgStmt2 = $db->query("SELECT name FROM packages ORDER BY name ASC");
-                            $availablePackages2 = $pkgStmt2 ? $pkgStmt2->fetchAll(PDO::FETCH_COLUMN) : [];
-                        ?>
-                        <div class="col-md-4">
-                            <div class="mb-3">
-                                <label for="subscription_plan" class="form-label">Package</label>
-                                <select class="form-select" id="subscription_plan" name="subscription_plan">
-                                    <?php foreach ($availablePackages2 as $p): $sel = ($edit_client['subscription_plan'] === $p) ? 'selected' : ''; ?>
-                                        <option value="<?php echo htmlspecialchars($p); ?>" <?php echo $sel; ?>><?php echo htmlspecialchars($p); ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="mb-3">
-                                <label for="status" class="form-label">Status</label>
-                                <select class="form-select" id="status" name="status">
-                                    <?php $statuses=['active','inactive','suspended']; foreach($statuses as $s){ $sel = ($edit_client['status']===$s)?'selected':''; echo "<option value=\"$s\" $sel>".ucfirst($s)."</option>"; } ?>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                        <a href="clients.php" class="btn btn-secondary me-md-2">Cancel</a>
-                        <button type="submit" name="update_client" class="btn btn-primary">Update Client</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    <?php else: ?>
-        <!-- Clients List -->
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0">All Clients</h5>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Contact</th>
-                                <th>Package</th>
-                                <th>Status</th>
-                                <th>Last Payment</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($clients as $client): ?>
-                            <tr>
-                                <td>
-                                    <strong><?php echo htmlspecialchars($client['full_name']); ?></strong><br>
-                                    <small class="text-muted">@<?php echo htmlspecialchars($client['mikrotik_username']); ?></small>
-                                </td>
-                                <td>
-                                    <a href="?action=view&id=<?php echo $client['id']; ?>" class="text-decoration-none">
-                                        <strong><?php echo htmlspecialchars($client['full_name']); ?></strong>
-                                    </a><br>
-                                    <small class="text-muted">@<?php echo htmlspecialchars($client['mikrotik_username']); ?></small>
-                                </td>
-                                <td>
-                                    <?php echo htmlspecialchars($client['phone']); ?><br>
-                                    <small class="text-muted"><?php echo htmlspecialchars($client['email']); ?></small>
-                                </td>
-                                <td><?php echo htmlspecialchars($client['subscription_plan']); ?></td>
-                                <td>
-                                    <span class="badge 
-                                        <?php 
-                                        switch($client['status']) {
-                                            case 'active': echo 'bg-success'; break;
-                                            case 'inactive': echo 'bg-warning'; break;
-                                            case 'suspended': echo 'bg-danger'; break;
-                                            default: echo 'bg-secondary';
-                                        }
-                                        ?>">
-                                        <?php echo ucfirst($client['status']); ?>
-                                    </span>
-                                </td>
-                                <td>
-                                    <?php if ($client['last_payment_date']): ?>
-                                        <?php echo date('M j, Y', strtotime($client['last_payment_date'])); ?>
-                                    <?php else: ?>
-                                        <span class="text-muted">Never</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <div class="btn-group btn-group-sm">
-                                        <a href="?action=edit&id=<?php echo $client['id']; ?>" class="btn btn-outline-primary">Edit</a>
-                                        <a href="payments.php?client_id=<?php echo $client['id']; ?>" class="btn btn-outline-success">Payment</a>
-                                        <form method="POST" onsubmit="return confirm('Delete this client?');" style="display:inline-block; margin-left:6px;">
-                                            <input type="hidden" name="id" value="<?php echo $client['id']; ?>">
-                                            <button type="submit" name="delete_client" class="btn btn-outline-danger">Delete</button>
-                                        </form>
-                                    </div>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                <div class="col-md-6">
+                    <label class="form-label">Package</label>
+                    <select id="package_id" class="form-select">
+                        <option value="">-- None --</option>
+                        <?php foreach ($packages as $pkg): ?>
+                            <option value="<?php echo (int)$pkg['id']; ?>" data-type="<?php echo htmlspecialchars($pkg['type']); ?>">
+                                <?php echo htmlspecialchars($pkg['name'] . ' — KES ' . number_format($pkg['price'],2)); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="form-text">Packages come from Packages tab and are what clients can purchase.</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Type</label>
+                    <select id="type" name="type" class="form-select">
+                        <option value="hotspot">Hotspot</option>
+                        <option value="pppoe">PPPoE</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Address / Notes</label>
+                    <input type="text" id="address" name="address" class="form-control">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Status</label>
+                    <select id="status" name="status" class="form-select">
+                        <option value="active">Active</option>
+                        <option value="paused">Paused</option>
+                        <option value="suspended">Suspended</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Expiry Date (leave empty for no expiry)</label>
+                    <input type="datetime-local" id="expiry" name="expiry_date" class="form-control">
                 </div>
             </div>
         </div>
-    <?php endif; ?>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
+
+<script>
+const apiBase = '/api/clients.php';
+let currentType = 'all';
+let usersCache = [];
+const bootstrapModal = new bootstrap.Modal(document.getElementById('clientModal'), {keyboard:true, backdrop:true});
+
+// packages data for client-side filtering (built from server-side PHP values)
+const packages = <?php echo json_encode($packages); ?>;
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', (e) => {
+        document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        currentType = e.currentTarget.dataset.type;
+        loadUsers();
+    }));
+    document.getElementById('searchInput').addEventListener('input', debounce(loadUsers, 300));
+
+    // when user changes type in modal, filter packages dropdown
+    document.getElementById('type').addEventListener('change', filterPackageOptions);
+
+    loadUsers();
+});
+
+function filterPackageOptions(){
+    const sel = document.getElementById('package_id');
+    const t = document.getElementById('type').value;
+    // reset options and add those matching type + the None option
+    sel.innerHTML = '<option value="">-- None --</option>';
+    packages.forEach(p=>{
+        if (!t || p.type === t) {
+            const o = document.createElement('option');
+            o.value = p.id;
+            o.text = p.name + ' — KES ' + parseFloat(p.price).toFixed(2);
+            o.dataset.type = p.type;
+            sel.appendChild(o);
+        }
+    });
+}
+
+function loadUsers() {
+    const typeParam = (currentType === 'all' || currentType === 'paused') ? '' : '?type=' + currentType;
+    fetch(apiBase + typeParam).then(r=>r.json()).then(data=>{
+        usersCache = Array.isArray(data) ? data : (data ? [data] : []);
+        const q = document.getElementById('searchInput').value.toLowerCase();
+        let filtered = usersCache.filter(u=>{
+            if(!q) return true;
+            return (u.name||'').toLowerCase().includes(q) || (u.address||'').toLowerCase().includes(q) || (u.phone||'').toLowerCase().includes(q);
+        });
+        if(currentType === 'paused'){
+            filtered = usersCache.filter(u=>u.status==='paused').filter(u=>{
+                if(!q) return true;
+                return (u.name||'').toLowerCase().includes(q) || (u.address||'').toLowerCase().includes(q) || (u.phone||'').toLowerCase().includes(q);
+            });
+        }
+        renderTable(filtered);
+        // counts (from full all)
+        fetch(apiBase).then(r=>r.json()).then(all=>{
+            const arr = Array.isArray(all) ? all : (all? [all] : []);
+            document.getElementById('countAll').innerText = arr.length;
+            document.getElementById('countHotspot').innerText = arr.filter(x=>x.type==='hotspot').length;
+            document.getElementById('countPppoe').innerText = arr.filter(x=>x.type==='pppoe').length;
+            document.getElementById('countPaused').innerText = arr.filter(x=>x.status==='paused').length;
+        });
+    }).catch(err=>console.error(err));
+}
+
+function renderTable(users){
+    const tbody = document.getElementById('usersTbody');
+    tbody.innerHTML = '';
+    users.forEach(u=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><input type="checkbox" data-id="${u.id}"></td>
+            <td class="fw-semibold">${escapeHtml(u.name||'—')}</td>
+            <td class="text-primary">${escapeHtml(u.phone||'—')}</td>
+            <td>${escapeHtml(u.package_name||'—')}</td>
+            <td>${u.expiry_date ? new Date(u.expiry_date).toLocaleString() : '<span class="text-muted">No expiry</span>'}</td>
+            <td>${escapeHtml((u.type||'').toUpperCase())}</td>
+            <td><span class="badge bg-light text-dark">${escapeHtml(u.status||'—')}</span></td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="openEdit(${u.id})">Edit</button>
+                <button class="btn btn-sm btn-outline-danger me-1" onclick="deleteUser(${u.id})">Delete</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="togglePause(${u.id})">${u.status==='paused'?'Resume':'Pause'}</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function openCreateModal(){
+    document.getElementById('modalTitle').innerText = 'Create User';
+    document.getElementById('clientId').value = '';
+    document.getElementById('name').value = '';
+    document.getElementById('phone').value = '';
+    document.getElementById('address').value = '';
+    document.getElementById('type').value = 'hotspot';
+    document.getElementById('status').value = 'active';
+    document.getElementById('expiry').value = '';
+    filterPackageOptions();
+    bootstrapModal.show();
+}
+
+function openEdit(id){
+    const u = usersCache.find(x=>x.id==id);
+    if(!u) return alert('User not found');
+    document.getElementById('modalTitle').innerText = 'Edit User';
+    document.getElementById('clientId').value = u.id;
+    document.getElementById('name').value = u.name || '';
+    document.getElementById('phone').value = u.phone || '';
+    document.getElementById('address').value = u.address || '';
+    document.getElementById('type').value = u.type || 'hotspot';
+    document.getElementById('status').value = u.status || 'active';
+    if(u.expiry_date){
+        const d = new Date(u.expiry_date);
+        const local = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
+        document.getElementById('expiry').value = local;
+    } else {
+        document.getElementById('expiry').value = '';
+    }
+    filterPackageOptions();
+    // set package selection
+    document.getElementById('package_id').value = u.package_id ? u.package_id : '';
+    bootstrapModal.show();
+}
+
+function closeModal(){ bootstrapModal.hide(); }
+
+function saveUser(){
+    const id = document.getElementById('clientId').value;
+    const payload = {
+        id: id || undefined,
+        name: document.getElementById('name').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+        address: document.getElementById('address').value.trim(),
+        type: document.getElementById('type').value,
+        status: document.getElementById('status').value,
+        expiry_date: document.getElementById('expiry').value ? new Date(document.getElementById('expiry').value).toISOString() : null,
+        package_id: document.getElementById('package_id') ? (document.getElementById('package_id').value ? Number(document.getElementById('package_id').value) : null) : null
+    };
+    if(!payload.name){ return alert('Username required'); }
+
+    const method = id ? 'PUT' : 'POST';
+    fetch(apiBase, {
+        method,
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    }).then(async r=>{
+        const data = await r.json().catch(()=>({success:false, message:'Invalid JSON response'}));
+        if (!r.ok) {
+            // server returned non-200 (e.g. 400) - show message
+            alert(data.message || ('Server error: ' + r.status));
+            console.error('Server response', data);
+            return;
+        }
+        if (data.success === false) {
+            alert(data.message || 'Operation failed');
+            console.error('Server error details:', data.error || data);
+            return;
+        }
+        // success
+        closeModal();
+        loadUsers();
+    }).catch(err=>{
+        console.error(err);
+        alert('Network or server error. Check console for details.');
+    });
+}
+
+function deleteUser(id){
+    if(!confirm('Delete user?')) return;
+    fetch(apiBase, {
+        method: 'DELETE',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({id})
+    }).then(r=>r.json()).then(res=>{
+        loadUsers();
+    }).catch(err=>{ console.error(err); alert('Delete failed'); });
+}
+
+function togglePause(id){
+    const u = usersCache.find(x=>x.id==id);
+    if(!u) return;
+    const newStatus = u.status === 'paused' ? 'active' : 'paused';
+    const payload = { id, status: newStatus, name: u.name, phone: u.phone, address: u.address, type: u.type, expiry_date: u.expiry_date, package_id: u.package_id };
+    fetch(apiBase, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    }).then(r=>r.json()).then(()=>loadUsers()).catch(e=>console.error(e));
+}
+
+// helpers
+function escapeHtml(s){ return (s||'').toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function debounce(fn, t){ let time; return function(){ clearTimeout(time); time = setTimeout(()=>fn.apply(this,arguments), t); }; }
+</script>
 
 <?php include 'includes/footer.php'; ?>
