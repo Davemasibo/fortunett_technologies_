@@ -3,7 +3,9 @@ require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 redirectIfNotLoggedIn();
 
-$clients = $pdo->query("SELECT id, full_name, phone, mikrotik_username FROM clients ORDER BY full_name ASC")->fetchAll();
+$clients = $pdo->query("SELECT id, COALESCE(name, full_name) AS display_name, phone, mikrotik_username FROM clients ORDER BY display_name ASC")->fetchAll();
+$prefill_client_id = isset($_GET['client_id']) ? (int)$_GET['client_id'] : 0;
+$prefill_template = $_GET['template'] ?? '';
 $message = '';
 
 // Persist Talksasa settings in a simple config table if not exists
@@ -77,24 +79,44 @@ include 'includes/sidebar.php';
         <div class="card">
             <div class="card-body">
                 <form method="POST">
-                    <div class="mb-3">
-                        <label class="form-label">Send To</label>
-                        <select name="target" class="form-select" onchange="document.getElementById('single-select').style.display = this.value==='single'?'block':'none'">
-                            <option value="single">Single Client</option>
-                            <option value="all">All Clients</option>
-                        </select>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Send To</label>
+                            <select name="target" class="form-select" onchange="document.getElementById('single-select').style.display = this.value==='single'?'block':'none'">
+                                <option value="single">Single Client</option>
+                                <option value="all">All Clients</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8" id="single-select">
+                            <label class="form-label">Client</label>
+                            <select name="client_id" id="client_id" class="form-select">
+                                <?php foreach ($clients as $c): ?>
+                                    <option data-phone="<?php echo htmlspecialchars($c['phone'] ?? ''); ?>" data-name="<?php echo htmlspecialchars($c['display_name'] ?? ''); ?>" value="<?php echo $c['id']; ?>" <?php echo ($prefill_client_id === (int)$c['id']) ? 'selected' : ''; ?>><?php echo htmlspecialchars(($c['display_name'] ?? '—') . ' (' . ($c['phone'] ?? '-') . ')'); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
                     </div>
-                    <div id="single-select" class="mb-3">
-                        <label class="form-label">Client</label>
-                        <select name="client_id" class="form-select">
-                            <?php foreach ($clients as $c): ?>
-                                <option value="<?php echo $c['id']; ?>"><?php echo htmlspecialchars($c['full_name'] . ' (' . $c['phone'] . ')'); ?></option>
-                            <?php endforeach; ?>
-                        </select>
+
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-4">
+                            <label class="form-label">Template</label>
+                            <select id="template" class="form-select" onchange="applyTemplate()">
+                                <option value="">-- Choose template --</option>
+                                <option value="expiry">Expiry Reminder</option>
+                                <option value="payment">Payment Details</option>
+                                <option value="credentials">Credentials</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label">Sender ID</label>
+                            <input type="text" name="sender_id" class="form-control" value="<?php echo htmlspecialchars($settings['sender_id'] ?? ''); ?>" placeholder="e.g. YourBrand">
+                        </div>
                     </div>
-                    <div class="mb-3">
+
+                    <div class="mb-3 mt-3">
                         <label class="form-label">Message</label>
-                        <textarea name="text" rows="4" class="form-control" placeholder="Reminder/credentials/payment details..."></textarea>
+                        <textarea name="text" id="text" rows="5" class="form-control" placeholder="Reminder/credentials/payment details..."></textarea>
+                        <div class="form-text">Use placeholders: {name}, {package}, {expiry}</div>
                     </div>
                     <button type="submit" class="btn btn-primary">Send</button>
                 </form>
@@ -104,5 +126,35 @@ include 'includes/sidebar.php';
 </div>
 
 <?php include 'includes/footer.php'; ?>
+
+<script>
+function applyTemplate(){
+  const sel = document.getElementById('template');
+  const clientSel = document.getElementById('client_id');
+  const opt = clientSel.options[clientSel.selectedIndex];
+  const name = opt ? (opt.getAttribute('data-name') || '') : '';
+  const pkg = ''; // could fetch live later
+  const expiry = '';
+  let text = '';
+  if (sel.value === 'expiry') {
+    text = `Hi {name}, your subscription {package} expires on {expiry}. Kindly renew to stay connected.`;
+  } else if (sel.value === 'payment') {
+    text = `Hello {name}, payment details:\nPaybill: 123456\nAccount: {name}\nAmount: KES <amount> for {package}. Thank you.`;
+  } else if (sel.value === 'credentials') {
+    text = `Hello {name}, your WiFi account is ready. Username: {name}. Package: {package}.`;
+  }
+  text = text.replaceAll('{name}', name).replaceAll('{package}', pkg).replaceAll('{expiry}', expiry);
+  document.getElementById('text').value = text.trim();
+}
+// preselect template from query
+(function(){
+  const t = <?php echo json_encode($prefill_template); ?>;
+  if (t) {
+    const sel = document.getElementById('template');
+    sel.value = t;
+    applyTemplate();
+  }
+})();
+</script>
 
 

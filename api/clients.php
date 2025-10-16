@@ -50,6 +50,17 @@ try {
 } catch (Exception $e) {
     // ignore
 }
+
+// Ensure clients table has 'password' column (runtime safe migration)
+try {
+    $colPwd = $pdo->prepare("SHOW COLUMNS FROM clients LIKE 'password'");
+    $colPwd->execute();
+    if ($colPwd->rowCount() === 0) {
+        $pdo->exec("ALTER TABLE clients ADD COLUMN `password` VARCHAR(191) NULL AFTER name");
+    }
+} catch (Exception $e) {
+    // ignore
+}
 try {
     $colPkgName = $pdo->prepare("SHOW COLUMNS FROM clients LIKE 'package_name'");
     $colPkgName->execute();
@@ -63,6 +74,26 @@ try {
 $method = $_SERVER['REQUEST_METHOD'];
 $response = array();
 
+// Helper: choose column based on availability
+$resolveClientNameInsert = function($nameValue) use (&$existingColumns) {
+    if (in_array('name', $existingColumns)) {
+        return ['name' => $nameValue];
+    }
+    if (in_array('full_name', $existingColumns)) {
+        return ['full_name' => $nameValue];
+    }
+    // If we don't know columns, default to name
+    return ['name' => $nameValue];
+};
+
+// Helper: normalize row(s) to always include 'name' field
+$normalizeRow = function(array $row) {
+    if ((!isset($row['name']) || $row['name'] === null || $row['name'] === '') && isset($row['full_name'])) {
+        $row['name'] = $row['full_name'];
+    }
+    return $row;
+};
+
 switch($method) {
     case 'GET':
         if(isset($_GET['id'])) {
@@ -73,6 +104,7 @@ switch($method) {
                 // normalize datetime to ISO 8601
                 $row['expiry_date'] = date('c', strtotime($row['expiry_date']));
             }
+            if ($row) { $row = $normalizeRow($row); }
             $response = $row;
         } else {
             // support filtering by type: ?type=hotspot|pppoe or omitted for all
@@ -90,6 +122,7 @@ switch($method) {
                 if (isset($r['expiry_date']) && $r['expiry_date'] !== null) {
                     $r['expiry_date'] = date('c', strtotime($r['expiry_date']));
                 }
+                $r = $normalizeRow($r);
             }
             $response = $rows;
         }
@@ -97,10 +130,15 @@ switch($method) {
     
     case 'POST':
         $data = json_decode(file_get_contents("php://input"));
-        // Basic validation: require name
+        // Basic validation: require name and password
         if (empty($data->name)) {
             http_response_code(400);
             echo json_encode(["success" => false, "message" => "Name is required"]);
+            exit;
+        }
+        if (!isset($data->password) || $data->password === '') {
+            http_response_code(400);
+            echo json_encode(["success" => false, "message" => "Password is required"]);
             exit;
         }
 
@@ -137,9 +175,14 @@ switch($method) {
             }
         };
 
-        $maybeAdd('name', $data->name ?? null);
+        // Prefer 'name' column, fallback to 'full_name' if needed
+        $nameMap = $resolveClientNameInsert($data->name ?? null);
+        foreach ($nameMap as $col => $val) { $maybeAdd($col, $val); }
         $maybeAdd('email', $data->email ?? null);
         $maybeAdd('phone', $data->phone ?? null);
+        // Optional password field if such a column exists
+        // password required on POST; already validated above
+        $maybeAdd('password', $data->password);
         $maybeAdd('company', $data->company ?? null);
         $maybeAdd('address', $data->address ?? null);
         $maybeAdd('status', $data->status ?? 'active');
@@ -159,7 +202,11 @@ switch($method) {
         try {
             $stmt = $pdo->prepare($sql);
             if ($stmt->execute($values)) {
-                $response = array("success" => true, "message" => "Client created successfully", "id" => $pdo->lastInsertId());
+                $newId = $pdo->lastInsertId();
+                // Return normalized object
+                $created = [ 'id' => (int)$newId, 'type' => $type, 'status' => ($data->status ?? 'active'), 'phone' => ($data->phone ?? null), 'address' => ($data->address ?? null), 'expiry_date' => $expiry, 'package_id' => $package_id_input, 'package_name' => $package_name_resolved ];
+                $created['name'] = $data->name ?? null;
+                $response = array("success" => true, "message" => "Client created successfully", "id" => $newId, "data" => $created);
             } else {
                 $err = $stmt->errorInfo();
                 $response = array("success" => false, "message" => "Failed to create client", "error" => $err);
@@ -206,9 +253,15 @@ switch($method) {
             }
         };
 
-        $maybeSet('name', $data->name ?? null);
+        if (isset($data->name)) {
+            if (in_array('name', $existingColumns)) { $maybeSet('name', $data->name); }
+            elseif (in_array('full_name', $existingColumns)) { $maybeSet('full_name', $data->name); }
+        }
         $maybeSet('email', $data->email ?? null);
         $maybeSet('phone', $data->phone ?? null);
+        if (isset($data->password) && $data->password !== '') {
+            $maybeSet('password', $data->password);
+        }
         $maybeSet('company', $data->company ?? null);
         $maybeSet('address', $data->address ?? null);
         $maybeSet('status', $data->status ?? 'active');
@@ -250,7 +303,5 @@ switch($method) {
         break;
 }
 
-echo json_encode($response);
-?>
 echo json_encode($response);
 ?>

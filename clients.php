@@ -52,11 +52,9 @@ $packages = $pdo->query("SELECT id, name, type, price FROM packages ORDER BY cre
                         <tr>
                             <th></th>
                             <th>Username</th>
-                            <th>Phone</th>
-                            <th>Package</th>
-                            <th>Expiry</th>
-                            <th>Type</th>
-                            <th>Status</th>
+                            <th>IP/MAC</th>
+                            <th>Session Start</th>
+                            <th>Session End</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -86,15 +84,19 @@ $packages = $pdo->query("SELECT id, name, type, price FROM packages ORDER BY cre
                     <input type="text" id="name" name="name" class="form-control" required>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Phone</label>
+                    <label class="form-label"><span style="color:#dc3545">*</span> Phone</label>
                     <input type="text" id="phone" name="phone" class="form-control">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label"><span style="color:#dc3545">*</span> Password</label>
+                    <input type="text" id="password" name="password" class="form-control" required>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Package</label>
                     <select id="package_id" class="form-select">
                         <option value="">-- None --</option>
                         <?php foreach ($packages as $pkg): ?>
-                            <option value="<?php echo (int)$pkg['id']; ?>" data-type="<?php echo htmlspecialchars($pkg['type']); ?>">
+                            <option value="<?php echo (int)$pkg['id']; ?>" data-type="<?php echo htmlspecialchars($pkg['type'] ?? ''); ?>">
                                 <?php echo htmlspecialchars($pkg['name'] . ' — KES ' . number_format($pkg['price'],2)); ?>
                             </option>
                         <?php endforeach; ?>
@@ -121,7 +123,7 @@ $packages = $pdo->query("SELECT id, name, type, price FROM packages ORDER BY cre
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Expiry Date (leave empty for no expiry)</label>
+                    <label class="form-label"><span style="color:#dc3545">*</span> Expiry Date (leave empty for no expiry)</label>
                     <input type="datetime-local" id="expiry" name="expiry_date" class="form-control">
                 </div>
             </div>
@@ -136,15 +138,19 @@ $packages = $pdo->query("SELECT id, name, type, price FROM packages ORDER BY cre
 </div>
 
 <script>
-const apiBase = '/api/clients.php';
+const apiBase = 'api/clients.php';
 let currentType = 'all';
 let usersCache = [];
-const bootstrapModal = new bootstrap.Modal(document.getElementById('clientModal'), {keyboard:true, backdrop:true});
+let clientModalInstance;
 
 // packages data for client-side filtering (built from server-side PHP values)
-const packages = <?php echo json_encode($packages); ?>;
+const packages = <?php echo json_encode($packages, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); ?>;
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize modal after Bootstrap bundle is loaded
+    if (window.bootstrap && document.getElementById('clientModal')) {
+        clientModalInstance = new bootstrap.Modal(document.getElementById('clientModal'), { keyboard: true, backdrop: true });
+    }
     document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', (e) => {
         document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));
         e.currentTarget.classList.add('active');
@@ -165,7 +171,7 @@ function filterPackageOptions(){
     // reset options and add those matching type + the None option
     sel.innerHTML = '<option value="">-- None --</option>';
     packages.forEach(p=>{
-        if (!t || p.type === t) {
+        if (!t || !p.type || p.type === t) {
             const o = document.createElement('option');
             o.value = p.id;
             o.text = p.name + ' — KES ' + parseFloat(p.price).toFixed(2);
@@ -207,18 +213,18 @@ function renderTable(users){
     tbody.innerHTML = '';
     users.forEach(u=>{
         const tr = document.createElement('tr');
+        const ip = escapeHtml(u.ip || '—');
+        const mac = escapeHtml(u.mac || '—');
+        const start = u.session_start ? formatRelative(u.session_start) : '—';
+        const end = u.expiry_date ? formatRelative(u.expiry_date, true) : (u.session_end ? formatRelative(u.session_end, true) : '—');
         tr.innerHTML = `
             <td><input type="checkbox" data-id="${u.id}"></td>
-            <td class="fw-semibold">${escapeHtml(u.name||'—')}</td>
-            <td class="text-primary">${escapeHtml(u.phone||'—')}</td>
-            <td>${escapeHtml(u.package_name||'—')}</td>
-            <td>${u.expiry_date ? new Date(u.expiry_date).toLocaleString() : '<span class="text-muted">No expiry</span>'}</td>
-            <td>${escapeHtml((u.type||'').toUpperCase())}</td>
-            <td><span class="badge bg-light text-dark">${escapeHtml(u.status||'—')}</span></td>
+            <td class="fw-semibold"><a href="user.php?id=${u.id}" class="text-decoration-none">${escapeHtml(u.name||'—')}</a><div class="text-muted small">(Acc. E${27000})</div></td>
+            <td><div class="small">IP: ${ip}</div><div class="small text-muted">MAC: ${mac}</div></td>
+            <td>${start}</td>
+            <td>${end}</td>
             <td>
-                <button class="btn btn-sm btn-outline-primary me-1" onclick="openEdit(${u.id})">Edit</button>
-                <button class="btn btn-sm btn-outline-danger me-1" onclick="deleteUser(${u.id})">Delete</button>
-                <button class="btn btn-sm btn-outline-secondary" onclick="togglePause(${u.id})">${u.status==='paused'?'Resume':'Pause'}</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="disconnectUser(${u.id})">Disconnect</button>
             </td>
         `;
         tbody.appendChild(tr);
@@ -226,6 +232,9 @@ function renderTable(users){
 }
 
 function openCreateModal(){
+    if (!clientModalInstance && window.bootstrap) {
+        clientModalInstance = new bootstrap.Modal(document.getElementById('clientModal'), { keyboard: true, backdrop: true });
+    }
     document.getElementById('modalTitle').innerText = 'Create User';
     document.getElementById('clientId').value = '';
     document.getElementById('name').value = '';
@@ -235,7 +244,7 @@ function openCreateModal(){
     document.getElementById('status').value = 'active';
     document.getElementById('expiry').value = '';
     filterPackageOptions();
-    bootstrapModal.show();
+    if (clientModalInstance) clientModalInstance.show();
 }
 
 function openEdit(id){
@@ -258,10 +267,13 @@ function openEdit(id){
     filterPackageOptions();
     // set package selection
     document.getElementById('package_id').value = u.package_id ? u.package_id : '';
-    bootstrapModal.show();
+    if (!clientModalInstance && window.bootstrap) {
+        clientModalInstance = new bootstrap.Modal(document.getElementById('clientModal'), { keyboard: true, backdrop: true });
+    }
+    if (clientModalInstance) clientModalInstance.show();
 }
 
-function closeModal(){ bootstrapModal.hide(); }
+function closeModal(){ if (clientModalInstance) clientModalInstance.hide(); }
 
 function saveUser(){
     const id = document.getElementById('clientId').value;
@@ -269,6 +281,7 @@ function saveUser(){
         id: id || undefined,
         name: document.getElementById('name').value.trim(),
         phone: document.getElementById('phone').value.trim(),
+            password: document.getElementById('password') ? document.getElementById('password').value : undefined,
         address: document.getElementById('address').value.trim(),
         type: document.getElementById('type').value,
         status: document.getElementById('status').value,
@@ -276,6 +289,7 @@ function saveUser(){
         package_id: document.getElementById('package_id') ? (document.getElementById('package_id').value ? Number(document.getElementById('package_id').value) : null) : null
     };
     if(!payload.name){ return alert('Username required'); }
+    if(!document.getElementById('password').value){ return alert('Password required'); }
 
     const method = id ? 'PUT' : 'POST';
     fetch(apiBase, {
@@ -324,7 +338,32 @@ function togglePause(id){
         method: 'PUT',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(payload)
-    }).then(r=>r.json()).then(()=>loadUsers()).catch(e=>console.error(e));
+    }).then(r=>r.json()).then(()=>{
+        // refresh both current tab and counts so Paused tab reflects change
+        loadUsers();
+    }).catch(e=>console.error(e));
+}
+
+function formatRelative(dateLike, future=false){
+    const d = new Date(dateLike);
+    if (isNaN(d.getTime())) return '—';
+    const now = new Date();
+    const diffMs = d.getTime() - now.getTime();
+    const abs = Math.abs(diffMs);
+    const mins = Math.round(abs/60000);
+    const hours = Math.round(abs/3600000);
+    const days = Math.round(abs/86400000);
+    let txt = '';
+    if (mins < 60) txt = `${mins} minutes ${diffMs < 0 ? 'ago' : 'from now'}`;
+    else if (hours < 48) txt = `${hours} hours ${diffMs < 0 ? 'ago' : 'from now'}`;
+    else txt = `${days} days ${diffMs < 0 ? 'ago' : 'from now'}`;
+    return txt;
+}
+
+function disconnectUser(id){
+    // Placeholder for real Mikrotik disconnect API; currently just a confirmation
+    if(!confirm('Disconnect this user?')) return;
+    alert('Disconnect command queued');
 }
 
 // helpers

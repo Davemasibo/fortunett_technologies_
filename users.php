@@ -157,7 +157,7 @@ function renderTable(users){
     users.forEach(u=>{
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td style="padding:10px">${escapeHtml(u.name||'—')}</td>
+            <td style="padding:10px"><a href="user.php?id=${u.id}" style="text-decoration:none;font-weight:600">${escapeHtml(u.name||'—')}</a></td>
             <td style="padding:10px">${escapeHtml(u.phone||'—')}</td>
             <td style="padding:10px">${escapeHtml(u.package_name||'—')}</td>
             <td style="padding:10px">${u.expiry_date ? new Date(u.expiry_date).toLocaleString() : '<span style="color:#888">No expiry</span>'}</td>
