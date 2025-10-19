@@ -50,45 +50,65 @@
             }
         }
     </style>
+
+    <?php
+    // determine current file once and helper to mark active links (accepts string or array)
+    $current = basename($_SERVER['PHP_SELF'] ?? '');
+    function isActive($current, $files) {
+        if (!is_array($files)) $files = [$files];
+        return in_array($current, $files) ? 'active' : '';
+    }
+    ?>
+
     <ul class="sidebar-menu">
         <li>
-            <a href="dashboard.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'active' : ''; ?>">
+            <a href="dashboard.php" class="<?php echo isActive($current, 'dashboard.php'); ?>">
                 <i class="fas fa-home"></i> <span>Dashboard</span>
             </a>
         </li>
         <li>
-            <a href="clients.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'clients.php' ? 'active' : ''; ?>">
+            <a href="clients.php" class="<?php echo isActive($current, ['clients.php','user.php']); ?>">
                 <i class="fas fa-users"></i> <span>Clients</span>
             </a>
         </li>
         <li>
-            <a href="packages.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'packages.php' ? 'active' : ''; ?>">
+            <a href="packages.php" class="<?php echo isActive($current, 'packages.php'); ?>">
                 <i class="fas fa-box"></i> <span>Packages</span>
             </a>
         </li>
         <li>
-            <a href="payments.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'payments.php' ? 'active' : ''; ?>">
+            <a href="payments.php" class="<?php echo isActive($current, 'payments.php'); ?>">
                 <i class="fas fa-money-bill-wave"></i> <span>Payments</span>
             </a>
         </li>
         <li>
-            <a href="sms.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'sms.php' ? 'active' : ''; ?>">
+            <a href="sms.php" class="<?php echo isActive($current, 'sms.php'); ?>">
                 <i class="fas fa-sms"></i> <span>SMS</span>
             </a>
         </li>
         <li>
-            <a href="subscription.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'subscription.php' ? 'active' : ''; ?>">
+            <a href="emails.php" class="<?php echo isActive($current, 'emails.php'); ?>">
+                <i class="fas fa-envelope"></i> <span>Emails</span>
+            </a>
+        </li>
+        <li>
+            <a href="subscription.php" class="<?php echo isActive($current, 'subscription.php'); ?>">
                 <i class="fas fa-crown"></i> <span>Subscription</span>
             </a>
         </li>
         <li>
-            <a href="mikrotik.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'mikrotik.php' ? 'active' : ''; ?>">
+            <a href="mikrotik.php" class="<?php echo isActive($current, 'mikrotik.php'); ?>">
                 <i class="fas fa-server"></i> <span>MikroTik</span>
+            </a>
+        </li>
+        <li>
+            <a href="reports.php" class="<?php echo isActive($current, 'reports.php'); ?>">
+                <i class="fas fa-chart-bar"></i> <span>Reports</span>
             </a>
         </li>
         
         <li>
-            <a href="settings.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'settings.php' ? 'active' : ''; ?>">
+            <a href="settings.php" class="<?php echo isActive($current, 'settings.php'); ?>">
                 <i class="fas fa-cog"></i> <span>Settings</span>
             </a>
         </li>

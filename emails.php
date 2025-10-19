@@ -7,35 +7,38 @@ redirectIfNotLoggedIn();
 $clients = [];
 $message = '';
 $success_message = '';
-$sms_logs = [];
+$email_logs = [];
 
 try {
-    // Get all clients with phone numbers
-    $clients = $pdo->query("SELECT id, full_name, phone, email, mikrotik_username, created_at, status FROM clients ORDER BY full_name ASC")->fetchAll();
+    // Get all clients with email addresses
+    $clients = $pdo->query("SELECT id, full_name, email, phone, mikrotik_username, created_at, status FROM clients ORDER BY full_name ASC")->fetchAll();
     
-    // Create SMS settings table if not exists
-    $pdo->exec("CREATE TABLE IF NOT EXISTS sms_settings (
+    // Create email settings table if not exists
+    $pdo->exec("CREATE TABLE IF NOT EXISTS email_settings (
         id INT PRIMARY KEY DEFAULT 1, 
-        provider VARCHAR(50) DEFAULT 'talksasa',
-        api_url VARCHAR(255),
-        api_key VARCHAR(255),
-        sender_id VARCHAR(20),
+        smtp_host VARCHAR(255),
+        smtp_port INT DEFAULT 587,
+        smtp_username VARCHAR(255),
+        smtp_password VARCHAR(255),
+        from_email VARCHAR(255),
+        from_name VARCHAR(255),
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )");
     
     // Insert default settings if not exists
-    $stmt = $pdo->query("SELECT COUNT(*) FROM sms_settings WHERE id = 1");
+    $stmt = $pdo->query("SELECT COUNT(*) FROM email_settings WHERE id = 1");
     if ($stmt->fetchColumn() == 0) {
-        $pdo->exec("INSERT INTO sms_settings (id, provider) VALUES (1, 'talksasa')");
+        $pdo->exec("INSERT INTO email_settings (id) VALUES (1)");
     }
     
-    $sms_settings = $pdo->query("SELECT * FROM sms_settings WHERE id = 1")->fetch();
+    $email_settings = $pdo->query("SELECT * FROM email_settings WHERE id = 1")->fetch();
 
-    // Create SMS logs table if not exists
-    $pdo->exec("CREATE TABLE IF NOT EXISTS sms_logs (
+    // Create email logs table if not exists
+    $pdo->exec("CREATE TABLE IF NOT EXISTS email_logs (
         id INT PRIMARY KEY AUTO_INCREMENT,
         client_id INT NULL,
-        recipient_phone VARCHAR(20),
+        recipient_email VARCHAR(255),
+        subject VARCHAR(255),
         message TEXT,
         template_used VARCHAR(50),
         sent_at DATETIME,
@@ -45,105 +48,109 @@ try {
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['save_settings'])) {
-            // Save SMS settings
-            $provider = trim($_POST['provider'] ?? 'talksasa');
-            $api_url = trim($_POST['api_url'] ?? '');
-            $api_key = trim($_POST['api_key'] ?? '');
-            $sender_id = trim($_POST['sender_id'] ?? '');
+            // Save email settings
+            $smtp_host = trim($_POST['smtp_host'] ?? '');
+            $smtp_port = (int)($_POST['smtp_port'] ?? 587);
+            $smtp_username = trim($_POST['smtp_username'] ?? '');
+            $smtp_password = trim($_POST['smtp_password'] ?? '');
+            $from_email = trim($_POST['from_email'] ?? '');
+            $from_name = trim($_POST['from_name'] ?? '');
             
-            $stmt = $pdo->prepare("UPDATE sms_settings SET provider = ?, api_url = ?, api_key = ?, sender_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1");
-            $stmt->execute([$provider, $api_url, $api_key, $sender_id]);
+            $stmt = $pdo->prepare("UPDATE email_settings SET smtp_host = ?, smtp_port = ?, smtp_username = ?, smtp_password = ?, from_email = ?, from_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1");
+            $stmt->execute([$smtp_host, $smtp_port, $smtp_username, $smtp_password, $from_email, $from_name]);
             
-            $success_message = 'SMS settings saved successfully!';
-            $sms_settings = $pdo->query("SELECT * FROM sms_settings WHERE id = 1")->fetch();
+            $success_message = 'Email settings saved successfully!';
+            $email_settings = $pdo->query("SELECT * FROM email_settings WHERE id = 1")->fetch();
             
-        } elseif (isset($_POST['send_single_sms'])) {
-            // Send single SMS
+        } elseif (isset($_POST['send_single_email'])) {
+            // Send single email
             $client_id = (int)($_POST['client_id'] ?? 0);
-            $sms_message = trim($_POST['message'] ?? '');
+            $subject = trim($_POST['subject'] ?? '');
+            $message_content = trim($_POST['message'] ?? '');
             $template_used = $_POST['template_used'] ?? 'custom';
             
             if (!$client_id) {
                 $message = 'Error: Please select a client';
-            } elseif (empty($sms_message)) {
-                $message = 'Error: SMS message is required';
+            } elseif (empty($subject) || empty($message_content)) {
+                $message = 'Error: Subject and message are required';
             } else {
-                $stmt = $pdo->prepare("SELECT id, full_name, phone FROM clients WHERE id = ?");
+                $stmt = $pdo->prepare("SELECT id, full_name, email FROM clients WHERE id = ?");
                 $stmt->execute([$client_id]);
                 $client = $stmt->fetch();
                 
-                if ($client && !empty($client['phone'])) {
+                if ($client && !empty($client['email'])) {
                     // Replace placeholders
                     $final_message = str_replace(
                         ['{name}', '{email}', '{phone}', '{username}'],
                         [
                             $client['full_name'], 
-                            $client['email'] ?? 'N/A', 
-                            $client['phone'],
+                            $client['email'], 
+                            $client['phone'] ?? 'N/A',
                             $client['mikrotik_username'] ?? 'N/A'
                         ],
-                        $sms_message
+                        $message_content
                     );
                     
-                    // TODO: Implement actual SMS sending
-                    // $result = sendSMS($client['phone'], $final_message, $sms_settings);
+                    // TODO: Implement actual email sending
+                    // $result = sendEmail($client['email'], $subject, $final_message, $email_settings);
                     $result = true; // Simulate success for now
                     
                     if ($result) {
-                        // Log the SMS
-                        $stmt = $pdo->prepare("INSERT INTO sms_logs (client_id, recipient_phone, message, template_used, sent_at) VALUES (?, ?, ?, ?, NOW())");
-                        $stmt->execute([$client_id, $client['phone'], $sms_message, $template_used]);
+                        // Log the email
+                        $stmt = $pdo->prepare("INSERT INTO email_logs (client_id, recipient_email, subject, message, template_used, sent_at) VALUES (?, ?, ?, ?, ?, NOW())");
+                        $stmt->execute([$client_id, $client['email'], $subject, $message_content, $template_used]);
                         
-                        $success_message = 'SMS sent successfully to ' . htmlspecialchars($client['full_name']) . ' (' . htmlspecialchars($client['phone']) . ')';
+                        $success_message = 'Email sent successfully to ' . htmlspecialchars($client['full_name']) . ' (' . htmlspecialchars($client['email']) . ')';
                     } else {
-                        $message = 'Error: Failed to send SMS';
+                        $message = 'Error: Failed to send email';
                     }
                 } else {
-                    $message = 'Error: Client not found or no phone number';
+                    $message = 'Error: Client not found or no email address';
                 }
             }
             
-        } elseif (isset($_POST['send_bulk_sms'])) {
-            // Send bulk SMS
-            $sms_message = trim($_POST['message'] ?? '');
+        } elseif (isset($_POST['send_bulk_email'])) {
+            // Send bulk email
+            $subject = trim($_POST['subject'] ?? '');
+            $message_content = trim($_POST['message'] ?? '');
             $template_used = $_POST['template_used'] ?? 'custom';
             $selected_clients = $_POST['selected_clients'] ?? [];
             
-            if (empty($sms_message)) {
-                $message = 'Error: SMS message is required';
+            if (empty($subject) || empty($message_content)) {
+                $message = 'Error: Subject and message are required';
             } else {
                 $sent_count = 0;
                 $error_count = 0;
-                $total_clients = empty($selected_clients) ? count($clients_with_phone) : count($selected_clients);
+                $total_clients = empty($selected_clients) ? count($clients) : count($selected_clients);
                 
-                $target_clients = empty($selected_clients) ? $clients_with_phone : array_filter($clients, function($client) use ($selected_clients) {
-                    return in_array($client['id'], $selected_clients) && !empty($client['phone']);
+                $target_clients = empty($selected_clients) ? $clients : array_filter($clients, function($client) use ($selected_clients) {
+                    return in_array($client['id'], $selected_clients);
                 });
                 
                 foreach ($target_clients as $client) {
-                    if (!empty($client['phone'])) {
+                    if (!empty($client['email'])) {
                         // Replace placeholders for each client
                         $final_message = str_replace(
                             ['{name}', '{email}', '{phone}', '{username}'],
                             [
                                 $client['full_name'], 
-                                $client['email'] ?? 'N/A', 
-                                $client['phone'],
+                                $client['email'], 
+                                $client['phone'] ?? 'N/A',
                                 $client['mikrotik_username'] ?? 'N/A'
                             ],
-                            $sms_message
+                            $message_content
                         );
                         
-                        // TODO: Implement actual SMS sending
-                        // $result = sendSMS($client['phone'], $final_message, $sms_settings);
+                        // TODO: Implement actual email sending
+                        // $result = sendEmail($client['email'], $subject, $final_message, $email_settings);
                         $result = true; // Simulate success for now
                         
                         if ($result) {
                             $sent_count++;
                             
-                            // Log the SMS
-                            $stmt = $pdo->prepare("INSERT INTO sms_logs (client_id, recipient_phone, message, template_used, sent_at) VALUES (?, ?, ?, ?, NOW())");
-                            $stmt->execute([$client['id'], $client['phone'], $sms_message, $template_used]);
+                            // Log the email
+                            $stmt = $pdo->prepare("INSERT INTO email_logs (client_id, recipient_email, subject, message, template_used, sent_at) VALUES (?, ?, ?, ?, ?, NOW())");
+                            $stmt->execute([$client['id'], $client['email'], $subject, $message_content, $template_used]);
                         } else {
                             $error_count++;
                         }
@@ -151,52 +158,52 @@ try {
                 }
                 
                 if ($error_count > 0) {
-                    $message = "Bulk SMS partially sent! {$sent_count} out of {$total_clients} clients received the SMS. {$error_count} failed.";
+                    $message = "Bulk email partially sent! {$sent_count} out of {$total_clients} clients received the email. {$error_count} failed.";
                 } else {
-                    $success_message = "Bulk SMS sent successfully! {$sent_count} out of {$total_clients} clients received the SMS.";
+                    $success_message = "Bulk email sent successfully! {$sent_count} out of {$total_clients} clients received the email.";
                 }
             }
         }
         
-        // Test SMS functionality
-        if (isset($_POST['test_sms'])) {
-            $test_phone = trim($_POST['test_phone'] ?? '');
-            if (!empty($test_phone)) {
-                // TODO: Implement actual test SMS sending
-                // $result = sendSMS($test_phone, 'Test SMS from your system. SMS functionality is working correctly.', $sms_settings);
+        // Test email functionality
+        if (isset($_POST['test_email'])) {
+            $test_email = trim($_POST['test_email'] ?? '');
+            if (!empty($test_email)) {
+                // TODO: Implement actual test email sending
+                // $result = sendEmail($test_email, 'Test Email from System', 'This is a test email from your system.', $email_settings);
                 $result = true; // Simulate success
                 
                 if ($result) {
-                    $success_message = 'Test SMS sent successfully to ' . htmlspecialchars($test_phone);
+                    $success_message = 'Test email sent successfully to ' . htmlspecialchars($test_email);
                 } else {
-                    $message = 'Error: Failed to send test SMS';
+                    $message = 'Error: Failed to send test email';
                 }
             } else {
-                $message = 'Error: Please enter a test phone number';
+                $message = 'Error: Please enter a test email address';
             }
         }
     }
     
-    // Get clients with phone numbers
-    $clients_with_phone = array_filter($clients, function($client) {
-        return !empty($client['phone']);
-    });
-    
-    $clients_without_phone = array_filter($clients, function($client) {
-        return empty($client['phone']);
-    });
-    
-    // Get recent SMS logs
-    $sms_logs = $pdo->query("SELECT sl.*, c.full_name AS client_name 
-                              FROM sms_logs sl 
-                              LEFT JOIN clients c ON sl.client_id = c.id 
-                              ORDER BY sl.sent_at DESC 
+    // Get recent email logs
+    $email_logs = $pdo->query("SELECT el.*, c.full_name AS client_name 
+                              FROM email_logs el 
+                              LEFT JOIN clients c ON el.client_id = c.id 
+                              ORDER BY el.sent_at DESC 
                               LIMIT 100")->fetchAll();
                               
 } catch (Exception $e) {
     $message = 'Error: ' . $e->getMessage();
-    error_log("SMS system error: " . $e->getMessage());
+    error_log("Email system error: " . $e->getMessage());
 }
+
+// Function to get clients with email count
+$clients_with_email = array_filter($clients, function($client) {
+    return !empty($client['email']);
+});
+
+$clients_without_email = array_filter($clients, function($client) {
+    return empty($client['email']);
+});
 
 include 'includes/header.php';
 include 'includes/sidebar.php';
@@ -208,15 +215,15 @@ include 'includes/sidebar.php';
         <div style="background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 30px;">
             <div class="row align-items-center">
                 <div class="col-md-6">
-                    <h1 style="margin: 0; color: #333;"><i class="fas fa-sms me-3"></i>SMS Center</h1>
-                    <p class="text-muted mb-0">Manage client SMS communications and campaigns</p>
+                    <h1 style="margin: 0; color: #333;"><i class="fas fa-envelope me-3"></i>Email Center</h1>
+                    <p class="text-muted mb-0">Manage client communications and email campaigns</p>
                 </div>
                 <div class="col-md-6 text-end">
-                    <button class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#testSMSModal">
-                        <i class="fas fa-vial me-2"></i>Test SMS
+                    <button class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#testEmailModal">
+                        <i class="fas fa-vial me-2"></i>Test Email
                     </button>
-                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#smsSettingsModal">
-                        <i class="fas fa-cog me-2"></i>SMS Settings
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#emailSettingsModal">
+                        <i class="fas fa-cog me-2"></i>Email Settings
                     </button>
                 </div>
             </div>
@@ -248,9 +255,9 @@ include 'includes/sidebar.php';
                             <i class="fas fa-user fa-3x"></i>
                         </div>
                         <h5 class="card-title">Single Client</h5>
-                        <p class="card-text">Send SMS to individual client</p>
-                        <button class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#singleSMSModal">
-                            <i class="fas fa-comment me-2"></i>Compose SMS
+                        <p class="card-text">Send email to individual client</p>
+                        <button class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#singleEmailModal">
+                            <i class="fas fa-paper-plane me-2"></i>Compose
                         </button>
                     </div>
                 </div>
@@ -262,9 +269,9 @@ include 'includes/sidebar.php';
                             <i class="fas fa-users fa-3x"></i>
                         </div>
                         <h5 class="card-title">All Clients</h5>
-                        <p class="card-text">Send bulk SMS to all clients</p>
-                        <button class="btn btn-warning w-100" data-bs-toggle="modal" data-bs-target="#bulkSMSModal">
-                            <i class="fas fa-bullhorn me-2"></i>Bulk SMS
+                        <p class="card-text">Send bulk email to all clients</p>
+                        <button class="btn btn-warning w-100" data-bs-toggle="modal" data-bs-target="#bulkEmailModal">
+                            <i class="fas fa-bullhorn me-2"></i>Bulk Email
                         </button>
                     </div>
                 </div>
@@ -277,7 +284,7 @@ include 'includes/sidebar.php';
                         </div>
                         <h5 class="card-title">Selected Clients</h5>
                         <p class="card-text">Send to specific clients only</p>
-                        <button class="btn btn-info w-100" data-bs-toggle="modal" data-bs-target="#selectedSMSModal">
+                        <button class="btn btn-info w-100" data-bs-toggle="modal" data-bs-target="#selectedEmailModal">
                             <i class="fas fa-check-circle me-2"></i>Select Clients
                         </button>
                     </div>
@@ -290,8 +297,8 @@ include 'includes/sidebar.php';
                             <i class="fas fa-cog fa-3x"></i>
                         </div>
                         <h5 class="card-title">Settings</h5>
-                        <p class="card-text">Configure SMS provider</p>
-                        <button class="btn btn-success w-100" data-bs-toggle="modal" data-bs-target="#smsSettingsModal">
+                        <p class="card-text">Configure email server</p>
+                        <button class="btn btn-success w-100" data-bs-toggle="modal" data-bs-target="#emailSettingsModal">
                             <i class="fas fa-sliders me-2"></i>Configure
                         </button>
                     </div>
@@ -321,11 +328,11 @@ include 'includes/sidebar.php';
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
-                                <h4 class="mb-0"><?php echo count($clients_with_phone); ?></h4>
-                                <span>Clients with Phone</span>
+                                <h4 class="mb-0"><?php echo count($clients_with_email); ?></h4>
+                                <span>Clients with Email</span>
                             </div>
                             <div class="align-self-center">
-                                <i class="fas fa-phone fa-2x"></i>
+                                <i class="fas fa-envelope fa-2x"></i>
                             </div>
                         </div>
                     </div>
@@ -336,11 +343,11 @@ include 'includes/sidebar.php';
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
-                                <h4 class="mb-0"><?php echo count($sms_logs); ?></h4>
-                                <span>SMS Sent</span>
+                                <h4 class="mb-0"><?php echo count($email_logs); ?></h4>
+                                <span>Emails Sent</span>
                             </div>
                             <div class="align-self-center">
-                                <i class="fas fa-sms fa-2x"></i>
+                                <i class="fas fa-paper-plane fa-2x"></i>
                             </div>
                         </div>
                     </div>
@@ -351,8 +358,8 @@ include 'includes/sidebar.php';
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
-                                <h4 class="mb-0"><?php echo !empty($sms_settings['api_key']) ? 'Connected' : 'Not Set'; ?></h4>
-                                <span>SMS Provider Status</span>
+                                <h4 class="mb-0"><?php echo !empty($email_settings['smtp_host']) ? 'Connected' : 'Not Set'; ?></h4>
+                                <span>SMTP Status</span>
                             </div>
                             <div class="align-self-center">
                                 <i class="fas fa-server fa-2x"></i>
@@ -363,15 +370,15 @@ include 'includes/sidebar.php';
             </div>
         </div>
 
-        <!-- Clients Phone List -->
+        <!-- Clients Email List -->
         <div class="card mb-4">
             <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">
                     <i class="fas fa-address-book me-2"></i>
-                    Client Phone Directory
+                    Client Email Directory
                 </h5>
                 <span class="badge bg-light text-dark">
-                    <?php echo count($clients_with_phone); ?> with phone numbers
+                    <?php echo count($clients_with_email); ?> with email
                 </span>
             </div>
             <div class="card-body">
@@ -383,8 +390,8 @@ include 'includes/sidebar.php';
                                     <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">
                                 </th>
                                 <th>Client Name</th>
-                                <th>Phone Number</th>
-                                <th>Email</th>
+                                <th>Email Address</th>
+                                <th>Phone</th>
                                 <th>Username</th>
                                 <th>Status</th>
                                 <th>Actions</th>
@@ -392,34 +399,28 @@ include 'includes/sidebar.php';
                         </thead>
                         <tbody>
                             <?php foreach ($clients as $client): ?>
-                                <tr class="<?php echo empty($client['phone']) ? 'table-warning' : ''; ?>">
+                                <tr class="<?php echo empty($client['email']) ? 'table-warning' : ''; ?>">
                                     <td>
-                                        <?php if (!empty($client['phone'])): ?>
+                                        <?php if (!empty($client['email'])): ?>
                                             <input type="checkbox" class="client-checkbox" name="selected_clients[]" value="<?php echo $client['id']; ?>">
                                         <?php else: ?>
-                                            <i class="fas fa-exclamation-triangle text-warning" title="No phone number"></i>
+                                            <i class="fas fa-exclamation-triangle text-warning" title="No email address"></i>
                                         <?php endif; ?>
                                     </td>
                                     <td>
                                         <strong><?php echo htmlspecialchars($client['full_name']); ?></strong>
                                     </td>
                                     <td>
-                                        <?php if (!empty($client['phone'])): ?>
-                                            <a href="tel:<?php echo htmlspecialchars($client['phone']); ?>" class="text-decoration-none">
-                                                <i class="fas fa-phone me-1"></i>
-                                                <?php echo htmlspecialchars($client['phone']); ?>
-                                            </a>
-                                        <?php else: ?>
-                                            <span class="text-muted">No phone</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
                                         <?php if (!empty($client['email'])): ?>
-                                            <?php echo htmlspecialchars($client['email']); ?>
+                                            <a href="mailto:<?php echo htmlspecialchars($client['email']); ?>" class="text-decoration-none">
+                                                <i class="fas fa-envelope me-1"></i>
+                                                <?php echo htmlspecialchars($client['email']); ?>
+                                            </a>
                                         <?php else: ?>
                                             <span class="text-muted">No email</span>
                                         <?php endif; ?>
                                     </td>
+                                    <td><?php echo htmlspecialchars($client['phone'] ?? 'N/A'); ?></td>
                                     <td><?php echo htmlspecialchars($client['mikrotik_username'] ?? 'N/A'); ?></td>
                                     <td>
                                         <span class="badge bg-<?php echo $client['status'] === 'active' ? 'success' : 'secondary'; ?>">
@@ -427,11 +428,11 @@ include 'includes/sidebar.php';
                                         </span>
                                     </td>
                                     <td>
-                                        <?php if (!empty($client['phone'])): ?>
+                                        <?php if (!empty($client['email'])): ?>
                                             <button class="btn btn-sm btn-outline-primary" 
-                                                    onclick="quickSMS(<?php echo $client['id']; ?>, '<?php echo htmlspecialchars($client['full_name']); ?>')"
-                                                    title="Quick SMS">
-                                                <i class="fas fa-comment"></i>
+                                                    onclick="quickEmail(<?php echo $client['id']; ?>, '<?php echo htmlspecialchars($client['full_name']); ?>')"
+                                                    title="Quick Email">
+                                                <i class="fas fa-paper-plane"></i>
                                             </button>
                                         <?php endif; ?>
                                     </td>
@@ -449,11 +450,11 @@ include 'includes/sidebar.php';
                             <span class="text-muted ms-2" id="selectedCount">0 clients selected</span>
                         </div>
                         <div class="col-md-6 text-end">
-                            <button class="btn btn-info me-2" onclick="smsSelectedClients()" disabled id="smsSelectedBtn">
-                                <i class="fas fa-comment me-2"></i>SMS Selected
+                            <button class="btn btn-info me-2" onclick="emailSelectedClients()" disabled id="emailSelectedBtn">
+                                <i class="fas fa-paper-plane me-2"></i>Email Selected
                             </button>
-                            <button class="btn btn-warning" onclick="smsAllWithPhone()">
-                                <i class="fas fa-bullhorn me-2"></i>SMS All with Phone
+                            <button class="btn btn-warning" onclick="emailAllWithEmail()">
+                                <i class="fas fa-bullhorn me-2"></i>Email All with Email
                             </button>
                         </div>
                     </div>
@@ -461,23 +462,23 @@ include 'includes/sidebar.php';
             </div>
         </div>
 
-        <!-- Recent SMS Activity -->
+        <!-- Recent Email Activity -->
         <div class="card">
             <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">
                     <i class="fas fa-history me-2"></i>
-                    Recent SMS Activity
+                    Recent Email Activity
                 </h5>
                 <span class="badge bg-light text-dark">
-                    Last 100 SMS
+                    Last 100 emails
                 </span>
             </div>
             <div class="card-body">
-                <?php if (empty($sms_logs)): ?>
+                <?php if (empty($email_logs)): ?>
                     <div class="text-center py-5">
                         <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-                        <h4 class="text-muted">No SMS history</h4>
-                        <p class="text-muted">Send your first SMS to see activity here</p>
+                        <h4 class="text-muted">No email history</h4>
+                        <p class="text-muted">Send your first email to see activity here</p>
                     </div>
                 <?php else: ?>
                     <div class="table-responsive">
@@ -486,26 +487,24 @@ include 'includes/sidebar.php';
                                 <tr>
                                     <th>Date & Time</th>
                                     <th>Recipient</th>
-                                    <th>Message Preview</th>
+                                    <th>Subject</th>
                                     <th>Template</th>
                                     <th>Status</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($sms_logs as $log): ?>
+                                <?php foreach ($email_logs as $log): ?>
                                     <tr>
                                         <td><?php echo date('M j, Y g:i A', strtotime($log['sent_at'])); ?></td>
                                         <td>
                                             <?php if ($log['client_name']): ?>
                                                 <strong><?php echo htmlspecialchars($log['client_name']); ?></strong><br>
-                                                <small class="text-muted"><?php echo htmlspecialchars($log['recipient_phone']); ?></small>
+                                                <small class="text-muted"><?php echo htmlspecialchars($log['recipient_email']); ?></small>
                                             <?php else: ?>
-                                                <?php echo htmlspecialchars($log['recipient_phone']); ?>
+                                                <?php echo htmlspecialchars($log['recipient_email']); ?>
                                             <?php endif; ?>
                                         </td>
-                                        <td>
-                                            <small><?php echo htmlspecialchars(substr($log['message'], 0, 50) . (strlen($log['message']) > 50 ? '...' : '')); ?></small>
-                                        </td>
+                                        <td><?php echo htmlspecialchars($log['subject']); ?></td>
                                         <td>
                                             <span class="badge bg-secondary"><?php echo ucfirst($log['template_used'] ?? 'custom'); ?></span>
                                         </td>
@@ -523,12 +522,12 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
-<!-- Single SMS Modal -->
-<div class="modal fade" id="singleSMSModal" tabindex="-1">
+<!-- Single Email Modal -->
+<div class="modal fade" id="singleEmailModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title"><i class="fas fa-comment me-2"></i>Send SMS to Single Client</h5>
+                <h5 class="modal-title"><i class="fas fa-envelope me-2"></i>Send Email to Single Client</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST">
@@ -539,19 +538,19 @@ include 'includes/sidebar.php';
                             <label class="form-label fw-bold">Select Client *</label>
                             <select name="client_id" class="form-select" required id="singleClientSelect">
                                 <option value="">-- Select Client --</option>
-                                <?php foreach ($clients_with_phone as $client): ?>
-                                    <option value="<?php echo $client['id']; ?>" data-phone="<?php echo htmlspecialchars($client['phone']); ?>" data-name="<?php echo htmlspecialchars($client['full_name']); ?>">
-                                        <?php echo htmlspecialchars($client['full_name'] . ' (' . $client['phone'] . ')'); ?>
+                                <?php foreach ($clients_with_email as $client): ?>
+                                    <option value="<?php echo $client['id']; ?>" data-email="<?php echo htmlspecialchars($client['email']); ?>" data-name="<?php echo htmlspecialchars($client['full_name']); ?>">
+                                        <?php echo htmlspecialchars($client['full_name'] . ' (' . $client['email'] . ')'); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold">SMS Template</label>
-                            <select class="form-select" onchange="applySMSTemplate(this.value, 'single')" id="singleTemplateSelect">
+                            <label class="form-label fw-bold">Email Template</label>
+                            <select class="form-select" onchange="applyEmailTemplate(this.value, 'single')" id="singleTemplateSelect">
                                 <option value="">-- Choose Template --</option>
                                 <option value="credentials">Login Credentials</option>
-                                <option value="welcome">Welcome SMS</option>
+                                <option value="welcome">Welcome Email</option>
                                 <option value="expiry">Expiry Reminder</option>
                                 <option value="payment">Payment Details</option>
                                 <option value="report">Usage Report</option>
@@ -562,26 +561,30 @@ include 'includes/sidebar.php';
                     </div>
                     
                     <div class="mb-3">
-                        <label class="form-label fw-bold">SMS Message *</label>
-                        <textarea name="message" class="form-control" rows="6" placeholder="Type your SMS message here..." required id="singleMessage" maxlength="160"></textarea>
+                        <label class="form-label fw-bold">Subject *</label>
+                        <input type="text" name="subject" class="form-control" placeholder="Enter email subject" required id="singleSubject">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Message Content *</label>
+                        <textarea name="message" class="form-control" rows="8" placeholder="Compose your email message..." required id="singleMessage"></textarea>
                         <div class="form-text">
                             <i class="fas fa-info-circle me-1"></i>
                             Available placeholders: <code>{name}</code>, <code>{email}</code>, <code>{phone}</code>, <code>{username}</code>
-                            <span class="float-end"><span id="singleCharCount">0</span>/160 characters</span>
                         </div>
                     </div>
                     
                     <div class="alert alert-info">
-                        <i class="fas fa-comment me-2"></i>
-                        This SMS will be sent immediately to the selected client.
+                        <i class="fas fa-paper-plane me-2"></i>
+                        This email will be sent immediately to the selected client.
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                         <i class="fas fa-times me-2"></i>Cancel
                     </button>
-                    <button type="submit" name="send_single_sms" class="btn btn-primary">
-                        <i class="fas fa-paper-plane me-2"></i>Send SMS
+                    <button type="submit" name="send_single_email" class="btn btn-primary">
+                        <i class="fas fa-paper-plane me-2"></i>Send Email
                     </button>
                 </div>
             </form>
@@ -589,12 +592,12 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
-<!-- Bulk SMS Modal -->
-<div class="modal fade" id="bulkSMSModal" tabindex="-1">
+<!-- Bulk Email Modal -->
+<div class="modal fade" id="bulkEmailModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title"><i class="fas fa-users me-2"></i>Send SMS to All Clients</h5>
+                <h5 class="modal-title"><i class="fas fa-users me-2"></i>Send Email to All Clients</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST">
@@ -603,7 +606,7 @@ include 'includes/sidebar.php';
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label fw-bold">Bulk Template</label>
-                            <select class="form-select" onchange="applySMSTemplate(this.value, 'bulk')" id="bulkTemplateSelect">
+                            <select class="form-select" onchange="applyEmailTemplate(this.value, 'bulk')" id="bulkTemplateSelect">
                                 <option value="">-- Choose Template --</option>
                                 <option value="expiry">Expiry Reminder</option>
                                 <option value="payment">Payment Details</option>
@@ -615,30 +618,34 @@ include 'includes/sidebar.php';
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label fw-bold">Recipient Count</label>
-                            <input type="text" class="form-control bg-light" value="<?php echo count($clients_with_phone); ?> clients with phone numbers" readonly>
+                            <input type="text" class="form-control bg-light" value="<?php echo count($clients_with_email); ?> clients with email addresses" readonly>
                         </div>
                     </div>
                     
                     <div class="mb-3">
-                        <label class="form-label fw-bold">SMS Message *</label>
-                        <textarea name="message" class="form-control" rows="6" placeholder="Type your bulk SMS message here..." required id="bulkMessage" maxlength="160"></textarea>
+                        <label class="form-label fw-bold">Subject *</label>
+                        <input type="text" name="subject" class="form-control" placeholder="Enter bulk email subject" required id="bulkSubject">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Message Content *</label>
+                        <textarea name="message" class="form-control" rows="8" placeholder="Compose your bulk email message..." required id="bulkMessage"></textarea>
                         <div class="form-text">
                             <i class="fas fa-info-circle me-1"></i>
                             Placeholders will be automatically replaced for each client: <code>{name}</code>, <code>{email}</code>, <code>{phone}</code>, <code>{username}</code>
-                            <span class="float-end"><span id="bulkCharCount">0</span>/160 characters</span>
                         </div>
                     </div>
                     
                     <div class="alert alert-warning">
                         <i class="fas fa-exclamation-triangle me-2"></i>
-                        <strong>Warning:</strong> This will send SMS to all <?php echo count($clients_with_phone); ?> clients with valid phone numbers.
+                        <strong>Warning:</strong> This will send emails to all <?php echo count($clients_with_email); ?> clients with valid email addresses.
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                         <i class="fas fa-times me-2"></i>Cancel
                     </button>
-                    <button type="submit" name="send_bulk_sms" class="btn btn-warning">
+                    <button type="submit" name="send_bulk_email" class="btn btn-warning">
                         <i class="fas fa-paper-plane me-2"></i>Send to All Clients
                     </button>
                 </div>
@@ -647,12 +654,12 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
-<!-- Selected Clients SMS Modal -->
-<div class="modal fade" id="selectedSMSModal" tabindex="-1">
+<!-- Selected Clients Email Modal -->
+<div class="modal fade" id="selectedEmailModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-info text-white">
-                <h5 class="modal-title"><i class="fas fa-user-friends me-2"></i>Send SMS to Selected Clients</h5>
+                <h5 class="modal-title"><i class="fas fa-user-friends me-2"></i>Send Email to Selected Clients</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST">
@@ -668,10 +675,10 @@ include 'includes/sidebar.php';
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label fw-bold">Template</label>
-                            <select class="form-select" onchange="applySMSTemplate(this.value, 'selected')" id="selectedTemplateSelect">
+                            <select class="form-select" onchange="applyEmailTemplate(this.value, 'selected')" id="selectedTemplateSelect">
                                 <option value="">-- Choose Template --</option>
                                 <option value="credentials">Login Credentials</option>
-                                <option value="welcome">Welcome SMS</option>
+                                <option value="welcome">Welcome Email</option>
                                 <option value="expiry">Expiry Reminder</option>
                                 <option value="payment">Payment Details</option>
                                 <option value="report">Usage Report</option>
@@ -685,18 +692,22 @@ include 'includes/sidebar.php';
                     </div>
                     
                     <div class="mb-3">
-                        <label class="form-label fw-bold">SMS Message *</label>
-                        <textarea name="message" class="form-control" rows="6" placeholder="Type your SMS message here..." required id="selectedMessage" maxlength="160"></textarea>
+                        <label class="form-label fw-bold">Subject *</label>
+                        <input type="text" name="subject" class="form-control" placeholder="Enter email subject" required id="selectedSubject">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Message Content *</label>
+                        <textarea name="message" class="form-control" rows="8" placeholder="Compose your email message..." required id="selectedMessage"></textarea>
                         <div class="form-text">
                             <i class="fas fa-info-circle me-1"></i>
                             Placeholders will be automatically replaced: <code>{name}</code>, <code>{email}</code>, <code>{phone}</code>, <code>{username}</code>
-                            <span class="float-end"><span id="selectedCharCount">0</span>/160 characters</span>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" name="send_bulk_sms" class="btn btn-info">
+                    <button type="submit" name="send_bulk_email" class="btn btn-info">
                         <i class="fas fa-paper-plane me-2"></i>Send to Selected
                     </button>
                 </div>
@@ -705,58 +716,60 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
-<!-- SMS Settings Modal -->
-<div class="modal fade" id="smsSettingsModal" tabindex="-1">
+<!-- Email Settings Modal -->
+<div class="modal fade" id="emailSettingsModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-success text-white">
-                <h5 class="modal-title"><i class="fas fa-cog me-2"></i>SMS Provider Configuration</h5>
+                <h5 class="modal-title"><i class="fas fa-cog me-2"></i>Email Configuration</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST">
                 <div class="modal-body">
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold">SMS Provider *</label>
-                            <select name="provider" class="form-select" required>
-                                <option value="talksasa" <?php echo ($sms_settings['provider'] ?? '') === 'talksasa' ? 'selected' : ''; ?>>TalkSasa</option>
-                                <option value="africastalking" <?php echo ($sms_settings['provider'] ?? '') === 'africastalking' ? 'selected' : ''; ?>>Africa's Talking</option>
-                                <option value="twilio" <?php echo ($sms_settings['provider'] ?? '') === 'twilio' ? 'selected' : ''; ?>>Twilio</option>
-                                <option value="custom" <?php echo ($sms_settings['provider'] ?? '') === 'custom' ? 'selected' : ''; ?>>Custom API</option>
-                            </select>
+                            <label class="form-label fw-bold">SMTP Host *</label>
+                            <input type="text" name="smtp_host" class="form-control" value="<?php echo htmlspecialchars($email_settings['smtp_host'] ?? ''); ?>" placeholder="smtp.gmail.com" required>
+                            <div class="form-text">Your SMTP server address</div>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold">Sender ID</label>
-                            <input type="text" name="sender_id" class="form-control" value="<?php echo htmlspecialchars($sms_settings['sender_id'] ?? ''); ?>" placeholder="YourBrand" maxlength="11">
-                            <div class="form-text">Max 11 characters for SMS sender ID</div>
+                            <label class="form-label fw-bold">SMTP Port *</label>
+                            <input type="number" name="smtp_port" class="form-control" value="<?php echo htmlspecialchars($email_settings['smtp_port'] ?? '587'); ?>" placeholder="587" required>
+                            <div class="form-text">Common ports: 587 (TLS), 465 (SSL)</div>
                         </div>
                     </div>
                     
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold">API URL *</label>
-                            <input type="url" name="api_url" class="form-control" value="<?php echo htmlspecialchars($sms_settings['api_url'] ?? ''); ?>" placeholder="https://api.talksasa.com/sms/send" required>
+                            <label class="form-label fw-bold">SMTP Username *</label>
+                            <input type="text" name="smtp_username" class="form-control" value="<?php echo htmlspecialchars($email_settings['smtp_username'] ?? ''); ?>" placeholder="your@email.com" required>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold">API Key *</label>
-                            <input type="text" name="api_key" class="form-control" value="<?php echo htmlspecialchars($sms_settings['api_key'] ?? ''); ?>" placeholder="Your API Key" required>
+                            <label class="form-label fw-bold">SMTP Password *</label>
+                            <input type="password" name="smtp_password" class="form-control" value="<?php echo htmlspecialchars($email_settings['smtp_password'] ?? ''); ?>" placeholder="SMTP password" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">From Email *</label>
+                            <input type="email" name="from_email" class="form-control" value="<?php echo htmlspecialchars($email_settings['from_email'] ?? ''); ?>" placeholder="noreply@yourcompany.com" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">From Name *</label>
+                            <input type="text" name="from_name" class="form-control" value="<?php echo htmlspecialchars($email_settings['from_name'] ?? ''); ?>" placeholder="Your Company Name" required>
                         </div>
                     </div>
                     
                     <div class="alert alert-info">
                         <i class="fas fa-lightbulb me-2"></i>
-                        <strong>Provider Information:</strong> 
-                        <ul class="mb-0 mt-2">
-                            <li><strong>TalkSasa:</strong> Use API URL: https://api.talksasa.com/sms/send</li>
-                            <li><strong>Africa's Talking:</strong> Use your Africa's Talking API credentials</li>
-                            <li><strong>Twilio:</strong> Use your Twilio account SID and auth token</li>
-                        </ul>
+                        <strong>Tip:</strong> For Gmail, you may need to enable "Less secure app access" or use an App Password.
                     </div>
                     
-                    <?php if (!empty($sms_settings['updated_at'])): ?>
+                    <?php if (!empty($email_settings['updated_at'])): ?>
                         <div class="alert alert-light">
                             <i class="fas fa-clock me-2"></i>
-                            Last updated: <?php echo date('M j, Y g:i A', strtotime($sms_settings['updated_at'])); ?>
+                            Last updated: <?php echo date('M j, Y g:i A', strtotime($email_settings['updated_at'])); ?>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -773,30 +786,29 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
-<!-- Test SMS Modal -->
-<div class="modal fade" id="testSMSModal" tabindex="-1">
+<!-- Test Email Modal -->
+<div class="modal fade" id="testEmailModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title"><i class="fas fa-vial me-2"></i>Test SMS Configuration</h5>
+                <h5 class="modal-title"><i class="fas fa-vial me-2"></i>Test Email Configuration</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST">
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Test Phone Number *</label>
-                        <input type="tel" name="test_phone" class="form-control" placeholder="+2547XXXXXXXX" required>
-                        <div class="form-text">Include country code (e.g., +254 for Kenya)</div>
+                        <label class="form-label fw-bold">Test Email Address *</label>
+                        <input type="email" name="test_email" class="form-control" placeholder="Enter email address to test" required>
                     </div>
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle me-2"></i>
-                        This will send a test SMS to verify your SMS provider settings are working correctly.
+                        This will send a test email to verify your SMTP settings are working correctly.
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" name="test_sms" class="btn btn-primary">
-                        <i class="fas fa-paper-plane me-2"></i>Send Test SMS
+                    <button type="submit" name="test_email" class="btn btn-primary">
+                        <i class="fas fa-paper-plane me-2"></i>Send Test Email
                     </button>
                 </div>
             </form>
@@ -807,71 +819,189 @@ include 'includes/sidebar.php';
 <?php include 'includes/footer.php'; ?>
 
 <script>
-// SMS Templates
-const smsTemplates = {
+// Email Templates
+const emailTemplates = {
     credentials: {
-        message: `Hi {name}, your WiFi login: Username: {username}, Password: your phone. Connect to our network and enjoy!`
+        subject: 'Your WiFi Login Credentials',
+        message: `Dear {name},
+
+Your internet account has been activated. Here are your login details:
+
+Username: {username}
+Password: Please use your registered phone number
+
+To connect to our network:
+1. Select our WiFi network
+2. Open your browser
+3. Enter the credentials above
+4. Click Login
+
+If you experience any issues, please contact our support team.
+
+Best regards,
+Technical Support Team`
     },
     welcome: {
-        message: `Welcome {name}! Your internet is activated. Username: {username}. For support call [Support Number]. Enjoy!`
+        subject: 'Welcome to Our Internet Service!',
+        message: `Dear {name},
+
+Welcome to our internet service! We're excited to have you as our customer.
+
+Your account details:
+• Username: {username}
+• Email: {email}
+• Phone: {phone}
+
+Getting Started:
+1. Connect to our WiFi network
+2. Use your credentials to login
+3. Enjoy high-speed internet!
+
+For support, please contact us at [Support Details].
+
+Thank you for choosing us!
+
+Best regards,
+Customer Care Team`
     },
     expiry: {
-        message: `Dear {name}, your subscription expires soon. Renew to avoid interruption. Paybill: 123456, Acc: {name}. Thank you!`
+        subject: 'Important: Subscription Expiry Reminder',
+        message: `Dear {name},
+
+This is a reminder that your internet subscription will expire soon.
+
+To avoid service interruption, please renew your subscription before the expiry date.
+
+Payment Details:
+• Paybill: 123456
+• Account: {name}
+• Amount: As per your package
+
+If you have already paid, please ignore this message.
+
+Thank you for your continued business!
+
+Best regards,
+Billing Department`
     },
     payment: {
-        message: `Hello {name}, pay KES 1500 for internet. Paybill: 123456, Account: {name}. Thank you!`
+        subject: 'Payment Instructions and Details',
+        message: `Dear {name},
+
+Here are your payment details for internet services:
+
+Package: Monthly Subscription
+Amount: KES 1,500
+Paybill: 123456
+Account: {name}
+
+Payment Steps:
+1. Go to M-PESA
+2. Select Lipa Na M-PESA
+3. Enter Paybill: 123456
+4. Account: {name}
+5. Amount: 1500
+6. Complete payment
+
+Thank you for your prompt payment!
+
+Best regards,
+Accounts Department`
     },
     report: {
-        message: `Hi {name}, your monthly usage report is ready. Check your email for details. Thank you for choosing us!`
+        subject: 'Your Monthly Usage Report',
+        message: `Dear {name},
+
+Here is your monthly internet usage summary:
+
+Account: {username}
+Email: {email}
+Period: Last 30 Days
+
+Usage Summary:
+• Total Data Used: [Usage Amount]
+• Connection Time: [Time Period]
+• Average Speed: [Speed Details]
+
+Please contact us if you have any questions about your usage.
+
+Best regards,
+Network Operations Team`
     },
     offer: {
-        message: `Special offer {name}! Upgrade to premium & save 20%. Refer friends get 1 month FREE. Call [Sales Number] now!`
+        subject: 'Special Offer Just For You!',
+        message: `Dear {name},
+
+We have an exclusive offer for our valued customers:
+
+SPECIAL PROMOTION:
+• Upgrade to premium at 20% discount
+• Refer a friend - get one month FREE
+• Limited time offer!
+
+Contact us today to take advantage of these special deals.
+
+Thank you for being a loyal customer!
+
+Best regards,
+Sales Team`
     },
     maintenance: {
-        message: `Important: Network maintenance on [Date] [Time]. Service may be interrupted. We apologize for any inconvenience.`
+        subject: 'Scheduled Network Maintenance Notice',
+        message: `Dear Valued Customer,
+
+We will be performing scheduled network maintenance:
+
+Date: [Insert Date]
+Time: [Insert Time]
+Duration: Approximately 2 hours
+
+During this period, you may experience temporary service interruption. We apologize for any inconvenience.
+
+Thank you for your understanding.
+
+Best regards,
+Network Operations Team`
     },
     announcement: {
-        message: `Announcement: {name}, we have important service updates. Check your email for details. Thank you!`
+        subject: 'Important Announcement',
+        message: `Dear {name},
+
+We have an important announcement regarding our services:
+
+[Insert announcement details]
+
+This update will help us serve you better.
+
+If you have any questions, please contact our support team.
+
+Thank you for your continued trust.
+
+Best regards,
+Management Team`
     }
 };
 
 // Apply template to form
-function applySMSTemplate(template, type) {
-    if (template && smsTemplates[template]) {
+function applyEmailTemplate(template, type) {
+    if (template && emailTemplates[template]) {
         const modalId = type === 'single' ? 'single' : type === 'bulk' ? 'bulk' : 'selected';
+        const subjectField = document.getElementById(modalId + 'Subject');
         const messageField = document.getElementById(modalId + 'Message');
         const templateField = document.getElementById(modalId + 'Template');
         
-        if (messageField) {
-            messageField.value = smsTemplates[template].message;
-            updateCharCount(messageField, modalId + 'CharCount');
-        }
+        if (subjectField) subjectField.value = emailTemplates[template].subject;
+        if (messageField) messageField.value = emailTemplates[template].message;
         if (templateField) templateField.value = template;
     }
 }
 
-// Quick SMS to single client
-function quickSMS(clientId, clientName) {
-    const modal = new bootstrap.Modal(document.getElementById('singleSMSModal'));
-    const form = document.querySelector('#singleSMSModal form');
+// Quick email to single client
+function quickEmail(clientId, clientName) {
+    const modal = new bootstrap.Modal(document.getElementById('singleEmailModal'));
+    const form = document.querySelector('#singleEmailModal form');
     form.querySelector('select[name="client_id"]').value = clientId;
     modal.show();
-}
-
-// Character count for SMS
-function updateCharCount(textarea, counterId) {
-    const count = textarea.value.length;
-    document.getElementById(counterId).textContent = count;
-    
-    // Add warning class if接近 limit
-    const counter = document.getElementById(counterId);
-    if (count > 140) {
-        counter.className = 'text-danger';
-    } else if (count > 120) {
-        counter.className = 'text-warning';
-    } else {
-        counter.className = 'text-muted';
-    }
 }
 
 // Client selection management
@@ -891,7 +1021,7 @@ function updateSelectedCount() {
     const selected = document.querySelectorAll('.client-checkbox:checked');
     const count = selected.length;
     document.getElementById('selectedCount').textContent = count + ' clients selected';
-    document.getElementById('smsSelectedBtn').disabled = count === 0;
+    document.getElementById('emailSelectedBtn').disabled = count === 0;
     
     // Update selected clients array
     selectedClients = Array.from(selected).map(cb => cb.value);
@@ -919,7 +1049,7 @@ function updateSelectedClientsList() {
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" name="selected_clients[]" value="${client.id}" checked>
                         <label class="form-check-label">
-                            ${client.full_name} (${client.phone})
+                            ${client.full_name}
                         </label>
                     </div>
                 </div>
@@ -932,15 +1062,15 @@ function updateSelectedClientsList() {
     countDisplay.value = selectedClients.length + ' clients selected';
 }
 
-function smsSelectedClients() {
+function emailSelectedClients() {
     if (selectedClients.length > 0) {
-        const modal = new bootstrap.Modal(document.getElementById('selectedSMSModal'));
+        const modal = new bootstrap.Modal(document.getElementById('selectedEmailModal'));
         modal.show();
     }
 }
 
-function smsAllWithPhone() {
-    // Select all clients with phone
+function emailAllWithEmail() {
+    // Select all clients with email
     const clientCheckboxes = document.querySelectorAll('.client-checkbox');
     clientCheckboxes.forEach(cb => {
         if (!cb.disabled) {
@@ -948,7 +1078,7 @@ function smsAllWithPhone() {
         }
     });
     updateSelectedCount();
-    smsSelectedClients();
+    emailSelectedClients();
 }
 
 // Initialize on page load
@@ -961,31 +1091,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize selected count
     updateSelectedCount();
     
-    // Character count handlers
-    document.getElementById('singleMessage')?.addEventListener('input', function() {
-        updateCharCount(this, 'singleCharCount');
-    });
-    
-    document.getElementById('bulkMessage')?.addEventListener('input', function() {
-        updateCharCount(this, 'bulkCharCount');
-    });
-    
-    document.getElementById('selectedMessage')?.addEventListener('input', function() {
-        updateCharCount(this, 'selectedCharCount');
-    });
-    
-    // Initialize character counts
-    const singleMessage = document.getElementById('singleMessage');
-    const bulkMessage = document.getElementById('bulkMessage');
-    const selectedMessage = document.getElementById('selectedMessage');
-    
-    if (singleMessage) updateCharCount(singleMessage, 'singleCharCount');
-    if (bulkMessage) updateCharCount(bulkMessage, 'bulkCharCount');
-    if (selectedMessage) updateCharCount(selectedMessage, 'selectedCharCount');
-    
-    // Auto-focus on client selection when single SMS modal opens
-    $('#singleSMSModal').on('shown.bs.modal', function () {
+    // Auto-focus on client selection when single email modal opens
+    $('#singleEmailModal').on('shown.bs.modal', function () {
         $(this).find('select[name="client_id"]').focus();
     });
+    
+    // Test SMTP connection
+    window.testSMTPConnection = function() {
+        alert('SMTP connection test would be implemented here');
+    };
 });
 </script>
