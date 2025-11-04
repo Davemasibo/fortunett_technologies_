@@ -175,8 +175,15 @@
             </a>
         </li>
         <li>
-            <a href="clients.php" class="<?php echo isActive($current, ['clients.php','user.php']); ?>">
-                <i class="fas fa-users"></i> <span>Clients</span>
+            <!-- Clients should be active only for clients-related pages (add related names as needed) -->
+            <a href="clients.php" class="<?php echo isActive($current, ['clients.php']); ?>">
+                <i class="fas fa-users"></i> <span>Users</span>
+            </a>
+        </li>
+        <li>
+            <!-- Active Users must be active only when viewing active_clients.php -->
+            <a href="active_clients.php" class="<?php echo isActive($current, 'active_clients.php'); ?>">
+                <i class="fas fa-users"></i> <span>Active Users</span>
             </a>
         </li>
         <li>
@@ -201,7 +208,7 @@
         </li>
         <li>
             <a href="subscription.php" class="<?php echo isActive($current, 'subscription.php'); ?>">
-                <i class="fas fa-crown"></i> <span>Subscription</span>
+                <i class="fas fa-crown"></i> <span>Billing and Invoice </span>
             </a>
         </li>
         <li>
@@ -283,67 +290,64 @@
     // Position the toggle at the left of the navbar (primary) or left of the logo (if available and not off-screen)
     function positionToggle(state) {
         if (!toggle) return;
-        // ensure navbar is fixed and get its rect
+        // ensure navbar exists and is fixed
         const nav = ensureNavbarFixed();
         const navRect = nav ? nav.getBoundingClientRect() : { left: 0, top: 0, height: 40 };
 
-        // Try logo-based placement only if it yields a left >= nav left padding
-        const logoRect = findLogoRect();
-        const gap = 8;
-        const toggleW = toggle.offsetWidth || 36;
-        let left, top;
-
-        if (logoRect) {
-            // prefer left of logo but do not go outside navbar left padding
-            left = Math.round(window.scrollX + logoRect.left - toggleW - gap);
-            if (left < Math.round(window.scrollX + navRect.left + 8)) {
-                left = Math.round(window.scrollX + navRect.left + 8);
-            }
-            top = Math.round(window.scrollY + navRect.top + (navRect.height - (toggle.offsetHeight || 36)) / 2);
-        } else {
-            // default: place near navbar left edge (inside navbar)
-            left = Math.round(window.scrollX + navRect.left + 8);
-            top = Math.round(window.scrollY + navRect.top + (navRect.height - (toggle.offsetHeight || 36)) / 2);
-        }
-
-        // If sidebar is visible and not hidden we avoid overlapping with it by shifting right when necessary
-        if (sidebar && !sidebar.classList.contains('hidden')) {
-            const sidebarWidth = sidebar.offsetWidth || pxValue(getCssVar('--sidebar-width'));
-            // if computed left is within sidebar area, move toggle to just outside sidebar
-            if (left < (sidebarWidth + 12)) {
-                left = sidebarWidth + 12;
-            }
-        } else if (state === 2) {
-            // when hidden prefer edge inside navbar left padding
-            left = Math.round(window.scrollX + navRect.left + 8);
-        }
+        // place toggle at the upper-left of the page (inside navbar left padding),
+        // vertically centered in the navbar. Do NOT shift it to the right when sidebar is visible.
+        const left = Math.round(window.scrollX + navRect.left + 8);
+        const top  = Math.round(window.scrollY + navRect.top + (navRect.height - (toggle.offsetHeight || 36)) / 2);
 
         toggle.style.left = left + 'px';
         toggle.style.top = top + 'px';
+
+        // keep ARIA/visual class for hidden state if needed
+        if (state === 2) toggle.classList.add('at-edge');
+        else toggle.classList.remove('at-edge');
     }
 
     // update page content left margin and width so it occupies remaining space
     function updateContentMargins(state) {
-        const expandedW = pxValue(getCssVar('--sidebar-width'));
-        const collapsedW = pxValue(getCssVar('--sidebar-collapsed-width'));
+        // compute actual sidebar width (0 when hidden)
+        let sidebarWidth = 0;
+        try {
+            if (sidebar && getComputedStyle(sidebar).display !== 'none' && !sidebar.classList.contains('hidden')) {
+                // getBoundingClientRect is most accurate (accounts for CSS and transforms)
+                sidebarWidth = Math.round(sidebar.getBoundingClientRect().width) || sidebar.offsetWidth || pxValue(getCssVar('--sidebar-width'));
+            } else {
+                sidebarWidth = 0;
+            }
+        } catch (e) {
+            sidebarWidth = pxValue(getCssVar('--sidebar-width'));
+            if (state === 2) sidebarWidth = 0;
+        }
 
-        let newMargin;
-        if (state === 2) newMargin = '0px';
-        else newMargin = (state === 1 ? collapsedW : expandedW) + 'px';
+        // Apply exact left margin equal to sidebar width (no extra padding/gap)
+        const newMarginPx = sidebarWidth + 'px';
 
-        const newWidth = (state === 2) ? '100%' : `calc(100% - ${newMargin})`;
+        // content width should exactly fill the remaining space
+        const newWidth = (sidebarWidth === 0) ? '100%' : ('calc(100% - ' + newMarginPx + ')');
 
+        // enforce on common content selectors and body to avoid unexpected gaps
         contentSelectors.forEach(sel => {
             document.querySelectorAll(sel).forEach(el => {
                 try {
                     if (getComputedStyle(el).position !== 'fixed') {
-                        el.style.marginLeft = newMargin;
+                        el.style.marginLeft = newMarginPx;
+                        el.style.paddingLeft = '0px';
                         el.style.width = newWidth;
                         el.style.maxWidth = 'none';
                     }
-                } catch(e){}
+                } catch (e) { /* ignore */ }
             });
         });
+
+        // ensure body has no left margin/padding left behind
+        try {
+            document.body.style.marginLeft = '0px';
+            document.body.style.paddingLeft = '0px';
+        } catch (e) {}
 
         if (toggle) toggle.setAttribute('aria-expanded', state === 0 ? 'true' : 'false');
     }
