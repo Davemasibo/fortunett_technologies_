@@ -9,39 +9,179 @@ $message = '';
 $success_message = '';
 $sms_logs = [];
 
+// add a global container for last API response so we can persist it to sms_logs
+$last_sms_api_response = null;
+
+// SMS sending function for TalkSasa (improved: accept missing api_url and try multiple auth styles)
+function sendSMSTalkSasa($phone, $message, $settings) {
+    global $last_sms_api_response;
+    $api_url = trim($settings['api_url'] ?? '');
+    $api_key = trim($settings['api_key'] ?? '');
+    $sender_id = $settings['sender_id'] ?? ($settings['sender'] ?? '');
+
+    if (empty($api_key)) {
+        throw new Exception('SMS API key is not configured');
+    }
+
+    // if API URL missing, use known TalkSasa default
+    if (empty($api_url)) {
+        $api_url = 'https://api.talksasa.com/v1/sms/send';
+    }
+
+    // Normalize phone
+    $phone = preg_replace('/[^0-9+]/', '', $phone);
+    if (substr($phone, 0, 1) !== '+' && substr($phone, 0, 2) !== '00') {
+        if (substr($phone, 0, 1) === '0') {
+            $phone = '+254' . substr($phone, 1);
+        } else {
+            $phone = '+254' . $phone;
+        }
+    }
+
+    // Prepare two payload styles and three auth attempts:
+    $payload_form = [
+        'sender_id' => $sender_id,
+        'phone' => $phone,
+        'message' => $message,
+        'api_key' => $api_key
+    ];
+    $payload_json = [
+        'senderID' => $sender_id,
+        'phone' => $phone,
+        'message' => $message,
+    ];
+
+    // helper to perform request and capture response
+    $doRequest = function($url, $postFields, $headers) use (&$last_sms_api_response) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_err = curl_error($ch);
+        curl_close($ch);
+        $last_sms_api_response = ['http_code' => $http_code, 'raw' => $response, 'curl_error' => $curl_err, 'headers' => $headers];
+        return [$http_code, $response, $curl_err];
+    };
+
+    // Attempt 1: form-encoded with api_key as param (some TalkSasa endpoints accept this)
+    [$code, $resp, $err] = $doRequest($api_url, http_build_query($payload_form), [
+        'Content-Type: application/x-www-form-urlencoded',
+        'Accept: application/json'
+    ]);
+    error_log("TalkSasa attempt form => HTTP {$code} resp: " . substr($resp ?? '', 0, 800));
+    if (!$err && $code >= 200 && $code < 300) return true;
+
+    // Attempt 2: JSON body with Authorization Bearer
+    [$code2, $resp2, $err2] = $doRequest($api_url, json_encode($payload_json), [
+        'Content-Type: application/json',
+        'Accept: application/json',
+        'Authorization: Bearer ' . $api_key
+    ]);
+    error_log("TalkSasa attempt json+bearer => HTTP {$code2} resp: " . substr($resp2 ?? '', 0, 800));
+    if (!$err2 && $code2 >= 200 && $code2 < 300) return true;
+
+    // Attempt 3: JSON body with X-API-KEY header (some providers use this)
+    [$code3, $resp3, $err3] = $doRequest($api_url, json_encode($payload_json), [
+        'Content-Type: application/json',
+        'Accept: application/json',
+        'X-API-KEY: ' . $api_key
+    ]);
+    error_log("TalkSasa attempt json+X-API-KEY => HTTP {$code3} resp: " . substr($resp3 ?? '', 0, 800));
+    if (!$err3 && $code3 >= 200 && $code3 < 300) return true;
+
+    // If none succeeded, prefer to return structured error with last response
+    $last = $last_sms_api_response;
+    $body = $last['raw'] ?? null;
+    $http = $last['http_code'] ?? 0;
+    $curlerr = $last['curl_error'] ?? null;
+    $msg = 'SMS API request failed';
+    if ($curlerr) $msg .= ": cURL error: {$curlerr}";
+    if ($http) $msg .= " (HTTP {$http})";
+    if ($body) $msg .= " response: " . substr($body, 0, 500);
+    throw new Exception($msg);
+}
+
+// Alternative wrapper (keeps old name compat)
+function sendSMSTalkSasaV2($phone, $message, $settings) {
+    // just try the primary function which already has fallbacks
+    return sendSMSTalkSasa($phone, $message, $settings);
+}
+
+// Main sendSMS wrapper (keeps throwing on failure)
+function sendSMS($phone, $message, $settings) {
+    return sendSMSTalkSasa($phone, $message, $settings);
+}
+
 try {
-    // Get all clients with phone numbers
-    $clients = $pdo->query("SELECT id, full_name, phone, email, mikrotik_username, created_at, status FROM clients ORDER BY full_name ASC")->fetchAll();
-    
-    // Create SMS settings table if not exists
+    // Get all clients with phone numbers (use associative arrays)
+    $clients = $pdo->query("SELECT id, full_name, phone, email, mikrotik_username, created_at, status FROM clients ORDER BY full_name ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+    // Create SMS settings table if not exists (sane schema)
     $pdo->exec("CREATE TABLE IF NOT EXISTS sms_settings (
-        id INT PRIMARY KEY DEFAULT 1, 
+        id INT PRIMARY KEY NOT NULL,
         provider VARCHAR(50) DEFAULT 'talksasa',
         api_url VARCHAR(255),
         api_key VARCHAR(255),
-        sender_id VARCHAR(20),
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        sender_id VARCHAR(20)
     )");
-    
-    // Insert default settings if not exists
-    $stmt = $pdo->query("SELECT COUNT(*) FROM sms_settings WHERE id = 1");
-    if ($stmt->fetchColumn() == 0) {
-        $pdo->exec("INSERT INTO sms_settings (id, provider) VALUES (1, 'talksasa')");
-    }
-    
-    $sms_settings = $pdo->query("SELECT * FROM sms_settings WHERE id = 1")->fetch();
 
-    // Create SMS logs table if not exists
+    // --- NEW: ensure updated_at column exists on sms_settings (idempotent) ---
+    $colCheck = $pdo->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?");
+    $colCheck->execute(['sms_settings', 'updated_at']);
+    if ($colCheck->fetchColumn() == 0) {
+        try {
+            $pdo->exec("ALTER TABLE sms_settings ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+        } catch (Exception $e) {
+            error_log("Failed to add sms_settings.updated_at: " . $e->getMessage());
+        }
+    }
+
+    // Ensure a row with id=1 exists
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM sms_settings WHERE id = 1");
+    $stmt->execute();
+    if ($stmt->fetchColumn() == 0) {
+        $ins = $pdo->prepare("INSERT INTO sms_settings (id, provider, api_url, sender_id) VALUES (1, 'talksasa', ?, ?)");
+        $ins->execute(['https://api.talksasa.com/v1/sms/send', 'TALKSASA']);
+    }
+    $sms_settings = $pdo->query("SELECT * FROM sms_settings WHERE id = 1")->fetch(PDO::FETCH_ASSOC);
+
+    // after loading $sms_settings from DB ensure a default API URL for TalkSasa if none provided
+    if (empty($sms_settings['api_url']) && (($sms_settings['provider'] ?? '') === 'talksasa' || empty($sms_settings['provider']))) {
+        $sms_settings['api_url'] = 'https://api.talksasa.com/v1/sms/send';
+    }
+
+    // Create SMS logs table if not exists - robust schema
     $pdo->exec("CREATE TABLE IF NOT EXISTS sms_logs (
         id INT PRIMARY KEY AUTO_INCREMENT,
         client_id INT NULL,
-        recipient_phone VARCHAR(20),
+        recipient_phone VARCHAR(50),
         message TEXT,
         template_used VARCHAR(50),
-        sent_at DATETIME,
+        sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         status VARCHAR(20) DEFAULT 'sent',
-        error_message TEXT NULL
+        error_message TEXT NULL,
+        api_response TEXT NULL,
+        message_length INT DEFAULT 0,
+        cost DECIMAL(10,4) DEFAULT 0
     )");
+
+    // Ensure columns exist (idempotent check via INFORMATION_SCHEMA)
+    $colCheck = $pdo->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sms_logs' AND COLUMN_NAME = ?");
+    $ensureColumn = function($col, $ddl) use ($pdo, $colCheck) {
+        $colCheck->execute([$col]);
+        if ($colCheck->fetchColumn() == 0) {
+            $pdo->exec($ddl);
+        }
+    };
+    $ensureColumn('api_response', "ALTER TABLE sms_logs ADD COLUMN api_response TEXT NULL");
+    $ensureColumn('message_length', "ALTER TABLE sms_logs ADD COLUMN message_length INT DEFAULT 0");
+    $ensureColumn('cost', "ALTER TABLE sms_logs ADD COLUMN cost DECIMAL(10,4) DEFAULT 0");
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['save_settings'])) {
@@ -51,11 +191,11 @@ try {
             $api_key = trim($_POST['api_key'] ?? '');
             $sender_id = trim($_POST['sender_id'] ?? '');
             
-            $stmt = $pdo->prepare("UPDATE sms_settings SET provider = ?, api_url = ?, api_key = ?, sender_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1");
+            $stmt = $pdo->prepare("UPDATE sms_settings SET provider = ?, api_url = ?, api_key = ?, sender_id = ?, updated_at = NOW() WHERE id = 1");
             $stmt->execute([$provider, $api_url, $api_key, $sender_id]);
             
             $success_message = 'SMS settings saved successfully!';
-            $sms_settings = $pdo->query("SELECT * FROM sms_settings WHERE id = 1")->fetch();
+            $sms_settings = $pdo->query("SELECT * FROM sms_settings WHERE id = 1")->fetch(PDO::FETCH_ASSOC);
             
         } elseif (isset($_POST['send_single_sms'])) {
             // Send single SMS
@@ -68,9 +208,9 @@ try {
             } elseif (empty($sms_message)) {
                 $message = 'Error: SMS message is required';
             } else {
-                $stmt = $pdo->prepare("SELECT id, full_name, phone FROM clients WHERE id = ?");
+                $stmt = $pdo->prepare("SELECT id, full_name, phone, email, mikrotik_username FROM clients WHERE id = ?");
                 $stmt->execute([$client_id]);
-                $client = $stmt->fetch();
+                $client = $stmt->fetch(PDO::FETCH_ASSOC);
                 
                 if ($client && !empty($client['phone'])) {
                     // Replace placeholders
@@ -85,18 +225,33 @@ try {
                         $sms_message
                     );
                     
-                    // TODO: Implement actual SMS sending
-                    // $result = sendSMS($client['phone'], $final_message, $sms_settings);
-                    $result = true; // Simulate success for now
-                    
-                    if ($result) {
-                        // Log the SMS
-                        $stmt = $pdo->prepare("INSERT INTO sms_logs (client_id, recipient_phone, message, template_used, sent_at) VALUES (?, ?, ?, ?, NOW())");
-                        $stmt->execute([$client_id, $client['phone'], $sms_message, $template_used]);
+                    try {
+                        // Send SMS using TalkSasa
+                        $result = sendSMS($client['phone'], $final_message, $sms_settings);
                         
-                        $success_message = 'SMS sent successfully to ' . htmlspecialchars($client['full_name']) . ' (' . htmlspecialchars($client['phone']) . ')';
-                    } else {
-                        $message = 'Error: Failed to send SMS';
+                        if ($result) {
+                            // Calculate message length and estimated cost
+                            $message_length = strlen($final_message);
+                            $sms_count = ceil($message_length / 160);
+                            $estimated_cost = $sms_count * 1.0; // adjust per-provider pricing if needed
+
+                            // persist last api response if available
+                            $api_resp = isset($last_sms_api_response) ? json_encode($last_sms_api_response) : null;
+                            
+                            // Log the SMS (include api_response)
+                            $stmt = $pdo->prepare("INSERT INTO sms_logs (client_id, recipient_phone, message, template_used, sent_at, status, api_response, message_length, cost) VALUES (?, ?, ?, ?, NOW(), 'sent', ?, ?, ?)");
+                            $stmt->execute([$client_id, $client['phone'], $final_message, $template_used, $api_resp, $message_length, $estimated_cost]);
+                            
+                            $success_message = 'SMS sent successfully to ' . htmlspecialchars($client['full_name']) . ' (' . htmlspecialchars($client['phone']) . ')';
+                        }
+                    } catch (Exception $e) {
+                        // capture api response if present
+                        $api_resp = isset($last_sms_api_response) ? json_encode($last_sms_api_response) : null;
+                        // Log failed SMS
+                        $stmt = $pdo->prepare("INSERT INTO sms_logs (client_id, recipient_phone, message, template_used, sent_at, status, error_message, api_response) VALUES (?, ?, ?, ?, NOW(), 'failed', ?, ?)");
+                        $stmt->execute([$client_id, $client['phone'], $final_message, $template_used, $e->getMessage(), $api_resp]);
+                        
+                        $message = 'Error: ' . $e->getMessage();
                     }
                 } else {
                     $message = 'Error: Client not found or no phone number';
@@ -114,15 +269,23 @@ try {
             } else {
                 $sent_count = 0;
                 $error_count = 0;
-                $total_clients = empty($selected_clients) ? count($clients_with_phone) : count($selected_clients);
+                $total_cost = 0;
                 
-                $target_clients = empty($selected_clients) ? $clients_with_phone : array_filter($clients, function($client) use ($selected_clients) {
-                    return in_array($client['id'], $selected_clients) && !empty($client['phone']);
-                });
+                // Get target clients (reload from DB to ensure latest)
+                if (empty($selected_clients)) {
+                    $target_clients_stmt = $pdo->query("SELECT id, full_name, phone, email, mikrotik_username FROM clients WHERE phone IS NOT NULL AND phone <> ''");
+                    $target_clients = $target_clients_stmt->fetchAll(PDO::FETCH_ASSOC);
+                } else {
+                    $placeholders = implode(',', array_fill(0, count($selected_clients), '?'));
+                    $stmt = $pdo->prepare("SELECT id, full_name, phone, email, mikrotik_username FROM clients WHERE id IN ($placeholders)");
+                    $stmt->execute($selected_clients);
+                    $target_clients = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                }
+                
+                $total_clients = count($target_clients);
                 
                 foreach ($target_clients as $client) {
                     if (!empty($client['phone'])) {
-                        // Replace placeholders for each client
                         $final_message = str_replace(
                             ['{name}', '{email}', '{phone}', '{username}'],
                             [
@@ -134,26 +297,32 @@ try {
                             $sms_message
                         );
                         
-                        // TODO: Implement actual SMS sending
-                        // $result = sendSMS($client['phone'], $final_message, $sms_settings);
-                        $result = true; // Simulate success for now
-                        
-                        if ($result) {
-                            $sent_count++;
-                            
-                            // Log the SMS
-                            $stmt = $pdo->prepare("INSERT INTO sms_logs (client_id, recipient_phone, message, template_used, sent_at) VALUES (?, ?, ?, ?, NOW())");
-                            $stmt->execute([$client['id'], $client['phone'], $sms_message, $template_used]);
-                        } else {
+                        try {
+                            $result = sendSMS($client['phone'], $final_message, $sms_settings);
+                            if ($result) {
+                                $sent_count++;
+                                $message_length = strlen($final_message);
+                                $sms_count = ceil($message_length / 160);
+                                $estimated_cost = $sms_count * 1.0;
+                                $total_cost += $estimated_cost;
+                                $api_resp = isset($last_sms_api_response) ? json_encode($last_sms_api_response) : null;
+                                
+                                $stmt = $pdo->prepare("INSERT INTO sms_logs (client_id, recipient_phone, message, template_used, sent_at, status, api_response, message_length, cost) VALUES (?, ?, ?, ?, NOW(), 'sent', ?, ?, ?)");
+                                $stmt->execute([$client['id'], $client['phone'], $final_message, $template_used, $api_resp, $message_length, $estimated_cost]);
+                            }
+                        } catch (Exception $e) {
                             $error_count++;
+                            $api_resp = isset($last_sms_api_response) ? json_encode($last_sms_api_response) : null;
+                            $stmt = $pdo->prepare("INSERT INTO sms_logs (client_id, recipient_phone, message, template_used, sent_at, status, error_message, api_response) VALUES (?, ?, ?, ?, NOW(), 'failed', ?, ?)");
+                            $stmt->execute([$client['id'], $client['phone'], $final_message, $template_used, $e->getMessage(), $api_resp]);
                         }
                     }
                 }
                 
                 if ($error_count > 0) {
-                    $message = "Bulk SMS partially sent! {$sent_count} out of {$total_clients} clients received the SMS. {$error_count} failed.";
+                    $message = "Bulk SMS partially sent! {$sent_count} out of {$total_clients} clients received the SMS. {$error_count} failed. Total cost: KES " . number_format($total_cost, 2);
                 } else {
-                    $success_message = "Bulk SMS sent successfully! {$sent_count} out of {$total_clients} clients received the SMS.";
+                    $success_message = "Bulk SMS sent successfully! {$sent_count} out of {$total_clients} clients received the SMS. Total cost: KES " . number_format($total_cost, 2);
                 }
             }
         }
@@ -162,17 +331,59 @@ try {
         if (isset($_POST['test_sms'])) {
             $test_phone = trim($_POST['test_phone'] ?? '');
             if (!empty($test_phone)) {
-                // TODO: Implement actual test SMS sending
-                // $result = sendSMS($test_phone, 'Test SMS from your system. SMS functionality is working correctly.', $sms_settings);
-                $result = true; // Simulate success
-                
-                if ($result) {
-                    $success_message = 'Test SMS sent successfully to ' . htmlspecialchars($test_phone);
-                } else {
-                    $message = 'Error: Failed to send test SMS';
+                try {
+                    $result = sendSMS($test_phone, 'Test SMS from your system. SMS functionality is working correctly.', $sms_settings);
+                    if ($result) {
+                        $api_resp = isset($last_sms_api_response) ? json_encode($last_sms_api_response) : null;
+                        $stmt = $pdo->prepare("INSERT INTO sms_logs (recipient_phone, message, template_used, sent_at, status, api_response, message_length, cost) VALUES (?, ?, 'test', NOW(), 'sent', ?, ?, ?)");
+                        $msglen = strlen('Test SMS from your system. SMS functionality is working correctly.');
+                        $stmt->execute([$test_phone, 'Test SMS from your system. SMS functionality is working correctly.', $api_resp, $msglen, 0]);
+                        $success_message = 'Test SMS sent successfully to ' . htmlspecialchars($test_phone);
+                    } else {
+                        $message = 'Error: Failed to send test SMS';
+                    }
+                } catch (Exception $e) {
+                    $api_resp = isset($last_sms_api_response) ? json_encode($last_sms_api_response) : null;
+                    $stmt = $pdo->prepare("INSERT INTO sms_logs (recipient_phone, message, template_used, sent_at, status, error_message, api_response) VALUES (?, ?, 'test', NOW(), 'failed', ?, ?)");
+                    $stmt->execute([$test_phone, 'Test SMS from your system. SMS functionality is working correctly.', $e->getMessage(), $api_resp]);
+                    $message = 'Error: ' . $e->getMessage();
                 }
             } else {
                 $message = 'Error: Please enter a test phone number';
+            }
+        }
+        
+        // Clear SMS logs
+        if (isset($_POST['clear_logs'])) {
+            $pdo->exec("DELETE FROM sms_logs");
+            $success_message = 'SMS logs cleared successfully!';
+        }
+        
+        // Resend failed SMS
+        if (isset($_POST['resend_sms'])) {
+            $sms_id = (int)($_POST['sms_id'] ?? 0);
+            if ($sms_id) {
+                $stmt = $pdo->prepare("SELECT * FROM sms_logs WHERE id = ?");
+                $stmt->execute([$sms_id]);
+                $sms_log = $stmt->fetch();
+                
+                if ($sms_log) {
+                    try {
+                        $result = sendSMS($sms_log['recipient_phone'], $sms_log['message'], $sms_settings);
+                        
+                        if ($result) {
+                            // Update the log entry
+                            $stmt = $pdo->prepare("UPDATE sms_logs SET status = 'sent', error_message = NULL, sent_at = NOW() WHERE id = ?");
+                            $stmt->execute([$sms_id]);
+                            
+                            $success_message = 'SMS resent successfully!';
+                        }
+                    } catch (Exception $e) {
+                        $message = 'Error: ' . $e->getMessage();
+                    }
+                } else {
+                    $message = 'Error: SMS log not found';
+                }
             }
         }
     }
@@ -186,12 +397,21 @@ try {
         return empty($client['phone']);
     });
     
+    // Get SMS statistics - UPDATED QUERY (safe fetch)
+    $sms_stats = $pdo->query("SELECT 
+        COUNT(*) as total_sms,
+        SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent_sms,
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_sms,
+        SUM(COALESCE(cost, 0)) as total_cost,
+        COUNT(DISTINCT recipient_phone) as unique_recipients
+        FROM sms_logs")->fetch(PDO::FETCH_ASSOC);
+    
     // Get recent SMS logs
     $sms_logs = $pdo->query("SELECT sl.*, c.full_name AS client_name 
                               FROM sms_logs sl 
                               LEFT JOIN clients c ON sl.client_id = c.id 
                               ORDER BY sl.sent_at DESC 
-                              LIMIT 100")->fetchAll();
+                              LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
                               
 } catch (Exception $e) {
     $message = 'Error: ' . $e->getMessage();
@@ -237,6 +457,17 @@ include 'includes/sidebar.php';
                 <?php echo $success_message; ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
+        <?php endif; ?>
+
+        <!-- Debug Information -->
+        <?php if (!empty($sms_settings['api_key'])): ?>
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>SMS Configuration Status:</strong> 
+            API Key: <?php echo substr($sms_settings['api_key'], 0, 10) . '...'; ?> | 
+            API URL: <?php echo htmlspecialchars($sms_settings['api_url']); ?> |
+            Sender ID: <?php echo htmlspecialchars($sms_settings['sender_id'] ?? 'Not set'); ?>
+        </div>
         <?php endif; ?>
 
         <!-- Quick Actions -->
@@ -299,10 +530,89 @@ include 'includes/sidebar.php';
             </div>
         </div>
 
-        <!-- Statistics Row -->
+        <!-- SMS Statistics -->
+        <div class="row mb-4">
+            <div class="col-md-2">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 class="mb-0"><?php echo $sms_stats['total_sms'] ?? 0; ?></h4>
+                                <span>Total SMS</span>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-sms fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 class="mb-0"><?php echo $sms_stats['sent_sms'] ?? 0; ?></h4>
+                                <span>Sent SMS</span>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-check-circle fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card bg-danger text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 class="mb-0"><?php echo $sms_stats['failed_sms'] ?? 0; ?></h4>
+                                <span>Failed SMS</span>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-times-circle fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 class="mb-0"><?php echo $sms_stats['unique_recipients'] ?? 0; ?></h4>
+                                <span>Unique Recipients</span>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-users fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-warning text-dark">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 class="mb-0">KES <?php echo number_format($sms_stats['total_cost'] ?? 0, 2); ?></h4>
+                                <span>Total Cost</span>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-money-bill fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Client Statistics -->
         <div class="row mb-4">
             <div class="col-md-3">
-                <div class="card bg-primary text-white">
+                <div class="card bg-dark text-white">
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
@@ -332,22 +642,22 @@ include 'includes/sidebar.php';
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card bg-info text-white">
+                <div class="card bg-warning text-dark">
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
-                                <h4 class="mb-0"><?php echo count($sms_logs); ?></h4>
-                                <span>SMS Sent</span>
+                                <h4 class="mb-0"><?php echo count($clients_without_phone); ?></h4>
+                                <span>Clients without Phone</span>
                             </div>
                             <div class="align-self-center">
-                                <i class="fas fa-sms fa-2x"></i>
+                                <i class="fas fa-phone-slash fa-2x"></i>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card bg-warning text-dark">
+                <div class="card bg-secondary text-white">
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
@@ -468,9 +778,16 @@ include 'includes/sidebar.php';
                     <i class="fas fa-history me-2"></i>
                     Recent SMS Activity
                 </h5>
-                <span class="badge bg-light text-dark">
-                    Last 100 SMS
-                </span>
+                <div>
+                    <form method="POST" style="display: inline;">
+                        <button type="submit" name="clear_logs" class="btn btn-warning btn-sm" onclick="return confirm('Are you sure you want to clear all SMS logs?')">
+                            <i class="fas fa-trash me-1"></i>Clear Logs
+                        </button>
+                    </form>
+                    <span class="badge bg-light text-dark ms-2">
+                        Last 100 SMS
+                    </span>
+                </div>
             </div>
             <div class="card-body">
                 <?php if (empty($sms_logs)): ?>
@@ -488,7 +805,9 @@ include 'includes/sidebar.php';
                                     <th>Recipient</th>
                                     <th>Message Preview</th>
                                     <th>Template</th>
+                                    <th>Cost</th>
                                     <th>Status</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -510,7 +829,22 @@ include 'includes/sidebar.php';
                                             <span class="badge bg-secondary"><?php echo ucfirst($log['template_used'] ?? 'custom'); ?></span>
                                         </td>
                                         <td>
-                                            <span class="badge bg-success">Sent</span>
+                                            <small>KES <?php echo number_format($log['cost'] ?? 0, 2); ?></small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-<?php echo $log['status'] === 'sent' ? 'success' : 'danger'; ?>">
+                                                <?php echo ucfirst($log['status']); ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <?php if ($log['status'] === 'failed'): ?>
+                                                <form method="POST" style="display: inline;">
+                                                    <input type="hidden" name="sms_id" value="<?php echo $log['id']; ?>">
+                                                    <button type="submit" name="resend_sms" class="btn btn-sm btn-outline-primary" title="Resend SMS">
+                                                        <i class="fas fa-redo"></i>
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -727,7 +1061,7 @@ include 'includes/sidebar.php';
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label fw-bold">Sender ID</label>
-                            <input type="text" name="sender_id" class="form-control" value="<?php echo htmlspecialchars($sms_settings['sender_id'] ?? ''); ?>" placeholder="YourBrand" maxlength="11">
+                            <input type="text" name="sender_id" class="form-control" value="<?php echo htmlspecialchars($sms_settings['sender_id'] ?? ''); ?>" placeholder="TALKSASA" maxlength="11" required>
                             <div class="form-text">Max 11 characters for SMS sender ID</div>
                         </div>
                     </div>
@@ -735,22 +1069,31 @@ include 'includes/sidebar.php';
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label fw-bold">API URL *</label>
-                            <input type="url" name="api_url" class="form-control" value="<?php echo htmlspecialchars($sms_settings['api_url'] ?? ''); ?>" placeholder="https://api.talksasa.com/sms/send" required>
+                            <select class="form-select" onchange="document.querySelector('input[name=\'api_url\']').value = this.value">
+                                <option value="">-- Select API URL --</option>
+                                <option value="https://api.talksasa.com/v1/sms/send">TalkSasa v1 (sms/send)</option>
+                                <option value="https://api.talksasa.com/v1/sms">TalkSasa v1 (sms)</option>
+                                <option value="https://api.talksasa.com/sms/send">TalkSasa Legacy</option>
+                                <option value="custom">Custom URL</option>
+                            </select>
+                            <input type="url" name="api_url" class="form-control mt-2" value="<?php echo htmlspecialchars($sms_settings['api_url'] ?? ''); ?>" placeholder="Or enter custom API URL">
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label fw-bold">API Key *</label>
-                            <input type="text" name="api_key" class="form-control" value="<?php echo htmlspecialchars($sms_settings['api_key'] ?? ''); ?>" placeholder="Your API Key" required>
+                            <input type="text" name="api_key" class="form-control" value="<?php echo htmlspecialchars($sms_settings['api_key'] ?? ''); ?>" placeholder="Your TalkSasa API Key" required>
+                            <div class="form-text">Get this from your TalkSasa dashboard</div>
                         </div>
                     </div>
                     
                     <div class="alert alert-info">
                         <i class="fas fa-lightbulb me-2"></i>
-                        <strong>Provider Information:</strong> 
-                        <ul class="mb-0 mt-2">
-                            <li><strong>TalkSasa:</strong> Use API URL: https://api.talksasa.com/sms/send</li>
-                            <li><strong>Africa's Talking:</strong> Use your Africa's Talking API credentials</li>
-                            <li><strong>Twilio:</strong> Use your Twilio account SID and auth token</li>
-                        </ul>
+                        <strong>TalkSasa Setup Instructions:</strong> 
+                        <ol class="mb-0 mt-2">
+                            <li>Get your API key from <a href="https://talksasa.com" target="_blank">TalkSasa Dashboard</a></li>
+                            <li>Register your Sender ID in the TalkSasa dashboard</li>
+                            <li>Use format: +2547XXXXXXXX for phone numbers</li>
+                            <li>Test with the "Test SMS" button first</li>
+                        </ol>
                     </div>
                     
                     <?php if (!empty($sms_settings['updated_at'])): ?>

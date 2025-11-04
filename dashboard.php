@@ -6,6 +6,21 @@ redirectIfNotLoggedIn();
 $database = new Database();
 $db = $database->getConnection();
 
+// load settings (if any) — safe single-row read for use by fetchMikrotikMetrics
+$mk_settings = null;
+try {
+    $stmt = $db->query("SELECT * FROM mikrotik_settings WHERE id = 1 LIMIT 1");
+    if ($stmt) {
+        $f = $stmt->fetch(PDO::FETCH_ASSOC);
+        // normalize: ensure we only keep an array, not false
+        $mk_settings = is_array($f) ? $f : null;
+    } else {
+        $mk_settings = null;
+    }
+} catch (Exception $e) {
+    $mk_settings = null;
+}
+
 // --- Greeting ---
 $hour = (int)date('G');
 if ($hour >= 5 && $hour < 12) {
@@ -16,6 +31,17 @@ if ($hour >= 5 && $hour < 12) {
     $greeting = 'Good evening';
 } else {
     $greeting = 'Good night';
+}
+
+// --- NEW: time-aware subheading that matches the greeting and time of day ---
+if ($hour >= 5 && $hour < 12) {
+    $greetingMessage = 'Have a productive morning — here\'s your dashboard.';
+} elseif ($hour >= 12 && $hour < 17) {
+    $greetingMessage = 'Hope your afternoon is going well.';
+} elseif ($hour >= 17 && $hour < 22) {
+    $greetingMessage = 'Hope you had a productive day.';
+} else {
+    $greetingMessage = 'Working late? Consider wrapping up and get some rest.';
 }
 
 // --- ISP profile & expiry countdown ---
@@ -44,6 +70,121 @@ try {
     $amount_this_month = 0.0;
 }
 
+// --- Customer Retention Metrics (6 months) ---
+$new_customers = 0;
+$recurring_customers = 0;
+$churned_customers = 0;
+$retention_rate = 0;
+
+try {
+    $six_months_ago_date = new DateTime('-6 months');
+    $six_months_ago = $six_months_ago_date->format('Y-m-d H:i:s');
+
+    // New customers: created in the last 6 months
+    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE created_at >= :six_months_ago");
+    $stmt->execute([':six_months_ago' => $six_months_ago]);
+    $new_customers = (int)$stmt->fetchColumn();
+
+    // Base of customers from 6 months ago (for retention/churn calculation)
+    $stmt = $db->prepare("SELECT COUNT(DISTINCT p.client_id) FROM payments p JOIN clients c ON p.client_id = c.id WHERE c.created_at < :six_months_ago AND p.payment_date >= :six_months_ago");
+    $stmt->execute([':six_months_ago' => $six_months_ago]);
+    $customer_base_start = (int)$stmt->fetchColumn();
+
+    // Recurring customers: created before 6 months ago and made a payment in the last 6 months
+    $stmt = $db->prepare("SELECT COUNT(DISTINCT p.client_id) FROM payments p JOIN clients c ON p.client_id = c.id WHERE c.created_at < :six_months_ago AND p.payment_date >= :six_months_ago");
+    $stmt->execute([':six_months_ago' => $six_months_ago]);
+    $recurring_customers = (int)$stmt->fetchColumn();
+
+    // Churned customers: were active at the start of the period but made no payments in the last 6 months
+    $churned_customers = $customer_base_start - $recurring_customers;
+
+    // Retention rate
+    if ($customer_base_start > 0) {
+        $retention_rate = round(($recurring_customers / $customer_base_start) * 100);
+    }
+} catch (Exception $e) {
+    // Keep metrics at 0 on error
+}
+
+// --- NEW: Try to fetch dynamic runtime metrics from MikroTik (optional, guarded).
+function fetchMikrotikMetrics(PDO $db, ?array $mk_settings) {
+    $metrics = [
+        'active_now' => null,
+        'hotspot_active' => null,
+        'pppoe_active' => null,
+        'hotspot_data_mb' => null,
+        'pppoe_data_mb' => null,
+    ];
+
+    if (empty($mk_settings) || empty($mk_settings['host']) || empty($mk_settings['username'])) {
+        error_log("MikroTik settings missing; skipping live fetch.");
+        return $metrics;
+    }
+
+    // Use a RouterOS client if available. Instantiate dynamically to avoid static type errors
+    // in editors/tooling when the library is not installed.
+    if (!class_exists('RouterosAPI')) {
+        error_log("RouterosAPI class not found. Install evilfreelancer/routeros-api-php or an equivalent RouterOS client.");
+        return $metrics;
+    }
+
+    try {
+        // instantiate dynamically to avoid static reference for analyzers
+        $apiClass = 'RouterosAPI';
+        $api = new $apiClass();
+
+        $host = $mk_settings['host'];
+        $user = $mk_settings['username'];
+        $pass = $mk_settings['password'] ?? '';
+        $port = !empty($mk_settings['port']) ? (int)$mk_settings['port'] : 8728;
+
+        // connect returns true/false
+        if ($api->connect($host, $user, $pass, $port)) {
+            try {
+                // PPPoE active sessions
+                $pppoe = $api->comm('/ppp/active/print');
+                $metrics['pppoe_active'] = is_array($pppoe) ? count($pppoe) : 0;
+
+                // Hotspot active users
+                $hot = $api->comm('/ip/hotspot/active/print');
+                $metrics['hotspot_active'] = is_array($hot) ? count($hot) : 0;
+
+                // Example: read interface traffic as proxy for data usage (adjust interface name to your setup)
+                try {
+                    $traffic = $api->comm('/interface/monitor-traffic', ['interface' => 'bridge-local', 'once' => '']);
+                    // traffic is an array of arrays; parse 'rx-bits-per-second' & 'tx-bits-per-second' if present
+                    if (is_array($traffic) && !empty($traffic[0])) {
+                        $rx = floatval($traffic[0]['rx-bits-per-second'] ?? 0);
+                        $tx = floatval($traffic[0]['tx-bits-per-second'] ?? 0);
+                        $metrics['hotspot_data_mb'] = round(($rx + $tx) / 8 / 1024 / 1024, 2); // MB/s instantaneous
+                    }
+                } catch (Exception $e) {
+                    // ignore traffic parsing errors
+                }
+
+                // aggregate active users
+                $metrics['active_now'] = ($metrics['pppoe_active'] ?? 0) + ($metrics['hotspot_active'] ?? 0);
+            } finally {
+                // ensure disconnect if method exists
+                if (method_exists($api, 'disconnect')) {
+                    $api->disconnect();
+                }
+            }
+        } else {
+            error_log("RouterOS API connect() failed to {$host}:{$port} using provided credentials.");
+        }
+    } catch (Throwable $e) {
+        // catch Throwable to protect against both Error and Exception if library is incompatible
+        error_log("MikroTik fetch error: " . $e->getMessage());
+    }
+
+    return $metrics;
+}
+
+// Fetch mikrotik metrics (may return nulls — safe fallbacks applied later)
+// ensure we pass only null or array (avoid passing boolean)
+$mkMetrics = fetchMikrotikMetrics($db, is_array($mk_settings) ? $mk_settings : null);
+
 // Subscribed clients (active)
 try {
     $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE status = 'active'");
@@ -62,24 +203,33 @@ try {
     $total_clients = 0;
 }
 
-// Active users now (placeholder - would need integration with MikroTik)
-$active_users_now = 7; // Placeholder
-$average_users = 9; // Placeholder
-$peak_users = 10; // Placeholder
+// --- EXISTING PLACEHOLDERS (kept as safe defaults) ---
+$active_users_now = 7; // placeholder default
+$average_users = 9;    // placeholder default
+$peak_users = 10;      // placeholder default
 
-// Hotspot vs PPPoE users (placeholder)
-$hotspot_users = 3; // Placeholder
-$pppoe_users = 4; // Placeholder
+$hotspot_users = 3;    // placeholder default
+$pppoe_users = 4;      // placeholder default
 
-// Customer retention data (placeholder)
-$new_customers = 15; // Placeholder
-$recurring_customers = 85; // Placeholder
-$churned_customers = 10; // Placeholder
-$retention_rate = 89; // Placeholder
+$hotspot_data = 45;    // placeholder default (units used by UI)
+$pppoe_data = 70;      // placeholder default
 
-// Data usage (placeholder)
-$hotspot_data = 45; // Placeholder
-$pppoe_data = 70; // Placeholder
+// --- NEW: override placeholders with MikroTik-derived values when available ---
+if (!empty($mkMetrics['active_now'])) {
+    $active_users_now = (int)$mkMetrics['active_now'];
+}
+if (!empty($mkMetrics['hotspot_active'])) {
+    $hotspot_users = (int)$mkMetrics['hotspot_active'];
+}
+if (!empty($mkMetrics['pppoe_active'])) {
+    $pppoe_users = (int)$mkMetrics['pppoe_active'];
+}
+if (!empty($mkMetrics['hotspot_data_mb'])) {
+    $hotspot_data = (int)$mkMetrics['hotspot_data_mb'];
+}
+if (!empty($mkMetrics['pppoe_data_mb'])) {
+    $pppoe_data = (int)$mkMetrics['pppoe_data_mb'];
+}
 
 // --- Payments aggregates for charts ---
 // Last 12 months (monthly totals)
@@ -179,7 +329,14 @@ include 'includes/sidebar.php';
         <!-- Greeting -->
         <div style="margin-bottom: 30px;">
             <h1 style="font-size: 28px; margin: 0 0 5px 0;"><?php echo $greeting; ?>, <?php echo htmlspecialchars($profile['business_name'] ?? 'Fortunett'); ?></h1>
-            <div style="color: #666;">Working late? Don't forget to rest</div>
+            <div style="color: #666;"><?php echo $greetingMessage; ?></div>
+        </div>
+
+        <!-- small admin button: link to dedicated MikroTik settings page -->
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+            <a href="mikrotik.php" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-network-wired me-1"></i> MikroTik Settings
+            </a>
         </div>
 
         <!-- Top metrics cards -->

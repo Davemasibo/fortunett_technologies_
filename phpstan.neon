@@ -1,0 +1,13 @@
+parameters:
+  level: 6
+  paths:
+    - .
+  excludePaths:
+    - vendor/*
+    - node_modules/*
+    - storage/*
+    - cache*
+    - dist/*
+    - build/*
+  tmpDir: ./.phpstan-cache
+  checkMissingIterableValueType: false
