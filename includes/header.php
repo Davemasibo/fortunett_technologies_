@@ -27,6 +27,9 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
             --info-color: #17a2b8;
             --light-bg: #f8f9fa;
             --dark-text: #333;
+            --sidebar-width: 250px;
+            --sidebar-collapsed-width: 72px;
+            --navbar-height: 60px;
         }
         * {
             box-sizing: border-box;
@@ -40,36 +43,136 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
         .navbar {
             background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%) !important;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            height: 60px;
+            height: var(--navbar-height);
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
             z-index: 1000;
-        }
-        .main-layout {
-            padding-top: 60px;
             display: flex;
-            min-height: calc(100vh - 60px);
+            align-items: center;
+        }
+        .navbar .container-fluid {
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+
+        .navbar-brand {
+            margin-left: 60px !important;
+        }
+
+        .main-layout {
+            padding-top: var(--navbar-height);
+            display: flex;
+            min-height: calc(100vh - var(--navbar-height));
         }
         .sidebar {
-            width: 260px;
+            width: var(--sidebar-width);
             background: white;
             position: fixed;
             left: 0;
-            top: 60px;
+            top: var(--navbar-height);
             bottom: 0;
             overflow-y: auto;
             box-shadow: 2px 0 5px rgba(0,0,0,0.1);
             z-index: 999;
+            transition: width 0.3s ease, transform 0.3s ease;
         }
+
+        .sidebar.collapsed {
+            width: var(--sidebar-collapsed-width);
+        }
+
+        .sidebar.hidden {
+            transform: translateX(-100%);
+            display: none;
+        }
+
+        .sidebar-menu {
+            list-style: none;
+            padding: 8px 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: auto;
+        }
+
+        .sidebar-menu li {
+            margin: 0;
+        }
+
+        .sidebar-menu a {
+            display: flex;
+            align-items: center;
+            padding: 14px 16px;
+            color: #333;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            border-left: 4px solid transparent;
+            gap: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .sidebar-menu a:hover {
+            background: #f5f5f5;
+            border-left-color: var(--primary-color);
+        }
+
+        .sidebar-menu a.active {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            color: white;
+            border-left-color: #fff;
+            font-weight: 600;
+        }
+
+        .sidebar-menu a i {
+            width: 20px;
+            text-align: center;
+            flex: 0 0 auto;
+            font-size: 16px;
+        }
+
+        .sidebar-menu a span {
+            display: inline-block;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .sidebar.collapsed .sidebar-menu a span {
+            display: none;
+        }
+
         .main-content-wrapper {
-            flex: 1;
-            margin-left: 260px;
-            padding: 0;
-            min-height: calc(100vh - 60px);
+            margin-left: var(--sidebar-width);
+            width: calc(100% - var(--sidebar-width));
+            padding: 30px 0;
+            min-height: calc(100vh - var(--navbar-height));
             background: var(--light-bg);
+            display: flex;
+            justify-content: center;
+            transition: margin-left 0.3s ease, width 0.3s ease;
         }
+
+        .main-content-wrapper.sidebar-collapsed {
+            margin-left: var(--sidebar-collapsed-width);
+            width: calc(100% - var(--sidebar-collapsed-width));
+        }
+
+        .main-content-wrapper.sidebar-hidden {
+            margin-left: 0;
+            width: 100%;
+        }
+
+        .main-content-wrapper > div {
+            width: 100%;
+            max-width: 1350px;
+            padding: 0 40px;
+        }
+
         @media (max-width: 768px) {
             .sidebar {
                 transform: translateX(-100%);
@@ -80,7 +183,26 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
             }
             .main-content-wrapper {
                 margin-left: 0;
+                width: 100%;
             }
+            .main-content-wrapper > div {
+                padding: 0 16px;
+            }
+        }
+
+        /* Scrollbar styling */
+        .sidebar-menu::-webkit-scrollbar {
+            width: 6px;
+        }
+        .sidebar-menu::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .sidebar-menu::-webkit-scrollbar-thumb {
+            background: #ddd;
+            border-radius: 3px;
+        }
+        .sidebar-menu::-webkit-scrollbar-thumb:hover {
+            background: #999;
         }
     </style>
 </head>

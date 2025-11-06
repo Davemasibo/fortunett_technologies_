@@ -708,44 +708,45 @@ include 'includes/sidebar.php';
                             </thead>
                             <tbody id="clientsTbody">
                                 <?php foreach ($clients as $client): 
-                                    $statusBadgeClass = ($client['status'] === 'active') ? 'bg-success' : (($client['status'] === 'inactive') ? 'bg-warning' : 'bg-secondary');
+                                    $status = strtolower($client['status'] ?? 'active');
+                                    $status_color = $status === 'active' ? '#10b981' : ($status === 'paused' ? '#f59e0b' : '#ef4444');
+                                    $expiry_date = $client['expiry_date'] ?? null;
+                                    $is_expired = $expiry_date && strtotime($expiry_date) < time();
                                 ?>
-                                <tr class="client-row" data-name="<?php echo htmlspecialchars(strtolower($client['full_name'] ?? $client['mikrotik_username'])); ?>" data-type="<?php echo htmlspecialchars(strtolower($client['user_type'] ?? '')); ?>">
-                                    <td><input type="checkbox" class="client-checkbox" value="<?php echo (int)$client['id']; ?>"></td>
-                                    <td>
-                                        <div style="font-weight:600; color:#333;"><?php echo htmlspecialchars($client['full_name'] ?? $client['mikrotik_username']); ?></div>
-                                        <div style="font-size:12px;color:#888;">F<?php echo 4900 + (int)$client['id']; ?></div>
+                                <tr style="border-bottom: 1px solid #f3f4f6; transition: background 0.2s; cursor: pointer;">
+                                    <td style="padding: 12px 8px; text-align: left;" onclick="event.stopPropagation();"><input type="checkbox" /></td>
+                                    <td style="padding: 12px 8px; text-align: left;">
+                                        <div style="font-weight: 600; color: #333;"><?php echo htmlspecialchars($client['username'] ?? ''); ?></div>
                                     </td>
-                                    <td><?php echo htmlspecialchars($client['mikrotik_username'] ?? '—'); ?></td>
-                                    <td>
-                                        <?php if (!empty($client['phone'])): ?>
-                                            <a href="tel:<?php echo htmlspecialchars($client['phone']); ?>" style="text-decoration:none;color:#333;"><?php echo htmlspecialchars($client['phone']); ?></a>
-                                        <?php else: ?>
-                                            <span style="color:#999;">No phone</span>
-                                        <?php endif; ?>
+                                    <td style="padding: 12px 8px; text-align: left;">
+                                        <div style="font-weight: 500; color: #333;"><?php echo htmlspecialchars($client['full_name'] ?? ''); ?></div>
+                                        <div style="font-size: 12px; color: #6b7280;"><?php echo htmlspecialchars($client['email'] ?? ''); ?></div>
                                     </td>
-                                    <td><?php echo htmlspecialchars($client['subscription_plan'] ?? '—'); ?></td>
-                                    <td>
-                                        <span style="text-transform:uppercase;font-weight:600;"><?php echo htmlspecialchars($client['user_type'] ?? ''); ?></span>
+                                    <td style="padding: 12px 8px; text-align: left; color: #333; font-size: 13px;">
+                                        <?php echo htmlspecialchars($client['phone_number'] ?? '—'); ?>
                                     </td>
-                                    <td>
-                                        <?php if ($client['status'] === 'active'): ?>
-                                            <span style="display:inline-block;padding:4px 8px;background:#e6f6ef;color:#0a6;border-radius:6px;font-weight:700;font-size:12px;">Active</span>
-                                        <?php else: ?>
-                                            <span style="display:inline-block;padding:4px 8px;background:#fff3e6;color:#e68;border-radius:6px;font-weight:700;font-size:12px;">Inactive</span>
-                                        <?php endif; ?>
+                                    <td style="padding: 12px 8px; text-align: left; color: #333; font-size: 13px;">
+                                        <?php echo htmlspecialchars($client['package_name'] ?? 'N/A'); ?>
                                     </td>
-                                    <td>
-                                        <div style="display:flex;gap:6px;justify-content:flex-end; align-items:center;">
-                                            <a href="?action=view&id=<?php echo $client['id']; ?>" class="btn btn-sm btn-outline-primary">View</a>
-                                            <a href="?action=edit&id=<?php echo $client['id']; ?>" class="btn btn-sm btn-outline-secondary">Edit</a>
-                                            <form method="POST" style="display:inline;" onsubmit="return confirm('<?php echo ($client['status'] === 'active') ? 'Disconnect' : 'Reconnect'; ?> this client?');">
-                                                <input type="hidden" name="id" value="<?php echo (int)$client['id']; ?>">
-                                                <button type="submit" name="toggle_connection" class="btn btn-sm <?php echo ($client['status']==='active') ? 'btn-outline-danger' : 'btn-outline-success'; ?>">
-                                                    <?php echo ($client['status']==='active') ? 'Disconnect' : 'Reconnect'; ?>
-                                                </button>
-                                            </form>
-                                        </div>
+                                    <td style="padding: 12px 8px; text-align: left;">
+                                        <span style="background: <?php echo $status_color; ?>20; color: <?php echo $status_color; ?>; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; border: 1px solid rgba(0,0,0,0.04); text-transform: capitalize;">
+                                            <?php echo ucfirst($status); ?>
+                                        </span>
+                                    </td>
+                                    <td style="padding: 12px 8px; text-align: left; color: #333; font-size: 13px;">
+                                        <?php 
+                                            if ($expiry_date) {
+                                                echo date('M j, Y', strtotime($expiry_date));
+                                                if ($is_expired) echo ' <span style="color: #ef4444; font-weight: 600;">(Expired)</span>';
+                                            } else {
+                                                echo '—';
+                                            }
+                                        ?>
+                                    </td>
+                                    <td style="padding: 12px 8px; text-align: right;" onclick="event.stopPropagation();">
+                                        <a href="user_detail.php?id=<?php echo $client['id']; ?>" style="color: #667eea; text-decoration: none; font-size: 13px; font-weight: 500; transition: color 0.2s;">
+                                            <i class="fas fa-arrow-right me-1"></i>View
+                                        </a>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -902,4 +903,29 @@ window.changeExpiry = function(clientId) {
 /* Consistent card styling */
 .main-content-wrapper { margin-left: 260px; background: #f8f9fa; min-height:100vh; }
 @media(max-width:900px){ .main-content-wrapper{margin-left:0;} }
+
+.card {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    border: 1px solid rgba(0,0,0,0.06);
+}
+
+table tbody tr:hover {
+    background: #f9fafb;
+}
+
+table a {
+    transition: color 0.2s ease;
+}
+
+table a:hover {
+    color: #764ba2 !important;
+}
+
+@media (max-width: 900px) {
+    .main-content-wrapper > div {
+        padding: 0 16px;
+    }
+}
 </style>
