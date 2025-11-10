@@ -14,6 +14,13 @@ $client = null;
 $defaultPhone = '';
 $defaultAmount = 0.00;
 
+// detect whether payments.invoice column exists to guide invoice flows
+try {
+    $has_invoice_col = (bool) $db->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='payments' AND column_name='invoice'")->fetchColumn();
+} catch (Throwable $e) {
+    $has_invoice_col = false;
+}
+
 if ($user_id) {
     // load client + package info
     $stmt = $db->prepare("SELECT c.*, p.name AS package_name, p.price AS package_price FROM clients c LEFT JOIN packages p ON c.package_id = p.id WHERE c.id = ? LIMIT 1");
@@ -27,11 +34,16 @@ if ($user_id) {
         exit;
     }
 } elseif ($invoice) {
+    // If DB doesn't have invoice column, we cannot resolve invoice-based flow
+    if (!$has_invoice_col) {
+        header('Location: subscription.php');
+        exit;
+    }
     // existing invoice flow
     $stmt = $db->prepare("SELECT * FROM payments WHERE invoice = ? LIMIT 1");
     $stmt->execute([$invoice]);
     $inv = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$inv) {
+            if (!$inv) {
         header('Location: subscription.php');
         exit;
     }
@@ -55,32 +67,154 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (substr($formatted,0,1) === '+') $formatted = ltrim($formatted,'+');
 
         try {
-            // Log payment attempt (pending)
-            $stmt = $db->prepare("INSERT INTO payments (client_id, amount, payment_date, status, invoice, payment_method, message) VALUES (?, ?, NOW(), 'pending', ?, 'mpesa', ?)");
-            $invoiceRef = $invoice ?: ('INV-user-' . ($user_id ? $user_id : time()));
+            // Build invoice reference and message. Prefer client's account_number when available.
+            // Prefer persisted account_number; otherwise generate one and persist it for future use
+            $clientAccount = $client['account_number'] ?? null;
+            if ($invoice) {
+                $invoiceRef = $invoice;
+            } else {
+                // generate a formatted account number using business initial + zero-padded id
+                $generatedAcc = getAccountNumber($db, $client ?: $user_id);
+                if (!empty($clientAccount)) {
+                    $invoiceRef = $clientAccount;
+                } else {
+                    $invoiceRef = $generatedAcc;
+                    // persist generated account number to clients table so future STK pushes use the same value
+                    if (!empty($user_id)) {
+                        try {
+                            $ustmt = $db->prepare("UPDATE clients SET account_number = ? WHERE id = ? AND (account_number IS NULL OR account_number = '')");
+                            $ustmt->execute([$generatedAcc, $user_id]);
+                        } catch (Throwable $e) {
+                            // ignore persistence errors
+                        }
+                    }
+                }
+            }
             $message = ($client ? "STK push for user_id {$user_id}" : "STK push for invoice {$invoiceRef}") . " to {$phone}";
-            $stmt->execute([ $user_id ?: 0, $amount, $invoiceRef, $message ]);
+
+            // Detect whether payments.invoice column exists — keep insertion robust across schema variants
+            try {
+                $has_invoice = (bool) $db->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='payments' AND column_name='invoice'")->fetchColumn();
+            } catch (Throwable $e) {
+                $has_invoice = false;
+            }
+
+            if ($has_invoice) {
+                $stmt = $db->prepare("INSERT INTO payments (client_id, amount, payment_date, status, invoice, payment_method, message) VALUES (?, ?, NOW(), 'pending', ?, 'mpesa', ?)");
+                $stmt->execute([ $user_id ?: 0, $amount, $invoiceRef, $message ]);
+            } else {
+                // payments table doesn't have invoice column — insert without it
+                $stmt = $db->prepare("INSERT INTO payments (client_id, amount, payment_date, status, payment_method, message) VALUES (?, ?, NOW(), 'pending', 'mpesa', ?)");
+                $stmt->execute([ $user_id ?: 0, $amount, $message ]);
+            }
 
             $payment_id = $db->lastInsertId();
 
-            // TODO: Integrate real STK provider here — for now simulate success
-            $stmt = $db->prepare("UPDATE payments SET status = 'completed', payment_date = NOW(), message = CONCAT(message,' | completed') WHERE id = ?");
-            $stmt->execute([$payment_id]);
-
-            // If created against an invoice record mark that invoice completed
-            if ($invoice) {
-                $stmt = $db->prepare("UPDATE payments SET status = 'completed' WHERE invoice = ? AND payment_method = 'invoice'");
-                $stmt->execute([$invoice]);
+            // Try to send a real STK push using lib/mpesa.php when configured
+            $mpesaResult = null;
+            try {
+                require_once __DIR__ . '/lib/mpesa.php';
+                $accountRef = $invoiceRef;
+                $txnDesc = 'Payment for ' . ($client ? ($client['full_name'] ?? $client['username']) : $invoiceRef);
+                $mpesaResult = mpesa_initiate_stk($phone, $amount, $accountRef, $txnDesc);
+            } catch (Throwable $e) {
+                $mpesaResult = ['success' => false, 'error' => $e->getMessage()];
             }
 
-            $action_result = 'success|Payment recorded successfully';
-            // redirect to subscription or client page
-            if ($user_id) {
-                header('Location: clients.php?action=view&id=' . $user_id);
+            if ($mpesaResult && $mpesaResult['success']) {
+                // STK push accepted by provider — keep record pending and store provider response
+                $respText = is_array($mpesaResult['data']) ? json_encode($mpesaResult['data']) : (string)$mpesaResult['data'];
+                // Use positional placeholders only (avoid mixing named and positional parameters)
+                $stmt = $db->prepare("UPDATE payments SET message = CONCAT(IFNULL(message,''), ' | ', ?) WHERE id = ?");
+                $stmt->execute([ $respText, $payment_id ]);
+
+                // If provider returned a CheckoutRequestID, persist it into transaction_id so callbacks can match by it
+                $checkoutId = null;
+                if (is_array($mpesaResult['data'])) {
+                    if (!empty($mpesaResult['data']['CheckoutRequestID'])) {
+                        $checkoutId = $mpesaResult['data']['CheckoutRequestID'];
+                    } elseif (!empty($mpesaResult['data']['Response']['CheckoutRequestID'])) {
+                        $checkoutId = $mpesaResult['data']['Response']['CheckoutRequestID'];
+                    }
+                }
+                if ($checkoutId) {
+                    try {
+                        $u = $db->prepare("UPDATE payments SET transaction_id = ? WHERE id = ?");
+                        $u->execute([$checkoutId, $payment_id]);
+                    } catch (Throwable $e) {
+                        // ignore persistence errors
+                    }
+                }
+
+                // Show a waiting UI that polls the payment status until completion
+                $waitingPaymentId = $payment_id;
+                include 'includes/header.php';
+                include 'includes/sidebar.php';
+                ?>
+                <div class="main-content-wrapper">
+                    <div style="max-width:700px;margin:24px auto;background:#fff;padding:22px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,0.05);">
+                        <h3 style="margin:0 0 10px 0;">STK Push Initiated</h3>
+                        <p style="color:#374151;margin-bottom:16px;">We've sent the STK push to <?php echo htmlspecialchars($phone); ?> for KES <?php echo number_format($amount,2); ?>. Please complete the payment on the phone. This page will wait for confirmation.</p>
+                        <div id="statusBox" style="padding:12px;border-radius:6px;background:#f8fafc;color:#111;font-weight:600;">Awaiting confirmation…</div>
+                    </div>
+                </div>
+                <script>
+                const paymentId = <?php echo (int)$waitingPaymentId; ?>;
+                let attempts = 0;
+                const maxAttempts = 40; // ~2 minutes (40 * 3s)
+                const box = document.getElementById('statusBox');
+
+                const poll = () => {
+                    attempts++;
+                    fetch('api/payment_status.php?payment_id=' + paymentId, { credentials: 'same-origin' })
+                        .then(r => {
+                            if (!r.ok) throw new Error('Network response not ok');
+                            return r.json();
+                        })
+                        .then(j => {
+                            if (!j || j.error) {
+                                box.innerText = 'Waiting for confirmation…';
+                                return;
+                            }
+                            if (!j.status) return;
+                            if (j.status === 'pending') {
+                                box.innerText = 'Awaiting confirmation… (last update: ' + (j.updated_at || 'now') + ')';
+                            } else if (j.status === 'completed') {
+                                box.innerText = 'Payment completed ✅ — ' + (j.message || '');
+                                clearInterval(intervalId);
+                                setTimeout(()=>{ window.location = '<?php echo $user_id ? "clients.php?action=view&id={$user_id}" : "subscription.php"; ?>'; }, 1200);
+                            } else if (j.status === 'failed') {
+                                box.innerText = 'Payment failed ❌ — ' + (j.message || '');
+                                clearInterval(intervalId);
+                            }
+                        })
+                        .catch(err => {
+                            console.debug('Payment poll error', err);
+                            box.innerText = 'Waiting for confirmation…';
+                        })
+                        .finally(() => {
+                            if (attempts >= maxAttempts) {
+                                box.innerText = 'Timed out waiting for confirmation. Please check payment status or try again.';
+                                clearInterval(intervalId);
+                            }
+                        });
+                };
+
+                // poll every 3 seconds
+                const intervalId = setInterval(poll, 3000);
+                poll();
+                </script>
+                <?php
+                include 'includes/footer.php';
+                exit;
             } else {
-                header('Location: subscription.php');
+                // Provider not configured or STK failed — fall back to simulated completion and mark error
+                $err = $mpesaResult['error'] ?? 'STK not configured';
+                // mark as error
+                $stmt = $db->prepare("UPDATE payments SET status = 'failed', message = CONCAT(message, ' | error: ', ?) WHERE id = ?");
+                $stmt->execute([ $err, $payment_id ]);
+                $action_result = 'error|STK push failed: ' . htmlspecialchars($err);
             }
-            exit;
         } catch (Exception $e) {
             $action_result = 'error|' . $e->getMessage();
         }

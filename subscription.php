@@ -6,6 +6,13 @@ redirectIfNotLoggedIn();
 $database = new Database();
 $db = $database->getConnection();
 
+// detect whether payments.invoice column exists
+try {
+    $has_invoice_col = (bool) $db->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='payments' AND column_name='invoice'")->fetchColumn();
+} catch (Throwable $e) {
+    $has_invoice_col = false;
+}
+
 $profile = getISPProfile($db);
 
 // Create invoice on demand (quick flow)
@@ -15,11 +22,19 @@ if (isset($_POST['action']) && $_POST['action'] === 'create_invoice') {
     $invoice_no = 'INV-fortunett-' . date('Ymd') . substr(uniqid(), -6);
 
     try {
-        $stmt = $db->prepare("INSERT INTO payments (client_id, amount, payment_date, status, invoice, payment_method, message) VALUES (?, ?, NOW(), 'pending', ?, 'invoice', ?)");
-        // client_id = 0 for license/invoice (adjust if you track a client id)
-        $stmt->execute([0, $amount, $invoice_no, $description]);
-        header("Location: invoice.php?invoice=" . urlencode($invoice_no));
-        exit;
+        if ($has_invoice_col) {
+            $stmt = $db->prepare("INSERT INTO payments (client_id, amount, payment_date, status, invoice, payment_method, message) VALUES (?, ?, NOW(), 'pending', ?, 'invoice', ?)");
+            // client_id = 0 for license/invoice (adjust if you track a client id)
+            $stmt->execute([0, $amount, $invoice_no, $description]);
+            header("Location: invoice.php?invoice=" . urlencode($invoice_no));
+            exit;
+        } else {
+            // payments table doesn't have invoice column; insert without it and redirect back
+            $stmt = $db->prepare("INSERT INTO payments (client_id, amount, payment_date, status, payment_method, message) VALUES (?, ?, NOW(), 'pending', 'invoice', ?)");
+            $stmt->execute([0, $amount, $description]);
+            header("Location: subscription.php?created=1");
+            exit;
+        }
     } catch (Exception $e) {
         $error = $e->getMessage();
     }
@@ -27,7 +42,11 @@ if (isset($_POST['action']) && $_POST['action'] === 'create_invoice') {
 
 // Fetch subscription-related invoices/payments
 try {
-    $stmt = $db->prepare("SELECT id, amount, message, payment_date, status, invoice, payment_method FROM payments WHERE invoice LIKE 'INV-fortunett-%' OR payment_method IN ('subscription','invoice','mpesa') ORDER BY payment_date DESC");
+    if ($has_invoice_col) {
+        $stmt = $db->prepare("SELECT id, amount, message, payment_date, status, invoice, payment_method FROM payments WHERE invoice LIKE 'INV-fortunett-%' OR payment_method IN ('subscription','invoice','mpesa') ORDER BY payment_date DESC");
+    } else {
+        $stmt = $db->prepare("SELECT id, amount, message, payment_date, status, payment_method FROM payments WHERE payment_method IN ('subscription','invoice','mpesa') ORDER BY payment_date DESC");
+    }
     $stmt->execute();
     $subscriptions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {

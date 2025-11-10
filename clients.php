@@ -3,6 +3,13 @@ require_once 'config/database.php';
 require_once 'includes/auth.php';
 redirectIfNotLoggedIn();
 
+// Redirect legacy inline "view" requests to the full user detail page
+if (isset($_GET['action']) && $_GET['action'] === 'view' && !empty($_GET['id'])) {
+	$id = intval($_GET['id']);
+	header('Location: user_detail.php?id=' . $id);
+	exit;
+}
+
 $database = new Database();
 $db = $database->getConnection();
 
@@ -202,8 +209,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 }
 
-// Get clients based on active tab
-$query = "SELECT * FROM clients";
+// Get clients based on active tab. Select package_name (from package_id) when available, else fall back to subscription_plan
+$query = "SELECT c.*, COALESCE((SELECT name FROM packages WHERE id = c.package_id LIMIT 1), c.subscription_plan) AS package_name, COALESCE((SELECT price FROM packages WHERE id = c.package_id LIMIT 1), 0) AS package_price FROM clients c";
 if ($active_tab === 'hotspot') {
     $query .= " WHERE user_type = 'hotspot'";
 } elseif ($active_tab === 'pppoe') {
@@ -445,7 +452,7 @@ include 'includes/sidebar.php';
 
             <!-- Tab Panes -->
             <div id="tab-general" class="tab-pane-custom active">
-                <div style="background:white; padding:0; border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,0.05);">
+                <div class="card" style="padding:0;">
                     <div style="padding:14px 18px; border-bottom:1px solid #eee; font-weight:600;">Account Information</div>
                     <div style="padding:14px;">
                         <div class="row g-2">
@@ -453,9 +460,9 @@ include 'includes/sidebar.php';
                                 <div style="border:1px solid #e6e6e6; border-radius:8px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center;">
                                     <div>
                                         <div style="font-size:11px;color:#888; text-transform:uppercase;">Account Number</div>
-                                        <div style="font-weight:600;">F<?php echo 4900 + (int)$client_view['id']; ?></div>
+                                        <div style="font-weight:600;"><?php echo htmlspecialchars($client_view['account_number'] ?? getAccountNumber($db, $client_view)); ?></div>
                                     </div>
-                                    <button class="btn btn-sm btn-outline-light" onclick="navigator.clipboard?.writeText('F<?php echo 4900 + (int)$client_view['id']; ?>')">Copy</button>
+                                    <button class="btn btn-sm btn-outline-light" onclick="navigator.clipboard?.writeText('<?php echo htmlspecialchars($client_view['account_number'] ?? getAccountNumber($db, $client_view), ENT_QUOTES); ?>')">Copy</button>
                                 </div>
                             </div>
 
@@ -482,8 +489,16 @@ include 'includes/sidebar.php';
                             <div class="col-md-6">
                                 <div style="border:1px solid #e6e6e6; border-radius:8px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center;">
                                     <div>
-                                        <div style="font-size:11px;color:#888; text-transform:uppercase;">Password</div>
-                                        <div style="font-weight:600;"><span id="pwdHidden">••••••••</span><span id="pwdValue" style="display:none;"><?php echo htmlspecialchars($client_view['auth_password'] ?? ''); ?></span></div>
+                                            <div style="font-size:11px;color:#888; text-transform:uppercase;">Password</div>
+                                            <div style="font-weight:600;display:flex;align-items:center;gap:8px;">
+                                                <span id="pwdHidden"><?php echo !empty($client_view['auth_password']) || !empty($client_view['auth_password']) ? '••••••••' : '—'; ?></span>
+                                                <?php if (!empty($client_view['auth_password'])): ?>
+                                                    <button class="btn btn-sm btn-link me-2 p-0" onclick="(function(){const h=document.getElementById('pwdHidden'), v=document.getElementById('pwdValue'); if(!h||!v) return; const show = v.style.display==='none'; v.style.display=show?'inline':'none'; h.style.display=show?'none':'inline'; const eye=document.getElementById('pwdEye'); if(eye) eye.classList.toggle('fa-eye-slash');})();" type="button" title="Show/Hide"><i class="fas fa-eye" id="pwdEye"></i></button>
+                                                    <span id="pwdValue" style="display:none;"><?php echo htmlspecialchars($client_view['auth_password'] ?? '', ENT_QUOTES); ?></span>
+                                                <?php elseif (!empty($client_view['auth_password'])===false && !empty($client_view['password'])): ?>
+                                                    <button class="btn btn-sm btn-link me-2 p-0" title="Password stored as hash"><i class="fas fa-lock"></i></button>
+                                                <?php endif; ?>
+                                            </div>
                                     </div>
                                     <div>
                                         <button class="btn btn-sm btn-link me-2 p-0" onclick="(function(){const h=document.getElementById('pwdHidden'), v=document.getElementById('pwdValue'); if(!h||!v) return; const show = v.style.display==='none'; v.style.display=show?'inline':'none'; h.style.display=show?'none':'inline';})();" type="button" title="Show/Hide"><i class="fas fa-eye" id="pwdEye"></i></button>
@@ -509,7 +524,9 @@ include 'includes/sidebar.php';
                             <div class="col-md-6">
                                 <div style="border:1px solid #e6e6e6; border-radius:8px; padding:10px 12px;">
                                     <div style="font-size:11px;color:#888; text-transform:uppercase;">User Type</div>
-                                    <div style="font-weight:600;"><?php echo htmlspecialchars(ucfirst($client_view['user_type'] ?? '')); ?></div>
+                                    <div style="font-weight:600;">
+                                        <?php echo htmlspecialchars(ucfirst($client_view['user_type'] ?? $client_view['type'] ?? $client_view['user_role'] ?? '—')); ?>
+                                    </div>
                                 </div>
                             </div>
 
@@ -697,13 +714,15 @@ include 'includes/sidebar.php';
                             <thead>
                                 <tr style="background:#fafafa;">
                                     <th style="width:40px;"><input type="checkbox" id="selectAllClients"></th>
-                                    <th style="width: 25%;">Client</th>
-                                    <th style="width: 15%;">Username</th>
-                                    <th style="width: 12%;">Phone</th>
-                                    <th style="width: 15%;">Package</th>
-                                    <th style="width: 10%;">Type</th>
-                                    <th style="width: 8%;">Status</th>
-                                    <th style="width: 15%; text-align:right;">Actions</th>
+                                    <th style="width:12%;">Account</th>
+                                    <th style="width:20%;">Full name</th>
+                                    <th style="width:12%;">Username</th>
+                                    <th style="width:14%;">Package</th>
+                                    <th style="width:8%;">Type</th>
+                                    <th style="width:10%;">Phone</th>
+                                    <th style="width:8%;">Status</th>
+                                    <th style="width:8%;">Time left</th>
+                                    <th style="width:10%; text-align:right;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="clientsTbody">
@@ -712,39 +731,52 @@ include 'includes/sidebar.php';
                                     $status_color = $status === 'active' ? '#10b981' : ($status === 'paused' ? '#f59e0b' : '#ef4444');
                                     $expiry_date = $client['expiry_date'] ?? null;
                                     $is_expired = $expiry_date && strtotime($expiry_date) < time();
+                                    $days = calculateDaysRemaining($expiry_date);
                                 ?>
-                                <tr style="border-bottom: 1px solid #f3f4f6; transition: background 0.2s; cursor: pointer;">
-                                    <td style="padding: 12px 8px; text-align: left;" onclick="event.stopPropagation();"><input type="checkbox" /></td>
-                                    <td style="padding: 12px 8px; text-align: left;">
-                                        <div style="font-weight: 600; color: #333;"><?php echo htmlspecialchars($client['username'] ?? ''); ?></div>
+                                <tr class="client-row" data-name="<?php echo htmlspecialchars(strtolower($client['full_name'] ?? $client['username'] ?? '')); ?>" data-type="<?php echo htmlspecialchars(strtolower($client['user_type'] ?? '')); ?>" style="border-bottom: 1px solid #f3f4f6; transition: background 0.2s;">
+                                    <td style="padding: 12px 8px; text-align: left;" onclick="event.stopPropagation();">
+                                        <input class="client-checkbox" type="checkbox" />
                                     </td>
+
                                     <td style="padding: 12px 8px; text-align: left;">
-                                        <div style="font-weight: 500; color: #333;"><?php echo htmlspecialchars($client['full_name'] ?? ''); ?></div>
+                                        <div style="font-weight:600;color:#333;"><?php echo htmlspecialchars($client['account_number'] ?? getAccountNumber($db, $client)); ?></div>
+                                    </td>
+
+                                    <td style="padding: 12px 8px; text-align: left;">
+                                        <div style="font-weight: 600; color: #333;"><?php echo htmlspecialchars($client['full_name'] ?? ''); ?></div>
                                         <div style="font-size: 12px; color: #6b7280;"><?php echo htmlspecialchars($client['email'] ?? ''); ?></div>
                                     </td>
-                                    <td style="padding: 12px 8px; text-align: left; color: #333; font-size: 13px;">
-                                        <?php echo htmlspecialchars($client['phone_number'] ?? '—'); ?>
+
+                                    <td style="padding: 12px 8px; text-align: left;">
+                                        <a href="user_detail.php?id=<?php echo (int)$client['id']; ?>" onclick="console.log('view clicked', this.href)" style="color:#333;text-decoration:none;font-weight:600;">
+                                            <?php echo htmlspecialchars($client['username'] ?? $client['mikrotik_username'] ?? ''); ?>
+                                        </a>
                                     </td>
+
                                     <td style="padding: 12px 8px; text-align: left; color: #333; font-size: 13px;">
                                         <?php echo htmlspecialchars($client['package_name'] ?? 'N/A'); ?>
                                     </td>
+
+                                    <td style="padding: 12px 8px; text-align: left;">
+                                        <div style="font-size:13px;color:#333;"><?php echo htmlspecialchars(ucfirst($client['user_type'] ?? '')); ?></div>
+                                    </td>
+
+                                    <td style="padding: 12px 8px; text-align: left; color: #333; font-size: 13px;">
+                                        <?php echo htmlspecialchars($client['phone_number'] ?? $client['phone'] ?? '—'); ?>
+                                    </td>
+
                                     <td style="padding: 12px 8px; text-align: left;">
                                         <span style="background: <?php echo $status_color; ?>20; color: <?php echo $status_color; ?>; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; border: 1px solid rgba(0,0,0,0.04); text-transform: capitalize;">
                                             <?php echo ucfirst($status); ?>
                                         </span>
                                     </td>
+
                                     <td style="padding: 12px 8px; text-align: left; color: #333; font-size: 13px;">
-                                        <?php 
-                                            if ($expiry_date) {
-                                                echo date('M j, Y', strtotime($expiry_date));
-                                                if ($is_expired) echo ' <span style="color: #ef4444; font-weight: 600;">(Expired)</span>';
-                                            } else {
-                                                echo '—';
-                                            }
-                                        ?>
+                                        <?php echo $days === null ? '—' : (abs($days) < 1 ? '&#60;1d' : $days . 'd'); ?>
                                     </td>
+
                                     <td style="padding: 12px 8px; text-align: right;" onclick="event.stopPropagation();">
-                                        <a href="user_detail.php?id=<?php echo $client['id']; ?>" style="color: #667eea; text-decoration: none; font-size: 13px; font-weight: 500; transition: color 0.2s;">
+                                        <a href="user_detail.php?id=<?php echo (int)$client['id']; ?>" onclick="console.log('view clicked', this.href)" style="color: #667eea; text-decoration: none; font-size: 13px; font-weight: 500; transition: color 0.2s;">
                                             <i class="fas fa-arrow-right me-1"></i>View
                                         </a>
                                     </td>

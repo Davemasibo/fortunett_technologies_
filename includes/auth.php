@@ -44,6 +44,58 @@ function getISPProfile($pdo) {
     }
 }
 
+/**
+ * Format or generate an account number for a client.
+ * Format: <BusinessInitial><zero-padded-id>
+ * Example: business 'Fortunett' and id=6 => 'F00006' (initial 'F' + LPAD(id,5,'0'))
+ * If client already has account_number, it returns that.
+ * @param PDO|null $pdo optional PDO to read business name; if null, function will attempt to use global $pdo
+ * @param array|int $clientOrId either client array (may contain 'account_number' & 'id') or numeric client id
+ * @return string generated or existing account number
+ */
+function getAccountNumber($pdo = null, $clientOrId = null) {
+    // support calling signature getAccountNumber($client) or getAccountNumber($pdo, $client)
+    if ($clientOrId === null && is_array($pdo)) {
+        $client = $pdo;
+        $pdo = null;
+    } else {
+        $client = is_array($clientOrId) ? $clientOrId : null;
+    }
+
+    // If client provided and has account_number, return it
+    if (is_array($client) && !empty($client['account_number'])) {
+        return $client['account_number'];
+    }
+
+    // determine id
+    $id = null;
+    if (is_array($client) && isset($client['id'])) $id = (int)$client['id'];
+    if ($id === null && is_numeric($clientOrId)) $id = (int)$clientOrId;
+
+    // fallback id to 0 if not available
+    if (!$id) $id = 0;
+
+    // Get business initial
+    if (!$pdo && isset($GLOBALS['pdo'])) $pdo = $GLOBALS['pdo'];
+    $initial = 'I';
+    if ($pdo) {
+        try {
+            $stmt = $pdo->query("SELECT business_name FROM isp_profile LIMIT 1");
+            $row = $stmt->fetch();
+            if (!empty($row['business_name'])) {
+                $initial = strtoupper(substr(trim($row['business_name']),0,1));
+                if (!preg_match('/[A-Z]/', $initial)) $initial = 'I';
+            }
+        } catch (Throwable $e) {
+            // ignore and use default
+        }
+    }
+
+    // zero-pad id to 5 characters (so id=6 => 00006) and prefix initial => F00006
+    $num = str_pad((string)$id, 5, '0', STR_PAD_LEFT);
+    return $initial . $num;
+}
+
 function getSubscriptionDaysLeft($expiry_date) {
     $expiry = new DateTime($expiry_date);
     $today = new DateTime();
