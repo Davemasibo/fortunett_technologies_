@@ -16,7 +16,8 @@ define('MPESA_SHORTCODE', '174379');
 define('MPESA_PASSKEY', 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919');
 
 // Callback URL for STK push result (set to your public endpoint that accepts mpesa callback)
-define('MPESA_CALLBACK_URL', 'https://your-domain.example.com/api/mpesa_callback.php');
+// Callback URL for STK push result
+define('MPESA_CALLBACK_URL', 'https://nonaddictive-sharice-barkless.ngrok-free.dev/fortunett_technologies_/api/mpesa/callback.php');
 
 // Endpoints
 if (MPESA_ENV === 'production') {

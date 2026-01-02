@@ -1,0 +1,66 @@
+<?php
+/**
+ * API Endpoint: Initiate M-Pesa Payment
+ */
+header('Content-Type: application/json');
+require_once '../../includes/config.php';
+require_once '../../classes/MpesaAPI.php';
+
+// Validate Inputs
+$phone = $_POST['phone'] ?? '';
+$amount = $_POST['amount'] ?? 0;
+$client_id = $_POST['client_id'] ?? 0;
+
+if (empty($phone) || empty($amount) || empty($client_id)) {
+    echo json_encode(['success' => false, 'message' => 'Missing required fields']);
+    exit;
+}
+
+try {
+    $mpesa = new MpesaAPI();
+    
+    // Generate unique reference
+    $reference = 'PAY-' . $client_id . '-' . time();
+    
+    $response = $mpesa->stkPush($phone, $amount, $reference);
+    
+    if (isset($response->ResponseCode) && $response->ResponseCode == '0') {
+        // Save pending transaction in Mpesa Log
+        $stmt = $pdo->prepare("INSERT INTO mpesa_transactions 
+            (client_id, phone_number, amount, merchant_request_id, checkout_request_id, status) 
+            VALUES (?, ?, ?, ?, ?, 'pending')");
+            
+        $stmt->execute([
+            $client_id,
+            $phone,
+            $amount,
+            $response->MerchantRequestID,
+            $response->CheckoutRequestID
+        ]);
+
+        // ALSO Save pending transaction in Payments Table (for immediate UI visibility)
+        // We use checkout_request_id as transaction_id temporarily
+        $payStmt = $pdo->prepare("INSERT INTO payments 
+            (client_id, amount, payment_date, status, transaction_id) 
+            VALUES (?, ?, NOW(), 'pending', ?)");
+        
+        $payStmt->execute([
+            $client_id, 
+            $amount, 
+            $response->CheckoutRequestID 
+        ]);
+        
+        echo json_encode([
+            'success' => true, 
+            'message' => 'STK Push sent to ' . $phone,
+            'checkout_request_id' => $response->CheckoutRequestID
+        ]);
+    } else {
+        echo json_encode([
+            'success' => false, 
+            'message' => 'M-Pesa Error: ' . ($response->errorMessage ?? 'Unknown error')
+        ]);
+    }
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+}

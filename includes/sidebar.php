@@ -19,57 +19,52 @@
     <ul class="sidebar-menu">
         <li>
             <a href="dashboard.php" class="<?php echo isActivePage('dashboard.php'); ?>">
-                <i class="fas fa-home"></i> <span>Dashboard</span>
+                <i class="fas fa-th-large"></i> <span>Dashboard</span>
             </a>
         </li>
         <li>
             <a href="clients.php" class="<?php echo isActivePage(['clients.php', 'user_detail.php']); ?>">
-                <i class="fas fa-users"></i> <span>Users</span>
-            </a>
-        </li>
-        <li>
-            <a href="active_clients.php" class="<?php echo isActivePage('active_clients.php'); ?>">
-                <i class="fas fa-signal"></i> <span>Active Users</span>
+                <i class="fas fa-user-friends"></i> <span>Customers</span>
             </a>
         </li>
         <li>
             <a href="packages.php" class="<?php echo isActivePage('packages.php'); ?>">
-                <i class="fas fa-box"></i> <span>Packages</span>
+                <i class="fas fa-cube"></i> <span>Packages</span>
             </a>
         </li>
         <li>
             <a href="payments.php" class="<?php echo isActivePage('payments.php'); ?>">
-                <i class="fas fa-money-bill-wave"></i> <span>Payments</span>
-            </a>
-        </li>
-        <li>
-            <a href="sms.php" class="<?php echo isActivePage('sms.php'); ?>">
-                <i class="fas fa-sms"></i> <span>SMS</span>
-            </a>
-        </li>
-        <li>
-            <a href="emails.php" class="<?php echo isActivePage('emails.php'); ?>">
-                <i class="fas fa-envelope"></i> <span>Emails</span>
-            </a>
-        </li>
-        <li>
-            <a href="subscription.php" class="<?php echo isActivePage('subscription.php'); ?>">
-                <i class="fas fa-crown"></i> <span>Billing and Invoice</span>
+                <i class="fas fa-credit-card"></i> <span>Payments</span>
             </a>
         </li>
         <li>
             <a href="mikrotik.php" class="<?php echo isActivePage('mikrotik.php'); ?>">
-                <i class="fas fa-server"></i> <span>MikroTik</span>
+                <i class="fas fa-network-wired"></i> <span>Routers</span>
             </a>
         </li>
         <li>
             <a href="reports.php" class="<?php echo isActivePage('reports.php'); ?>">
-                <i class="fas fa-chart-bar"></i> <span>Reports</span>
+                <i class="fas fa-chart-line"></i> <span>Reports</span>
+            </a>
+        </li>
+        <li>
+            <a href="sms.php" class="<?php echo isActivePage('sms.php'); ?>">
+                <i class="fas fa-comment-dots"></i> <span>SMS</span>
+            </a>
+        </li>
+        <li>
+            <a href="emails.php" class="<?php echo isActivePage('emails.php'); ?>">
+                <i class="fas fa-envelope-open"></i> <span>Emails</span>
+            </a>
+        </li>
+        <li>
+            <a href="billing.php" class="<?php echo isActivePage('billing.php'); ?>">
+                <i class="fas fa-file-invoice-dollar"></i> <span>Billing</span>
             </a>
         </li>
         <li>
             <a href="settings.php" class="<?php echo isActivePage('settings.php'); ?>">
-                <i class="fas fa-cog"></i> <span>Settings</span>
+                <i class="fas fa-sliders-h"></i> <span>Settings</span>
             </a>
         </li>
     </ul>
@@ -122,8 +117,8 @@
         top: var(--navbar-height);
         bottom: 0;
         width: var(--sidebar-width);
-        background: white;
-        box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        background: linear-gradient(180deg, #1E3A5F 0%, #2C5282 100%);
+        box-shadow: 2px 0 8px rgba(0,0,0,0.15);
         z-index: 999;
         transition: transform 0.3s ease, width 0.3s ease, opacity 0.3s ease;
         transform: translateX(0);
@@ -165,7 +160,7 @@
         display: flex;
         align-items: center;
         padding: 14px 16px;
-        color: #333;
+        color: rgba(255, 255, 255, 0.85);
         text-decoration: none;
         transition: all 0.2s ease;
         border-left: 4px solid transparent;
@@ -177,15 +172,15 @@
     }
 
     .sidebar-menu a:hover {
-        background: #f5f5f5;
-        border-left-color: var(--primary-color);
-        color: var(--primary-color);
+        background: rgba(255, 255, 255, 0.1);
+        border-left-color: #60A5FA;
+        color: white;
     }
 
     .sidebar-menu a.active {
-        background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+        background: rgba(255, 255, 255, 0.15);
         color: white;
-        border-left-color: #fff;
+        border-left-color: #60A5FA;
         font-weight: 600;
     }
 

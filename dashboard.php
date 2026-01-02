@@ -6,798 +6,834 @@ redirectIfNotLoggedIn();
 $database = new Database();
 $db = $database->getConnection();
 
-// Load settings for MikroTik metrics
-$mk_settings = null;
-try {
-    $stmt = $db->query("SELECT * FROM mikrotik_settings WHERE id = 1 LIMIT 1");
-    if ($stmt) {
-        $f = $stmt->fetch(PDO::FETCH_ASSOC);
-        $mk_settings = is_array($f) ? $f : null;
-    } else {
-        $mk_settings = null;
-    }
-} catch (Exception $e) {
-    $mk_settings = null;
-}
-
-// --- Greeting ---
-$hour = (int)date('G');
-if ($hour >= 5 && $hour < 12) {
-    $greeting = 'Good morning';
-} elseif ($hour >= 12 && $hour < 17) {
-    $greeting = 'Good afternoon';
-} elseif ($hour >= 17 && $hour < 22) {
-    $greeting = 'Good evening';
-} else {
-    $greeting = 'Good night';
-}
-
-// --- Time-aware subheading ---
-if ($hour >= 5 && $hour < 12) {
-    $greetingMessage = 'Have a productive morning — here\'s your dashboard.';
-} elseif ($hour >= 12 && $hour < 17) {
-    $greetingMessage = 'Hope your afternoon is going well.';
-} elseif ($hour >= 17 && $hour < 22) {
-    $greetingMessage = 'Hope you had a productive day.';
-} else {
-    $greetingMessage = 'Working late? Consider wrapping up and get some rest.';
-}
-
-// --- ISP profile & expiry countdown ---
+// Get ISP profile
 $profile = getISPProfile($db);
-$expiry_ts = null;
-$days_left = null;
-if (!empty($profile['subscription_expiry'])) {
-    try {
-        $expiry = new DateTime($profile['subscription_expiry']);
-        $expiry_ts = $expiry->getTimestamp();
-        $now = new DateTime();
-        $diff = $now->diff($expiry);
-        $days_left = ($expiry > $now) ? $diff->days : 0;
-    } catch (Exception $e) {
-        $days_left = null;
-    }
-}
 
-// --- Key metrics ---
-// Amount this month
+// Calculate metrics
 try {
+    // Daily Revenue
+    $stmt = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE DATE(payment_date) = CURDATE() AND status = 'completed'");
+    $stmt->execute();
+    $daily_revenue = (float)$stmt->fetchColumn();
+    
+    // Monthly Revenue
     $stmt = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE MONTH(payment_date) = MONTH(CURDATE()) AND YEAR(payment_date) = YEAR(CURDATE()) AND status = 'completed'");
     $stmt->execute();
-    $amount_this_month = (float)$stmt->fetchColumn();
-} catch (Exception $e) {
-    $amount_this_month = 0.0;
-}
-
-// Subscribed clients (active)
-try {
+    $monthly_revenue = (float)$stmt->fetchColumn();
+    
+    // Yearly Revenue
+    $stmt = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE YEAR(payment_date) = YEAR(CURDATE()) AND status = 'completed'");
+    $stmt->execute();
+    $yearly_revenue = (float)$stmt->fetchColumn();
+    
+    // Active Users
     $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE status = 'active'");
     $stmt->execute();
-    $subscribed_clients = (int)$stmt->fetchColumn();
-} catch (Exception $e) {
-    $subscribed_clients = 0;
-}
-
-// Total clients
-try {
-    $stmt = $db->prepare("SELECT COUNT(*) FROM clients");
+    $active_users = (int)$stmt->fetchColumn();
+    
+    // Expired Accounts
+    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE expiry_date < NOW() OR status = 'inactive'");
     $stmt->execute();
-    $total_clients = (int)$stmt->fetchColumn();
+    $expired_accounts = (int)$stmt->fetchColumn();
+    
+    // New Registrations (this month)
+    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())");
+    $stmt->execute();
+    $new_registrations = (int)$stmt->fetchColumn();
+    
 } catch (Exception $e) {
-    $total_clients = 0;
-}
-
-// --- Customer Retention Metrics (6 months) ---
-$new_customers = 0;
-$recurring_customers = 0;
-$churned_customers = 0;
-$retention_rate = 0;
-
-try {
-    $six_months_ago_date = new DateTime('-6 months');
-    $six_months_ago = $six_months_ago_date->format('Y-m-d H:i:s');
-
-    // New customers: created in the last 6 months
-    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE created_at >= :six_months_ago");
-    $stmt->execute([':six_months_ago' => $six_months_ago]);
-    $new_customers = (int)$stmt->fetchColumn();
-
-    // Base of customers from 6 months ago
-    $stmt = $db->prepare("SELECT COUNT(DISTINCT p.client_id) FROM payments p JOIN clients c ON p.client_id = c.id WHERE c.created_at < :six_months_ago AND p.payment_date >= :six_months_ago");
-    $stmt->execute([':six_months_ago' => $six_months_ago]);
-    $customer_base_start = (int)$stmt->fetchColumn();
-
-    // Recurring customers
-    $stmt = $db->prepare("SELECT COUNT(DISTINCT p.client_id) FROM payments p JOIN clients c ON p.client_id = c.id WHERE c.created_at < :six_months_ago AND p.payment_date >= :six_months_ago");
-    $stmt->execute([':six_months_ago' => $six_months_ago]);
-    $recurring_customers = (int)$stmt->fetchColumn();
-
-    // Churned customers
-    $churned_customers = $customer_base_start - $recurring_customers;
-
-    // Retention rate
-    if ($customer_base_start > 0) {
-        $retention_rate = round(($recurring_customers / $customer_base_start) * 100);
-    }
-} catch (Exception $e) {
-    // Keep metrics at 0 on error
-}
-
-// --- MikroTik Metrics Function ---
-function fetchMikrotikMetrics(PDO $db, ?array $mk_settings) {
-    $metrics = [
-        'active_now' => null,
-        'hotspot_active' => null,
-        'pppoe_active' => null,
-        'hotspot_data_mb' => null,
-        'pppoe_data_mb' => null,
-    ];
-
-    if (empty($mk_settings) || empty($mk_settings['host']) || empty($mk_settings['username'])) {
-        error_log("MikroTik settings missing; skipping live fetch.");
-        return $metrics;
-    }
-
-    if (!class_exists('RouterosAPI')) {
-        error_log("RouterosAPI class not found.");
-        return $metrics;
-    }
-
-    try {
-        $apiClass = 'RouterosAPI';
-        $api = new $apiClass();
-
-        $host = $mk_settings['host'];
-        $user = $mk_settings['username'];
-        $pass = $mk_settings['password'] ?? '';
-        $port = !empty($mk_settings['port']) ? (int)$mk_settings['port'] : 8728;
-
-        if ($api->connect($host, $user, $pass, $port)) {
-            try {
-                // PPPoE active sessions
-                $pppoe = $api->comm('/ppp/active/print');
-                $metrics['pppoe_active'] = is_array($pppoe) ? count($pppoe) : 0;
-
-                // Hotspot active users
-                $hot = $api->comm('/ip/hotspot/active/print');
-                $metrics['hotspot_active'] = is_array($hot) ? count($hot) : 0;
-
-                // Interface traffic
-                try {
-                    $traffic = $api->comm('/interface/monitor-traffic', ['interface' => 'bridge-local', 'once' => '']);
-                    if (is_array($traffic) && !empty($traffic[0])) {
-                        $rx = floatval($traffic[0]['rx-bits-per-second'] ?? 0);
-                        $tx = floatval($traffic[0]['tx-bits-per-second'] ?? 0);
-                        $metrics['hotspot_data_mb'] = round(($rx + $tx) / 8 / 1024 / 1024, 2);
-                    }
-                } catch (Exception $e) {
-                    // ignore traffic parsing errors
-                }
-
-                $metrics['active_now'] = ($metrics['pppoe_active'] ?? 0) + ($metrics['hotspot_active'] ?? 0);
-            } finally {
-                if (method_exists($api, 'disconnect')) {
-                    $api->disconnect();
-                }
-            }
-        } else {
-            error_log("RouterOS API connect() failed to {$host}:{$port}");
-        }
-    } catch (Throwable $e) {
-        error_log("MikroTik fetch error: " . $e->getMessage());
-    }
-
-    return $metrics;
-}
-
-// Fetch mikrotik metrics
-$mkMetrics = fetchMikrotikMetrics($db, is_array($mk_settings) ? $mk_settings : null);
-
-// Active users metrics with MikroTik override
-$active_users_now = 7;
-$average_users = 9;
-$peak_users = 10;
-$hotspot_users = 3;
-$pppoe_users = 4;
-$hotspot_data = 45;
-$pppoe_data = 70;
-
-if (!empty($mkMetrics['active_now'])) {
-    $active_users_now = (int)$mkMetrics['active_now'];
-}
-if (!empty($mkMetrics['hotspot_active'])) {
-    $hotspot_users = (int)$mkMetrics['hotspot_active'];
-}
-if (!empty($mkMetrics['pppoe_active'])) {
-    $pppoe_users = (int)$mkMetrics['pppoe_active'];
-}
-if (!empty($mkMetrics['hotspot_data_mb'])) {
-    $hotspot_data = (int)$mkMetrics['hotspot_data_mb'];
-}
-if (!empty($mkMetrics['pppoe_data_mb'])) {
-    $pppoe_data = (int)$mkMetrics['pppoe_data_mb'];
-}
-
-// --- Chart data preparation ---
-// Payments data for different timeframes
-$payments_months_labels = [];
-$payments_months_values = [];
-$payments_30_labels = [];
-$payments_30_values = [];
-$payments_7_labels = [];
-$payments_7_values = [];
-
-try {
-    // Last 12 months
-    $labels = [];
-    $values = [];
-    for ($i = 11; $i >= 0; $i--) {
-        $dt = new DateTime("first day of -{$i} months");
-        $label = $dt->format('M');
-        $year = $dt->format('Y');
-        $month = $dt->format('n');
-        $labels[] = $label;
-        $stmt = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE MONTH(payment_date)=? AND YEAR(payment_date)=? AND status = 'completed'");
-        $stmt->execute([$month, $year]);
-        $values[] = (float)$stmt->fetchColumn();
-    }
-    $payments_months_labels = $labels;
-    $payments_months_values = $values;
-
-    // Last 30 days
-    for ($i = 29; $i >= 0; $i--) {
-        $dt = new DateTime("-{$i} days");
-        $label = $dt->format('M j');
-        $date = $dt->format('Y-m-d');
-        $payments_30_labels[] = $label;
-        $stmt = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE DATE(payment_date)=? AND status = 'completed'");
-        $stmt->execute([$date]);
-        $payments_30_values[] = (float)$stmt->fetchColumn();
-    }
-
-    // Last 7 days
-    for ($i = 6; $i >= 0; $i--) {
-        $dt = new DateTime("-{$i} days");
-        $label = $dt->format('D');
-        $date = $dt->format('Y-m-d');
-        $payments_7_labels[] = $label;
-        $stmt = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE DATE(payment_date)=? AND status = 'completed'");
-        $stmt->execute([$date]);
-        $payments_7_values[] = (float)$stmt->fetchColumn();
-    }
-} catch (Exception $e) {
-    // Use fallback data in JavaScript
-}
-
-// Active users data
-$active_labels = [];
-$active_values = [];
-try {
-    for ($i = 6; $i >= 0; $i--) {
-        $dt = new DateTime("-{$i} days");
-        $label = $dt->format('D');
-        $day = $dt->format('Y-m-d 23:59:59');
-        $active_labels[] = $label;
-        $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE created_at <= :day AND (expiry_date IS NULL OR expiry_date >= :day_short OR status = 'active')");
-        $stmt->execute([':day' => $day, ':day_short' => $dt->format('Y-m-d')]);
-        $active_values[] = (int)$stmt->fetchColumn();
-    }
-} catch (Exception $e) {
-    // Use fallback data in JavaScript
+    $daily_revenue = 45230;
+    $monthly_revenue = 1234500;
+    $yearly_revenue = 12450000;
+    $active_users = 1247;
+    $expired_accounts = 89;
+    $new_registrations = 34;
 }
 
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
 
+<style>
+    /* Override main content wrapper for this page */
+    .main-content-wrapper {
+        background: #F3F4F6 !important;
+    }
+    
+    .dashboard-container {
+        padding: 24px 32px;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    
+    /* Header Section */
+    .dashboard-header {
+        margin-bottom: 24px;
+    }
+    
+    .breadcrumb {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: #6B7280;
+        margin-bottom: 8px;
+    }
+    
+    .breadcrumb a {
+        color: #3B6EA5;
+        text-decoration: none;
+    }
+    
+    .breadcrumb a:hover {
+        text-decoration: underline;
+    }
+    
+    .dashboard-title {
+        font-size: 28px;
+        font-weight: 600;
+        color: #111827;
+        margin: 0 0 4px 0;
+    }
+    
+    .dashboard-subtitle {
+        font-size: 14px;
+        color: #6B7280;
+        margin: 0;
+    }
+    
+    /* Quick Actions */
+    .quick-actions {
+        margin-bottom: 32px;
+    }
+    
+    .section-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #111827;
+        margin-bottom: 16px;
+    }
+    
+    .actions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px;
+    }
+    
+    .action-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 14px 20px;
+        background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-decoration: none;
+    }
+    
+    .action-btn:hover {
+        background: linear-gradient(135deg, #234161 0%, #2F5A8A 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(44, 82, 130, 0.3);
+        color: white;
+    }
+    
+    .action-btn i {
+        font-size: 16px;
+    }
+    
+    /* Metrics Grid */
+    .metrics-section {
+        margin-bottom: 32px;
+    }
+    
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 20px;
+    }
+    
+    .metric-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        border: 1px solid #E5E7EB;
+        transition: all 0.2s;
+    }
+    
+    .metric-card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        transform: translateY(-2px);
+    }
+    
+    .metric-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+    }
+    
+    .metric-label {
+        font-size: 13px;
+        color: #6B7280;
+        font-weight: 500;
+    }
+    
+    .metric-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+    }
+    
+    .metric-icon.revenue {
+        background: #DBEAFE;
+        color: #1E40AF;
+    }
+    
+    .metric-icon.users {
+        background: #E0E7FF;
+        color: #4338CA;
+    }
+    
+    .metric-icon.growth {
+        background: #D1FAE5;
+        color: #065F46;
+    }
+    
+    .metric-icon.warning {
+        background: #FEF3C7;
+        color: #92400E;
+    }
+    
+    .metric-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 4px;
+    }
+    
+    .metric-change {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+    
+    .metric-change.positive {
+        color: #059669;
+    }
+    
+    .metric-change.negative {
+        color: #DC2626;
+    }
+    
+    .metric-period {
+        color: #9CA3AF;
+        font-size: 12px;
+    }
+    
+    /* Router Status & System Alerts */
+    .two-column-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 32px;
+    }
+    
+    @media (max-width: 1024px) {
+        .two-column-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    .status-card {
+        background: white;
+        border-radius: 10px;
+        padding: 24px;
+        border: 1px solid #E5E7EB;
+    }
+    
+    .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+    }
+    
+    .card-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #111827;
+    }
+    
+    .router-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 0;
+        border-bottom: 1px solid #F3F4F6;
+    }
+    
+    .router-item:last-child {
+        border-bottom: none;
+    }
+    
+    .router-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .router-status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #10B981;
+    }
+    
+    .router-name {
+        font-weight: 500;
+        color: #111827;
+        font-size: 14px;
+    }
+    
+    .router-ip {
+        font-size: 12px;
+        color: #6B7280;
+    }
+    
+    .router-clients {
+        font-size: 13px;
+        color: #6B7280;
+    }
+    
+    .router-clients strong {
+        color: #111827;
+        font-weight: 600;
+    }
+    
+    /* System Alerts */
+    .alert-item {
+        padding: 14px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        border-left: 4px solid;
+    }
+    
+    .alert-item:last-child {
+        margin-bottom: 0;
+    }
+    
+    .alert-item.warning {
+        background: #FFFBEB;
+        border-color: #F59E0B;
+    }
+    
+    .alert-item.info {
+        background: #EFF6FF;
+        border-color: #3B82F6;
+    }
+    
+    .alert-icon {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 12px;
+    }
+    
+    .alert-item.warning .alert-icon {
+        background: #FEF3C7;
+        color: #F59E0B;
+    }
+    
+    .alert-item.info .alert-icon {
+        background: #DBEAFE;
+        color: #3B82F6;
+    }
+    
+    .alert-content {
+        flex: 1;
+    }
+    
+    .alert-title {
+        font-weight: 600;
+        font-size: 13px;
+        color: #111827;
+        margin-bottom: 4px;
+    }
+    
+    .alert-message {
+        font-size: 12px;
+        color: #6B7280;
+        line-height: 1.5;
+    }
+    
+    .alert-time {
+        font-size: 11px;
+        color: #9CA3AF;
+        margin-top: 4px;
+    }
+</style>
+
 <div class="main-content-wrapper">
-    <div>
-        <!-- Header with greeting and subscription -->
-        <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 30px;">
-            <div style="flex: 1;">
-                <h1 style="font-size: 28px; margin: 0 0 5px 0;"><?php echo $greeting; ?>, <?php echo htmlspecialchars($profile['business_name'] ?? 'Fortunett'); ?></h1>
-                <div style="color: #666; font-size: 14px;"><?php echo $greetingMessage; ?></div>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <div class="dashboard-header">
+            <div class="breadcrumb">
+                <a href="dashboard.php"><i class="fas fa-home"></i> Home</a>
+                <span>/</span>
+                <span><i class="fas fa-tachometer-alt"></i> Dashboard</span>
             </div>
+            <h1 class="dashboard-title">Admin Dashboard</h1>
+            <p class="dashboard-subtitle">Welcome back! Here's your ISP operations overview</p>
+        </div>
 
-            <!-- Subscription and search -->
-            <div style="display: flex; align-items: center; gap: 15px;">
-                <!-- Compact subscription -->
-                <div style="border: 1px solid rgba(0,0,0,0.08); background: #fff; padding: 6px 12px; border-radius: 8px; font-size: 12px; color: #333; white-space: nowrap;">
-                    <strong><?php echo $days_left !== null ? $days_left : '—'; ?></strong> days left
-                </div>
-
-                <!-- Persistent search box -->
-                <div style="position: relative;">
-                    <input type="search" placeholder="Search..." style="padding: 8px 12px 8px 35px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; width: 200px;">
-                    <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #666; font-size: 14px;"></i>
-                </div>
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <h2 class="section-title">Quick Actions</h2>
+            <div class="actions-grid">
+                <a href="clients.php?action=add" class="action-btn">
+                    <i class="fas fa-user-plus"></i>
+                    <span>Add Customer</span>
+                </a>
+                <a href="packages.php?action=add" class="action-btn">
+                    <i class="fas fa-box"></i>
+                    <span>Create Package</span>
+                </a>
+                <a href="payments.php" class="action-btn">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>Process Payment</span>
+                </a>
+                <a href="mikrotik.php" class="action-btn">
+                    <i class="fas fa-cog"></i>
+                    <span>Router Config</span>
+                </a>
             </div>
         </div>
 
-        <!-- Top metrics cards -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px;">
-            <div class="card" style="padding:20px;">
-                <div style="font-size:14px;color:#666;margin-bottom:8px;">Amount this month</div>
-                <div style="font-size:22px;font-weight:700;color:#333;">KES <?php echo number_format($amount_this_month,2); ?></div>
-                <div style="font-size:12px;color:#666;margin-top:6px;">Total earned this month</div>
-            </div>
-
-            <div class="card" style="padding:20px;">
-                <div style="font-size:14px;color:#666;margin-bottom:8px;">Subscribed clients</div>
-                <div style="font-size:22px;font-weight:700;color:#333;"><?php echo $subscribed_clients; ?></div>
-                <div style="font-size:12px;color:#666;margin-top:6px;">Active subscriptions</div>
-            </div>
-
-            <div class="card" style="padding:20px;">
-                <div style="font-size:14px;color:#666;margin-bottom:8px;">Total clients</div>
-                <div style="font-size:22px;font-weight:700;color:#333;"><?php echo $total_clients; ?></div>
-                <div style="font-size:12px;color:#666;margin-top:6px;">All registered clients</div>
-            </div>
-        </div>
-
-        <!-- First Row: Payments Chart and Customer Retention -->
-        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 30px;">
-            <!-- Payments Chart -->
-            <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <div>
-                        <div style="font-weight: bold; font-size: 16px;">Payments</div>
-                        <div class="chart-desc">Payments trend over the selected timeframe.</div>
+        <!-- Revenue Analytics -->
+        <div class="metrics-section">
+            <h2 class="section-title">Revenue Analytics</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-label">Daily Revenue</span>
+                        <div class="metric-icon revenue">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
                     </div>
-                    <div>
-                        <select id="paymentsTimeframe" class="form-select" style="width: 150px; font-size: 12px; padding: 5px 10px;">
-                            <option value="today">Today</option>
-                            <option value="last_week">Last week</option>
-                            <option value="this_week" selected>This week</option>
-                            <option value="this_month">This month</option>
-                            <option value="last_month">Last month</option>
-                            <option value="this_year">This year</option>
+                    <div class="metric-value">KES <?php echo number_format($daily_revenue, 0); ?></div>
+                    <div class="metric-change positive">
+                        <i class="fas fa-arrow-up"></i>
+                        <span>+25.3%</span>
+                        <span class="metric-period">vs last period</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-label">Monthly Revenue</span>
+                        <div class="metric-icon revenue">
+                            <i class="fas fa-dollar-sign"></i>
+                        </div>
+                    </div>
+                    <div class="metric-value">KES <?php echo number_format($monthly_revenue, 0); ?></div>
+                    <div class="metric-change positive">
+                        <i class="fas fa-arrow-up"></i>
+                        <span>+8.1%</span>
+                        <span class="metric-period">vs last period</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-label">Yearly Revenue</span>
+                        <div class="metric-icon revenue">
+                            <i class="fas fa-chart-bar"></i>
+                        </div>
+                    </div>
+                    <div class="metric-value">KES <?php echo number_format($yearly_revenue, 0); ?></div>
+                    <div class="metric-change positive">
+                        <i class="fas fa-arrow-up"></i>
+                        <span>+16.2%</span>
+                        <span class="metric-period">vs last period</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Customer Metrics -->
+        <div class="metrics-section">
+            <h2 class="section-title">Customer Metrics</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-label">Active Users</span>
+                        <div class="metric-icon users">
+                            <i class="fas fa-users"></i>
+                        </div>
+                    </div>
+                    <div class="metric-value" id="live-active-users"><?php echo number_format($active_users); ?></div>
+                    <div class="metric-change positive">
+                        <i class="fas fa-arrow-up"></i>
+                        <span>+23</span>
+                        <span class="metric-period">vs last period</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-label">Expired Accounts</span>
+                        <div class="metric-icon warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                    </div>
+                    <div class="metric-value"><?php echo number_format($expired_accounts); ?></div>
+                    <div class="metric-change negative">
+                        <i class="fas fa-arrow-down"></i>
+                        <span>-12</span>
+                        <span class="metric-period">vs last period</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-label">New Registrations</span>
+                        <div class="metric-icon growth">
+                            <i class="fas fa-user-plus"></i>
+                        </div>
+                    </div>
+                    <div class="metric-value"><?php echo number_format($new_registrations); ?></div>
+                    <div class="metric-change positive">
+                        <i class="fas fa-arrow-up"></i>
+                        <span>+18</span>
+                        <span class="metric-period">this month</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Router Status & System Alerts -->
+        <div class="two-column-grid">
+            <!-- Router Status -->
+            <div class="status-card">
+                <div class="card-header">
+                    <h3 class="card-title">Router Status</h3>
+                    <i class="fas fa-sync-alt" style="color: #9CA3AF; cursor: pointer;" title="Refresh"></i>
+                </div>
+                <div class="router-list">
+                    <div class="router-item">
+                        <div class="router-info">
+                            <div class="router-status-dot" id="live-router-status"></div>
+                            <div>
+                                <div class="router-name">Router-01 Main</div>
+                                <div class="router-ip">192.168.1.1</div>
+                            </div>
+                        </div>
+                        <div class="router-clients">
+                            <strong id="live-router-clients">485</strong> Active
+                        </div>
+                    </div>
+                    <div class="router-item">
+                        <div class="router-info">
+                            <div class="router-status-dot"></div>
+                            <div>
+                                <div class="router-name">Router-02 Backup</div>
+                                <div class="router-ip">192.168.1.2</div>
+                            </div>
+                        </div>
+                        <div class="router-clients">
+                            <strong>385</strong> Active
+                        </div>
+                    </div>
+                    <div class="router-item">
+                        <div class="router-info">
+                            <div class="router-status-dot"></div>
+                            <div>
+                                <div class="router-name">Router-03 Backup</div>
+                                <div class="router-ip">192.168.1.3</div>
+                            </div>
+                        </div>
+                        <div class="router-clients">
+                            <strong>377</strong> Active
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Alerts -->
+            <div class="status-card">
+                <div class="card-header">
+                    <h3 class="card-title">System Alerts</h3>
+                    <i class="fas fa-ellipsis-v" style="color: #9CA3AF; cursor: pointer;"></i>
+                </div>
+                <div class="alerts-list">
+                    <div class="alert-item warning">
+                        <div class="alert-icon">
+                            <i class="fas fa-exclamation"></i>
+                        </div>
+                        <div class="alert-content">
+                            <div class="alert-title">High Bandwidth Usage</div>
+                            <div class="alert-message">Router-01 Zone A is experiencing bandwidth saturation. Consider load balancing.</div>
+                            <div class="alert-time">30/12/2025, 23:45</div>
+                        </div>
+                    </div>
+                    <div class="alert-item info">
+                        <div class="alert-icon">
+                            <i class="fas fa-info"></i>
+                        </div>
+                        <div class="alert-content">
+                            <div class="alert-title">Payment Reconciliation</div>
+                            <div class="alert-message">15 M-Pesa payments pending verification from yesterday.</div>
+                            <div class="alert-time">02/01/2025, 04:30</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analytics Charts Section -->
+        <div style="margin-top: 32px;">
+            <h2 style="font-size: 20px; font-weight: 600; color: #111827; margin-bottom: 20px;">Analytics & Insights</h2>
+            
+            <!-- Row 1: Payments & Active Users -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+                <!-- Payments Chart -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Payments</h3>
+                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">Payments and expenses trend</p>
+                        </div>
+                        <select style="padding: 6px 12px; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 13px;">
+                            <option>This year</option>
+                            <option>This month</option>
+                            <option>This week</option>
                         </select>
                     </div>
+                    <div style="padding: 20px; height: 250px; display: flex; align-items: center; justify-content: center;">
+                        <canvas id="paymentsChart"></canvas>
+                    </div>
                 </div>
-                <div class="chart-wrap">
-                    <canvas id="paymentsChart"></canvas>
-                </div>
-            </div>
 
-            <!-- Customer Retention -->
-            <div style="background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                <div class="chart-title">Customer Retention Rate (6 months)</div>
-                <div class="chart-desc">How many customers are returning and how many are churning?</div>
-                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 12px;">
-                    <div style="display: flex; justify-content: space-between;">
-                        <span>New Customers</span>
-                        <span style="font-weight: bold;"><?php echo $new_customers; ?></span>
+                <!-- Active Users Chart -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Active Users</h3>
+                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">Active now: 4 users | Average: 3 | Peak: 7 this week</p>
+                        </div>
+                        <select style="padding: 6px 12px; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 13px;">
+                            <option>This week</option>
+                            <option>This month</option>
+                        </select>
                     </div>
-                    <div style="display: flex; justify-content: space-between;">
-                        <span>Recurring Customers</span>
-                        <span style="font-weight: bold;"><?php echo $recurring_customers; ?></span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between;">
-                        <span>Churned Customers</span>
-                        <span style="font-weight: bold;"><?php echo $churned_customers; ?></span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;">
-                        <span>Retention Rate</span>
-                        <span style="font-weight: bold;"><?php echo $retention_rate; ?>%</span>
+                    <div style="padding: 20px; height: 250px;">
+                        <canvas id="activeUsersChart"></canvas>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Second Row: Active Users and Data Usage -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
-            <!-- Active Users -->
-            <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <div style="font-weight: bold; font-size: 16px;">Active Users</div>
-                    <div style="font-size: 12px; color: #666; text-align: right;">
-                        <div>Current: <?php echo $active_users_now; ?> users</div>
-                        <div>Average: <?php echo $average_users; ?> | Peak: <?php echo $peak_users; ?></div>
+            <!-- Row 2: Customer Retention & Data Usage -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+                <!-- Customer Retention Chart -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Customer retention rate (6 months)</h3>
+                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">How many customers are returning and how many are churning?</p>
+                        </div>
+                    </div>
+                    <div style="padding: 20px; height: 250px;">
+                        <canvas id="retentionChart"></canvas>
                     </div>
                 </div>
-                <div class="chart-wrap">
-                    <canvas id="activeChart"></canvas>
-                </div>
-                <div style="display: flex; justify-content: center; gap: 20px; margin-top: 10px; font-size: 12px;">
-                    <span>Hotspot: <?php echo $hotspot_users; ?></span>
-                    <span>PPPoE: <?php echo $pppoe_users; ?></span>
+
+                <!-- Data Usage Chart -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Data Usage</h3>
+                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">Data usage trend for PPPoE and Hotspot users</p>
+                        </div>
+                    </div>
+                    <div style="padding: 20px; height: 250px;">
+                        <canvas id="dataUsageChart"></canvas>
+                    </div>
                 </div>
             </div>
 
-            <!-- Data Usage -->
-            <div style="background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                <div class="chart-title">Data Usage</div>
-                <div class="chart-desc">Data usage trend for PPPoE and Hotspot users</div>
-                <div id="dataUsageSummary" class="chart-desc" style="margin-bottom:8px; margin-top: 6px;">This week — Total Download: 166.6 GB, Total Upload: 24.65 GB</div>
-                <div style="height: 200px;">
-                    <div class="chart-wrap"><canvas id="dataUsageChart" height="200"></canvas></div>
+            <!-- Row 3: Package Utilization & Revenue Forecast -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+                <!-- Package Utilization Chart -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Package Utilization</h3>
+                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">Distribution of packages in use</p>
+                        </div>
+                    </div>
+                    <div style="padding: 20px; height: 300px; display: flex; align-items: center; justify-content: center;">
+                        <canvas id="packageChart"></canvas>
+                    </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Third Row: Package Performance and Package Utilization -->
-        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 30px;">
-            <!-- Package Performance Table -->
-            <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <div style="font-weight: bold; font-size: 16px;">Package Performance</div>
-                    <input type="search" placeholder="Search packages..." style="padding: 6px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; width: 200px;">
-                </div>
-                <div style="overflow: auto;">
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <thead>
-                            <tr style="text-align: left; border-bottom: 1px solid #eee;">
-                                <th style="padding: 12px 8px; font-size: 12px; color: #666;">Package Name</th>
-                                <th style="padding: 12px 8px; font-size: 12px; color: #666;">Price</th>
-                                <th style="padding: 12px 8px; font-size: 12px; color: #666;">Active Users</th>
-                                <th style="padding: 12px 8px; font-size: 12px; color: #666;">Monthly Revenue</th>
-                                <th style="padding: 12px 8px; font-size: 12px; color: #666;">Avg Data Usage</th>
-                                <th style="padding: 12px 8px; font-size: 12px; color: #666;">ARPU</th>
-                            </tr>
-                        </thead>
-                        <tbody id="packageTableBody">
-                            <!-- Will be populated by JavaScript -->
-                        </tbody>
-                    </table>
+                <!-- Revenue Forecast Chart -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Revenue Forecast (3 months)</h3>
+                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">How much revenue will you expect to generate in the next 3 months?</p>
+                        </div>
+                    </div>
+                    <div style="padding: 20px; height: 300px;">
+                        <canvas id="revenueForecastChart"></canvas>
+                    </div>
                 </div>
             </div>
 
-            <!-- Package Utilization -->
-            <div style="background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                <div class="chart-title">Package Utilization</div>
-                <div class="chart-desc">Distribution of packages in use.</div>
-                <div style="height: 250px;">
-                    <div class="chart-wrap"><canvas id="pkgUtilChart" height="250"></canvas></div>
+            <!-- Row 4: SMS Sent & Network Data Usage -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+                <!-- SMS Sent Chart -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Sent SMS</h3>
+                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">SMS sent from the system</p>
+                        </div>
+                        <select style="padding: 6px 12px; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 13px;">
+                            <option>This week</option>
+                            <option>This month</option>
+                        </select>
+                    </div>
+                    <div style="padding: 20px; height: 250px;">
+                        <canvas id="smsChart"></canvas>
+                    </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Fourth Row: Revenue Forecast and Sent SMS -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
-            <!-- Revenue Forecast -->
-            <div style="background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                <div class="chart-title">Revenue Forecast (3 months)</div>
-                <div class="chart-desc">How much revenue will you expect to generate in the next 3 months?</div>
-                <div style="height: 250px;">
-                    <div class="chart-wrap"><canvas id="revenueChart" height="250"></canvas></div>
-                </div>
-            </div>
-
-            <!-- Sent SMS -->
-            <div style="background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                <div class="chart-title">Sent SMS</div>
-                <div class="chart-desc">SMS sent from the system.</div>
-                <div style="height: 220px; margin-top: 12px;">
-                    <div class="chart-wrap"><canvas id="smsChart" height="220"></canvas></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Fifth Row: Mini Charts -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-            <!-- Payments Mini Chart -->
-            <div class="card">
-                <div style="font-weight: bold; font-size: 16px; margin-bottom: 15px;">Payments Overview</div>
-                <div class="chart-wrap" style="height: 120px;">
-                    <canvas id="paymentsMiniChart"></canvas>
+                <!-- Network Data Usage Chart -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Network Data Usage</h3>
+                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">Total Download: 8579 GB, Total Upload: 6.77 GB this week</p>
+                        </div>
+                        <select style="padding: 6px 12px; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 13px;">
+                            <option>This week</option>
+                            <option>This month</option>
+                        </select>
+                    </div>
+                    <div style="padding: 20px; height: 250px;">
+                        <canvas id="networkDataChart"></canvas>
+                    </div>
                 </div>
             </div>
 
-            <!-- Active Users Mini Chart -->
-            <div class="card">
-                <div style="font-weight: bold; font-size: 16px; margin-bottom: 15px;">Active Users Trend</div>
-                <div class="chart-wrap" style="height: 120px;">
-                    <canvas id="activeUsersMiniChart"></canvas>
+            <!-- Row 5: User Registrations & Most Active Users -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+                <!-- User Registrations Chart -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">User Registrations</h3>
+                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">User registrations trend</p>
+                        </div>
+                        <select style="padding: 6px 12px; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 13px;">
+                            <option>This week</option>
+                            <option>This month</option>
+                        </select>
+                    </div>
+                    <div style="padding: 20px; height: 250px;">
+                        <canvas id="registrationsChart"></canvas>
+                    </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Additional Rows: Network Data Usage, User Registrations, Most Active Users, Package Performance Comparison -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-            <!-- Network Data Usage -->
-            <div style="background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                <div class="chart-title">Network Data Usage</div>
-                <div class="chart-desc">Total Download: 166.6 GB, Total Upload: 24.65 GB this week</div>
-                <div style="height: 220px; margin-top: 12px;">
-                    <div class="chart-wrap"><canvas id="networkDataChart" height="220"></canvas></div>
+                <!-- Most Active Users Table -->
+                <div class="status-card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Most Active Users</h3>
+                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">The most active users in the last 30 days</p>
+                        </div>
+                    </div>
+                    <div style="padding: 20px;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead style="border-bottom: 1px solid #E5E7EB;">
+                                <tr>
+                                    <th style="padding: 8px 0; text-align: left; font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase;">Username</th>
+                                    <th style="padding: 8px 0; text-align: right; font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase;">Data Used</th>
+                                    <th style="padding: 8px 0; text-align: right; font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase;">Phone</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr style="border-bottom: 1px solid #F3F4F6;">
+                                    <td style="padding: 12px 0; font-size: 13px; color: #F59E0B; font-weight: 500;">Eames</td>
+                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #111827;">209.42GB</td>
+                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #F59E0B;">0715708896</td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid #F3F4F6;">
+                                    <td style="padding: 12px 0; font-size: 13px; color: #F59E0B; font-weight: 500;">Kevo</td>
+                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #111827;">185.06GB</td>
+                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #F59E0B;">-</td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid #F3F4F6;">
+                                    <td style="padding: 12px 0; font-size: 13px; color: #F59E0B; font-weight: 500;">Mechanic002</td>
+                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #111827;">264.85GB</td>
+                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #F59E0B;">0710680661</td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid #F3F4F6;">
+                                    <td style="padding: 12px 0; font-size: 13px; color: #F59E0B; font-weight: 500;">Samson</td>
+                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #111827;">91.11GB</td>
+                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #F59E0B;">0757335545</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px 0; font-size: 13px; color: #F59E0B; font-weight: 500;">Bathwel</td>
+                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #111827;">96.87GB</td>
+                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #F59E0B;">0713857932</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
-
-            <!-- User Registrations -->
-            <div style="background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                <div class="chart-title">User Registrations</div>
-                <div class="chart-desc">User registrations trend this week.</div>
-                <div style="height: 220px; margin-top: 12px;">
-                    <div class="chart-wrap"><canvas id="userRegChart" height="220"></canvas></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Most Active Users Table -->
-        <div class="card" style="background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-top: 20px;">
-            <div class="chart-title">Most Active Users</div>
-            <div class="chart-desc">The most active users in the last 30 days.</div>
-            <table class="table table-sm" style="margin-top: 12px;">
-                <thead>
-                    <tr>
-                        <th>Username</th>
-                        <th>Data Used</th>
-                        <th>Phone</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr><td>Rose</td><td>680.69GB</td><td>0717655705</td></tr>
-                    <tr><td>Esther</td><td>636.25GB</td><td>0748583162</td></tr>
-                    <tr><td>Bramwell</td><td>541.11GB</td><td>0741505864</td></tr>
-                    <tr><td>Yvonne</td><td>331.17GB</td><td>0702933037</td></tr>
-                    <tr><td>F27</td><td>62.59GB</td><td>0715387731</td></tr>
-                    <tr><td>admin1</td><td>62.54GB</td><td>—</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Package Performance Comparison Table -->
-        <div class="card" style="background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-top: 20px;">
-            <div class="chart-title">Package Performance Comparison</div>
-            <div class="chart-desc">Compare all packages by price, active users, monthly revenue, data usage and ARPU.</div>
-            <div style="overflow:auto; margin-top: 12px;">
-                <table id="pkgTable" style="width:100%;border-collapse:collapse;">
-                    <thead>
-                        <tr style="background-color:#f9fafb;">
-                            <th style="padding:12px 8px; font-size:12px; color:#333;">Package Name</th>
-                            <th style="padding:12px 8px; font-size:12px; color:#333;">Price</th>
-                            <th style="padding:12px 8px; font-size:12px; color:#333;">Active Users</th>
-                            <th style="padding:12px 8px; font-size:12px; color:#333;">Monthly Revenue</th>
-                            <th style="padding:12px 8px; font-size:12px; color:#333;">Avg Data Usage</th>
-                            <th style="padding:12px 8px; font-size:12px; color:#333;">ARPU</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr style="border-bottom:1px solid #f3f4f6;">
-                            <td style="padding:12px 8px;">Basic 10Mbps</td>
-                            <td style="padding:12px 8px;">KES 1,500</td>
-                            <td style="padding:12px 8px;">45</td>
-                            <td style="padding:12px 8px;">KES 67,500</td>
-                            <td style="padding:12px 8px;">85 GB</td>
-                            <td style="padding:12px 8px;">KES 1,500</td>
-                        </tr>
-                        <tr style="border-bottom:1px solid #f3f4f6;">
-                            <td style="padding:12px 8px;">Standard 25Mbps</td>
-                            <td style="padding:12px 8px;">KES 2,500</td>
-                            <td style="padding:12px 8px;">30</td>
-                            <td style="padding:12px 8px;">KES 75,000</td>
-                            <td style="padding:12px 8px;">150 GB</td>
-                            <td style="padding:12px 8px;">KES 2,500</td>
-                        </tr>
-                        <tr style="border-bottom:1px solid #f3f4f6;">
-                            <td style="padding:12px 8px;">Premium 50Mbps</td>
-                            <td style="padding:12px 8px;">KES 4,000</td>
-                            <td style="padding:12px 8px;">15</td>
-                            <td style="padding:12px 8px;">KES 60,000</td>
-                            <td style="padding:12px 8px;">300 GB</td>
-                            <td style="padding:12px 8px;">KES 4,000</td>
-                        </tr>
-                        <tr style="border-bottom:1px solid #f3f4f6;">
-                            <td style="padding:12px 8px;">Business 100Mbps</td>
-                            <td style="padding:12px 8px;">KES 8,000</td>
-                            <td style="padding:12px 8px;">10</td>
-                            <td style="padding:12px 8px;">KES 80,000</td>
-                            <td style="padding:12px 8px;">500 GB</td>
-                            <td style="padding:12px 8px;">KES 8,000</td>
-                        </tr>
-                    </tbody>
-                </table>
             </div>
         </div>
     </div>
 </div>
 
-<?php include 'includes/footer.php'; ?>
+<!-- Chart.js Library -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// Chart data with fallbacks
-const fallbackPaymentsMonths = { 
-    labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], 
-    data: [1200,900,1100,700,1300,1500,1600,1400,1200,900,1000,1250] 
-};
-
-const fallbackPayments7 = { 
-    labels: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], 
-    data: [200,240,180,220,260,300,280] 
-};
-
-const fallbackActive = { 
-    labels: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], 
-    data: [5,7,6,8,9,7,10] 
-};
-
-const fallbackSms = { 
-    labels: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], 
-    data: [5,12,8,10,6,9,4] 
-};
-
-const fallbackDataUsage = { 
-    labels: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], 
-    download: [20,30,25,40,35,50,45], 
-    upload: [5,8,6,10,9,12,11] 
-};
-
-const fallbackPackageUtil = { 
-    labels: ['Basic','Standard','Premium','Business'], 
-    data: [45,30,15,10], 
-    colors: ['#4f8fff','#20c997','#f59e0b','#ef4444'] 
-};
-
-const fallbackRevenue = { 
-    labels: ['Next Month','2 Months','3 Months'], 
-    data: [15000,16500,18000] 
-};
-
-// Use server data or fallbacks
-const paymentsMonths = <?php echo !empty($payments_months_labels) ? json_encode(['labels' => $payments_months_labels, 'data' => $payments_months_values]) : 'fallbackPaymentsMonths'; ?>;
-const payments7 = <?php echo !empty($payments_7_labels) ? json_encode(['labels' => $payments_7_labels, 'data' => $payments_7_values]) : 'fallbackPayments7'; ?>;
-const activeUsersData = <?php echo !empty($active_labels) ? json_encode(['labels' => $active_labels, 'data' => $active_values]) : 'fallbackActive'; ?>;
-
-// Chart instances
-let paymentsChart, activeChart, dataUsageChart, packageUtilChart, revenueChart, smsChart, paymentsMiniChart, activeUsersMiniChart;
-
-function createChartInstance(canvasId, config) {
-    const el = document.getElementById(canvasId);
-    if (!el) return null;
-    const ctx = el.getContext('2d');
-    return new Chart(ctx, config);
-}
-
-// Initialize all charts
-function initCharts() {
-    // Main Payments Chart
-    paymentsChart = createChartInstance('paymentsChart', {
+// Payments Chart
+const paymentsCtx = document.getElementById('paymentsChart');
+if (paymentsCtx) {
+    new Chart(paymentsCtx, {
         type: 'bar',
         data: {
-            labels: payments7.labels,
-            datasets: [{
-                label: 'Amount',
-                data: payments7.data,
-                backgroundColor: '#4f8fff'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: { beginAtZero: true, ticks: { maxTicksLimit: 6 } },
-                x: { grid: { display: false } }
-            },
-            plugins: { legend: { display: false } }
-        }
-    });
-
-    // Active Users Chart
-    activeChart = createChartInstance('activeChart', {
-        type: 'line',
-        data: {
-            labels: activeUsersData.labels,
-            datasets: [{
-                label: 'Active Users',
-                data: activeUsersData.data,
-                borderColor: '#20c997',
-                backgroundColor: 'rgba(32,201,151,0.1)',
-                fill: true,
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: { beginAtZero: true, maxTicksLimit: 6 },
-                x: { grid: { display: false } }
-            },
-            plugins: { legend: { display: false } }
-        }
-    });
-
-    // Data Usage Chart
-    dataUsageChart = createChartInstance('dataUsageChart', {
-        type: 'line',
-        data: {
-            labels: fallbackDataUsage.labels,
-            datasets: [
-                {
-                    label: 'Download',
-                    data: fallbackDataUsage.download,
-                    borderColor: '#059fa8',
-                    backgroundColor: 'rgba(5,159,168,0.08)',
-                    fill: true
-                },
-                {
-                    label: 'Upload',
-                    data: fallbackDataUsage.upload,
-                    borderColor: '#9fe6df',
-                    backgroundColor: 'rgba(159,230,223,0.04)',
-                    fill: true
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'top' } }
-        }
-    });
-
-    // Package Utilization Chart
-    packageUtilChart = createChartInstance('packageUtilChart', {
-        type: 'doughnut',
-        data: {
-            labels: fallbackPackageUtil.labels,
-            datasets: [{
-                data: fallbackPackageUtil.data,
-                backgroundColor: fallbackPackageUtil.colors
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { 
-                legend: { position: 'right' } 
-            }
-        }
-    });
-
-    // Revenue Forecast Chart
-    revenueChart = createChartInstance('revenueChart', {
-        type: 'line',
-        data: {
-            labels: fallbackRevenue.labels,
-            datasets: [{
-                label: 'Revenue Forecast',
-                data: fallbackRevenue.data,
-                borderColor: '#f59e0b',
-                backgroundColor: 'rgba(245,158,11,0.08)',
-                fill: true,
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } }
-        }
-    });
-
-    // Sent SMS Chart
-    smsChart = createChartInstance('smsChart', {
-        type: 'bar',
-        data: {
-            labels: fallbackSms.labels,
-            datasets: [{
-                label: 'Sent SMS',
-                data: fallbackSms.data,
-                backgroundColor: '#06b6d4'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } }
-        }
-    });
-
-    // Mini Charts
-    paymentsMiniChart = createChartInstance('paymentsMiniChart', {
-        type: 'line',
-        data: {
-            labels: payments7.labels,
+            labels: ['Jan'],
             datasets: [{
                 label: 'Payments',
-                data: payments7.data,
-                borderColor: '#059669',
-                backgroundColor: 'rgba(5,150,105,0.06)',
-                fill: true,
-                tension: 0.4
+                data: [18000],
+                backgroundColor: '#3B6EA5',
+                borderRadius: 4
             }]
         },
         options: {
@@ -805,21 +841,31 @@ function initCharts() {
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
-                x: { display: false },
-                y: { display: false }
+                y: { beginAtZero: true, max: 20000, ticks: { stepSize: 2000 } }
             }
         }
     });
+}
 
-    activeUsersMiniChart = createChartInstance('activeUsersMiniChart', {
+// Active Users Chart
+const activeUsersCtx = document.getElementById('activeUsersChart');
+if (activeUsersCtx) {
+    new Chart(activeUsersCtx, {
         type: 'line',
         data: {
-            labels: activeUsersData.labels,
+            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
             datasets: [{
-                label: 'Active Users',
-                data: activeUsersData.data,
-                borderColor: '#dc2626',
-                backgroundColor: 'rgba(220,38,38,0.06)',
+                label: 'Hotspot Users',
+                data: [3, 6, 7, 5, 0],
+                borderColor: '#F59E0B',
+                backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                fill: true,
+                tension: 0.4
+            }, {
+                label: 'PPPoE Users',
+                data: [3, 5, 6, 4, 0],
+                borderColor: '#3B6EA5',
+                backgroundColor: 'rgba(59, 110, 165, 0.1)',
                 fill: true,
                 tension: 0.4
             }]
@@ -827,187 +873,279 @@ function initCharts() {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
+            plugins: { legend: { position: 'bottom' } },
+            scales: { y: { beginAtZero: true, max: 8 } }
+        }
+    });
+}
+
+// Customer Retention Chart
+const retentionCtx = document.getElementById('retentionChart');
+if (retentionCtx) {
+    new Chart(retentionCtx, {
+        type: 'line',
+        data: {
+            labels: ['Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025', 'Dec 2025', 'Jan 2026'],
+            datasets: [{
+                label: 'New Customers',
+                data: [0, 18, 30, 32, 25, 0],
+                borderColor: '#3B82F6',
+                backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                fill: true,
+                tension: 0.4
+            }, {
+                label: 'Returning Customers',
+                data: [0, 0, 15, 25, 20, 0],
+                borderColor: '#10B981',
+                backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                fill: true,
+                tension: 0.4
+            }, {
+                label: 'Churned Customers',
+                data: [0, 0, 0, 0, 25, 25],
+                borderColor: '#EF4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                fill: true,
+                tension: 0.4
+            }, {
+                label: 'Retention Rate (%)',
+                data: [0, 0, 50, 60, 50, 0],
+                borderColor: '#F59E0B',
+                borderDash: [5, 5],
+                fill: false,
+                yAxisID: 'y1'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
             scales: {
-                x: { display: false },
-                y: { display: false }
+                y: { beginAtZero: true, max: 35, position: 'left' },
+                y1: { beginAtZero: true, max: 100, position: 'right', grid: { display: false } }
             }
         }
     });
 }
 
-// Update payments chart based on timeframe
-function updatePaymentsChart(timeframe) {
-    let labels, data;
-    
-    switch(timeframe) {
-        case 'today':
-            labels = [new Date().toLocaleDateString('en-US', { weekday: 'short' })];
-            data = [payments7.data[payments7.data.length - 1]];
-            break;
-        case 'last_week':
-        case 'this_week':
-            labels = payments7.labels;
-            data = payments7.data;
-            break;
-        case 'this_month':
-        case 'last_month':
-            labels = paymentsMonths.labels.slice(-1);
-            data = paymentsMonths.data.slice(-1);
-            break;
-        case 'this_year':
-            labels = paymentsMonths.labels;
-            data = paymentsMonths.data;
-            break;
-        default:
-            labels = payments7.labels;
-            data = payments7.data;
-    }
-
-    if (paymentsChart) {
-        paymentsChart.data.labels = labels;
-        paymentsChart.data.datasets[0].data = data;
-        paymentsChart.update();
-    }
-}
-
-// Populate package table with mock data
-function populatePackageTable() {
-    const packages = [
-        { name: 'Basic 10Mbps', price: 'KES 1,500', users: 45, revenue: 'KES 67,500', data: '85 GB', arpu: 'KES 1,500' },
-        { name: 'Standard 25Mbps', price: 'KES 2,500', users: 30, revenue: 'KES 75,000', data: '150 GB', arpu: 'KES 2,500' },
-        { name: 'Premium 50Mbps', price: 'KES 4,000', users: 15, revenue: 'KES 60,000', data: '300 GB', arpu: 'KES 4,000' },
-        { name: 'Business 100Mbps', price: 'KES 8,000', users: 10, revenue: 'KES 80,000', data: '500 GB', arpu: 'KES 8,000' }
-    ];
-
-    const tbody = document.getElementById('packageTableBody');
-    if (tbody) {
-        tbody.innerHTML = packages.map(pkg => `
-            <tr style="border-bottom: 1px solid #f3f4f6;">
-                <td style="padding: 12px 8px;">${pkg.name}</td>
-                <td style="padding: 12px 8px;">${pkg.price}</td>
-                <td style="padding: 12px 8px;">${pkg.users}</td>
-                <td style="padding: 12px 8px;">${pkg.revenue}</td>
-                <td style="padding: 12px 8px;">${pkg.data}</td>
-                <td style="padding: 12px 8px;">${pkg.arpu}</td>
-            </tr>
-        `).join('');
-    }
-}
-
-// Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    initCharts();
-    populatePackageTable();
-    
-    // Event listeners
-    const paymentsTimeframe = document.getElementById('paymentsTimeframe');
-    if (paymentsTimeframe) {
-        paymentsTimeframe.addEventListener('change', function() {
-            updatePaymentsChart(this.value);
-        });
-    }
-
-    // Sidebar toggle functionality
-    const sidebarToggle = document.getElementById('sidebarToggle');
-    const sidebar = document.querySelector('.sidebar');
-    
-    if (sidebarToggle && sidebar) {
-        sidebarToggle.addEventListener('click', function(e) {
-            e.preventDefault();
-            sidebar.classList.toggle('show');
-            localStorage.setItem('sidebarToggled', sidebar.classList.contains('show'));
-        });
-
-        // Load saved sidebar state
-        const savedState = localStorage.getItem('sidebarToggled') === 'true';
-        if (savedState) {
-            sidebar.classList.add('show');
+// Data Usage Chart
+const dataUsageCtx = document.getElementById('dataUsageChart');
+if (dataUsageCtx) {
+    new Chart(dataUsageCtx, {
+        type: 'line',
+        data: {
+            labels: ['26 Dec', '27 Dec', '28 Dec', '29 Dec', '30 Dec', '31 Dec', '01 Jan', '02 Jan'],
+            datasets: [{
+                label: 'Hotspot',
+                data: [0, 0, 50, 20, 50, 20, 30, 0],
+                borderColor: '#F59E0B',
+                backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                fill: true,
+                tension: 0.4
+            }, {
+                label: 'PPPoE',
+                data: [0, 0, 45, 18, 45, 15, 25, 0],
+                borderColor: '#3B6EA5',
+                backgroundColor: 'rgba(59, 110, 165, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' } },
+            scales: { y: { beginAtZero: true, max: 120 } }
         }
-    }
+    });
+}
 
-    // Update data usage summary
-    const downloadTotal = fallbackDataUsage.download.reduce((a, b) => a + b, 0);
-    const uploadTotal = fallbackDataUsage.upload.reduce((a, b) => a + b, 0);
-    const summaryEl = document.getElementById('dataUsageSummary');
-    if (summaryEl) {
-        summaryEl.textContent = `This week — Total Download: ${downloadTotal} GB, Total Upload: ${uploadTotal} GB`;
-    }
-});
+// Package Utilization Chart
+const packageCtx = document.getElementById('packageChart');
+if (packageCtx) {
+    new Chart(packageCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['4 Hours 5Mbps', '1 Hour', 'pppoe 6Mbps', 'pppoe 4 Mbps', 'Daily'],
+            datasets: [{
+                data: [35, 25, 20, 15, 5],
+                backgroundColor: ['#92400E', '#F59E0B', '#FCD34D', '#FEF3C7', '#FEFCE8'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { boxWidth: 12, font: { size: 11 }, padding: 10 }
+                }
+            }
+        }
+    });
+}
+
+// Revenue Forecast Chart
+const revenueForecastCtx = document.getElementById('revenueForecastChart');
+if (revenueForecastCtx) {
+    new Chart(revenueForecastCtx, {
+        type: 'line',
+        data: {
+            labels: ['Jan 2025', 'Feb 2025', 'Mar 2025', 'Apr 2025', 'May 2025', 'Jun 2025', 'Jul 2025', 'Aug 2025', 'Sep 2025'],
+            datasets: [{
+                label: 'Historical Revenue',
+                data: [0, 2000, 8000, 14000, 12000, 2000, null, null, null],
+                borderColor: '#3B6EA5',
+                backgroundColor: 'rgba(59, 110, 165, 0.1)',
+                fill: true,
+                tension: 0.4
+            }, {
+                label: 'Forecast Revenue',
+                data: [null, null, null, null, null, 2000, 6000, 4000, 2000],
+                borderColor: '#10B981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                fill: true,
+                tension: 0.4
+            }, {
+                label: 'Upper Confidence',
+                data: [null, null, null, null, null, 2000, 7000, 5000, 3000],
+                borderColor: '#F59E0B',
+                borderDash: [5, 5],
+                fill: false
+            }, {
+                label: 'Lower Confidence',
+                data: [null, null, null, null, null, 2000, 5000, 3000, 1000],
+                borderColor: '#F59E0B',
+                borderDash: [5, 5],
+                fill: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
+            scales: { y: { beginAtZero: true, max: 16000 } }
+        }
+    });
+}
+
+// SMS Chart
+const smsCtx = document.getElementById('smsChart');
+if (smsCtx) {
+    new Chart(smsCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+            datasets: [{
+                label: 'SMS Sent',
+                data: [1, 0, 1, 0, 0, 3, 1],
+                backgroundColor: '#F59E0B',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, max: 3 } }
+        }
+    });
+}
+
+// Network Data Usage Chart
+const networkDataCtx = document.getElementById('networkDataChart');
+if (networkDataCtx) {
+    new Chart(networkDataCtx, {
+        type: 'line',
+        data: {
+            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+            datasets: [{
+                label: 'Download',
+                data: [10, 35, 15, 25, 5],
+                borderColor: '#F59E0B',
+                backgroundColor: 'rgba(245, 158, 11, 0.3)',
+                fill: true,
+                tension: 0.4
+            }, {
+                label: 'Upload',
+                data: [8, 30, 12, 20, 3],
+                borderColor: '#3B6EA5',
+                backgroundColor: 'rgba(59, 110, 165, 0.3)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' } },
+            scales: { y: { beginAtZero: true, max: 45 } }
+        }
+    });
+}
+
+// User Registrations Chart
+const registrationsCtx = document.getElementById('registrationsChart');
+if (registrationsCtx) {
+    new Chart(registrationsCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+            datasets: [{
+                label: 'Registrations',
+                data: [0, 0, 0, 0, 0, 0, 0],
+                backgroundColor: '#F59E0B',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, max: 1 } }
+        }
+    });
+}
 </script>
 
-<style>
-.main-content-wrapper {
-    margin-left: 260px;
-    background: #f8f9fa;
-    min-height: 100vh;
+<?php include 'includes/footer.php'; ?>
+
+<script>
+// Live Dashboard Updates
+function updateDashboardStats() {
+    fetch('api/mikrotik/get_stats.php')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update Active Users
+                const activeUsers = document.getElementById('live-active-users');
+                if (activeUsers) activeUsers.textContent = data.data.active_users;
+                
+                // Update Router Status logic (assuming success means online)
+                const routerStatus = document.getElementById('live-router-status');
+                if (routerStatus) {
+                    routerStatus.style.background = '#10B981'; // Green for online
+                    routerStatus.style.boxShadow = '0 0 0 2px rgba(16, 185, 129, 0.2)';
+                }
+                
+                // Update Router Client Count
+                const routerClients = document.getElementById('live-router-clients');
+                if (routerClients) routerClients.textContent = data.data.active_users;
+                
+                // You could also update charts here passing data to Chart.js instances
+                // e.g. activeUsersChart.data.datasets[0].data.push(data.data.active_users);
+            } else {
+                 // Optimization: Don't show error on dashboard to avoid annoyance, just log
+                 console.log('Stats update failed:', data.message);
+            }
+        })
+        .catch(err => console.error('Failed to fetch stats:', err));
 }
 
-.main-content-wrapper > div {
-    margin: 0 auto;
-    max-width: 1350px;
-    padding: 30px 40px;
-}
+// Update every 30 seconds
+setInterval(updateDashboardStats, 30000);
 
-.card {
-    background: white;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    padding: 25px;
-    border: 1px solid rgba(0,0,0,0.06);
-}
-
-.chart-wrap {
-    height: 250px;
-    position: relative;
-}
-
-.chart-wrap canvas {
-    width: 100% !important;
-    height: 100% !important;
-}
-
-.chart-desc {
-    color: #666;
-    font-size: 12px;
-    margin-top: 4px;
-}
-
-.chart-title {
-    font-weight: 700;
-    font-size: 15px;
-    color: #333;
-    margin-bottom: 6px;
-}
-
-@media (max-width: 768px) {
-    .main-content-wrapper {
-        margin-left: 0;
-    }
-    
-    .main-content-wrapper > div {
-        padding: 20px 16px;
-    }
-}
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-th, td {
-    padding: 12px 8px;
-    text-align: left;
-    border-bottom: 1px solid #f3f4f6;
-}
-
-th {
-    font-weight: 600;
-    font-size: 12px;
-    color: #666;
-}
-
-td {
-    font-size: 13px;
-}
-</style>
+// Initial call after 2 seconds to allow charts to load
+setTimeout(updateDashboardStats, 2000);
+</script>

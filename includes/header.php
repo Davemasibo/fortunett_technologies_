@@ -14,9 +14,11 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ISP Management System</title>
+    <title><?php echo htmlspecialchars($profile['business_name'] ?? 'ISP Management'); ?> - ISP Management System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="css/modern-design.css" rel="stylesheet">
+    <link href="css/page-layout.css" rel="stylesheet">
     <style>
         :root {
             --primary-color: #667eea;
@@ -41,8 +43,8 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
             background: var(--light-bg);
         }
         .navbar {
-            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%) !important;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%) !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
             height: var(--navbar-height);
             position: fixed;
             top: 0;
@@ -122,7 +124,7 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
         }
 
         .sidebar-menu a.active {
-            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
             color: white;
             border-left-color: #fff;
             font-weight: 600;

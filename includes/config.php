@@ -1,5 +1,6 @@
 <?php
 // Database configuration
+date_default_timezone_set('Africa/Nairobi');
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'fortunnet_technologies');
 define('DB_USER', 'root');

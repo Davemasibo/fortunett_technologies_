@@ -14,18 +14,7 @@ $action_result = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     
-    if ($action === 'update_2fa') {
-        // 2FA Settings
-        $two_factor_enabled = isset($_POST['two_factor_enabled']) ? 1 : 0;
-        try {
-            $stmt = $db->prepare("UPDATE isp_profile SET two_factor_enabled = ? WHERE id = 1");
-            $stmt->execute([$two_factor_enabled]);
-            $action_result = 'success|2FA settings updated successfully';
-        } catch (Exception $e) {
-            $action_result = 'error|' . $e->getMessage();
-        }
-    } elseif ($action === 'update_general') {
-        // General Settings
+    if ($action === 'update_general') {
         $business_name = $_POST['business_name'] ?? '';
         $business_email = $_POST['business_email'] ?? '';
         $business_phone = $_POST['business_phone'] ?? '';
@@ -39,164 +28,415 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $action_result = 'error|' . $e->getMessage();
         }
+    } elseif ($action === 'update_router') {
+        $router_ip = $_POST['router_ip'] ?? '';
+        $router_username = $_POST['router_username'] ?? '';
+        $router_password = $_POST['router_password'] ?? '';
+        $router_port = $_POST['router_port'] ?? 8728;
+        
+        try {
+            // Check if router exists
+            $stmt = $db->query("SELECT id FROM mikrotik_routers WHERE id = 1");
+            if ($stmt->fetch()) {
+                $stmt = $db->prepare("UPDATE mikrotik_routers SET ip_address = ?, username = ?, password = ?, api_port = ? WHERE id = 1");
+                $stmt->execute([$router_ip, $router_username, $router_password, $router_port]);
+            } else {
+                $stmt = $db->prepare("INSERT INTO mikrotik_routers (id, name, ip_address, username, password, api_port) VALUES (1, 'Main Router', ?, ?, ?, ?)");
+                $stmt->execute([$router_ip, $router_username, $router_password, $router_port]);
+            }
+            $action_result = 'success|Router settings updated successfully';
+        } catch (Exception $e) {
+            $action_result = 'error|' . $e->getMessage();
+        }
+    } elseif ($action === 'update_payments') {
+        $mpesa_consumer_key = $_POST['mpesa_consumer_key'] ?? '';
+        $mpesa_consumer_secret = $_POST['mpesa_consumer_secret'] ?? '';
+        $mpesa_passkey = $_POST['mpesa_passkey'] ?? '';
+        $mpesa_shortcode = $_POST['mpesa_shortcode'] ?? '';
+        $mpesa_env = $_POST['mpesa_env'] ?? 'sandbox';
+        
+        // Save to config file
+        $config_content = "<?php\n\nreturn [\n    'environment' => '$mpesa_env',\n    \n    'sandbox' => [\n        'consumer_key' => '$mpesa_consumer_key',\n        'consumer_secret' => '$mpesa_consumer_secret',\n        'passkey' => '$mpesa_passkey',\n        'shortcode' => '$mpesa_shortcode',\n        'initiator_name' => 'testapi',\n        'security_credential' => '',\n        'base_url' => 'https://sandbox.safaricom.co.ke'\n    ],\n    \n    'production' => [\n        'consumer_key' => '$mpesa_consumer_key',\n        'consumer_secret' => '$mpesa_consumer_secret',\n        'passkey' => '$mpesa_passkey',\n        'shortcode' => '$mpesa_shortcode',\n        'initiator_name' => '',\n        'security_credential' => '',\n        'base_url' => 'https://api.safaricom.co.ke'\n    ],\n    \n    'callback_url' => 'https://yourdomain.com/api/mpesa/callback.php',\n    'timeout_url' => 'https://yourdomain.com/api/mpesa/timeout.php',\n    'result_url' => 'https://yourdomain.com/api/mpesa/result.php',\n    \n    'account_reference' => 'ISP Payment',\n    'transaction_desc' => 'Internet Service Payment'\n];";
+        
+        if (file_put_contents('config/mpesa.php', $config_content)) {
+            $action_result = 'success|Payment settings updated successfully';
+        } else {
+            $action_result = 'error|Failed to save payment settings';
+        }
     }
 }
+
+// Fetch Router Settings
+$router_settings = $db->query("SELECT * FROM mikrotik_routers WHERE id = 1")->fetch(PDO::FETCH_ASSOC);
+
+// Fetch M-Pesa Settings
+$mpesa_config = require 'config/mpesa.php';
+$current_env = $mpesa_config['environment'];
+$mpesa_settings = $mpesa_config[$current_env];
+
 
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
 
+<style>
+    .main-content-wrapper {
+        background: #F3F4F6 !important;
+    }
+    
+    .settings-container {
+        padding: 24px 32px;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    
+    .settings-title {
+        font-size: 28px;
+        font-weight: 600;
+        color: #111827;
+        margin: 0 0 4px 0;
+    }
+    
+    .settings-subtitle {
+        font-size: 14px;
+        color: #6B7280;
+        margin: 0 0 24px 0;
+    }
+    
+    /* Tabs */
+    .tabs-container {
+        background: white;
+        border-radius: 10px 10px 0 0;
+        border: 1px solid #E5E7EB;
+        border-bottom: none;
+        padding: 0 24px;
+        display: flex;
+        gap: 8px;
+    }
+    
+    .tab-btn {
+        padding: 16px 20px;
+        border: none;
+        background: transparent;
+        color: #6B7280;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        border-bottom: 3px solid transparent;
+        transition: all 0.2s;
+    }
+    
+    .tab-btn.active {
+        color: #3B6EA5;
+        border-bottom-color: #3B6EA5;
+        font-weight: 600;
+    }
+    
+    /* Content */
+    .settings-content {
+        background: white;
+        border-radius: 0 0 10px 10px;
+        border: 1px solid #E5E7EB;
+        padding: 32px;
+    }
+    
+    .tab-panel {
+        display: none;
+    }
+    
+    .tab-panel.active {
+        display: block;
+    }
+    
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 24px;
+    }
+    
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    .form-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: #374151;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .form-input,
+    .form-select,
+    .form-textarea {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid #D1D5DB;
+        border-radius: 6px;
+        font-size: 14px;
+        color: #111827;
+    }
+    
+    .form-input:focus,
+    .form-select:focus,
+    .form-textarea:focus {
+        outline: none;
+        border-color: #3B6EA5;
+        box-shadow: 0 0 0 3px rgba(59, 110, 165, 0.1);
+    }
+    
+    .btn-save {
+        padding: 10px 24px;
+        background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .info-card {
+        background: #F0F9FF;
+        border: 1px solid #BAE6FD;
+        padding: 16px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    
+    .info-card p {
+        margin: 0;
+        font-size: 14px;
+        color: #0369A1;
+    }
+</style>
+
 <div class="main-content-wrapper">
-    <div>
-        <!-- Page Header -->
-        <div style="margin-bottom: 30px;">
-            <h1 style="font-size: 28px; margin: 0 0 5px 0;">Settings</h1>
-            <div style="color: #666; font-size: 14px;">Manage your system settings and preferences</div>
+    <div class="settings-container">
+        <!-- Header -->
+        <div>
+            <h1 class="settings-title">Settings</h1>
+            <p class="settings-subtitle">Manage your system settings and preferences</p>
         </div>
 
-        <!-- Settings Navigation -->
-        <div style="display: flex; gap: 20px; margin-bottom: 30px; border-bottom: 2px solid #f3f4f6; padding-bottom: 0; flex-wrap: wrap;">
-            <a href="#" onclick="switchTab(event, 'general')" class="settings-tab active" style="padding: 12px 0; border-bottom: 3px solid #667eea; color: #667eea; text-decoration: none; font-weight: 600; font-size: 14px; cursor: pointer;">
-                <i class="fas fa-cog me-1"></i>General Settings
-            </a>
-            <a href="#" onclick="switchTab(event, '2fa')" class="settings-tab" style="padding: 12px 0; border-bottom: 3px solid transparent; color: #6b7280; text-decoration: none; font-weight: 500; font-size: 14px; cursor: pointer; transition: all 0.2s;">
-                <i class="fas fa-shield-alt me-1"></i>2FA Settings
-            </a>
-            <a href="#" onclick="switchTab(event, 'system-users')" class="settings-tab" style="padding: 12px 0; border-bottom: 3px solid transparent; color: #6b7280; text-decoration: none; font-weight: 500; font-size: 14px; cursor: pointer; transition: all 0.2s;">
-                <i class="fas fa-users-cog me-1"></i>System Users
-            </a>
-            <a href="#" onclick="switchTab(event, 'system-logs')" class="settings-tab" style="padding: 12px 0; border-bottom: 3px solid transparent; color: #6b7280; text-decoration: none; font-weight: 500; font-size: 14px; cursor: pointer; transition: all 0.2s;">
-                <i class="fas fa-history me-1"></i>System Logs
-            </a>
-            <a href="#" onclick="switchTab(event, 'refer')" class="settings-tab" style="padding: 12px 0; border-bottom: 3px solid transparent; color: #6b7280; text-decoration: none; font-weight: 500; font-size: 14px; cursor: pointer; transition: all 0.2s;">
-                <i class="fas fa-share-alt me-1"></i>Refer a Friend
-            </a>
-            <a href="#" onclick="switchTab(event, 'shop')" class="settings-tab" style="padding: 12px 0; border-bottom: 3px solid transparent; color: #6b7280; text-decoration: none; font-weight: 500; font-size: 14px; cursor: pointer; transition: all 0.2s;">
-                <i class="fas fa-shopping-cart me-1"></i>Shop Equipment
-            </a>
-            <a href="#" onclick="switchTab(event, 'support')" class="settings-tab" style="padding: 12px 0; border-bottom: 3px solid transparent; color: #6b7280; text-decoration: none; font-weight: 500; font-size: 14px; cursor: pointer; transition: all 0.2s;">
-                <i class="fas fa-headset me-1"></i>Contact Support
-            </a>
+        <!-- Tabs -->
+        <div class="tabs-container">
+            <button class="tab-btn active" onclick="switchTab('general')">
+                <i class="fas fa-cog"></i> General Settings
+            </button>
+            <button class="tab-btn" onclick="switchTab('router')">
+                <i class="fas fa-network-wired"></i> Router Settings
+            </button>
+            <button class="tab-btn" onclick="switchTab('payments')">
+                <i class="fas fa-money-bill-wave"></i> Payment Settings
+            </button>
+            <button class="tab-btn" onclick="switchTab('security')">
+                <i class="fas fa-shield-alt"></i> Security
+            </button>
+            <button class="tab-btn" onclick="switchTab('users')">
+                <i class="fas fa-users-cog"></i> System Users
+            </button>
         </div>
 
-        <!-- General Settings Tab -->
-        <div id="general" class="settings-content" style="background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-            <h2 style="margin: 0 0 20px 0; font-size: 18px; font-weight: 700;">General Settings</h2>
-            
-            <form method="POST">
-                <input type="hidden" name="action" value="update_general">
+        <!-- Content -->
+        <div class="settings-content">
+
+            <!-- General Settings -->
+            <div id="general" class="tab-panel active">
+                <h2 style="font-size: 18px; font-weight: 600; margin: 0 0 20px 0;">General Settings</h2>
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                    <div>
-                        <label style="display: block; font-size: 12px; color: #666; font-weight: 600; margin-bottom: 8px; text-transform: uppercase;">Business Name</label>
-                        <input type="text" name="business_name" value="<?php echo htmlspecialchars($profile['business_name'] ?? ''); ?>" style="width: 100%; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
+                <form method="POST">
+                    <input type="hidden" name="action" value="update_general">
+                    
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Business Name</label>
+                            <input type="text" name="business_name" class="form-input" value="<?php echo htmlspecialchars($profile['business_name'] ?? ''); ?>">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Business Email</label>
+                            <input type="email" name="business_email" class="form-input" value="<?php echo htmlspecialchars($profile['business_email'] ?? ''); ?>">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Business Phone</label>
+                            <input type="text" name="business_phone" class="form-input" value="<?php echo htmlspecialchars($profile['business_phone'] ?? ''); ?>">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Currency</label>
+                            <select class="form-select">
+                                <option selected>KES (Kenyan Shilling)</option>
+                                <option>USD (US Dollar)</option>
+                                <option>EUR (Euro)</option>
+                            </select>
+                        </div>
                     </div>
-
-                    <div>
-                        <label style="display: block; font-size: 12px; color: #666; font-weight: 600; margin-bottom: 8px; text-transform: uppercase;">Business Email</label>
-                        <input type="email" name="business_email" value="<?php echo htmlspecialchars($profile['business_email'] ?? ''); ?>" style="width: 100%; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
+                    
+                    <div class="form-group">
+                        <label class="form-label">Business Address</label>
+                        <textarea name="business_address" class="form-textarea" rows="3"><?php echo htmlspecialchars($profile['business_address'] ?? ''); ?></textarea>
                     </div>
+                    
+                    <button type="submit" class="btn-save">
+                        <i class="fas fa-save"></i>
+                        Save Changes
+                    </button>
+                </form>
+            </div>
 
-                    <div>
-                        <label style="display: block; font-size: 12px; color: #666; font-weight: 600; margin-bottom: 8px; text-transform: uppercase;">Business Phone</label>
-                        <input type="text" name="business_phone" value="<?php echo htmlspecialchars($profile['business_phone'] ?? ''); ?>" style="width: 100%; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
+            <!-- Router Settings -->
+            <div id="router" class="tab-panel">
+                <h2 style="font-size: 18px; font-weight: 600; margin: 0 0 20px 0;">Router Configuration</h2>
+                
+                <div class="info-card">
+                    <p><i class="fas fa-info-circle"></i> Configure your MikroTik router connection details. Ensure API service is enabled on your router.</p>
+                </div>
+
+                <form method="POST">
+                    <input type="hidden" name="action" value="update_router">
+                    
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Router IP Address</label>
+                            <input type="text" name="router_ip" class="form-input" value="<?php echo htmlspecialchars($router_settings['ip_address'] ?? ''); ?>" placeholder="192.168.88.1" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">API Port</label>
+                            <input type="number" name="router_port" class="form-input" value="<?php echo htmlspecialchars($router_settings['api_port'] ?? '8728'); ?>" placeholder="8728">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Admin Username</label>
+                            <input type="text" name="router_username" class="form-input" value="<?php echo htmlspecialchars($router_settings['username'] ?? ''); ?>" placeholder="admin" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Admin Password</label>
+                            <input type="password" name="router_password" class="form-input" value="<?php echo htmlspecialchars($router_settings['password'] ?? ''); ?>" placeholder="••••••••">
+                        </div>
                     </div>
+                    
+                    <div style="display: flex; gap: 12px;">
+                        <button type="submit" class="btn-save">
+                            <i class="fas fa-save"></i> Save Settings
+                        </button>
+                        <button type="button" class="btn-save" style="background: white; border: 1px solid #D1D5DB; color: #374151;" onclick="testConnection()">
+                            <i class="fas fa-plug"></i> Test Connection
+                        </button>
+                    </div>
+                </form>
+            </div>
 
-                    <div>
-                        <label style="display: block; font-size: 12px; color: #666; font-weight: 600; margin-bottom: 8px; text-transform: uppercase;">Currency</label>
-                        <select style="width: 100%; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
-                            <option selected>KES (Kenyan Shilling)</option>
-                            <option>USD (US Dollar)</option>
-                            <option>EUR (Euro)</option>
+            <!-- Payment Settings -->
+            <div id="payments" class="tab-panel">
+                <h2 style="font-size: 18px; font-weight: 600; margin: 0 0 20px 0;">M-Pesa API Configuration</h2>
+                
+                <div class="info-card">
+                    <p><i class="fas fa-info-circle"></i> Configure your Daraja API credentials to enable M-Pesa STK Push payments.</p>
+                </div>
+
+                <form method="POST">
+                    <input type="hidden" name="action" value="update_payments">
+                    
+                    <div class="form-group">
+                        <label class="form-label">Environment</label>
+                        <select name="mpesa_env" class="form-select" style="max-width: 200px;">
+                            <option value="sandbox" <?php echo ($current_env == 'sandbox') ? 'selected' : ''; ?>>Sandbox (Test)</option>
+                            <option value="production" <?php echo ($current_env == 'production') ? 'selected' : ''; ?>>Production (Live)</option>
                         </select>
                     </div>
-                </div>
 
-                <div style="margin-bottom: 20px;">
-                    <label style="display: block; font-size: 12px; color: #666; font-weight: 600; margin-bottom: 8px; text-transform: uppercase;">Business Address</label>
-                    <textarea name="business_address" style="width: 100%; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; min-height: 80px;"><?php echo htmlspecialchars($profile['business_address'] ?? ''); ?></textarea>
-                </div>
-
-                <button type="submit" style="padding: 10px 24px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
-                    <i class="fas fa-save me-1"></i>Save Changes
-                </button>
-            </form>
-        </div>
-
-        <!-- 2FA Settings Tab -->
-        <div id="2fa" class="settings-content" style="display: none; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-            <h2 style="margin: 0 0 20px 0; font-size: 18px; font-weight: 700;">Two-Factor Authentication</h2>
-            
-            <div style="background: #f0fdf4; border: 1px solid #86efac; padding: 16px; border-radius: 6px; margin-bottom: 20px;">
-                <p style="margin: 0; color: #166534; font-size: 14px;">
-                    <i class="fas fa-info-circle me-2"></i>
-                    Enable two-factor authentication to add an extra layer of security to your account.
-                </p>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Consumer Key</label>
+                            <input type="text" name="mpesa_consumer_key" class="form-input" value="<?php echo htmlspecialchars($mpesa_settings['consumer_key'] ?? ''); ?>" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Consumer Secret</label>
+                            <input type="password" name="mpesa_consumer_secret" class="form-input" value="<?php echo htmlspecialchars($mpesa_settings['consumer_secret'] ?? ''); ?>" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Passkey</label>
+                            <input type="password" name="mpesa_passkey" class="form-input" value="<?php echo htmlspecialchars($mpesa_settings['passkey'] ?? ''); ?>" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Business Shortcode</label>
+                            <input type="text" name="mpesa_shortcode" class="form-input" value="<?php echo htmlspecialchars($mpesa_settings['shortcode'] ?? ''); ?>" required>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn-save">
+                        <i class="fas fa-save"></i> Save Settings
+                    </button>
+                </form>
             </div>
 
-            <form method="POST">
-                <input type="hidden" name="action" value="update_2fa">
+            <!-- Security Settings -->
+            <div id="security" class="tab-panel">
+                <h2 style="font-size: 18px; font-weight: 600; margin: 0 0 20px 0;">Security Settings</h2>
                 
-                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
-                    <input type="checkbox" name="two_factor_enabled" id="2fa_check" <?php echo ($profile['two_factor_enabled'] ?? 0) ? 'checked' : ''; ?> style="width: 20px; height: 20px; cursor: pointer;">
-                    <label for="2fa_check" style="cursor: pointer; margin: 0; font-size: 14px;">
+                <div class="info-card">
+                    <p><i class="fas fa-info-circle"></i> Enable two-factor authentication to add an extra layer of security to your account.</p>
+                </div>
+                
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+                    <input type="checkbox" id="2fa" style="width: 20px; height: 20px;">
+                    <label for="2fa" style="margin: 0; font-size: 14px;">
                         <strong>Enable 2FA</strong>
-                        <div style="color: #666; font-size: 12px; margin-top: 2px;">Require SMS or authenticator app verification on login</div>
+                        <div style="color: #6B7280; font-size: 13px;">Require SMS or authenticator app verification on login</div>
                     </label>
                 </div>
-
-                <div style="margin-bottom: 20px; padding: 16px; background: #f9fafb; border-radius: 6px;">
-                    <h4 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 700;">2FA Method</h4>
-                    <div style="display: flex; gap: 15px;">
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0;">
-                            <input type="radio" name="2fa_method" value="sms" checked>
-                            <span style="font-size: 13px;">SMS Authentication</span>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0;">
-                            <input type="radio" name="2fa_method" value="app">
-                            <span style="font-size: 13px;">Authenticator App</span>
-                        </label>
-                    </div>
-                </div>
-
-                <button type="submit" style="padding: 10px 24px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
-                    <i class="fas fa-save me-1"></i>Save 2FA Settings
-                </button>
-            </form>
-        </div>
-
-        <!-- System Users Tab -->
-        <div id="system-users" class="settings-content" style="display: none; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0; font-size: 18px; font-weight: 700;">System Users</h2>
-                <button style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">
-                    <i class="fas fa-plus me-1"></i>Add User
+                
+                <button class="btn-save">
+                    <i class="fas fa-save"></i>
+                    Save Security Settings
                 </button>
             </div>
 
-            <div style="overflow: auto;">
+            <!-- System Users -->
+            <div id="users" class="tab-panel">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="font-size: 18px; font-weight: 600; margin: 0;">System Users</h2>
+                    <button class="btn-save">
+                        <i class="fas fa-plus"></i>
+                        Add User
+                    </button>
+                </div>
+                
                 <table style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background: #f9fafb; border-bottom: 1px solid #eee;">
-                            <th style="padding: 12px 8px; text-align: left; font-weight: 600; font-size: 12px; color: #333;">Username</th>
-                            <th style="padding: 12px 8px; text-align: left; font-weight: 600; font-size: 12px; color: #333;">Email</th>
-                            <th style="padding: 12px 8px; text-align: left; font-weight: 600; font-size: 12px; color: #333;">Role</th>
-                            <th style="padding: 12px 8px; text-align: left; font-weight: 600; font-size: 12px; color: #333;">Status</th>
-                            <th style="padding: 12px 8px; text-align: right; font-weight: 600; font-size: 12px; color: #333;">Action</th>
+                    <thead style="background: #F9FAFB; border-bottom: 1px solid #E5E7EB;">
+                        <tr>
+                            <th style="padding: 12px; text-align: left; font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase;">Username</th>
+                            <th style="padding: 12px; text-align: left; font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase;">Email</th>
+                            <th style="padding: 12px; text-align: left; font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase;">Role</th>
+                            <th style="padding: 12px; text-align: left; font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase;">Status</th>
+                            <th style="padding: 12px; text-align: right; font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr style="border-bottom: 1px solid #f3f4f6;">
-                            <td style="padding: 12px 8px; font-size: 13px; font-weight: 600;">admin</td>
-                            <td style="padding: 12px 8px; font-size: 13px;">admin@fortunett.com</td>
-                            <td style="padding: 12px 8px; font-size: 13px;">
-                                <span style="background: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500;">Administrator</span>
+                        <tr style="border-bottom: 1px solid #F3F4F6;">
+                            <td style="padding: 14px; font-size: 14px; font-weight: 600;">admin</td>
+                            <td style="padding: 14px; font-size: 14px;">admin@fortunett.com</td>
+                            <td style="padding: 14px;">
+                                <span style="background: #DBEAFE; color: #1E40AF; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500;">Administrator</span>
                             </td>
-                            <td style="padding: 12px 8px; font-size: 13px;">
-                                <span style="background: #d1fae5; color: #065f46; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500;">Active</span>
+                            <td style="padding: 14px;">
+                                <span style="background: #D1FAE5; color: #065F46; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500;">Active</span>
                             </td>
-                            <td style="padding: 12px 8px; text-align: right;">
-                                <button style="background: none; border: none; color: #667eea; cursor: pointer; font-size: 13px;">
+                            <td style="padding: 14px; text-align: right;">
+                                <button style="background: none; border: none; color: #3B6EA5; cursor: pointer;">
                                     <i class="fas fa-edit"></i>
                                 </button>
                             </td>
@@ -205,203 +445,40 @@ include 'includes/sidebar.php';
                 </table>
             </div>
         </div>
-
-        <!-- System Logs Tab -->
-        <div id="system-logs" class="settings-content" style="display: none; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-            <h2 style="margin: 0 0 20px 0; font-size: 18px; font-weight: 700;">System Logs</h2>
-
-            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                <input type="search" placeholder="Search logs..." style="flex: 1; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px;">
-                <select style="padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px;">
-                    <option>All Types</option>
-                    <option>Login</option>
-                    <option>Settings</option>
-                    <option>Error</option>
-                </select>
-            </div>
-
-            <div style="overflow: auto;">
-                <table style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background: #f9fafb; border-bottom: 1px solid #eee;">
-                            <th style="padding: 12px 8px; text-align: left; font-weight: 600; font-size: 12px; color: #333;">Date/Time</th>
-                            <th style="padding: 12px 8px; text-align: left; font-weight: 600; font-size: 12px; color: #333;">Type</th>
-                            <th style="padding: 12px 8px; text-align: left; font-weight: 600; font-size: 12px; color: #333;">User</th>
-                            <th style="padding: 12px 8px; text-align: left; font-weight: 600; font-size: 12px; color: #333;">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr style="border-bottom: 1px solid #f3f4f6;">
-                            <td style="padding: 12px 8px; font-size: 13px;">Dec 15, 2024 10:30 AM</td>
-                            <td style="padding: 12px 8px; font-size: 13px;">Login</td>
-                            <td style="padding: 12px 8px; font-size: 13px;">admin</td>
-                            <td style="padding: 12px 8px; font-size: 13px; color: #10b981;">User logged in</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Refer a Friend Tab -->
-        <div id="refer" class="settings-content" style="display: none; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-            <h2 style="margin: 0 0 20px 0; font-size: 18px; font-weight: 700;">Refer a Friend</h2>
-
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 20px;">
-                <h3 style="margin: 0 0 10px 0; font-size: 16px;">Share Your Referral Link</h3>
-                <p style="margin: 0 0 20px 0; font-size: 13px; opacity: 0.9;">Earn commissions when your friends sign up using your link</p>
-                
-                <div style="display: flex; gap: 8px; align-items: center; background: rgba(255,255,255,0.1); padding: 12px; border-radius: 6px;">
-                    <input id="referralLink" type="text" value="https://fortunett.com/ref/USER123" readonly style="flex: 1; background: transparent; border: none; color: white; font-size: 13px;">
-                    <button onclick="copyReferralLink()" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">
-                        <i class="fas fa-copy"></i> Copy
-                    </button>
-                </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
-                <div style="background: #f9fafb; padding: 20px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: 700; color: #667eea; margin-bottom: 8px;">0</div>
-                    <div style="font-size: 12px; color: #666;">Referrals</div>
-                </div>
-                <div style="background: #f9fafb; padding: 20px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: 700; color: #10b981; margin-bottom: 8px;">KES 0</div>
-                    <div style="font-size: 12px; color: #666;">Earnings</div>
-                </div>
-                <div style="background: #f9fafb; padding: 20px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: 700; color: #f59e0b; margin-bottom: 8px;">0%</div>
-                    <div style="font-size: 12px; color: #666;">Commission Rate</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Shop Equipment Tab -->
-        <div id="shop" class="settings-content" style="display: none; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-            <h2 style="margin: 0 0 20px 0; font-size: 18px; font-weight: 700;">Shop Equipment</h2>
-
-            <div style="text-align: center; padding: 40px 20px;">
-                <i class="fas fa-shopping-bag" style="font-size: 48px; color: #e5e7eb; margin-bottom: 16px; display: block;"></i>
-                <p style="color: #666; font-size: 14px; margin: 0;">
-                    Equipment shop will be available soon. Check back later for networking and system equipment.
-                </p>
-            </div>
-        </div>
-
-        <!-- Contact Support Tab -->
-        <div id="support" class="settings-content" style="display: none; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-            <h2 style="margin: 0 0 20px 0; font-size: 18px; font-weight: 700;">Contact Support</h2>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
-                <div style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 20px; border-radius: 8px;">
-                    <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 700; color: #0369a1;">Email Support</h4>
-                    <p style="margin: 0; font-size: 13px; color: #333;">support@fortunett.com</p>
-                    <p style="margin: 8px 0 0 0; font-size: 12px; color: #666;">Response time: 2-4 hours</p>
-                </div>
-
-                <div style="background: #fdf2f8; border: 1px solid #fbcfe8; padding: 20px; border-radius: 8px;">
-                    <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 700; color: #9f1239;">Phone Support</h4>
-                    <p style="margin: 0; font-size: 13px; color: #333;">+254 712 345 678</p>
-                    <p style="margin: 8px 0 0 0; font-size: 12px; color: #666;">Mon-Fri: 9AM - 6PM EAT</p>
-                </div>
-            </div>
-
-            <form style="display: grid; gap: 16px;">
-                <div>
-                    <label style="display: block; font-size: 12px; color: #666; font-weight: 600; margin-bottom: 8px; text-transform: uppercase;">Subject</label>
-                    <input type="text" placeholder="How can we help?" style="width: 100%; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
-                </div>
-
-                <div>
-                    <label style="display: block; font-size: 12px; color: #666; font-weight: 600; margin-bottom: 8px; text-transform: uppercase;">Message</label>
-                    <textarea placeholder="Describe your issue..." style="width: 100%; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; min-height: 120px;"></textarea>
-                </div>
-
-                <button type="submit" style="padding: 10px 24px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
-                    <i class="fas fa-paper-plane me-1"></i>Send Message
-                </button>
-            </form>
-        </div>
-
-        <!-- Action Result Alert -->
-        <?php if ($action_result): ?>
-        <script>
-            (function() {
-                const [type, message] = '<?php echo $action_result; ?>'.split('|');
-                const alertColor = type === 'success' ? '#d1fae5' : '#fee2e2';
-                const alertTextColor = type === 'success' ? '#065f46' : '#991b1b';
-                const alertEl = document.createElement('div');
-                alertEl.style.cssText = `
-                    position: fixed;
-                    top: 80px;
-                    right: 20px;
-                    background: ${alertColor};
-                    color: ${alertTextColor};
-                    padding: 16px 20px;
-                    border-radius: 8px;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                    z-index: 2000;
-                    font-size: 14px;
-                    border: 1px solid ${alertTextColor}40;
-                `;
-                alertEl.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'} me-2"></i>${message}`;
-                document.body.appendChild(alertEl);
-                setTimeout(() => alertEl.remove(), 5000);
-            })();
-        </script>
-        <?php endif; ?>
     </div>
 </div>
 
-<?php include 'includes/footer.php'; ?>
+<?php if ($action_result): ?>
+<div id="alert-toast" style="position: fixed; top: 20px; right: 20px; padding: 16px 24px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); display: flex; align-items: center; gap: 12px; animation: slideIn 0.3s ease-out; z-index: 1000; <?php echo strpos($action_result, 'error') !== false ? 'background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B;' : 'background: #ECFDF5; border: 1px solid #A7F3D0; color: #065F46;'; ?>">
+    <i class="fas <?php echo strpos($action_result, 'error') !== false ? 'fa-exclamation-circle' : 'fa-check-circle'; ?>"></i>
+    <span style="font-weight: 500; font-size: 14px;"><?php echo explode('|', $action_result)[1]; ?></span>
+</div>
+<script>
+    setTimeout(() => {
+        const toast = document.getElementById('alert-toast');
+        if (toast) {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s ease-out';
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 4000);
+</script>
+<?php endif; ?>
 
 <script>
-function switchTab(e, tabName) {
-    e.preventDefault();
+function switchTab(tabName) {
+    // Hide all panels
+    document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
     
-    // Hide all tabs
-    document.querySelectorAll('.settings-content').forEach(el => el.style.display = 'none');
+    // Remove active from all buttons
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
     
-    // Remove active state from all tabs
-    document.querySelectorAll('.settings-tab').forEach(el => {
-        el.style.borderBottomColor = 'transparent';
-        el.style.color = '#6b7280';
-        el.style.fontWeight = '500';
-    });
+    // Show selected panel
+    document.getElementById(tabName).classList.add('active');
     
-    // Show selected tab
-    const tab = document.getElementById(tabName);
-    if (tab) {
-        tab.style.display = 'block';
-        e.target.closest('.settings-tab').style.borderBottomColor = '#667eea';
-        e.target.closest('.settings-tab').style.color = '#667eea';
-        e.target.closest('.settings-tab').style.fontWeight = '600';
-    }
-}
-
-function copyReferralLink() {
-    const link = document.getElementById('referralLink');
-    navigator.clipboard.writeText(link.value).then(() => {
-        alert('Referral link copied to clipboard!');
-    }).catch(() => {
-        alert('Failed to copy link');
-    });
+    // Activate button
+    event.target.closest('.tab-btn').classList.add('active');
 }
 </script>
 
-<style>
-.settings-content {
-    animation: fadeIn 0.2s ease-in;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-input:focus, textarea:focus, select:focus {
-    outline: none;
-    border-color: #667eea !important;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-</style>
-
-
+<?php include 'includes/footer.php'; ?>
