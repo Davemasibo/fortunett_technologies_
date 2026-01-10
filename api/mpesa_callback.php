@@ -78,11 +78,132 @@ if ($resultCode === 0) {
         $update = $pdo->prepare("UPDATE payments SET status = 'completed', transaction_id = ?, payment_date = ?, message = CONCAT(IFNULL(message,''), ' | callback: ', ?), invoice = COALESCE(NULLIF(invoice, ''), ?) WHERE id = ?");
         $update->execute([$receipt, date('Y-m-d H:i:s'), $callbackJson, $invoiceVal, $payId]);
         file_put_contents($logFile, "Updated payment id={$payId} for client={$clientId}, amount={$amount} \n", FILE_APPEND);
+        
+        // Customer Portal Enhancement: Create auto-login token and update account
+        if ($clientId) {
+            try {
+                require_once __DIR__ . '/../classes/CustomerAuth.php';
+                $auth = new CustomerAuth($pdo);
+                
+                // Create auto-login token
+                $autoLoginToken = $auth->createAutoLoginToken($clientId, $payId);
+                
+                // Update customer account balance and expiry
+                $stmt = $pdo->prepare("SELECT * FROM clients WHERE id = ?");
+                $stmt->execute([$clientId]);
+                $customer = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($customer) {
+                    // Update balance
+                    $newBalance = ($customer['account_balance'] ?? 0) + $amount;
+                    
+                    // Extend expiry if package exists
+                    $expiryDate = $customer['expiry_date'];
+                    if ($customer['package_id']) {
+                        $currentExpiry = strtotime($expiryDate);
+                        $now = time();
+                        
+                        // If expired, start from now, otherwise extend from current expiry
+                        $baseDate = ($currentExpiry < $now) ? $now : $currentExpiry;
+                        $newExpiry = date('Y-m-d H:i:s', strtotime('+30 days', $baseDate));
+                        
+                        $stmt = $pdo->prepare("
+                            UPDATE clients 
+                            SET account_balance = ?, expiry_date = ?, status = 'active' 
+                            WHERE id = ?
+                        ");
+                        $stmt->execute([$newBalance, $newExpiry, $clientId]);
+                    } else {
+                        $stmt = $pdo->prepare("UPDATE clients SET account_balance = ? WHERE id = ?");
+                        $stmt->execute([$newBalance, $clientId]);
+                    }
+                    
+                    // Log activity
+                    $auth->logActivity($clientId, 'payment', "Payment received: KES {$amount} (Receipt: {$receipt})");
+                    
+                    // Send SMS with credentials if this is a new registration
+                    try {
+                        require_once __DIR__ . '/../classes/SMSHelper.php';
+                        $sms = new SMSHelper();
+                        
+                        // Check if customer was just created (status was inactive before payment)
+                        if ($customer['status'] === 'inactive' || empty($customer['last_payment_date'])) {
+                            // Send welcome SMS with credentials
+                            $packageStmt = $pdo->prepare("SELECT name FROM packages WHERE id = ?");
+                            $packageStmt->execute([$customer['package_id']]);
+                            $packageInfo = $packageStmt->fetch(PDO::FETCH_ASSOC);
+                            $packageName = $packageInfo['name'] ?? 'Internet Package';
+                            
+                            $username = $customer['username'] ?? $customer['mikrotik_username'];
+                            $password = $customer['mikrotik_password'] ?? 'Check your email';
+                            
+                            $sms->sendWelcomeSMS($customer['phone'], $username, $password, $packageName);
+                            file_put_contents($logFile, "Sent welcome SMS to {$customer['phone']}\n", FILE_APPEND);
+                        } else {
+                            // Send payment confirmation SMS for existing customers
+                            $packageStmt = $pdo->prepare("SELECT name FROM packages WHERE id = ?");
+                            $packageStmt->execute([$customer['package_id']]);
+                            $packageInfo = $packageStmt->fetch(PDO::FETCH_ASSOC);
+                            $packageName = $packageInfo['name'] ?? 'Internet Package';
+                            
+                            $expiryFormatted = date('d M Y', strtotime($newExpiry));
+                            $sms->sendPaymentConfirmationSMS($customer['phone'], $amount, $packageName, $expiryFormatted);
+                            file_put_contents($logFile, "Sent payment confirmation SMS to {$customer['phone']}\n", FILE_APPEND);
+                        }
+                    } catch (Exception $smsError) {
+                        file_put_contents($logFile, "SMS error: " . $smsError->getMessage() . "\n", FILE_APPEND);
+                    }
+                    
+                    file_put_contents($logFile, "Created auto-login token for client={$clientId}, updated balance to {$newBalance}\n", FILE_APPEND);
+                }
+            } catch (Exception $e) {
+                file_put_contents($logFile, "Error creating auto-login: " . $e->getMessage() . "\n", FILE_APPEND);
+            }
+        }
     } else {
         $insert = $pdo->prepare("INSERT INTO payments (client_id, amount, payment_method, payment_date, transaction_id, status, message, invoice) VALUES (?, ?, 'mpesa', ?, ?, 'completed', ?, ?)");
         $insert->execute([$clientId ?? 0, $amount, date('Y-m-d H:i:s'), $receipt, $callbackJson, $client['account_number'] ?? (!empty($clientId) ? getAccountNumber($pdo, $clientId) : null)]);
         $newId = $pdo->lastInsertId();
         file_put_contents($logFile, "Inserted payment id={$newId} for client={$clientId}, amount={$amount} \n", FILE_APPEND);
+        
+        // Customer Portal Enhancement: Create auto-login token for new payment
+        if ($clientId) {
+            try {
+                require_once __DIR__ . '/../classes/CustomerAuth.php';
+                $auth = new CustomerAuth($pdo);
+                $autoLoginToken = $auth->createAutoLoginToken($clientId, $newId);
+                
+                // Update customer account
+                $stmt = $pdo->prepare("SELECT * FROM clients WHERE id = ?");
+                $stmt->execute([$clientId]);
+                $customer = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($customer) {
+                    $newBalance = ($customer['account_balance'] ?? 0) + $amount;
+                    
+                    if ($customer['package_id']) {
+                        $currentExpiry = strtotime($customer['expiry_date']);
+                        $now = time();
+                        $baseDate = ($currentExpiry < $now) ? $now : $currentExpiry;
+                        $newExpiry = date('Y-m-d H:i:s', strtotime('+30 days', $baseDate));
+                        
+                        $stmt = $pdo->prepare("
+                            UPDATE clients 
+                            SET account_balance = ?, expiry_date = ?, status = 'active' 
+                            WHERE id = ?
+                        ");
+                        $stmt->execute([$newBalance, $newExpiry, $clientId]);
+                    } else {
+                        $stmt = $pdo->prepare("UPDATE clients SET account_balance = ? WHERE id = ?");
+                        $stmt->execute([$newBalance, $clientId]);
+                    }
+                    
+                    $auth->logActivity($clientId, 'payment', "Payment received: KES {$amount} (Receipt: {$receipt})");
+                }
+            } catch (Exception $e) {
+                file_put_contents($logFile, "Error creating auto-login: " . $e->getMessage() . "\n", FILE_APPEND);
+            }
+        }
     }
 } else {
     // Non-zero ResultCode: treat as failed/cancelled. Try to update a pending payment

@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Get Started - FortuNNet Technologies</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #2C5282;
+            --primary-dark: #1e3a5f;
+            --primary-light: #3B6EA5;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --gray-50: #F9FAFB;
+            --gray-100: #F3F4F6;
+            --gray-200: #E5E7EB;
+            --gray-300: #D1D5DB;
+            --gray-400: #9CA3AF;
+            --gray-500: #6B7280;
+            --gray-600: #4B5563;
+            --gray-700: #374151;
+            --gray-800: #1F2937;
+            --gray-900: #111827;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, var(--primary) 0%, #1a365d 100%);
+            min-height: 100vh;
+            padding: 24px;
+            color: var(--gray-900);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 32px;
+            padding-top: 20px;
+        }
+
+        .header h1 {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .login-link {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .login-link a {
+            color: white;
+            text-decoration: none;
+            font-size: 14px;
+            padding: 8px 20px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+            backdrop-filter: blur(4px);
+        }
+
+        .login-link a:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        /* Toggle Switch */
+        .toggle-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 32px;
+        }
+
+        .toggle-wrapper {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 4px;
+            border-radius: 50px;
+            display: flex;
+            position: relative;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .toggle-btn {
+            padding: 10px 32px;
+            border-radius: 40px;
+            border: none;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            z-index: 1;
+        }
+
+        .toggle-btn.active {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Package List */
+        .packages-list {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .package-item {
+            display: flex;
+            align-items: center;
+            padding: 24px;
+            border-bottom: 1px solid var(--gray-100);
+            transition: all 0.2s;
+            gap: 24px;
+        }
+
+        .package-item:last-child {
+            border-bottom: none;
+        }
+
+        .package-item:hover {
+            background: var(--gray-50);
+        }
+
+        .pkg-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: var(--gray-100);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .pkg-icon.free {
+            background: #EFF6FF;
+            color: #3B82F6;
+        }
+
+        .pkg-icon.paid {
+            background: #ECFDF5;
+            color: #10B981;
+        }
+
+        .pkg-details {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 2fr 1.5fr 1fr 0.8fr 1.5fr;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .pkg-main {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .pkg-name {
+            font-weight: 700;
+            font-size: 16px;
+            color: var(--gray-900);
+            margin-bottom: 4px;
+        }
+
+        .pkg-desc {
+            font-size: 13px;
+            color: var(--gray-500);
+        }
+
+        .pkg-stat {
+            display: flex;
+            flex-direction: column;
+            font-size: 14px;
+            color: var(--gray-700);
+        }
+
+        .pkg-stat span.label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--gray-400);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .pkg-price {
+            font-weight: 700;
+            font-size: 18px;
+            color: var(--primary);
+            text-align: right;
+        }
+
+        .pkg-price.free {
+            color: #3B82F6;
+        }
+
+        .btn-select {
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-select.free {
+            background: #3B82F6;
+            color: white;
+        }
+
+        .btn-select.free:hover {
+            background: #2563EB;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-select.paid {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-select.paid:hover {
+            background: var(--primary-light);
+            box-shadow: 0 4px 12px rgba(44, 82, 130, 0.3);
+        }
+
+        /* Registration Form Section */
+        .registration-section {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            margin: 0 auto;
+            display: none;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .registration-section.show {
+            display: block;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .section-header h2 {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 8px;
+        }
+
+        .section-header p {
+            color: var(--gray-500);
+            font-size: 14px;
+        }
+
+        .selected-summary {
+            background: var(--gray-50);
+            border: 1px solid var(--gray-200);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--gray-700);
+            margin-bottom: 8px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(44, 82, 130, 0.1);
+        }
+
+        .payment-info {
+            background: #EFF6FF;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 24px;
+            margin-bottom: 24px;
+            border: 1px solid #DBEAFE;
+        }
+
+        .btn-action {
+            width: 100%;
+            padding: 14px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-action:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-back {
+            background: transparent;
+            color: var(--gray-500);
+            width: 100%;
+            padding: 12px;
+            margin-top: 12px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            display: none;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid var(--gray-200);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .pkg-details {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+
+            .pkg-stat {
+                flex-direction: row;
+                justify-content: space-between;
+                border-bottom: 1px dashed var(--gray-200);
+                padding-bottom: 8px;
+            }
+
+            .package-item {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .pkg-icon {
+                align-self: flex-start;
+            }
+
+            .pkg-price {
+                text-align: left;
+                font-size: 24px;
+                margin: 10px 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Welcome to FortuNNet</h1>
+            <p>Select a package to start your internet journey</p>
+        </div>
+
+        <div class="login-link">
+            <a href="login.html">
+                <i class="fas fa-sign-in-alt"></i> Already have an account? Login here
+            </a>
+        </div>
+
+        <!-- Package Section -->
+        <div id="packagesSection">
+            <!-- Toggle Switch -->
+            <div class="toggle-container">
+                <div class="toggle-wrapper">
+                    <button class="toggle-btn" id="btnFree" onclick="setMode('free')">Free Trial</button>
+                    <button class="toggle-btn active" id="btnPaid" onclick="setMode('paid')">Premium Packages</button>
+                </div>
+            </div>
+
+            <!-- List View -->
+            <div class="packages-list" id="packagesList">
+                <!-- Javascript will load items here -->
+            </div>
+
+            <div id="emptyState"
+                style="text-align: center; padding: 40px; display: none; background: white; border-radius: 16px;">
+                <i class="fas fa-inbox" style="font-size: 48px; color: var(--gray-300); margin-bottom: 16px;"></i>
+                <p style="color: var(--gray-500);">No packages available in this category.</p>
+            </div>
+        </div>
+
+        <!-- Registration Form -->
+        <div id="registrationSection" class="registration-section">
+            <div class="section-header">
+                <h2 id="regTitle">Payment Details</h2>
+                <p>One step away from getting connected</p>
+            </div>
+
+            <div class="selected-summary">
+                <div>
+                    <div style="font-size: 13px; color: var(--gray-500); margin-bottom: 4px;">Selected Package</div>
+                    <div style="font-weight: 700; color: var(--gray-900); font-size: 18px;" id="summaryName">Package
+                        Name</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 13px; color: var(--gray-500); margin-bottom: 4px;">Price</div>
+                    <div style="font-weight: 700; color: var(--primary); font-size: 20px;" id="summaryPrice">KES 0</div>
+                </div>
+            </div>
+
+            <form id="registrationForm" onsubmit="handleRegistration(event)">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" name="full_name" class="form-control" placeholder="John Doe" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Phone Number (M-Pesa)</label>
+                    <input type="tel" name="phone" class="form-control" placeholder="0712345678" required>
+                    <small style="color: var(--gray-500); font-size: 12px; margin-top: 4px;">Used for login and
+                        payments</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Email (Optional)</label>
+                    <input type="email" name="email" class="form-control" placeholder="john@example.com">
+                </div>
+
+                <div id="paymentMessage" class="payment-info" style="display: none;">
+                    <div style="display: flex; gap: 12px;">
+                        <i class="fas fa-mobile-alt" style="font-size: 20px;"></i>
+                        <div>
+                            <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">M-Pesa Payment</div>
+                            <div style="font-size: 13px; line-height: 1.4;">
+                                A payment prompt will be sent to your phone number. Enter your PIN to complete the
+                                transaction.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="freeMessage" class="payment-info"
+                    style="background: #ECFDF5; border-color: #D1FAE5; color: #065F46; display: none;">
+                    <div style="display: flex; gap: 12px;">
+                        <i class="fas fa-gift" style="font-size: 20px;"></i>
+                        <div>
+                            <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Free Activation</div>
+                            <div style="font-size: 13px; line-height: 1.4;">
+                                No payment required. Your account will be activated instantly.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-action" id="submitBtn">
+                    <span>Pay & Get Connected</span>
+                    <i class="fas fa-arrow-right"></i>
+                </button>
+
+                <button type="button" class="btn-back" onclick="showPackages()">Back to Packages</button>
+            </form>
+
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <h3 id="loadingTitle">Processing...</h3>
+                <p id="loadingText" style="color: var(--gray-500); font-size: 14px;">Please wait while we set up your
+                    account</p>
+            </div>
+            <div id="successState" style="text-align: center; padding: 20px; display: none;">
+                <i class="fas fa-check-circle" style="font-size: 64px; color: var(--success); margin-bottom: 24px;"></i>
+                <h2 style="margin-bottom: 12px; color: var(--gray-900);">Account Activated!</h2>
+                <p style="color: var(--gray-500); margin-bottom: 32px;" id="successMsg">Redirecting to login...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let currentMode = 'paid'; // 'free' or 'paid'
+        let packages = [];
+        let selectedPkg = null;
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            loadPackages();
+        });
+
+        // Load Packages
+        async function loadPackages() {
+            try {
+                // Determine if asking for free or paid. Ideally we fetch all and filter client side
+                const res = await fetch(`/fortunett_technologies_/api/packages.php?t=${new Date().getTime()}`);
+                const data = await res.json();
+
+                if (data.success) {
+                    packages = data.packages.filter(p => p.status === 'active');
+                    render();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // Render List
+        function render() {
+            const list = document.getElementById('packagesList');
+            const empty = document.getElementById('emptyState');
+            list.innerHTML = '';
+
+            const filtered = packages.filter(p => {
+                const price = parseFloat(p.price);
+                return currentMode === 'free' ? price === 0 : price > 0;
+            });
+
+            if (filtered.length === 0) {
+                list.style.display = 'none';
+                empty.style.display = 'block';
+                return;
+            }
+
+            list.style.display = 'flex';
+            empty.style.display = 'none';
+
+            filtered.forEach(pkg => {
+                const isFree = parseFloat(pkg.price) === 0;
+
+                // Format validity
+                const validity = (pkg.validity_value && pkg.validity_unit)
+                    ? `${pkg.validity_value} ${pkg.validity_unit}`
+                    : (pkg.duration || '30 days');
+
+                const item = document.createElement('div');
+                item.className = 'package-item';
+                item.innerHTML = `
+                    <div class="pkg-icon ${isFree ? 'free' : 'paid'}">
+                        <i class="fas fa-${pkg.connection_type === 'hotspot' ? 'wifi' : 'network-wired'}"></i>
+                    </div>
+                    <div class="pkg-details">
+                        <div class="pkg-main">
+                            <div class="pkg-name">${pkg.name}</div>
+                            <div class="pkg-desc">${pkg.description || 'Fast reliable internet'}</div>
+                        </div>
+                        <div class="pkg-stat">
+                            <span class="label">Speed</span>
+                            <div style="font-weight: 500;">${pkg.download_speed}/${pkg.upload_speed} Mbps</div>
+                        </div>
+                         <div class="pkg-stat">
+                            <span class="label">Validity</span>
+                            <div style="font-weight: 500;">${validity}</div>
+                        </div>
+                        <div class="pkg-stat">
+                            <span class="label">Devices</span>
+                            <div style="font-weight: 500;">${pkg.device_limit || 1} Device(s)</div>
+                        </div>
+                        <div class="pkg-price ${isFree ? 'free' : ''}">
+                             ${isFree ? 'Free Trial' : 'KES ' + parseFloat(pkg.price).toLocaleString()}
+                        </div>
+                    </div>
+                     <button class="btn-select ${isFree ? 'free' : 'paid'}" onclick='selectPackage(${JSON.stringify(pkg).replace(/'/g, "&#39;")})'>
+                        ${isFree ? 'Try Free' : 'Select'}
+                    </button>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        // Toggle Mode
+        function setMode(mode) {
+            currentMode = mode;
+
+            // Update UI
+            document.getElementById('btnFree').className = `toggle-btn ${mode === 'free' ? 'active' : ''}`;
+            document.getElementById('btnPaid').className = `toggle-btn ${mode === 'paid' ? 'active' : ''}`;
+
+            render();
+        }
+
+        // Select Package
+        function selectPackage(pkg) {
+            selectedPkg = pkg;
+            const isFree = parseFloat(pkg.price) === 0;
+
+            // UI Updates
+            document.getElementById('packagesSection').style.display = 'none';
+            document.getElementById('registrationSection').classList.add('show');
+
+            document.getElementById('summaryName').textContent = pkg.name;
+            document.getElementById('summaryPrice').textContent = isFree ? 'Free' : `KES ${parseFloat(pkg.price).toLocaleString()}`;
+            document.getElementById('summaryPrice').style.color = isFree ? '#3B82F6' : '#2C5282';
+
+            // Button & Pay info
+            const btn = document.getElementById('submitBtn');
+            const payInfo = document.getElementById('paymentMessage');
+            const freeInfo = document.getElementById('freeMessage');
+
+            if (isFree) {
+                btn.innerHTML = `<span>Get Connected Instantly</span> <i class="fas fa-bolt"></i>`;
+                btn.style.background = '#3B82F6';
+                payInfo.style.display = 'none';
+                freeInfo.style.display = 'block';
+                document.getElementById('regTitle').textContent = 'Activate Free Trial';
+            } else {
+                btn.innerHTML = `<span>Pay & Get Connected</span> <i class="fas fa-paper-plane"></i>`;
+                btn.style.background = 'linear-gradient(135deg, #10B981 0%, #059669 100%)';
+                payInfo.style.display = 'block';
+                freeInfo.style.display = 'none';
+                document.getElementById('regTitle').textContent = 'Payment Details';
+            }
+        }
+
+        function showPackages() {
+            document.getElementById('packagesSection').style.display = 'block';
+            document.getElementById('registrationSection').classList.remove('show');
+            selectedPkg = null;
+        }
+
+        async function handleRegistration(e) {
+            e.preventDefault();
+            if (!selectedPkg) return;
+
+            const formData = new FormData(e.target);
+            formData.append('package_id', selectedPkg.id);
+            formData.append('package_price', selectedPkg.price);
+
+            // UI Loading
+            document.getElementById('registrationForm').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+
+            const isFree = parseFloat(selectedPkg.price) === 0;
+            if (isFree) {
+                document.getElementById('loadingTitle').textContent = "Activating Service...";
+                document.getElementById('loadingText').textContent = "Setting up your free trial access...";
+            } else {
+                document.getElementById('loadingTitle').textContent = "Waiting for Payment...";
+                document.getElementById('loadingText').textContent = "Please check your phone and enter your M-Pesa PIN.";
+            }
+
+            try {
+                const res = await fetch('/fortunett_technologies_/api/customer/register.php', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    if (data.is_free) {
+                        // Success -> Show Success state
+                        document.getElementById('loading').style.display = 'none';
+                        document.getElementById('successState').style.display = 'block';
+                        document.getElementById('successMsg').innerHTML = `
+                            <strong>Username:</strong> ${data.username}<br>
+                            <strong>Password:</strong> (Generated)<br><br>
+                            Redirecting to login...
+                         `;
+                        setTimeout(() => window.location.href = 'login.html', 3000);
+                    } else {
+                        // Poll
+                        pollPayment(data.checkout_request_id);
+                    }
+                } else {
+                    revertState(data.message);
+                }
+            } catch (err) {
+                revertState("Connection error. Please try again.");
+            }
+        }
+
+        function revertState(msg) {
+            alert(msg);
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('registrationForm').style.display = 'block';
+        }
+
+        function pollPayment(reqId) {
+            let attempts = 0;
+            const interval = setInterval(async () => {
+                attempts++;
+                if (attempts > 60) {
+                    clearInterval(interval);
+                    revertState("Payment timeout. Please check SMS.");
+                    return;
+                }
+
+                try {
+                    const res = await fetch(`/fortunett_technologies_/api/customer/payment_status.php?checkout_request_id=${reqId}`);
+                    const data = await res.json();
+
+                    if (data.status === 'completed') {
+                        clearInterval(interval);
+                        document.getElementById('loading').style.display = 'none';
+                        document.getElementById('successState').style.display = 'block';
+                        setTimeout(() => window.location.href = 'login.html', 3000);
+                    } else if (data.status === 'failed') {
+                        clearInterval(interval);
+                        revertState("Payment failed: " + data.message);
+                    }
+                } catch (e) { }
+            }, 2000);
+        }
+
+    </script>
+</body>
+
+</html>

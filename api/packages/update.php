@@ -30,10 +30,14 @@ try {
     $pdo->beginTransaction();
 
     // Update DB
-    $stmt = $pdo->prepare("UPDATE packages SET name = ?, price = ?, description = ?, mikrotik_profile = ?, rate_limit = ?, connection_type = ?, download_speed = ?, upload_speed = ?, data_limit = ?, type = ? WHERE id = ?");
+    $stmt = $pdo->prepare("UPDATE packages SET name = ?, price = ?, description = ?, mikrotik_profile = ?, rate_limit = ?, connection_type = ?, download_speed = ?, upload_speed = ?, data_limit = ?, type = ?, validity_value = ?, validity_unit = ?, device_limit = ? WHERE id = ?");
     $stmt->execute([
         $name, $price, $description, $mikrotik_profile, $rate_limit, $connection_type,
-        $download_speed, $upload_speed, $data_limit, $connection_type, $id
+        $download_speed, $upload_speed, $data_limit, $connection_type,
+        $_POST['validity_value'] ?? 30,
+        $_POST['validity_unit'] ?? 'days',
+        $_POST['device_limit'] ?? 1,
+        $id
     ]);
     
     // Sync to Router (Optional: Update profile limits)

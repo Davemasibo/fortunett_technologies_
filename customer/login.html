@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Login - FortuNNet Technologies</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            max-width: 450px;
+            width: 100%;
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .login-header {
+            background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+            padding: 40px 30px;
+            text-align: center;
+            color: white;
+        }
+
+        .login-header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .login-header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .login-body {
+            padding: 40px 30px;
+        }
+
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            background: #F3F4F6;
+            padding: 4px;
+            border-radius: 10px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #6B7280;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .tab-btn.active {
+            background: white;
+            color: #2C5282;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-wrapper i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9CA3AF;
+            font-size: 14px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 14px 14px 14px 45px;
+            border: 2px solid #E5E7EB;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: all 0.3s;
+            background: #F9FAFB;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #3B6EA5;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(59, 110, 165, 0.1);
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(44, 82, 130, 0.3);
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(44, 82, 130, 0.4);
+        }
+
+        .btn-login:active {
+            transform: translateY(0);
+        }
+
+        .divider {
+            text-align: center;
+            margin: 25px 0;
+            position: relative;
+        }
+
+        .divider::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            width: 100%;
+            height: 1px;
+            background: #E5E7EB;
+        }
+
+        .divider span {
+            background: white;
+            padding: 0 15px;
+            position: relative;
+            color: #9CA3AF;
+            font-size: 13px;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+            animation: slideDown 0.3s;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .alert-error {
+            background: #FEE2E2;
+            color: #991B1B;
+            border: 1px solid #FCA5A5;
+        }
+
+        .alert-success {
+            background: #D1FAE5;
+            color: #065F46;
+            border: 1px solid #6EE7B7;
+        }
+
+        .login-footer {
+            text-align: center;
+            padding: 20px 30px 30px;
+            color: #6B7280;
+            font-size: 13px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3B6EA5;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                border-radius: 15px;
+            }
+
+            .login-header {
+                padding: 30px 20px;
+            }
+
+            .login-body {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1><i class="fas fa-wifi"></i> Welcome</h1>
+            <p>Connect to FortuNNet Technologies</p>
+        </div>
+
+        <div class="login-body">
+            <div id="alertBox" class="alert"></div>
+
+            <div class="tab-buttons">
+                <button class="tab-btn active" onclick="switchTab('credentials')">
+                    <i class="fas fa-user"></i> Login
+                </button>
+                <button class="tab-btn" onclick="switchTab('voucher')">
+                    <i class="fas fa-ticket-alt"></i> Voucher
+                </button>
+            </div>
+
+            <div style="text-align: center; margin-bottom: 20px;">
+                <a href="register.html"
+                    style="color: #3B6EA5; text-decoration: none; font-size: 13px; font-weight: 500;">
+                    <i class="fas fa-user-plus"></i> New customer? Register here
+                </a>
+            </div>
+
+            <!-- Credentials Login -->
+            <div id="credentials-tab" class="tab-content active">
+                <form id="credentialsForm" onsubmit="handleCredentialsLogin(event)">
+                    <div class="form-group">
+                        <label>Username / Phone / Email</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-user"></i>
+                            <input type="text" name="username" class="form-control" placeholder="Enter your username"
+                                required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Password</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" name="password" class="form-control"
+                                placeholder="Enter your password" required>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-login">
+                        <i class="fas fa-sign-in-alt"></i> Login to Internet
+                    </button>
+                </form>
+            </div>
+
+            <!-- Voucher Login -->
+            <div id="voucher-tab" class="tab-content">
+                <form id="voucherForm" onsubmit="handleVoucherLogin(event)">
+                    <div class="form-group">
+                        <label>Voucher Code</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-ticket-alt"></i>
+                            <input type="text" name="voucher" class="form-control" placeholder="Enter voucher code"
+                                required>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-login">
+                        <i class="fas fa-check"></i> Activate Voucher
+                    </button>
+                </form>
+            </div>
+
+            <div id="loadingBox" class="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 15px; color: #6B7280;">Connecting...</p>
+            </div>
+        </div>
+
+        <div class="login-footer">
+            <p>Need help? Contact support at <strong>+254729909387</strong></p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/fortunett_technologies_/api/customer';
+
+        // Check for auto-login token
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+
+            if (token) {
+                handleAutoLogin(token);
+            }
+        });
+
+        function switchTab(tab) {
+            // Update buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.closest('.tab-btn').classList.add('active');
+
+            // Update content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(tab + '-tab').classList.add('active');
+
+            hideAlert();
+        }
+
+        function showAlert(message, type = 'error') {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.textContent = message;
+            alertBox.className = 'alert alert-' + type + ' show';
+        }
+
+        function hideAlert() {
+            document.getElementById('alertBox').className = 'alert';
+        }
+
+        function showLoading() {
+            document.getElementById('loadingBox').classList.add('show');
+            document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingBox').classList.remove('show');
+            document.querySelectorAll('.tab-content.active').forEach(el => el.style.display = 'block');
+        }
+
+        async function handleCredentialsLogin(e) {
+            e.preventDefault();
+            hideAlert();
+            showLoading();
+
+            const formData = new FormData(e.target);
+
+            try {
+                const response = await fetch(API_BASE + '/login.php', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('Login successful! Connecting...', 'success');
+                    setTimeout(() => {
+                        window.location.href = '/fortunett_technologies_/customer/dashboard.php';
+                    }, 1000);
+                } else {
+                    hideLoading();
+                    showAlert(data.message || 'Login failed. Please check your credentials.');
+                }
+            } catch (error) {
+                hideLoading();
+                showAlert('Connection error. Please try again.');
+            }
+        }
+
+        async function handleVoucherLogin(e) {
+            e.preventDefault();
+            hideAlert();
+            showLoading();
+
+            const formData = new FormData(e.target);
+
+            try {
+                const response = await fetch(API_BASE + '/login.php', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('Voucher activated! Connecting...', 'success');
+                    setTimeout(() => {
+                        window.location.href = '/fortunett_technologies_/customer/dashboard.php';
+                    }, 1000);
+                } else {
+                    hideLoading();
+                    showAlert(data.message || 'Invalid voucher code.');
+                }
+            } catch (error) {
+                hideLoading();
+                showAlert('Connection error. Please try again.');
+            }
+        }
+
+        async function handleAutoLogin(token) {
+            showLoading();
+
+            try {
+                const formData = new FormData();
+                formData.append('auto_login_token', token);
+
+                const response = await fetch(API_BASE + '/login.php', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('Payment successful! Connecting...', 'success');
+                    setTimeout(() => {
+                        window.location.href = '/fortunett_technologies_/customer/dashboard.php';
+                    }, 1000);
+                } else {
+                    hideLoading();
+                    showAlert(data.message || 'Auto-login failed.');
+                }
+            } catch (error) {
+                hideLoading();
+                showAlert('Connection error. Please try again.');
+            }
+        }
+    </script>
+</body>
+
+</html>

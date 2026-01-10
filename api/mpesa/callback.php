@@ -66,6 +66,41 @@ try {
                 
             $payStmt->execute([$receipt, $checkoutRequestId]);
             
+            // ACTIVATE SERVICE
+            // Get client and package details
+            $clientStmt = $pdo->prepare("SELECT * FROM clients WHERE id = ?");
+            $clientStmt->execute([$transaction['client_id']]);
+            $client = $clientStmt->fetch();
+            
+            if ($client && $client['package_id']) {
+                $pkgStmt = $pdo->prepare("SELECT * FROM packages WHERE id = ?");
+                $pkgStmt->execute([$client['package_id']]);
+                $package = $pkgStmt->fetch();
+                
+                if ($package) {
+                    $validityValue = $package['validity_value'] ?? 30;
+                    $validityUnit = $package['validity_unit'] ?? 'days';
+                    
+                    // Determine start date (Extend from now, or from current expiry if valid?)
+                    // Usually extend from NOW for seamless renewal if expired.
+                    // If active, extend from current expiry? Let's stick to NOW for simplicity or specific rule.
+                    // Request implies "validity of the package".
+                    
+                    $expiryDate = date('Y-m-d H:i:s', strtotime('+' . $validityValue . ' ' . $validityUnit));
+                    
+                    $updateClient = $pdo->prepare("UPDATE clients SET 
+                        status = 'active',
+                        expiry_date = ?,
+                        subscription_plan = ?
+                        WHERE id = ?");
+                    $updateClient->execute([$expiryDate, $package['name'], $client['id']]);
+                    
+                    // Log
+                    $log = $pdo->prepare("INSERT INTO customer_activity_log (client_id, activity_type, description) VALUES (?, ?, ?)");
+                    $log->execute([$client['id'], 'payment_success', 'Service activated until ' . $expiryDate]);
+                }
+            }
+            
             // If no row updated (maybe stk_push didn't insert pending?), then insert new
             if ($payStmt->rowCount() == 0) {
                  $insertStmt = $pdo->prepare("INSERT INTO payments (client_id, amount, transaction_id, status, payment_date) VALUES (?, ?, ?, 'Completed', NOW())");

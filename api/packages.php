@@ -15,10 +15,18 @@ try {
             if(isset($_GET['id'])) {
                 $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ?");
                 $stmt->execute([$_GET['id']]);
-                $response = $stmt->fetch(PDO::FETCH_ASSOC);
+                $package = $stmt->fetch(PDO::FETCH_ASSOC);
+                $response = ['success' => true, 'package' => $package];
             } else {
-                $stmt = $pdo->query("SELECT * FROM packages ORDER BY created_at DESC");
-                $response = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                // Support filtering by status for public access
+                $status = $_GET['status'] ?? null;
+                if ($status === 'active') {
+                    $stmt = $pdo->query("SELECT * FROM packages WHERE status = 'active' ORDER BY price ASC");
+                } else {
+                    $stmt = $pdo->query("SELECT * FROM packages ORDER BY created_at DESC");
+                }
+                $packages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $response = ['success' => true, 'packages' => $packages];
             }
             break;
         

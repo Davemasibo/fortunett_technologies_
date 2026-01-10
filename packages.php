@@ -438,14 +438,15 @@ include 'includes/sidebar.php';
             <table class="packages-table">
                 <thead>
                     <tr>
-                        <th>PACKAGE NAME</th>
-                        <th>TYPE</th>
-                        <th>SPEED</th>
-                        <th>DATA CAP</th>
-                        <th>PRICE (KES)</th>
-                        <th>CUSTOMERS</th>
-                        <th>STATUS</th>
-                        <th>ACTIONS</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Speed</th>
+                        <th>Time</th>
+                        <th>Data Limit</th>
+                        <th>Devices</th>
+                        <th>Price</th>
+                        <th>Status</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -455,6 +456,8 @@ include 'includes/sidebar.php';
                         $download = (int)($pkg['download_speed'] ?? 0);
                         $upload = (int)($pkg['upload_speed'] ?? 0);
                         $data_cap = (int)($pkg['data_limit'] ?? 0);
+                        $validity = ($pkg['validity_value'] ?? 30) . ' ' . ucfirst($pkg['validity_unit'] ?? 'days');
+                        $devices = $pkg['device_limit'] ?? 1;
                     ?>
                     <tr>
                         <td>
@@ -470,21 +473,10 @@ include 'includes/sidebar.php';
                         </td>
                         <td><?php echo strtoupper($type); ?></td>
                         <td><?php echo $download; ?>/<?php echo $upload; ?> Mbps</td>
+                        <td><?php echo $validity; ?></td>
                         <td><?php echo $data_cap > 0 ? number_format($data_cap / 1073741824, 0) . ' GB' : 'Unlimited'; ?></td>
-                        <td><strong><?php echo number_format($pkg['price'], 0); ?></strong></td>
-                        <td>
-                            <?php 
-                            // Get customer count for this package
-                            try {
-                                $stmt = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE package_id = ?");
-                                $stmt->execute([$pkg['id']]);
-                                $customer_count = (int)$stmt->fetchColumn();
-                            } catch (Exception $e) {
-                                $customer_count = 0;
-                            }
-                            echo $customer_count;
-                            ?>
-                        </td>
+                        <td><?php echo $devices; ?></td>
+                        <td><strong>KES <?php echo number_format($pkg['price'], 0); ?></strong></td>
                         <td>
                             <span class="status-badge <?php echo $status; ?>">
                                 <span class="status-dot"></span>
@@ -493,7 +485,7 @@ include 'includes/sidebar.php';
                         </td>
                         <td>
                             <div class="action-icons">
-                                <button class="action-icon" title="Edit" onclick='openEditPackageModal(<?php echo json_encode($pkg); ?>)'><i class="fas fa-edit"></i></button>
+                                <button class="action-icon" title="Edit" onclick='openEditPackageModal(<?php echo htmlspecialchars(json_encode($pkg), ENT_QUOTES, "UTF-8"); ?>)'><i class="fas fa-edit"></i></button>
                                 <button class="action-icon" title="Delete" onclick="deletePackage(<?php echo $pkg['id']; ?>)"><i class="fas fa-trash"></i></button>
                             </div>
                         </td>
@@ -526,7 +518,9 @@ include 'includes/sidebar.php';
                 </div>
             </div>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px;">
                 <div class="form-group">
                     <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Download (Mbps)</label>
                     <input type="number" name="download_speed" id="pkgDownload" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
@@ -535,9 +529,13 @@ include 'includes/sidebar.php';
                     <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Upload (Mbps)</label>
                     <input type="number" name="upload_speed" id="pkgUpload" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
                 </div>
+                <div class="form-group">
+                     <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Data Limit</label>
+                     <input type="number" name="data_limit" id="pkgDataLimit" placeholder="0 = Unlimited" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
+                </div>
             </div>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px;">
                 <div class="form-group">
                     <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Connection Type</label>
                     <select name="connection_type" id="pkgType" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
@@ -546,8 +544,20 @@ include 'includes/sidebar.php';
                     </select>
                 </div>
                 <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">MikroTik Profile Name</label>
-                    <input type="text" name="mikrotik_profile" id="pkgProfile" placeholder="Auto-generated if empty" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
+                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Validity Duration</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <input type="number" name="validity_value" id="pkgValidityValue" value="1" min="1" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;" placeholder="Value">
+                        <select name="validity_unit" id="pkgValidityUnit" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
+                            <option value="minutes">Minutes</option>
+                            <option value="hours">Hours</option>
+                            <option value="days">Days</option>
+                            <option value="months" selected>Months</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Device Limit</label>
+                    <input type="number" name="device_limit" id="pkgDeviceLimit" value="1" min="1" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
                 </div>
             </div>
 
@@ -569,6 +579,10 @@ function openAddPackageModal() {
     document.getElementById('pkgModalTitle').textContent = 'Create Package';
     document.getElementById('packageForm').reset();
     document.getElementById('packageId').value = '';
+    // Set defaults
+    document.getElementById('pkgValidityValue').value = '1';
+    document.getElementById('pkgValidityUnit').value = 'months';
+    document.getElementById('pkgDeviceLimit').value = '1';
     document.getElementById('packageModal').style.display = 'flex';
 }
 
@@ -580,7 +594,12 @@ function openEditPackageModal(pkg) {
     document.getElementById('pkgDownload').value = pkg.download_speed;
     document.getElementById('pkgUpload').value = pkg.upload_speed;
     document.getElementById('pkgType').value = pkg.connection_type || pkg.type || 'pppoe';
-    document.getElementById('pkgProfile').value = pkg.mikrotik_profile;
+    document.getElementById('pkgValidityValue').value = pkg.validity_value || '1';
+    document.getElementById('pkgValidityUnit').value = pkg.validity_unit || 'months';
+    document.getElementById('pkgDeviceLimit').value = pkg.device_limit || '1';
+    document.getElementById('pkgValidityUnit').value = pkg.validity_unit || 'months';
+    document.getElementById('pkgDeviceLimit').value = pkg.device_limit || '1';
+    // document.getElementById('pkgProfile').value = pkg.mikrotik_profile; // Removed as field doesn't exist
     document.getElementById('pkgDesc').value = pkg.description;
     
     document.getElementById('packageModal').style.display = 'flex';
