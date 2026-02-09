@@ -4,7 +4,25 @@ header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE");
 header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
 
-require_once __DIR__ . '/../includes/config.php';
+require_once __DIR__ . '/../includes/db_master.php';
+require_once __DIR__ . '/../includes/tenant.php';
+
+// Initialize Database
+$database = new Database();
+$pdo = $database->getConnection();
+
+// Detect Tenant
+$tenantManager = TenantManager::getInstance($pdo);
+$tenant = $tenantManager->detectTenantFromSubdomain();
+
+// Fallback for localhost testing via query param
+$tenant_id = $tenant ? $tenant['id'] : ($_GET['tenant_id'] ?? null);
+
+if (!$tenant_id && $_SERVER['HTTP_HOST'] === 'localhost') {
+    // If localhost and no tenant specified, maybe default to 1 for testing? 
+    // Or return empty list. Let's return empty to be safe/clean.
+    $tenant_id = 0; 
+}
 
 $method = $_SERVER['REQUEST_METHOD'];
 $response = array();
@@ -21,9 +39,11 @@ try {
                 // Support filtering by status for public access
                 $status = $_GET['status'] ?? null;
                 if ($status === 'active') {
-                    $stmt = $pdo->query("SELECT * FROM packages WHERE status = 'active' ORDER BY price ASC");
+                    $stmt = $pdo->prepare("SELECT * FROM packages WHERE status = 'active' AND tenant_id = ? ORDER BY price ASC");
+                    $stmt->execute([$tenant_id]);
                 } else {
-                    $stmt = $pdo->query("SELECT * FROM packages ORDER BY created_at DESC");
+                    $stmt = $pdo->prepare("SELECT * FROM packages WHERE tenant_id = ? ORDER BY created_at DESC");
+                    $stmt->execute([$tenant_id]);
                 }
                 $packages = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 $response = ['success' => true, 'packages' => $packages];

@@ -1,35 +1,44 @@
 <?php
-require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
 redirectIfNotLoggedIn();
+
+$database = new Database();
+$pdo = $database->getConnection();
+
+// Get current user's tenant_id
+$user_id = $_SESSION['user_id'];
+$stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$stmt->execute([$user_id]);
+$tenant_id = $stmt->fetchColumn();
 
 // Calculate stats
 try {
     // Total Packages
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM packages");
-    $stmt->execute();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM packages WHERE tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $total_packages = (int)$stmt->fetchColumn();
     
     // Active Packages
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM packages WHERE status = 'active'");
-    $stmt->execute();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM packages WHERE status = 'active' AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $active_packages = (int)$stmt->fetchColumn();
     
     // Total Customers
-    $stmt = $pdo->prepare("SELECT COUNT(DISTINCT client_id) FROM clients WHERE package_id IS NOT NULL");
-    $stmt->execute();
+    $stmt = $pdo->prepare("SELECT COUNT(DISTINCT client_id) FROM clients WHERE package_id IS NOT NULL AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $total_customers = (int)$stmt->fetchColumn();
     
     // Monthly Revenue
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(price), 0) FROM packages WHERE status = 'active'");
-    $stmt->execute();
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(price), 0) FROM packages WHERE status = 'active' AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $monthly_revenue = (float)$stmt->fetchColumn();
     
 } catch (Exception $e) {
-    $total_packages = 8;
-    $active_packages = 7;
-    $total_customers = 271;
-    $monthly_revenue = 641800;
+    $total_packages = 0;
+    $active_packages = 0;
+    $total_customers = 0;
+    $monthly_revenue = 0;
 }
 
 // Get all packages
@@ -39,8 +48,8 @@ $filter_type = $_GET['type'] ?? '';
 $filter_status = $_GET['status'] ?? '';
 
 // Build Query
-$query = "SELECT * FROM packages WHERE 1=1";
-$params = [];
+$query = "SELECT * FROM packages WHERE tenant_id = ?";
+$params = [$tenant_id];
 
 if ($search) {
     $query .= " AND (name LIKE ? OR description LIKE ?)";

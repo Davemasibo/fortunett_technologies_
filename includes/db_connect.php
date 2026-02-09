@@ -1,24 +1,20 @@
 <?php
-$host = 'localhost';
-$dbname = 'fortunnet_technologies';
-$username = 'root';
-$password = '';
+
+$DB_HOST = "localhost";
+$DB_NAME = "fortunnet_technologies";
+$DB_USER = "root";
+$DB_PASS = ""; // XAMPP
 
 try {
     $pdo = new PDO(
-        "mysql:host=$host;dbname=$dbname;charset=utf8mb4",
-        $username,
-        $password,
+        "mysql:host=$DB_HOST;dbname=$DB_NAME;charset=utf8mb4",
+        $DB_USER,
+        $DB_PASS,
         [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false
         ]
     );
 } catch (PDOException $e) {
-    die("Connection failed: " . $e->getMessage());
+    die("Database connection failed: " . $e->getMessage());
 }
-
-// Use $pdo as the database connection throughout the app
-$db = $pdo;
-?>

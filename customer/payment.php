@@ -2,6 +2,16 @@
 require_once __DIR__ . '/includes/auth.php';
 $customer = requireCustomerLogin();
 
+// Get tenant context properly
+$stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE username = ?");
+$stmt->execute([$customer['username']]);
+$tenant_id = $stmt->fetchColumn();
+
+if (!$tenant_id) {
+    // Fallback if not set 
+    $tenant_id = 1; 
+}
+
 // Get package details if package_id in URL
 $selectedPackageId = $_GET['package_id'] ?? $customer['package_id'];
 $package = null;
@@ -17,582 +27,252 @@ $packagePrice = $package ? $package['price'] : 0;
 $accountBalance = $customer['account_balance'] ?? 0;
 $amountToPay = max(0, $packagePrice - $accountBalance);
 
+// Fetch Payment Gateways for this tenant
+$gatewaysStmt = $pdo->prepare("SELECT * FROM payment_gateways WHERE tenant_id = ? AND is_active = 1");
+$gatewaysStmt->execute([$tenant_id]);
+$gateways = $gatewaysStmt->fetchAll(PDO::FETCH_ASSOC);
+
 include 'includes/header.php';
 ?>
 
-<div class="payment-container">
-    <div class="page-header">
-        <h1><i class="fas fa-credit-card"></i> Make Payment</h1>
-        <p>Complete your payment to activate or renew your subscription</p>
+<div class="payment-container py-4">
+    <div class="page-header mb-4 bg-primary text-white p-4 rounded shadow-sm">
+        <h1 class="h3 mb-1"><i class="fas fa-credit-card me-2"></i> Make Payment</h1>
+        <p class="mb-0">Complete your payment to activate or renew your subscription</p>
     </div>
     
-    <div class="payment-layout">
+    <div class="row g-4">
         <!-- Payment Summary -->
-        <div class="payment-summary">
-            <h2>Payment Summary</h2>
-            
-            <?php if ($package): ?>
-            <div class="summary-item package-info">
-                <div class="package-details">
-                    <div class="package-icon-small">
-                        <i class="fas fa-wifi"></i>
+        <div class="col-md-5">
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-4">Payment Summary</h5>
+                    
+                    <?php if ($package): ?>
+                    <div class="d-flex align-items-center bg-light p-3 rounded mb-3">
+                        <div class="bg-primary text-white p-3 rounded me-3">
+                            <i class="fas fa-wifi fa-lg"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="fw-bold"><?php echo htmlspecialchars($package['name']); ?></div>
+                            <small class="text-muted"><?php echo $package['download_speed']; ?> Mbps</small>
+                        </div>
+                        <div class="h5 mb-0 text-primary fw-bold">KES <?php echo number_format($packagePrice, 2); ?></div>
                     </div>
-                    <div>
-                        <div class="package-name-small"><?php echo htmlspecialchars($package['name']); ?></div>
-                        <div class="package-speed"><?php echo $package['download_speed']; ?>/<?php echo $package['upload_speed']; ?> Mbps</div>
+                    <?php endif; ?>
+                    
+                    <div class="border-top pt-3">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">Package Price</span>
+                            <span>KES <?php echo number_format($packagePrice, 2); ?></span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">Account Balance</span>
+                            <span class="text-success">- KES <?php echo number_format($accountBalance, 2); ?></span>
+                        </div>
+                        <hr>
+                        <div class="d-flex justify-content-between h5 fw-bold text-dark">
+                            <span>Amount to Pay</span>
+                            <span>KES <?php echo number_format($amountToPay, 2); ?></span>
+                        </div>
                     </div>
-                </div>
-                <div class="package-price-small"><?php echo formatCurrency($packagePrice); ?></div>
-            </div>
-            <?php endif; ?>
-            
-            <div class="summary-breakdown">
-                <div class="summary-row">
-                    <span>Package Price</span>
-                    <span><?php echo formatCurrency($packagePrice); ?></span>
-                </div>
-                <div class="summary-row">
-                    <span>Account Balance</span>
-                    <span class="balance-amount">-<?php echo formatCurrency($accountBalance); ?></span>
-                </div>
-                <div class="summary-row total">
-                    <span>Amount to Pay</span>
-                    <span><?php echo formatCurrency($amountToPay); ?></span>
                 </div>
             </div>
             
             <?php if ($amountToPay <= 0): ?>
-            <div class="payment-notice success">
-                <i class="fas fa-check-circle"></i>
-                <span>Your balance covers this package. Click activate to proceed.</span>
+            <div class="alert alert-success d-flex align-items-center">
+                <i class="fas fa-check-circle me-2"></i>
+                <span>Your balance covers this package.</span>
             </div>
             <?php endif; ?>
         </div>
         
         <!-- Payment Methods -->
-        <div class="payment-methods">
-            <h2>Payment Method</h2>
-            
-            <div class="payment-method-card mpesa">
-                <div class="method-header">
-                    <div class="method-icon">
-                        <i class="fas fa-mobile-alt"></i>
-                    </div>
-                    <div class="method-info">
-                        <h3>M-Pesa</h3>
-                        <p>Pay via M-Pesa STK Push</p>
-                    </div>
-                </div>
-                
-                <form id="mpesaForm" onsubmit="handleMpesaPayment(event)">
-                    <div class="form-group">
-                        <label>Phone Number</label>
-                        <input type="tel" id="phoneNumber" class="form-control" 
-                               placeholder="0712345678" 
-                               value="<?php echo htmlspecialchars($customer['phone'] ?? ''); ?>" 
-                               required>
-                        <small>Enter the M-Pesa registered phone number</small>
+        <div class="col-md-7">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-4">Choose Payment Method</h5>
+                    
+                    <div class="accordion" id="paymentAccordion">
+                        <?php 
+                        $has_api = false;
+                        foreach ($gateways as $idx => $g): 
+                            $creds = json_decode($g['credentials'], true);
+                            $isActive = $idx === 0 ? 'show' : '';
+                            if ($g['gateway_type'] === 'mpesa_api') $has_api = true;
+                        ?>
+                        <div class="accordion-item mb-3 border rounded shadow-sm overflow-hidden">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button <?php echo $idx === 0 ? '' : 'collapsed'; ?>" type="button" data-bs-toggle="collapse" data-bs-target="#method-<?php echo $g['id']; ?>">
+                                    <div class="d-flex align-items-center">
+                                        <div class="icon-box me-3 bg-<?php echo ($g['gateway_type'] == 'mpesa_api' || $g['gateway_type'] == 'paybill_no_api') ? 'success' : 'primary'; ?> text-white p-2 rounded">
+                                            <i class="fas <?php 
+                                                echo $g['gateway_type'] == 'bank_account' ? 'fa-university' : 
+                                                    ($g['gateway_type'] == 'paypal' ? 'fa-paypal' : 'fa-mobile-alt'); 
+                                            ?>"></i>
+                                        </div>
+                                        <div>
+                                            <div class="fw-bold"><?php echo htmlspecialchars($g['gateway_name']); ?></div>
+                                            <small class="text-muted opacity-75"><?php echo ucfirst(str_replace('_', ' ', $g['gateway_type'])); ?></small>
+                                        </div>
+                                    </div>
+                                </button>
+                            </h2>
+                            <div id="method-<?php echo $g['id']; ?>" class="accordion-collapse collapse <?php echo $isActive; ?>" data-bs-parent="#paymentAccordion">
+                                <div class="accordion-body bg-light">
+                                    <?php if ($g['gateway_type'] == 'mpesa_api'): ?>
+                                        <p class="small text-muted mb-3">Pay instantly via M-Pesa STK Push. Enter your phone below.</p>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fas fa-phone"></i></span>
+                                            <input type="tel" id="stk_phone" class="form-control" value="<?php echo htmlspecialchars($customer['phone']); ?>" placeholder="07xxxxxxxx">
+                                            <button class="btn btn-success" onclick="initiateSTK(<?php echo $g['id']; ?>, <?php echo $amountToPay; ?>)">Pay Now</button>
+                                        </div>
+                                    <?php elseif ($g['gateway_type'] == 'paybill_no_api'): ?>
+                                        <div class="bg-white p-3 rounded border">
+                                            <div class="mb-2"><span class="text-muted small">Paybill Number:</span> <strong class="fs-5"><?php echo htmlspecialchars($creds['paybill_number']); ?></strong></div>
+                                            <div class="mb-2"><span class="text-muted small">Account Name/No:</span> <strong><?php echo htmlspecialchars($creds['account_number'] ?: $customer['account_number']); ?></strong></div>
+                                            <div class="alert alert-warning py-2 px-3 small mt-2">
+                                                <i class="fas fa-info-circle me-1"></i> <?php echo htmlspecialchars($creds['instructions'] ?: 'Pay via M-Pesa then submit the code below.'); ?>
+                                            </div>
+                                        </div>
+                                    <?php elseif ($g['gateway_type'] == 'bank_account'): ?>
+                                        <div class="bg-white p-3 rounded border">
+                                            <div class="mb-1"><strong><?php echo htmlspecialchars($creds['bank_name']); ?></strong></div>
+                                            <div class="mb-1"><span class="text-muted small">Acc Name:</span> <?php echo htmlspecialchars($creds['account_name']); ?></div>
+                                            <div class="mb-1"><span class="text-muted small">Acc No:</span> <strong class="fs-5"><?php echo htmlspecialchars($creds['account_number']); ?></strong></div>
+                                            <?php if (!empty($creds['paybill_number'])): ?>
+                                                <div class="mt-2"><span class="text-muted small">Bank Paybill:</span> <strong><?php echo htmlspecialchars($creds['paybill_number']); ?></strong></div>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                        
+                        <?php if (empty($gateways)): ?>
+                        <div class="text-center py-5">
+                            <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+                            <p class="text-muted">No payment methods configured. Please contact support.</p>
+                        </div>
+                        <?php endif; ?>
                     </div>
                     
-                    <button type="submit" id="payButton" class="btn-pay">
-                        <?php if ($amountToPay <= 0): ?>
-                        <i class="fas fa-bolt"></i> Get Connected
-                        <?php else: ?>
-                        <i class="fas fa-paper-plane"></i> Pay <?php echo formatCurrency($amountToPay); ?>
-                        <?php endif; ?>
+                    <!-- Manual Confirmation Form (Visible if there are manual gateways) -->
+                    <div class="mt-4 p-3 bg-secondary bg-opacity-10 rounded border-dashed border-2">
+                        <h6 class="fw-bold mb-3"><i class="fas fa-check-double me-2"></i>Already Paid? Confirm Transaction</h6>
+                        <p class="small text-muted">If you paid via Paybill or Bank, enter your Transaction Code here (e.g., RJH123456).</p>
+                        <form id="verifyPaymentForm">
+                            <div class="input-group">
+                                <input type="text" id="trans_code" class="form-control" placeholder="M-Pesa / Bank Ref Code" required>
+                                <button type="submit" class="btn btn-dark">Confirm Payment</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <button type="button" class="btn btn-lg btn-outline-primary w-100 mt-4 <?php echo ($amountToPay > 0) ? 'd-none' : ''; ?>" id="activateBtn" onclick="activateWithBalance()">
+                        <i class="fas fa-bolt me-2"></i> Activate Now
                     </button>
-                </form>
-            </div>
-            
-            <div class="payment-info-cards">
-                <div class="info-card">
-                    <div class="info-icon">
-                        <i class="fas fa-building"></i>
-                    </div>
-                    <div class="info-content">
-                        <div class="info-label">Paybill Number</div>
-                        <div class="info-value">174379</div>
-                    </div>
                 </div>
-                
-                <div class="info-card">
-                    <div class="info-icon">
-                        <i class="fas fa-store"></i>
-                    </div>
-                    <div class="info-content">
-                        <div class="info-label">Till Number</div>
-                        <div class="info-value">7198572</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="payment-instructions">
-                <h3><i class="fas fa-info-circle"></i> Manual Payment Instructions</h3>
-                <ol>
-                    <li>Go to M-Pesa menu on your phone</li>
-                    <li>Select Lipa na M-Pesa</li>
-                    <li>Choose Pay Bill or Buy Goods</li>
-                    <li>Enter the number above</li>
-                    <li>Enter amount: <strong><?php echo formatCurrency($amountToPay); ?></strong></li>
-                    <li>Use account number: <strong><?php echo htmlspecialchars($customer['account_number']); ?></strong></li>
-                    <li>Complete the transaction</li>
-                </ol>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Payment Processing Modal -->
-<div id="paymentModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-body text-center">
-            <div class="payment-processing">
-                <div class="spinner-large"></div>
-                <h3>Processing Payment</h3>
-                <p>Please check your phone and enter your M-Pesa PIN</p>
-                <div class="payment-status" id="paymentStatus">Waiting for confirmation...</div>
-            </div>
+<!-- STK Loading Modal -->
+<div class="modal fade" id="paymentModal" data-bs-backdrop="static" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content text-center p-4">
+            <div class="spinner-border text-success mx-auto mb-3" role="status" style="width: 3rem; height: 3rem;"></div>
+            <h5 class="fw-bold">Processing...</h5>
+            <p id="paymentStatus" class="text-muted mb-0">Please check your phone for M-Pesa PIN prompt.</p>
         </div>
     </div>
 </div>
 
-<style>
-.payment-container {
-    max-width: 1200px;
-    margin: 0 auto;
-}
-
-.payment-layout {
-    display: grid;
-    grid-template-columns: 1fr 1.5fr;
-    gap: 32px;
-}
-
-.payment-summary, .payment-methods {
-    background: white;
-    border-radius: 16px;
-    padding: 32px;
-    border: 1px solid var(--gray-200);
-}
-
-.payment-summary h2, .payment-methods h2 {
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--gray-900);
-    margin-bottom: 24px;
-}
-
-.summary-item.package-info {
-    background: var(--gray-50);
-    padding: 20px;
-    border-radius: 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-}
-
-.package-details {
-    display: flex;
-    gap: 16px;
-    align-items: center;
-}
-
-.package-icon-small {
-    width: 48px;
-    height: 48px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-}
-
-.package-name-small {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--gray-900);
-}
-
-.package-speed {
-    font-size: 13px;
-    color: var(--gray-500);
-}
-
-.package-price-small {
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--primary);
-}
-
-.summary-breakdown {
-    border-top: 1px solid var(--gray-200);
-    padding-top: 20px;
-}
-
-.summary-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 12px 0;
-    font-size: 14px;
-    color: var(--gray-700);
-}
-
-.summary-row.total {
-    border-top: 2px solid var(--gray-200);
-    margin-top: 12px;
-    padding-top: 16px;
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--gray-900);
-}
-
-.balance-amount {
-    color: var(--success);
-}
-
-.payment-notice {
-    margin-top: 20px;
-    padding: 16px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 14px;
-}
-
-.payment-notice.success {
-    background: #D1FAE5;
-    color: #065F46;
-}
-
-.payment-method-card {
-    border: 2px solid var(--gray-200);
-    border-radius: 12px;
-    padding: 24px;
-    margin-bottom: 24px;
-}
-
-.payment-method-card.mpesa {
-    border-color: #10B981;
-    background: linear-gradient(to bottom, rgba(16,185,129,0.05) 0%, white 100%);
-}
-
-.method-header {
-    display: flex;
-    gap: 16px;
-    align-items: center;
-    margin-bottom: 24px;
-}
-
-.method-icon {
-    width: 56px;
-    height: 56px;
-    border-radius: 12px;
-    background: #10B981;
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-}
-
-.method-info h3 {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--gray-900);
-    margin-bottom: 4px;
-}
-
-.method-info p {
-    font-size: 13px;
-    color: var(--gray-500);
-}
-
-.form-group {
-    margin-bottom: 20px;
-}
-
-.form-group label {
-    display: block;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--gray-700);
-    margin-bottom: 8px;
-}
-
-.form-group small {
-    display: block;
-    font-size: 12px;
-    color: var(--gray-500);
-    margin-top: 6px;
-}
-
-.btn-pay {
-    width: 100%;
-    padding: 16px;
-    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-    color: white;
-    border: none;
-    border-radius: 10px;
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-}
-
-.btn-pay:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(16,185,129,0.3);
-}
-
-.btn-pay:disabled {
-    background: var(--gray-300);
-    cursor: not-allowed;
-}
-
-.payment-info-cards {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 24px;
-}
-
-.info-card {
-    background: var(--gray-50);
-    padding: 16px;
-    border-radius: 10px;
-    display: flex;
-    gap: 12px;
-    align-items: center;
-}
-
-.info-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    background: white;
-    color: var(--primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-}
-
-.info-label {
-    font-size: 11px;
-    color: var(--gray-500);
-    margin-bottom: 4px;
-}
-
-.info-value {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--gray-900);
-}
-
-.payment-instructions {
-    background: #EFF6FF;
-    padding: 20px;
-    border-radius: 10px;
-}
-
-.payment-instructions h3 {
-    font-size: 14px;
-    font-weight: 600;
-    color: #1E40AF;
-    margin-bottom: 16px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.payment-instructions ol {
-    margin-left: 20px;
-    font-size: 13px;
-    color: var(--gray-700);
-    line-height: 1.8;
-}
-
-.payment-processing {
-    padding: 40px 20px;
-}
-
-.spinner-large {
-    width: 60px;
-    height: 60px;
-    border: 4px solid var(--gray-200);
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 24px;
-}
-
-.payment-processing h3 {
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--gray-900);
-    margin-bottom: 8px;
-}
-
-.payment-processing p {
-    font-size: 14px;
-    color: var(--gray-500);
-    margin-bottom: 20px;
-}
-
-.payment-status {
-    font-size: 13px;
-    color: var(--gray-600);
-    padding: 12px;
-    background: var(--gray-50);
-    border-radius: 8px;
-}
-
-@media (max-width: 968px) {
-    .payment-layout {
-        grid-template-columns: 1fr;
-    }
-    
-    .payment-info-cards {
-        grid-template-columns: 1fr;
-    }
-}
-</style>
-
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-const API_BASE = '/fortunett_technologies_/api/customer';
+const statusModal = new bootstrap.Modal(document.getElementById('paymentModal'));
 
-async function handleMpesaPayment(e) {
-    e.preventDefault();
+function initiateSTK(gatewayId, amount) {
+    const phone = document.getElementById('stk_phone').value;
+    if (!phone) return alert('Enter phone number');
     
-    const phoneNumber = document.getElementById('phoneNumber').value;
-    const packageId = <?php echo $selectedPackageId ?? 'null'; ?>;
-    const amount = <?php echo $amountToPay; ?>;
+    statusModal.show();
+    document.getElementById('paymentStatus').textContent = 'Initiating STK Push...';
     
-    if (amount <= 0) {
-        // Handle free activation (either free package or covered by balance)
-        const payBtn = document.getElementById('payButton');
-        const originalText = payBtn.innerHTML;
-        
-        try {
-            payBtn.disabled = true;
-            payBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Activating...';
-            
-            // Determine if it's a free package or balance payment
-            const isFreePackage = <?php echo ($package['price'] <= 0) ? 'true' : 'false'; ?>;
-            const endpoint = isFreePackage ? 'activate_free_package.php' : 'activate_with_balance.php';
-            
-            const formData = new FormData();
-            formData.append('package_id', packageId);
-            
-            // Note: activate_with_balance.php logic needs to be implemented if not exists
-            // For now, we only use activate_free_package.php for truly free packages
-            if (!isFreePackage) {
-                alert('Balance activation not yet implemented. Please contact support.');
-                payBtn.disabled = false;
-                payBtn.innerHTML = originalText;
-                return;
-            }
-            
-            const response = await fetch(API_BASE + '/' + endpoint, {
-                method: 'POST',
-                body: formData
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                window.location.href = 'dashboard.php?activated=1';
-            } else {
-                alert('Activation failed: ' + (data.message || 'Unknown error'));
-                payBtn.disabled = false;
-                payBtn.innerHTML = originalText;
-            }
-        } catch (error) {
-            alert('Connection error. Please try again.');
-            payBtn.disabled = false;
-            payBtn.innerHTML = originalText;
-        }
-        return;
-    }
+    const formData = new FormData();
+    formData.append('gateway_id', gatewayId);
+    formData.append('phone', phone);
+    formData.append('amount', amount);
     
-    // Show processing modal
-    document.getElementById('paymentModal').classList.add('show');
-    
-    try {
-        const formData = new FormData();
-        formData.append('phone', phoneNumber);
-        formData.append('package_id', packageId);
-        formData.append('amount', amount);
-        
-        const response = await fetch(API_BASE + '/initiate_payment.php', {
-            method: 'POST',
-            body: formData
-        });
-        
-        const data = await response.json();
-        
+    fetch('api/initiate_stk.php', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
         if (data.success) {
-            document.getElementById('paymentStatus').textContent = 'Payment request sent! Check your phone...';
-            
-            // Poll for payment status
-            pollPaymentStatus(data.checkout_request_id);
+            document.getElementById('paymentStatus').textContent = 'Prompt sent! Enter your PIN on your phone.';
+            pollStatus(data.checkout_id);
         } else {
-            document.getElementById('paymentModal').classList.remove('show');
-            alert('Payment initiation failed: ' + (data.message || 'Unknown error'));
+            statusModal.hide();
+            alert('Error: ' + data.message);
         }
-    } catch (error) {
-        document.getElementById('paymentModal').classList.remove('show');
-        alert('Connection error. Please try again.');
-    }
+    })
+    .catch(e => {
+        statusModal.hide();
+        alert('Failed to connect to server');
+    });
 }
 
-function pollPaymentStatus(checkoutRequestId) {
-    let attempts = 0;
-    const maxAttempts = 30; // 30 seconds
-    
-    const interval = setInterval(async () => {
-        attempts++;
-        
-        if (attempts > maxAttempts) {
-            clearInterval(interval);
-            document.getElementById('paymentStatus').textContent = 'Payment timeout. Please check your M-Pesa messages.';
-            setTimeout(() => {
-                document.getElementById('paymentModal').classList.remove('show');
-            }, 3000);
-            return;
-        }
-        
-        try {
-            const response = await fetch(API_BASE + '/payment_status.php?checkout_request_id=' + checkoutRequestId);
-            const data = await response.json();
-            
-            if (data.status === 'completed') {
+function pollStatus(checkoutId) {
+    const interval = setInterval(() => {
+        fetch('api/check_status.php?checkout_id=' + checkoutId)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'paid') {
                 clearInterval(interval);
-                document.getElementById('paymentStatus').innerHTML = '<i class="fas fa-check-circle" style="color: #10B981; font-size: 48px; margin-bottom: 16px;"></i><br>Payment successful!';
-                
-                setTimeout(() => {
-                    window.location.href = 'dashboard.php?payment_success=1';
-                }, 2000);
+                document.getElementById('paymentStatus').textContent = 'Payment Received! Activating...';
+                setTimeout(() => window.location.href = 'dashboard.php?payment=success', 2000);
             } else if (data.status === 'failed') {
                 clearInterval(interval);
-                document.getElementById('paymentStatus').textContent = 'Payment failed: ' + (data.message || 'Unknown error');
-                setTimeout(() => {
-                    document.getElementById('paymentModal').classList.remove('show');
-                }, 3000);
+                statusModal.hide();
+                alert('Payment failed or cancelled.');
             }
-        } catch (error) {
-            // Continue polling
-        }
-    }, 1000);
+        });
+    }, 3000);
 }
+
+function activateWithBalance() {
+    fetch('api/activate.php', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) window.location.href = 'dashboard.php?activation=success';
+        else alert(data.message);
+    });
+}
+
+document.getElementById('verifyPaymentForm').onsubmit = function(e) {
+    e.preventDefault();
+    const code = document.getElementById('trans_code').value;
+    const btn = this.querySelector('button');
+    btn.disabled = true;
+    btn.textContent = 'Verifying...';
+    
+    const formData = new FormData();
+    formData.append('code', code);
+    
+    fetch('api/customer/verify_manual_payment.php', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('Payment code submitted successfully! Your account will be activated once verified by admin.');
+            window.location.href = 'dashboard.php';
+        } else {
+            alert(data.message);
+            btn.disabled = false;
+            btn.textContent = 'Confirm Payment';
+        }
+    });
+};
 </script>
 
 <?php include 'includes/footer.php'; ?>

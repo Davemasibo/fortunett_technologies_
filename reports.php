@@ -1,11 +1,21 @@
 <?php
-require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
 redirectIfNotLoggedIn();
 
-// Get all clients
+// Get tenant context 
+// (assuming auth.php sets $_SESSION['tenant_id'] or similar, otherwise lookup from user)
+if (session_status() === PHP_SESSION_NONE) session_start();
+$user_id = $_SESSION['user_id'] ?? 0;
+$stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$stmt->execute([$user_id]);
+$tenant_id = $stmt->fetchColumn();
+
+// Get all clients for this tenant
 try {
-    $clients = $pdo->query("SELECT id, full_name, email, phone, mikrotik_username FROM clients ORDER BY full_name ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $stmt = $pdo->prepare("SELECT id, full_name, email, phone, mikrotik_username, account_number, subscription_plan, status, expiry_date FROM clients WHERE tenant_id = ? ORDER BY full_name ASC");
+    $stmt->execute([$tenant_id]);
+    $clients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $clients = [];
 }
@@ -55,22 +65,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_pdf'])) {
 // Simple PDF generation function
 function generateSimplePDF($client, $pdo) {
     // Get client data
-    $period_start = date('Y-m-01');
-    $period_end = date('Y-m-t');
-    
-    // Get usage data (if radacct table exists)
-    try {
-        $stmt = $pdo->prepare("SELECT 
-            COALESCE(SUM(acctinputoctets), 0) as download,
-            COALESCE(SUM(acctoutputoctets), 0) as upload,
-            COUNT(*) as sessions
-            FROM radacct 
-            WHERE username = ? AND acctstarttime BETWEEN ? AND ?");
-        $stmt->execute([$client['mikrotik_username'], $period_start, $period_end]);
-        $usage = $stmt->fetch(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {
-        $usage = ['download' => 0, 'upload' => 0, 'sessions' => 0];
-    }
+    // For now, we don't have a reliable bandwidth usage table populated yet.
+    // Instead of showing empty 0B usage, let's show Subscription Status and Account Details which are more useful "Reports" for now.
+    $usage = [
+        'download' => 0, 
+        'upload' => 0, 
+        'sessions' => 0,
+        'plan' => $client['subscription_plan'] ?? 'N/A',
+        'status' => $client['status'] ?? 'Unknown',
+        'account_number' => $client['account_number'] ?? 'N/A',
+        'expiry' => $client['expiry_date'] ?? 'N/A'
+    ];
     
     // Get payments
     try {
@@ -110,27 +115,27 @@ function generateSimplePDF($client, $pdo) {
         </div>
         
         <div class="section">
-            <h2>Usage Summary</h2>
-            <table>
+            <h2>Account Summary</h2>
+             <table>
                 <tr>
                     <th>Metric</th>
                     <th>Value</th>
                 </tr>
                 <tr>
-                    <td>Download</td>
-                    <td>' . formatBytes($usage['download']) . '</td>
+                    <td>Account Number</td>
+                    <td>' . htmlspecialchars($usage['account_number']) . '</td>
                 </tr>
                 <tr>
-                    <td>Upload</td>
-                    <td>' . formatBytes($usage['upload']) . '</td>
+                    <td>Current Plan</td>
+                    <td>' . htmlspecialchars($usage['plan']) . '</td>
+                </tr>
+                 <tr>
+                    <td>Status</td>
+                    <td>' . ucfirst(htmlspecialchars($usage['status'])) . '</td>
                 </tr>
                 <tr>
-                    <td>Total Usage</td>
-                    <td>' . formatBytes($usage['download'] + $usage['upload']) . '</td>
-                </tr>
-                <tr>
-                    <td>Sessions</td>
-                    <td>' . number_format($usage['sessions']) . '</td>
+                    <td>Expiry Date</td>
+                    <td>' . htmlspecialchars($usage['expiry']) . '</td>
                 </tr>
             </table>
         </div>

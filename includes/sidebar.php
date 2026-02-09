@@ -315,6 +315,15 @@
         let clickTimer = null;
         toggle.addEventListener('click', function(e){
             e.preventDefault();
+
+            // Mobile handling: Toggle visibility
+            if (window.innerWidth <= 768) {
+                sidebar.classList.toggle('show');
+                const overlay = document.querySelector('.sidebar-overlay');
+                if (overlay) overlay.classList.toggle('show');
+                return;
+            }
+
             if (clickTimer) return;
             
             clickTimer = setTimeout(function(){

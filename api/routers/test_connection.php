@@ -1,53 +1,83 @@
 <?php
 header('Content-Type: application/json');
-require_once '../../includes/config.php';
+require_once '../../includes/db_master.php';
+require_once '../../includes/auth.php';
 require_once '../../classes/RouterOSAPI.php';
 
+// disable error reporting to screen to prevent HTML in JSON
+ini_set('display_errors', 0);
+error_reporting(E_ALL);
+
+// Start session if not started
+if (session_status() === PHP_SESSION_NONE) session_start();
+$user_id = $_SESSION['user_id'] ?? 0;
+
 $id = $_POST['id'] ?? null;
-// Force update password if requested (hardcoded for this user session as requested)
-$password = '123456'; 
+
+if (!$user_id) {
+    echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
+    exit;
+}
 
 if (!$id) {
-    echo json_encode(['status' => 'error', 'message' => 'ID Required']);
+    echo json_encode(['status' => 'error', 'message' => 'Router ID Required']);
     exit;
 }
 
 try {
-    // Get Router
-    $stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE id = ?");
-    $stmt->execute([$id]);
+    // Get Tenant ID
+    $tStmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+    $tStmt->execute([$user_id]);
+    $tenant_id = $tStmt->fetchColumn();
+
+    if (!$tenant_id) {
+        throw new Exception("Tenant not found");
+    }
+
+    // Get Router with Tenant Validation
+    $stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE id = ? AND tenant_id = ?");
+    $stmt->execute([$id, $tenant_id]);
     $router = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$router) {
-        echo json_encode(['status' => 'error', 'message' => 'Router not found']);
-        exit;
+        throw new Exception("Router not found or access denied");
     }
 
-    // Update Password in DB first (Since user provided it)
-    $update = $pdo->prepare("UPDATE mikrotik_routers SET password = ? WHERE id = ?");
-    $update->execute([$password, $id]);
+    $ip = $router['ip_address'];
+    $user = $router['username'];
+    $pass = $router['password']; 
+    $port = $router['api_port'] ?? 8728;
 
     // Test Connection
     $api = new RouterOSAPI();
-    // Use the IP. If local dev and router is executing provisioning, 
-    // the router is the one connecting TO us.
-    // BUT for US to connect TO router, we need the router's IP to be reachable.
-    // Use the IP stored in DB.
     
-    // NOTE: If using Ngrok and router is behind NAT, we cannot connect TO it unless it has a public IP or VPN.
-    // However, usually the user is on the same LAN (admin@MikroTik suggests local access).
-    // So we try the IP.
-    
-    if ($api->connect($router['ip_address'], 'admin', $password)) {
-        // Fetch Resource
-        $api->write('/system/resource/print');
-        $read = $api->read(false); // Simple read
-        // Parse raw response would be better but for "Verifying Connection" just success is enough
+    // Attempt Connection
+    // Connection timeout defaults are generally handled by fsockopen inside RouterOSAPI
+    if ($api->connect($ip, $user, $pass)) {
         
+        // Try to read identity
+        $api->write('/system/identity/print');
+        $read = $api->read(false);
+        $identity = $read[0]['name'] ?? 'Unknown';
+
+        // Update status to online
+        $upd = $pdo->prepare("UPDATE mikrotik_routers SET status = 'online', last_seen = NOW() WHERE id = ?");
+        $upd->execute([$id]);
+
         $api->disconnect();
-        echo json_encode(['status' => 'success', 'message' => 'Connection Successful!', 'details' => 'Authenticated as admin']);
+        echo json_encode([
+            'status' => 'success', 
+            'message' => "Connected successfully to '$identity'",
+            'debug' => "IP: $ip, User: $user"
+        ]);
     } else {
-        echo json_encode(['status' => 'error', 'message' => 'Could not connect to ' . $router['ip_address']]);
+        $upd = $pdo->prepare("UPDATE mikrotik_routers SET status = 'offline' WHERE id = ?");
+        $upd->execute([$id]);
+        
+        echo json_encode([
+            'status' => 'error', 
+            'message' => "Connection failed to $ip. Verify Request: Is the router reachable from this server?"
+        ]);
     }
 
 } catch (Exception $e) {

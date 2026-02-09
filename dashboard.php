@@ -5,6 +5,13 @@ redirectIfNotLoggedIn();
 
 $database = new Database();
 $db = $database->getConnection();
+$pdo = $db; // Make it available globally for header.php
+
+// Get current user's tenant_id
+$user_id = $_SESSION['user_id'];
+$stmt = $db->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$stmt->execute([$user_id]);
+$tenant_id = $stmt->fetchColumn();
 
 // Get ISP profile
 $profile = getISPProfile($db);
@@ -12,42 +19,42 @@ $profile = getISPProfile($db);
 // Calculate metrics
 try {
     // Daily Revenue
-    $stmt = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE DATE(payment_date) = CURDATE() AND status = 'completed'");
-    $stmt->execute();
+    $stmt = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE DATE(payment_date) = CURDATE() AND status = 'completed' AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $daily_revenue = (float)$stmt->fetchColumn();
     
     // Monthly Revenue
-    $stmt = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE MONTH(payment_date) = MONTH(CURDATE()) AND YEAR(payment_date) = YEAR(CURDATE()) AND status = 'completed'");
-    $stmt->execute();
+    $stmt = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE MONTH(payment_date) = MONTH(CURDATE()) AND YEAR(payment_date) = YEAR(CURDATE()) AND status = 'completed' AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $monthly_revenue = (float)$stmt->fetchColumn();
     
     // Yearly Revenue
-    $stmt = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE YEAR(payment_date) = YEAR(CURDATE()) AND status = 'completed'");
-    $stmt->execute();
+    $stmt = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE YEAR(payment_date) = YEAR(CURDATE()) AND status = 'completed' AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $yearly_revenue = (float)$stmt->fetchColumn();
     
     // Active Users
-    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE status = 'active'");
-    $stmt->execute();
+    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE status = 'active' AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $active_users = (int)$stmt->fetchColumn();
     
     // Expired Accounts
-    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE expiry_date < NOW() OR status = 'inactive'");
-    $stmt->execute();
+    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE (expiry_date < NOW() OR status = 'inactive') AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $expired_accounts = (int)$stmt->fetchColumn();
     
     // New Registrations (this month)
-    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())");
-    $stmt->execute();
+    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE()) AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $new_registrations = (int)$stmt->fetchColumn();
     
 } catch (Exception $e) {
-    $daily_revenue = 45230;
-    $monthly_revenue = 1234500;
-    $yearly_revenue = 12450000;
-    $active_users = 1247;
-    $expired_accounts = 89;
-    $new_registrations = 34;
+    $daily_revenue = 0;
+    $monthly_revenue = 0;
+    $yearly_revenue = 0;
+    $active_users = 0;
+    $expired_accounts = 0;
+    $new_registrations = 0;
 }
 
 include 'includes/header.php';
@@ -391,6 +398,90 @@ include 'includes/sidebar.php';
         color: #9CA3AF;
         margin-top: 4px;
     }
+
+    /* Dashboard Chart Rows - Responsive */
+    .dashboard-chart-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-bottom: 24px;
+    }
+
+    @media (max-width: 1024px) {
+        .dashboard-chart-row {
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+    }
+
+    /* Mobile Adjustments */
+    @media (max-width: 768px) {
+        .dashboard-container {
+            padding: 16px;
+        }
+
+        .dashboard-title {
+            font-size: 22px;
+        }
+
+        .actions-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .action-btn {
+            padding: 12px 16px;
+            font-size: 13px;
+        }
+
+        .metrics-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .two-column-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .card-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .card-header select {
+            width: 100%;
+        }
+
+        .status-card {
+            padding: 16px;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .dashboard-container {
+            padding: 12px;
+        }
+
+        .actions-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .breadcrumb {
+            font-size: 11px;
+        }
+
+        .dashboard-title {
+            font-size: 20px;
+        }
+
+        .metric-value {
+            font-size: 24px;
+        }
+
+        .section-title {
+            font-size: 14px;
+        }
+    }
 </style>
 
 <div class="main-content-wrapper">
@@ -441,10 +532,8 @@ include 'includes/sidebar.php';
                         </div>
                     </div>
                     <div class="metric-value">KES <?php echo number_format($daily_revenue, 0); ?></div>
-                    <div class="metric-change positive">
-                        <i class="fas fa-arrow-up"></i>
-                        <span>+25.3%</span>
-                        <span class="metric-period">vs last period</span>
+                    <div class="metric-change">
+                        <span class="metric-period">Today</span>
                     </div>
                 </div>
 
@@ -456,10 +545,8 @@ include 'includes/sidebar.php';
                         </div>
                     </div>
                     <div class="metric-value">KES <?php echo number_format($monthly_revenue, 0); ?></div>
-                    <div class="metric-change positive">
-                        <i class="fas fa-arrow-up"></i>
-                        <span>+8.1%</span>
-                        <span class="metric-period">vs last period</span>
+                    <div class="metric-change">
+                        <span class="metric-period">This Month</span>
                     </div>
                 </div>
 
@@ -471,10 +558,8 @@ include 'includes/sidebar.php';
                         </div>
                     </div>
                     <div class="metric-value">KES <?php echo number_format($yearly_revenue, 0); ?></div>
-                    <div class="metric-change positive">
-                        <i class="fas fa-arrow-up"></i>
-                        <span>+16.2%</span>
-                        <span class="metric-period">vs last period</span>
+                    <div class="metric-change">
+                        <span class="metric-period">This Year</span>
                     </div>
                 </div>
             </div>
@@ -492,10 +577,8 @@ include 'includes/sidebar.php';
                         </div>
                     </div>
                     <div class="metric-value" id="live-active-users"><?php echo number_format($active_users); ?></div>
-                    <div class="metric-change positive">
-                        <i class="fas fa-arrow-up"></i>
-                        <span>+23</span>
-                        <span class="metric-period">vs last period</span>
+                    <div class="metric-change">
+                        <span class="metric-period">current</span>
                     </div>
                 </div>
 
@@ -507,10 +590,8 @@ include 'includes/sidebar.php';
                         </div>
                     </div>
                     <div class="metric-value"><?php echo number_format($expired_accounts); ?></div>
-                    <div class="metric-change negative">
-                        <i class="fas fa-arrow-down"></i>
-                        <span>-12</span>
-                        <span class="metric-period">vs last period</span>
+                    <div class="metric-change">
+                        <span class="metric-period">total</span>
                     </div>
                 </div>
 
@@ -522,9 +603,7 @@ include 'includes/sidebar.php';
                         </div>
                     </div>
                     <div class="metric-value"><?php echo number_format($new_registrations); ?></div>
-                    <div class="metric-change positive">
-                        <i class="fas fa-arrow-up"></i>
-                        <span>+18</span>
+                    <div class="metric-change">
                         <span class="metric-period">this month</span>
                     </div>
                 </div>
@@ -537,45 +616,40 @@ include 'includes/sidebar.php';
             <div class="status-card">
                 <div class="card-header">
                     <h3 class="card-title">Router Status</h3>
-                    <i class="fas fa-sync-alt" style="color: #9CA3AF; cursor: pointer;" title="Refresh"></i>
+                    <i class="fas fa-sync-alt" style="color: #9CA3AF; cursor: pointer;" title="Refresh" onclick="updateDashboardStats()"></i>
                 </div>
                 <div class="router-list">
-                    <div class="router-item">
-                        <div class="router-info">
-                            <div class="router-status-dot" id="live-router-status"></div>
-                            <div>
-                                <div class="router-name">Router-01 Main</div>
-                                <div class="router-ip">192.168.1.1</div>
-                            </div>
-                        </div>
-                        <div class="router-clients">
-                            <strong id="live-router-clients">485</strong> Active
-                        </div>
-                    </div>
-                    <div class="router-item">
-                        <div class="router-info">
-                            <div class="router-status-dot"></div>
-                            <div>
-                                <div class="router-name">Router-02 Backup</div>
-                                <div class="router-ip">192.168.1.2</div>
-                            </div>
-                        </div>
-                        <div class="router-clients">
-                            <strong>385</strong> Active
-                        </div>
-                    </div>
-                    <div class="router-item">
-                        <div class="router-info">
-                            <div class="router-status-dot"></div>
-                            <div>
-                                <div class="router-name">Router-03 Backup</div>
-                                <div class="router-ip">192.168.1.3</div>
-                            </div>
-                        </div>
-                        <div class="router-clients">
-                            <strong>377</strong> Active
-                        </div>
-                    </div>
+                    <?php
+                    // Fetch configured routers
+                    try {
+                        $r_stmt = $db->prepare("SELECT * FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ?");
+                        $r_stmt->execute([$tenant_id]);
+                        $routers = $r_stmt->fetchAll(PDO::FETCH_ASSOC);
+                        
+                        if (count($routers) > 0) {
+                            foreach ($routers as $router) {
+                                ?>
+                                <div class="router-item">
+                                    <div class="router-info">
+                                        <div class="router-status-dot" id="router-dot-<?php echo $router['id']; ?>"></div>
+                                        <div>
+                                            <div class="router-name"><?php echo htmlspecialchars($router['name']); ?></div>
+                                            <div class="router-ip"><?php echo htmlspecialchars($router['ip_address']); ?></div>
+                                        </div>
+                                    </div>
+                                    <div class="router-clients">
+                                        <strong id="router-clients-<?php echo $router['id']; ?>">-</strong> Active
+                                    </div>
+                                </div>
+                                <?php
+                            }
+                        } else {
+                            echo '<div class="p-3 text-center text-muted">No active routers configured.</div>';
+                        }
+                    } catch (Exception $ex) {
+                        echo '<div class="p-3 text-center text-danger">Error loading routers.</div>';
+                    }
+                    ?>
                 </div>
             </div>
 
@@ -586,25 +660,9 @@ include 'includes/sidebar.php';
                     <i class="fas fa-ellipsis-v" style="color: #9CA3AF; cursor: pointer;"></i>
                 </div>
                 <div class="alerts-list">
-                    <div class="alert-item warning">
-                        <div class="alert-icon">
-                            <i class="fas fa-exclamation"></i>
-                        </div>
-                        <div class="alert-content">
-                            <div class="alert-title">High Bandwidth Usage</div>
-                            <div class="alert-message">Router-01 Zone A is experiencing bandwidth saturation. Consider load balancing.</div>
-                            <div class="alert-time">30/12/2025, 23:45</div>
-                        </div>
-                    </div>
-                    <div class="alert-item info">
-                        <div class="alert-icon">
-                            <i class="fas fa-info"></i>
-                        </div>
-                        <div class="alert-content">
-                            <div class="alert-title">Payment Reconciliation</div>
-                            <div class="alert-message">15 M-Pesa payments pending verification from yesterday.</div>
-                            <div class="alert-time">02/01/2025, 04:30</div>
-                        </div>
+                    <div class="p-4 text-center text-muted">
+                        <i class="fas fa-check-circle mb-2" style="font-size: 24px; color: #10B981;"></i>
+                        <p>No new alerts.</p>
                     </div>
                 </div>
             </div>
@@ -615,7 +673,7 @@ include 'includes/sidebar.php';
             <h2 style="font-size: 20px; font-weight: 600; color: #111827; margin-bottom: 20px;">Analytics & Insights</h2>
             
             <!-- Row 1: Payments & Active Users -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+            <div class="dashboard-chart-row">
                 <!-- Payments Chart -->
                 <div class="status-card">
                     <div class="card-header">
@@ -653,7 +711,7 @@ include 'includes/sidebar.php';
             </div>
 
             <!-- Row 2: Customer Retention & Data Usage -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+            <div class="dashboard-chart-row">
                 <!-- Customer Retention Chart -->
                 <div class="status-card">
                     <div class="card-header">
@@ -682,7 +740,7 @@ include 'includes/sidebar.php';
             </div>
 
             <!-- Row 3: Package Utilization & Revenue Forecast -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+            <div class="dashboard-chart-row">
                 <!-- Package Utilization Chart -->
                 <div class="status-card">
                     <div class="card-header">
@@ -711,7 +769,7 @@ include 'includes/sidebar.php';
             </div>
 
             <!-- Row 4: SMS Sent & Network Data Usage -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+            <div class="dashboard-chart-row">
                 <!-- SMS Sent Chart -->
                 <div class="status-card">
                     <div class="card-header">
@@ -748,7 +806,7 @@ include 'includes/sidebar.php';
             </div>
 
             <!-- Row 5: User Registrations & Most Active Users -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+            <div class="dashboard-chart-row">
                 <!-- User Registrations Chart -->
                 <div class="status-card">
                     <div class="card-header">
@@ -784,30 +842,8 @@ include 'includes/sidebar.php';
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr style="border-bottom: 1px solid #F3F4F6;">
-                                    <td style="padding: 12px 0; font-size: 13px; color: #F59E0B; font-weight: 500;">Eames</td>
-                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #111827;">209.42GB</td>
-                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #F59E0B;">0715708896</td>
-                                </tr>
-                                <tr style="border-bottom: 1px solid #F3F4F6;">
-                                    <td style="padding: 12px 0; font-size: 13px; color: #F59E0B; font-weight: 500;">Kevo</td>
-                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #111827;">185.06GB</td>
-                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #F59E0B;">-</td>
-                                </tr>
-                                <tr style="border-bottom: 1px solid #F3F4F6;">
-                                    <td style="padding: 12px 0; font-size: 13px; color: #F59E0B; font-weight: 500;">Mechanic002</td>
-                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #111827;">264.85GB</td>
-                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #F59E0B;">0710680661</td>
-                                </tr>
-                                <tr style="border-bottom: 1px solid #F3F4F6;">
-                                    <td style="padding: 12px 0; font-size: 13px; color: #F59E0B; font-weight: 500;">Samson</td>
-                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #111827;">91.11GB</td>
-                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #F59E0B;">0757335545</td>
-                                </tr>
                                 <tr>
-                                    <td style="padding: 12px 0; font-size: 13px; color: #F59E0B; font-weight: 500;">Bathwel</td>
-                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #111827;">96.87GB</td>
-                                    <td style="padding: 12px 0; text-align: right; font-size: 13px; color: #F59E0B;">0713857932</td>
+                                    <td colspan="3" class="text-center p-4 text-muted">No usage data data available.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -828,10 +864,10 @@ if (paymentsCtx) {
     new Chart(paymentsCtx, {
         type: 'bar',
         data: {
-            labels: ['Jan'],
+            labels: ['Jan', 'Feb', 'Mar'],
             datasets: [{
                 label: 'Payments',
-                data: [18000],
+                data: [0, 0, 0],
                 backgroundColor: '#3B6EA5',
                 borderRadius: 4
             }]
@@ -856,14 +892,14 @@ if (activeUsersCtx) {
             labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
             datasets: [{
                 label: 'Hotspot Users',
-                data: [3, 6, 7, 5, 0],
+                data: [0, 0, 0, 0, 0],
                 borderColor: '#F59E0B',
                 backgroundColor: 'rgba(245, 158, 11, 0.1)',
                 fill: true,
                 tension: 0.4
             }, {
                 label: 'PPPoE Users',
-                data: [3, 5, 6, 4, 0],
+                data: [0, 0, 0, 0, 0],
                 borderColor: '#3B6EA5',
                 backgroundColor: 'rgba(59, 110, 165, 0.1)',
                 fill: true,
@@ -888,28 +924,28 @@ if (retentionCtx) {
             labels: ['Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025', 'Dec 2025', 'Jan 2026'],
             datasets: [{
                 label: 'New Customers',
-                data: [0, 18, 30, 32, 25, 0],
+                data: [0, 0, 0, 0, 0, 0],
                 borderColor: '#3B82F6',
                 backgroundColor: 'rgba(59, 130, 246, 0.2)',
                 fill: true,
                 tension: 0.4
             }, {
                 label: 'Returning Customers',
-                data: [0, 0, 15, 25, 20, 0],
+                data: [0, 0, 0, 0, 0, 0],
                 borderColor: '#10B981',
                 backgroundColor: 'rgba(16, 185, 129, 0.2)',
                 fill: true,
                 tension: 0.4
             }, {
                 label: 'Churned Customers',
-                data: [0, 0, 0, 0, 25, 25],
+                data: [0, 0, 0, 0, 0, 0],
                 borderColor: '#EF4444',
                 backgroundColor: 'rgba(239, 68, 68, 0.2)',
                 fill: true,
                 tension: 0.4
             }, {
                 label: 'Retention Rate (%)',
-                data: [0, 0, 50, 60, 50, 0],
+                data: [0, 0, 0, 0, 0, 0],
                 borderColor: '#F59E0B',
                 borderDash: [5, 5],
                 fill: false,
@@ -937,14 +973,14 @@ if (dataUsageCtx) {
             labels: ['26 Dec', '27 Dec', '28 Dec', '29 Dec', '30 Dec', '31 Dec', '01 Jan', '02 Jan'],
             datasets: [{
                 label: 'Hotspot',
-                data: [0, 0, 50, 20, 50, 20, 30, 0],
+                data: [0, 0, 0, 0, 0, 0, 0, 0],
                 borderColor: '#F59E0B',
                 backgroundColor: 'rgba(245, 158, 11, 0.1)',
                 fill: true,
                 tension: 0.4
             }, {
                 label: 'PPPoE',
-                data: [0, 0, 45, 18, 45, 15, 25, 0],
+                data: [0, 0, 0, 0, 0, 0, 0, 0],
                 borderColor: '#3B6EA5',
                 backgroundColor: 'rgba(59, 110, 165, 0.1)',
                 fill: true,
@@ -968,7 +1004,7 @@ if (packageCtx) {
         data: {
             labels: ['4 Hours 5Mbps', '1 Hour', 'pppoe 6Mbps', 'pppoe 4 Mbps', 'Daily'],
             datasets: [{
-                data: [35, 25, 20, 15, 5],
+                data: [],
                 backgroundColor: ['#92400E', '#F59E0B', '#FCD34D', '#FEF3C7', '#FEFCE8'],
                 borderWidth: 0
             }]
@@ -995,27 +1031,27 @@ if (revenueForecastCtx) {
             labels: ['Jan 2025', 'Feb 2025', 'Mar 2025', 'Apr 2025', 'May 2025', 'Jun 2025', 'Jul 2025', 'Aug 2025', 'Sep 2025'],
             datasets: [{
                 label: 'Historical Revenue',
-                data: [0, 2000, 8000, 14000, 12000, 2000, null, null, null],
+                data: [],
                 borderColor: '#3B6EA5',
                 backgroundColor: 'rgba(59, 110, 165, 0.1)',
                 fill: true,
                 tension: 0.4
             }, {
                 label: 'Forecast Revenue',
-                data: [null, null, null, null, null, 2000, 6000, 4000, 2000],
+                data: [],
                 borderColor: '#10B981',
                 backgroundColor: 'rgba(16, 185, 129, 0.1)',
                 fill: true,
                 tension: 0.4
             }, {
                 label: 'Upper Confidence',
-                data: [null, null, null, null, null, 2000, 7000, 5000, 3000],
+                data: [],
                 borderColor: '#F59E0B',
                 borderDash: [5, 5],
                 fill: false
             }, {
                 label: 'Lower Confidence',
-                data: [null, null, null, null, null, 2000, 5000, 3000, 1000],
+                data: [],
                 borderColor: '#F59E0B',
                 borderDash: [5, 5],
                 fill: false
@@ -1039,7 +1075,7 @@ if (smsCtx) {
             labels: ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
             datasets: [{
                 label: 'SMS Sent',
-                data: [1, 0, 1, 0, 0, 3, 1],
+                data: [0, 0, 0, 0, 0, 0, 0],
                 backgroundColor: '#F59E0B',
                 borderRadius: 4
             }]
@@ -1062,14 +1098,14 @@ if (networkDataCtx) {
             labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
             datasets: [{
                 label: 'Download',
-                data: [10, 35, 15, 25, 5],
+                data: [0, 0, 0, 0, 0],
                 borderColor: '#F59E0B',
                 backgroundColor: 'rgba(245, 158, 11, 0.3)',
                 fill: true,
                 tension: 0.4
             }, {
                 label: 'Upload',
-                data: [8, 30, 12, 20, 3],
+                data: [0, 0, 0, 0, 0],
                 borderColor: '#3B6EA5',
                 backgroundColor: 'rgba(59, 110, 165, 0.3)',
                 fill: true,
@@ -1122,21 +1158,17 @@ function updateDashboardStats() {
                 const activeUsers = document.getElementById('live-active-users');
                 if (activeUsers) activeUsers.textContent = data.data.active_users;
                 
-                // Update Router Status logic (assuming success means online)
-                const routerStatus = document.getElementById('live-router-status');
-                if (routerStatus) {
-                    routerStatus.style.background = '#10B981'; // Green for online
-                    routerStatus.style.boxShadow = '0 0 0 2px rgba(16, 185, 129, 0.2)';
-                }
+                // Update Router Status (Green dot for all active)
+                document.querySelectorAll('.router-status-dot').forEach(el => {
+                    el.style.background = '#10B981';
+                    el.style.boxShadow = '0 0 0 2px rgba(16, 185, 129, 0.2)';
+                });
                 
-                // Update Router Client Count
-                const routerClients = document.getElementById('live-router-clients');
-                if (routerClients) routerClients.textContent = data.data.active_users;
-                
-                // You could also update charts here passing data to Chart.js instances
-                // e.g. activeUsersChart.data.datasets[0].data.push(data.data.active_users);
+                // Update Router Client Count (Apply same count to all listed routers since API is single-source)
+                document.querySelectorAll('.router-clients strong').forEach(el => {
+                    el.textContent = data.data.active_users;
+                });
             } else {
-                 // Optimization: Don't show error on dashboard to avoid annoyance, just log
                  console.log('Stats update failed:', data.message);
             }
         })

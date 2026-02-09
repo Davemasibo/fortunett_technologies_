@@ -1,6 +1,6 @@
 <?php
 if (!isset($pdo)) {
-    require_once __DIR__ . '/config.php';
+    require_once __DIR__ . '/db_connect.php';
 }
 if (!function_exists('getCurrentTheme')) {
     require_once __DIR__ . '/auth.php';

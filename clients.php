@@ -3,6 +3,15 @@ require_once 'config/database.php';
 require_once 'includes/auth.php';
 redirectIfNotLoggedIn();
 
+$database = new Database();
+$db = $database->getConnection();
+
+// Get current user's tenant_id
+$user_id = $_SESSION['user_id'];
+$stmt = $db->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$stmt->execute([$user_id]);
+$tenant_id = $stmt->fetchColumn();
+
 // Export CSV Logic
 if (isset($_GET['export']) && $_GET['export'] == 'csv') {
     $database = new Database();
@@ -16,8 +25,9 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
     $query = "SELECT c.*, 
               COALESCE((SELECT name FROM packages WHERE id = c.package_id LIMIT 1), c.subscription_plan) AS package_name,
               COALESCE((SELECT price FROM packages WHERE id = c.package_id LIMIT 1), 0) AS package_price
-              FROM clients c WHERE 1=1";
-    $params = [];
+              FROM clients c WHERE c.tenant_id = ?";
+    $params = [$tenant_id];
+    
     
     if (!empty($search)) {
         $query .= " AND (c.full_name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.account_number LIKE ?)";
@@ -73,29 +83,29 @@ $db = $database->getConnection();
 // Calculate stats
 try {
     // Total Customers
-    $stmt = $db->prepare("SELECT COUNT(*) FROM clients");
-    $stmt->execute();
+    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $total_customers = (int)$stmt->fetchColumn();
     
     // Active Services
-    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE status = 'active'");
-    $stmt->execute();
+    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE status = 'active' AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $active_services = (int)$stmt->fetchColumn();
     
     // Expired Services
-    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE expiry_date < NOW() OR status = 'inactive'");
-    $stmt->execute();
+    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE (expiry_date < NOW() OR status = 'inactive') AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $expired_services = (int)$stmt->fetchColumn();
     
     // Expiring Soon (next 7 days)
-    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE expiry_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY) AND status = 'active'");
-    $stmt->execute();
+    $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE expiry_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY) AND status = 'active' AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $expiring_soon = (int)$stmt->fetchColumn();
     
 } catch (Exception $e) {
-    $total_customers = 8;
-    $active_services = 6;
-    $expired_services = 1;
+    $total_customers = 0;
+    $active_services = 0;
+    $expired_services = 0;
     $expiring_soon = 0;
 }
 
@@ -109,9 +119,9 @@ try {
               COALESCE((SELECT name FROM packages WHERE id = c.package_id LIMIT 1), c.subscription_plan) AS package_name,
               COALESCE((SELECT price FROM packages WHERE id = c.package_id LIMIT 1), 0) AS package_price,
               (SELECT COUNT(*) FROM mpesa_transactions WHERE client_id = c.id) AS payments_count
-              FROM clients c WHERE 1=1";
+              FROM clients c WHERE c.tenant_id = ?";
               
-    $params = [];
+    $params = [$tenant_id];
     
     if (!empty($search)) {
         $query .= " AND (c.full_name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.account_number LIKE ?)";
@@ -140,7 +150,8 @@ try {
 
 // Get Packages for Dropdown
 try {
-    $stmt = $db->query("SELECT id, name, price FROM packages ORDER BY price ASC");
+    $stmt = $db->prepare("SELECT id, name, price FROM packages WHERE tenant_id = ? ORDER BY price ASC");
+    $stmt->execute([$tenant_id]);
     $packages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $packages = [];
@@ -579,8 +590,8 @@ include 'includes/sidebar.php';
                 </div>
                 <div class="stat-value"><?php echo $total_customers; ?></div>
                 <div class="stat-label">Total Customers</div>
-                <div class="stat-change positive">
-                    <i class="fas fa-arrow-up"></i> +2.5%
+                <div class="stat-change">
+                    <span class="metric-period">Total Database</span>
                 </div>
             </div>
 
@@ -592,8 +603,8 @@ include 'includes/sidebar.php';
                 </div>
                 <div class="stat-value"><?php echo $active_services; ?></div>
                 <div class="stat-label">Active Services</div>
-                <div class="stat-change positive">
-                    <i class="fas fa-arrow-up"></i> +4.2%
+                <div class="stat-change">
+                    <span class="metric-period">Current Active</span>
                 </div>
             </div>
 
@@ -605,8 +616,8 @@ include 'includes/sidebar.php';
                 </div>
                 <div class="stat-value"><?php echo $expired_services; ?></div>
                 <div class="stat-label">Expired Services</div>
-                <div class="stat-change negative">
-                    <i class="fas fa-arrow-down"></i> -2.1%
+                <div class="stat-change">
+                    <span class="metric-period">Total Expired</span>
                 </div>
             </div>
 

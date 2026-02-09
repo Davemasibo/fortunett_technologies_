@@ -1,485 +1,310 @@
 <?php
-require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/classes/EmailHelper.php';
 redirectIfNotLoggedIn();
 
-// Get email logs
-try {
-    $email_logs = $pdo->query("SELECT el.*, c.full_name AS client_name 
-                               FROM email_logs el 
-                               LEFT JOIN clients c ON el.client_id = c.id 
-                               ORDER BY el.sent_at DESC 
-                               LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
-    $email_logs = [];
-}
+// Get tenant context
+if (session_status() === PHP_SESSION_NONE) session_start();
+$user_id = $_SESSION['user_id'] ?? 0;
+$stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$stmt->execute([$user_id]);
+$tenant_id = $stmt->fetchColumn();
 
-// Get SMTP settings
-try {
-    $pdo->exec("CREATE TABLE IF NOT EXISTS email_settings (
-        id INT PRIMARY KEY DEFAULT 1, 
-        smtp_host VARCHAR(255),
-        smtp_port INT DEFAULT 587,
-        smtp_username VARCHAR(255),
-        smtp_password VARCHAR(255),
-        from_email VARCHAR(255),
-        from_name VARCHAR(255),
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )");
-    
-    $stmt = $pdo->query("SELECT COUNT(*) FROM email_settings WHERE id = 1");
-    if ($stmt->fetchColumn() == 0) {
-        $pdo->exec("INSERT INTO email_settings (id) VALUES (1)");
+$emailHelper = new EmailHelper($pdo, $tenant_id);
+
+// Handle Actions
+$success_message = '';
+$error_message = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['save_config'])) {
+        $result = $emailHelper->saveConfig($_POST['smtp_host'], $_POST['smtp_port'], $_POST['smtp_username'], $_POST['smtp_password'], $_POST['from_email'], $_POST['from_name']);
+        if ($result) $success_message = "SMTP Configuration saved successfully.";
+        else $error_message = "Failed to save configuration.";
     }
     
-    $email_settings = $pdo->query("SELECT * FROM email_settings WHERE id = 1")->fetch();
-} catch (Exception $e) {
-    $email_settings = null;
+    if (isset($_POST['save_template'])) {
+        $result = $emailHelper->saveTemplate($_POST['template_key'], $_POST['subject'], $_POST['body_content']);
+        if ($result) $success_message = "Template saved successfully.";
+        else $error_message = "Failed to save template.";
+    }
+    
+    if (isset($_POST['send_email'])) {
+        $recipientId = $_POST['recipient_id'];
+        $subject = $_POST['subject'];
+        $message = $_POST['message'];
+        
+        // Lookup email
+        $cStmt = $pdo->prepare("SELECT email FROM clients WHERE id = ?");
+        $cStmt->execute([$recipientId]);
+        $email = $cStmt->fetchColumn();
+        
+        if ($email) {
+            $res = $emailHelper->send($email, $subject, $message, $recipientId);
+            if ($res['success']) $success_message = "Email sent successfully.";
+            else $error_message = "Failed to send: " . ($res['message'] ?? 'Unknown error');
+        } else {
+            $error_message = "Client email address not found.";
+        }
+    }
 }
 
-// Handle SMTP settings save
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_smtp'])) {
-    $smtp_host = trim($_POST['smtp_host'] ?? '');
-    $smtp_port = (int)($_POST['smtp_port'] ?? 587);
-    $smtp_username = trim($_POST['smtp_username'] ?? '');
-    $smtp_password = trim($_POST['smtp_password'] ?? '');
-    $from_email = trim($_POST['from_email'] ?? '');
-    $from_name = trim($_POST['from_name'] ?? '');
-    
-    $stmt = $pdo->prepare("UPDATE email_settings SET smtp_host = ?, smtp_port = ?, smtp_username = ?, smtp_password = ?, from_email = ?, from_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1");
-    $stmt->execute([$smtp_host, $smtp_port, $smtp_username, $smtp_password, $from_email, $from_name]);
-    
-    header('Location: emails.php?saved=1');
-    exit;
-}
+// Fetch Data
+$logs = $pdo->prepare("SELECT el.*, c.full_name FROM email_outbox el LEFT JOIN clients c ON el.client_id = c.id WHERE el.tenant_id = ? ORDER BY el.sent_at DESC LIMIT 50");
+$logs->execute([$tenant_id]);
+$email_logs = $logs->fetchAll(PDO::FETCH_ASSOC);
+
+$templates = $emailHelper->getTemplates();
+
+// Fetch Config
+$confStmt = $pdo->prepare("SELECT * FROM email_configurations WHERE tenant_id = ?");
+$confStmt->execute([$tenant_id]);
+$config = $confStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+// Fetch Clients
+$clientsStmt = $pdo->prepare("SELECT id, full_name, email FROM clients WHERE tenant_id = ? AND email IS NOT NULL AND email != '' ORDER BY full_name ASC");
+$clientsStmt->execute([$tenant_id]);
+$clients = $clientsStmt->fetchAll(PDO::FETCH_ASSOC);
 
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
 
-<style>
-    .main-content-wrapper {
-        background: #F3F4F6 !important;
-    }
-    
-    .emails-container {
-        padding: 24px 32px;
-        max-width: 1400px;
-        margin: 0 auto;
-    }
-    
-    .emails-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 24px;
-    }
-    
-    .emails-title {
-        font-size: 28px;
-        font-weight: 600;
-        color: #111827;
-        margin: 0;
-    }
-    
-    .send-email-btn {
-        padding: 10px 20px;
-        background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    
-    /* Search Bar */
-    .search-bar {
-        background: white;
-        border-radius: 10px;
-        padding: 16px 20px;
-        margin-bottom: 20px;
-        border: 1px solid #E5E7EB;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    
-    .search-input {
-        flex: 1;
-        padding: 8px 12px;
-        border: 1px solid #D1D5DB;
-        border-radius: 6px;
-        font-size: 14px;
-    }
-    
-    .filter-icon {
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        border: 1px solid #D1D5DB;
-        background: white;
-        color: #6B7280;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-    }
-    
-    /* Emails Table */
-    .emails-section {
-        background: white;
-        border-radius: 10px;
-        border: 1px solid #E5E7EB;
-        overflow: hidden;
-    }
-    
-    .emails-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    
-    .emails-table thead {
-        background: #F9FAFB;
-        border-bottom: 1px solid #E5E7EB;
-    }
-    
-    .emails-table th {
-        padding: 12px 16px;
-        text-align: left;
-        font-size: 11px;
-        font-weight: 600;
-        color: #6B7280;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    
-    .emails-table td {
-        padding: 14px 16px;
-        border-bottom: 1px solid #F3F4F6;
-        font-size: 14px;
-        color: #111827;
-    }
-    
-    .emails-table tbody tr:hover {
-        background: #F9FAFB;
-    }
-    
-    .status-badge {
-        padding: 4px 10px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 500;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-    }
-    
-    .status-badge.sent {
-        background: #D1FAE5;
-        color: #065F46;
-    }
-    
-    .view-btn {
-        color: #3B6EA5;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        text-decoration: none;
-    }
-    
-    .pagination {
-        padding: 16px 20px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        border-top: 1px solid #E5E7EB;
-    }
-    
-    .pagination-info {
-        font-size: 13px;
-        color: #6B7280;
-    }
-    
-    .pagination-controls {
-        display: flex;
-        gap: 8px;
-    }
-    
-    .page-btn {
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        border: 1px solid #E5E7EB;
-        background: white;
-        color: #374151;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        font-size: 14px;
-    }
-    
-    .page-btn.active {
-        background: #3B6EA5;
-        color: white;
-        border-color: #3B6EA5;
-    }
-    
-    /* SMTP Modal */
-    .modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        z-index: 9999;
-    }
-    
-    .modal-overlay.active {
-        display: flex;
-    }
-    
-    .modal-content {
-        background: white;
-        border-radius: 10px;
-        width: 90%;
-        max-width: 600px;
-        max-height: 90vh;
-        overflow-y: auto;
-    }
-    
-    .modal-header {
-        padding: 20px 24px;
-        border-bottom: 1px solid #E5E7EB;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-    
-    .modal-title {
-        font-size: 18px;
-        font-weight: 600;
-        color: #111827;
-    }
-    
-    .modal-close {
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        border: none;
-        background: #F3F4F6;
-        color: #6B7280;
-        cursor: pointer;
-        font-size: 20px;
-    }
-    
-    .modal-body {
-        padding: 24px;
-    }
-    
-    .form-group {
-        margin-bottom: 20px;
-    }
-    
-    .form-label {
-        display: block;
-        font-size: 14px;
-        font-weight: 500;
-        color: #374151;
-        margin-bottom: 8px;
-    }
-    
-    .form-input {
-        width: 100%;
-        padding: 10px 14px;
-        border: 1px solid #D1D5DB;
-        border-radius: 6px;
-        font-size: 14px;
-    }
-    
-    .modal-footer {
-        padding: 16px 24px;
-        border-top: 1px solid #E5E7EB;
-        display: flex;
-        gap: 12px;
-        justify-content: flex-end;
-    }
-    
-    .btn-cancel {
-        padding: 10px 20px;
-        background: #F3F4F6;
-        color: #374151;
-        border: none;
-        border-radius: 6px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-    }
-    
-    .btn-save {
-        padding: 10px 20px;
-        background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-    }
-</style>
-
 <div class="main-content-wrapper">
-    <div class="emails-container">
+    <div class="emails-container" style="padding: 24px; max-width: 1400px; margin: 0 auto;">
+        
         <!-- Header -->
-        <div class="emails-header">
-            <h1 class="emails-title">Emails</h1>
-            <button class="send-email-btn" onclick="alert('Send Email feature coming soon!')">
-                <i class="fas fa-paper-plane"></i>
-                Send Email
-            </button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div>
+                <h1 style="font-size: 28px; font-weight: 600; color: #111827; margin: 0;">Email Manager</h1>
+                <p style="color: #6B7280; font-size: 14px;">Manage templates, SMTP, and communications.</p>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="openConfigModal()" style="padding: 10px 16px; background: white; border: 1px solid #D1D5DB; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-cog"></i> SMTP Settings
+                </button>
+                <button onclick="openSendModal()" style="padding: 10px 16px; background: #2C5282; color: white; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-paper-plane"></i> Send Email
+                </button>
+            </div>
         </div>
 
-        <!-- Search Bar -->
-        <div class="search-bar">
-            <i class="fas fa-search" style="color: #9CA3AF;"></i>
-            <input type="text" class="search-input" placeholder="Search">
-            <button class="filter-icon" onclick="openSMTPModal()">
-                <i class="fas fa-cog"></i>
-            </button>
-        </div>
+        <?php if ($success_message): ?>
+            <div style="padding: 12px; background: #D1FAE5; color: #065F46; border-radius: 6px; margin-bottom: 20px;"><?php echo $success_message; ?></div>
+        <?php endif; ?>
+        <?php if ($error_message): ?>
+            <div style="padding: 12px; background: #FEE2E2; color: #991B1B; border-radius: 6px; margin-bottom: 20px;"><?php echo $error_message; ?></div>
+        <?php endif; ?>
 
-        <!-- Emails Table -->
-        <div class="emails-section">
-            <table class="emails-table">
-                <thead>
-                    <tr>
-                        <th>SUBJECT</th>
-                        <th>EMAIL</th>
-                        <th>MESSAGE</th>
-                        <th>STATUS</th>
-                        <th>SENT AT</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($email_logs)): ?>
-                    <tr>
-                        <td colspan="6" style="text-align: center; padding: 40px; color: #9CA3AF;">
-                            No emails sent yet
-                        </td>
-                    </tr>
-                    <?php else: ?>
-                    <?php foreach ($email_logs as $log): ?>
-                    <tr>
-                        <td><?php echo htmlspecialchars($log['subject']); ?></td>
-                        <td><?php echo htmlspecialchars($log['recipient_email']); ?></td>
-                        <td><?php echo htmlspecialchars(substr($log['message'], 0, 50)) . '...'; ?></td>
-                        <td>
-                            <span class="status-badge sent">sent</span>
-                        </td>
-                        <td><?php echo date('d.m.Y H:i', strtotime($log['sent_at'])); ?></td>
-                        <td>
-                            <a href="#" class="view-btn">View</a>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+        <!-- Content Grid -->
+        <div style="display: grid; grid-template-columns: 3fr 1fr; gap: 24px;">
+            
+            <!-- Left Column: Logs -->
+            <div style="background: white; border-radius: 8px; border: 1px solid #E5E7EB; overflow: hidden;">
+                <div style="padding: 16px; border-bottom: 1px solid #E5E7EB; font-weight: 600;">Sent Emails</div>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead style="background: #F9FAFB;">
+                        <tr>
+                            <th style="text-align: left; padding: 12px; font-size: 12px; color: #6B7280;">RECIPIENT</th>
+                            <th style="text-align: left; padding: 12px; font-size: 12px; color: #6B7280;">SUBJECT</th>
+                            <th style="text-align: left; padding: 12px; font-size: 12px; color: #6B7280;">STATUS</th>
+                            <th style="text-align: left; padding: 12px; font-size: 12px; color: #6B7280;">DATE</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($email_logs as $log): ?>
+                        <tr style="border-bottom: 1px solid #F3F4F6;">
+                            <td style="padding: 12px;">
+                                <div><?php echo htmlspecialchars($log['full_name'] ?? 'Unknown'); ?></div>
+                                <div style="font-size: 12px; color: #9CA3AF;"><?php echo htmlspecialchars($log['recipient_email']); ?></div>
+                            </td>
+                            <td style="padding: 12px;">
+                                <?php echo htmlspecialchars($log['subject']); ?>
+                            </td>
+                            <td style="padding: 12px;">
+                                <span style="padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; 
+                                    background: <?php echo $log['status'] === 'sent' ? '#D1FAE5' : '#FEE2E2'; ?>; 
+                                    color: <?php echo $log['status'] === 'sent' ? '#065F46' : '#991B1B'; ?>;">
+                                    <?php echo strtoupper($log['status']); ?>
+                                </span>
+                            </td>
+                            <td style="padding: 12px; font-size: 12px; color: #6B7280;">
+                                <?php echo date('M d, H:i', strtotime($log['sent_at'])); ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                        <?php if (empty($email_logs)): ?>
+                            <tr><td colspan="4" style="text-align: center; padding: 20px; color: #9CA3AF;">No emails sent yet.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
 
-            <!-- Pagination -->
-            <div class="pagination">
-                <div class="pagination-info">
-                    Showing 1 to <?php echo min(10, count($email_logs)); ?> of <?php echo count($email_logs); ?> results
-                </div>
-                <div class="pagination-controls">
-                    <button class="page-btn active">1</button>
-                    <button class="page-btn">2</button>
-                    <button class="page-btn">
-                        <i class="fas fa-chevron-right"></i>
-                    </button>
+            <!-- Right Column: Templates -->
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div style="background: white; border-radius: 8px; border: 1px solid #E5E7EB; padding: 16px;">
+                    <div style="font-weight: 600; margin-bottom: 12px;">Templates</div>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <?php foreach ($templates as $tpl): ?>
+                        <div onclick='openTemplateModal(<?php echo json_encode($tpl); ?>)' style="padding: 10px; border: 1px solid #E5E7EB; border-radius: 6px; cursor: pointer; hover: background: #F9FAFB;">
+                            <div style="font-weight: 500; font-size: 14px;"><?php echo htmlspecialchars($tpl['template_key']); ?></div>
+                            <div style="font-size: 12px; color: #6B7280; margin-top: 4px;"><?php echo htmlspecialchars($tpl['subject']); ?></div>
+                        </div>
+                        <?php endforeach; ?>
+                        <button onclick="openTemplateModal()" style="width: 100%; padding: 8px; border: 1px dashed #D1D5DB; background: none; color: #6B7280; border-radius: 6px; cursor: pointer;">+ New Template</button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- SMTP Configuration Modal -->
-<div class="modal-overlay" id="smtpModal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3 class="modal-title">SMTP Server Configuration</h3>
-            <button class="modal-close" onclick="closeSMTPModal()">&times;</button>
-        </div>
+<!-- Config Modal -->
+<div id="configModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; padding:24px; border-radius:8px; width:400px;">
+        <h3 style="margin-top:0;">SMTP Configuration</h3>
         <form method="POST">
-            <div class="modal-body">
-                <?php if (isset($_GET['saved'])): ?>
-                <div style="padding: 12px; background: #D1FAE5; color: #065F46; border-radius: 6px; margin-bottom: 16px;">
-                    Settings saved successfully!
-                </div>
-                <?php endif; ?>
-                
-                <div class="form-group">
-                    <label class="form-label">SMTP Host</label>
-                    <input type="text" name="smtp_host" class="form-input" value="<?php echo htmlspecialchars($email_settings['smtp_host'] ?? ''); ?>" placeholder="smtp.gmail.com">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">SMTP Port</label>
-                    <input type="number" name="smtp_port" class="form-input" value="<?php echo htmlspecialchars($email_settings['smtp_port'] ?? '587'); ?>" placeholder="587">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">SMTP Username</label>
-                    <input type="text" name="smtp_username" class="form-input" value="<?php echo htmlspecialchars($email_settings['smtp_username'] ?? ''); ?>" placeholder="your@email.com">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">SMTP Password</label>
-                    <input type="password" name="smtp_password" class="form-input" value="<?php echo htmlspecialchars($email_settings['smtp_password'] ?? ''); ?>" placeholder="••••••••">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">From Email</label>
-                    <input type="email" name="from_email" class="form-input" value="<?php echo htmlspecialchars($email_settings['from_email'] ?? ''); ?>" placeholder="noreply@yourcompany.com">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">From Name</label>
-                    <input type="text" name="from_name" class="form-input" value="<?php echo htmlspecialchars($email_settings['from_name'] ?? ''); ?>" placeholder="Your Company">
-                </div>
+            <input type="hidden" name="save_config" value="1">
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">SMTP Host</label>
+                <input type="text" name="smtp_host" value="<?php echo htmlspecialchars($config['smtp_host'] ?? ''); ?>" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:4px;" placeholder="smtp.gmail.com">
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn-cancel" onclick="closeSMTPModal()">Cancel</button>
-                <button type="submit" name="save_smtp" class="btn-save">Save Configuration</button>
+             <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Port</label>
+                <input type="text" name="smtp_port" value="<?php echo htmlspecialchars($config['smtp_port'] ?? '587'); ?>" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:4px;">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Username</label>
+                <input type="text" name="smtp_username" value="<?php echo htmlspecialchars($config['smtp_username'] ?? ''); ?>" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:4px;" placeholder="Email">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Password</label>
+                <input type="password" name="smtp_password" value="<?php echo htmlspecialchars($config['smtp_password'] ?? ''); ?>" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:4px;" placeholder="Password">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">From Email</label>
+                <input type="text" name="from_email" value="<?php echo htmlspecialchars($config['from_email'] ?? ''); ?>" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:4px;" placeholder="no-reply@domain.com">
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">From Name</label>
+                <input type="text" name="from_name" value="<?php echo htmlspecialchars($config['from_name'] ?? ''); ?>" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:4px;" placeholder="Sender Name">
+            </div>
+            <div style="text-align:right;">
+                <button type="button" onclick="document.getElementById('configModal').style.display='none'" style="padding:8px 16px; margin-right:8px; background:#F3F4F6; border:none; border-radius:4px; cursor:pointer;">Cancel</button>
+                <button type="submit" style="padding:8px 16px; background:#2C5282; color:white; border:none; border-radius:4px; cursor:pointer;">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Send Modal -->
+<div id="sendModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; padding:24px; border-radius:8px; width:550px;">
+        <h3 style="margin-top:0;">Send Email</h3>
+        <form method="POST">
+            <input type="hidden" name="send_email" value="1">
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Recipient</label>
+                <select name="recipient_id" id="emailRecipient" onchange="checkTemplate()" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:4px;" required>
+                    <option value="">Select Client...</option>
+                    <?php foreach ($clients as $c): ?>
+                        <option value="<?php echo $c['id']; ?>"><?php echo htmlspecialchars($c['full_name']); ?> (<?php echo htmlspecialchars($c['email']); ?>)</option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            
+            <div style="margin-bottom:12px;">
+                 <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Use Template (Optional)</label>
+                 <select id="useTemplate" onchange="applyTemplate()" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:4px;">
+                    <option value="">-- Manual Entry --</option>
+                    <?php foreach ($templates as $tpl): ?>
+                        <option value="<?php echo htmlspecialchars($tpl['template_key']); ?>"
+                                data-subject="<?php echo htmlspecialchars($tpl['subject']); ?>"
+                                data-body="<?php echo htmlspecialchars($tpl['body_content']); ?>">
+                                <?php echo htmlspecialchars($tpl['template_key']); ?> - <?php echo htmlspecialchars($tpl['subject']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                 </select>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Subject</label>
+                <input type="text" name="subject" id="emailSubject" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:4px;" required>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Message (HTML)</label>
+                <textarea name="message" id="emailBody" rows="6" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:4px; font-family: monospace;" required></textarea>
+            </div>
+            <div style="text-align:right;">
+                <button type="button" onclick="document.getElementById('sendModal').style.display='none'" style="padding:8px 16px; margin-right:8px; background:#F3F4F6; border:none; border-radius:4px; cursor:pointer;">Cancel</button>
+                <button type="submit" style="padding:8px 16px; background:#2C5282; color:white; border:none; border-radius:4px; cursor:pointer;">Send</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Template Modal -->
+<div id="templateModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; padding:24px; border-radius:8px; width:550px; max-height:85vh; overflow:auto;">
+        <h3 style="margin-top:0;">Edit Template</h3>
+        <form method="POST">
+            <input type="hidden" name="save_template" value="1">
+            <div style="margin-bottom:12px;">
+                 <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Template Key (Unique ID)</label>
+                 <input type="text" name="template_key" id="tplKey" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:4px;" required>
+            </div>
+            <div style="margin-bottom:12px;">
+                 <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Subject</label>
+                 <input type="text" name="subject" id="tplSubject" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:4px;" required>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Body HTML (Variables: {name}, {username}, {password}, {amount})</label>
+                <textarea name="body_content" id="tplContent" rows="8" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:4px; font-family: monospace;" required></textarea>
+            </div>
+            <div style="text-align:right;">
+                <button type="button" onclick="document.getElementById('templateModal').style.display='none'" style="padding:8px 16px; margin-right:8px; background:#F3F4F6; border:none; border-radius:4px; cursor:pointer;">Cancel</button>
+                <button type="submit" style="padding:8px 16px; background:#2C5282; color:white; border:none; border-radius:4px; cursor:pointer;">Save Template</button>
             </div>
         </form>
     </div>
 </div>
 
 <script>
-function openSMTPModal() {
-    document.getElementById('smtpModal').classList.add('active');
-}
+function openConfigModal() { document.getElementById('configModal').style.display = 'flex'; }
+function openSendModal() { document.getElementById('sendModal').style.display = 'flex'; }
 
-function closeSMTPModal() {
-    document.getElementById('smtpModal').classList.remove('active');
-}
-
-// Close modal when clicking outside
-document.getElementById('smtpModal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closeSMTPModal();
+function openTemplateModal(data) {
+    document.getElementById('templateModal').style.display = 'flex';
+    if(data) {
+        document.getElementById('tplKey').value = data.template_key;
+        document.getElementById('tplSubject').value = data.subject;
+        document.getElementById('tplContent').value = data.body_content;
+    } else {
+        document.getElementById('tplKey').value = '';
+        document.getElementById('tplSubject').value = '';
+        document.getElementById('tplContent').value = '';
     }
-});
+}
+
+function applyTemplate() {
+    const selector = document.getElementById('useTemplate');
+    if(!selector.value) return;
+    
+    const option = selector.options[selector.selectedIndex];
+    document.getElementById('emailSubject').value = option.getAttribute('data-subject');
+    document.getElementById('emailBody').value = option.getAttribute('data-body');
+}
+
+// Close modals on outside click
+window.onclick = function(event) {
+    const config = document.getElementById('configModal');
+    const send = document.getElementById('sendModal');
+    const tpl = document.getElementById('templateModal');
+    if (event.target == config) config.style.display='none';
+    if (event.target == send) send.style.display='none';
+    if (event.target == tpl) tpl.style.display='none';
+}
 </script>
 
 <?php include 'includes/footer.php'; ?>

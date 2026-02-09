@@ -1,38 +1,85 @@
 <?php
 header('Content-Type: application/json');
-require_once '../../includes/config.php';
+require_once '../../includes/db_master.php';
+require_once '../../includes/tenant.php';
 
 // Get parameters
+$token = $_GET['token'] ?? '';
 $identity = $_GET['identity'] ?? '';
+$format = $_GET['format'] ?? 'json'; // json or rsc
 $ip = $_SERVER['REMOTE_ADDR'];
 
-if (!$identity) {
-    echo json_encode(['status' => 'error', 'message' => 'Identity required']);
+// Validate Token
+if (!$token) {
+    if ($format === 'rsc') {
+        echo ":log error \"Provisioning Token required\";";
+        exit;
+    }
+    echo json_encode(['status' => 'error', 'message' => 'Provisioning Token required']);
     exit;
 }
 
 try {
-    // Check if exists
-    $stmt = $pdo->prepare("SELECT id FROM mikrotik_routers WHERE name = ? OR ip_address = ?");
-    $stmt->execute([$identity, $ip]);
-    $existing = $stmt->fetch();
+    // Validate Token and Get Tenant
+    $tenantManager = TenantManager::getInstance($pdo);
+    $tenantId = $tenantManager->validateProvisioningToken($token);
 
-    if ($existing) {
-        // Update - using last_connected
-        $update = $pdo->prepare("UPDATE mikrotik_routers SET ip_address = ?, status = 'online', last_connected = NOW() WHERE id = ?");
-        $update->execute([$ip, $existing['id']]);
-        $id = $existing['id'];
-    } else {
-        // Insert - using api_port and last_connected
-        $insert = $pdo->prepare("INSERT INTO mikrotik_routers (name, ip_address, status, username, password, api_port, created_at, last_connected) VALUES (?, ?, 'online', 'admin', '', 8728, NOW(), NOW())");
-        $insert->execute([$identity, $ip]);
-        $id = $pdo->lastInsertId();
+    if (!$tenantId) {
+        if ($format === 'rsc') {
+            echo ":log error \"Invalid Provisioning Token\";";
+            exit;
+        }
+        echo json_encode(['status' => 'error', 'message' => 'Invalid Token']);
+        exit;
     }
 
-    echo json_encode(['status' => 'success', 'id' => $id, 'message' => 'Router provisioned']);
+    if ($format === 'rsc') {
+        header('Content-Type: text/plain');
+        header('Content-Disposition: attachment; filename="provision.rsc"');
+        
+        // Dynamic URL construction
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+        $serverUrl = $protocol . $_SERVER['HTTP_HOST'] . '/fortunett_technologies_/api/routers/auto_register.php';
+        
+        // Generate a secure password for the admin user
+        $adminPassword = bin2hex(random_bytes(8));
+        
+        echo "# Fortunett Technologies Provisioning Script\n";
+        echo "# Generated: " . date('Y-m-d H:i:s') . "\n";
+        echo "# Tenant ID: $tenantId\n\n";
+        
+        echo ":log info \"Starting Provisioning for $identity\";\n";
+        echo "/system identity set name=\"$identity\";\n";
+        
+        // Create User
+        echo "/user remove [find name=\"fortunett_admin\"];\n";
+        echo "/user add name=\"fortunett_admin\" group=full password=\"$adminPassword\" comment=\"Managed by Fortunett\";\n";
+        
+        // Enable API
+        echo "/ip service set api disabled=no port=8728;\n";
+        
+        // Add Scheduler for Heartbeat/Auto-Register (every 5 minutes)
+        // This scheduler posts data to auto_register.php with the TOKEN
+        // Note: Using a variable for the command to handle escaping better
+        echo ":local cmd \"/tool fetch url=\\\"$serverUrl\\\" http-method=post http-data=\\\"provisioning_token=$token&router_ip=192.168.88.1&router_mac=\\$[/interface ethernet get ether1 mac-address]&router_identity=\\$[/system identity get name]&router_username=fortunett_admin&router_password=$adminPassword\\\" keep-result=no\";\n";
+        echo "/system scheduler remove [find name=\"fortunett_heartbeat\"];\n";
+        echo "/system scheduler add name=\"fortunett_heartbeat\" interval=5m on-event=\$cmd start-time=startup;\n";
+        
+        // Run Heartbeat Immediately to register
+        echo ":delay 2s;\n";
+        echo "/tool fetch url=\"$serverUrl\" http-method=post http-data=\"provisioning_token=$token&router_ip=192.168.88.1&router_mac=$[/interface ethernet get ether1 mac-address]&router_identity=$[/system identity get name]&router_username=fortunett_admin&router_password=$adminPassword\" keep-result=no;\n";
+        
+        echo ":log info \"Provisioning Complete\";\n";
+        exit;
+    }
+
+    echo json_encode(['status' => 'success', 'message' => 'Token Valid. Use format=rsc to get script.']);
 
 } catch (Exception $e) {
-    file_put_contents(__DIR__ . '/../../logs/provision_error.log', $e->getMessage());
+    if ($format === 'rsc') {
+        echo ":log error \"Provisioning Failed: " . addslashes($e->getMessage()) . "\";";
+        exit;
+    }
     echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
 }
 ?>

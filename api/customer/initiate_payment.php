@@ -49,7 +49,8 @@ try {
     }
     
     // Initiate M-Pesa STK Push
-    $mpesa = new MpesaAPI();
+    // Pass tenant_id from customer record (multi-tenancy support)
+    $mpesa = new MpesaAPI($pdo, $customer['tenant_id']);
     $accountRef = $customer['account_number'] ?? 'ACC' . $customer['id'];
     $description = 'Payment for ' . $package['name'];
     

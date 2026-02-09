@@ -1,35 +1,41 @@
 <?php
-require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
 redirectIfNotLoggedIn();
+
+// Get current user's tenant_id
+$user_id = $_SESSION['user_id'];
+$stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$stmt->execute([$user_id]);
+$tenant_id = $stmt->fetchColumn();
 
 // Calculate stats
 try {
     // Total Revenue Today
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE DATE(payment_date) = CURDATE() AND status = 'completed'");
-    $stmt->execute();
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE DATE(payment_date) = CURDATE() AND status = 'completed' AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $revenue_today = (float)$stmt->fetchColumn();
     
     // Confirmed Transactions
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE status = 'completed'");
-    $stmt->execute();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE status = 'completed' AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $confirmed_transactions = (int)$stmt->fetchColumn();
     
     // Pending Payments
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE status != 'completed' OR status IS NULL");
-    $stmt->execute();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE (status != 'completed' OR status IS NULL) AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $pending_payments = (int)$stmt->fetchColumn();
     
     // Failed Transactions
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE status = 'failed'");
-    $stmt->execute();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE status = 'failed' AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $failed_transactions = (int)$stmt->fetchColumn();
     
 } catch (Exception $e) {
-    $revenue_today = 487500;
-    $confirmed_transactions = 156;
-    $pending_payments = 23;
-    $failed_transactions = 7;
+    $revenue_today = 0;
+    $confirmed_transactions = 0;
+    $pending_payments = 0;
+    $failed_transactions = 0;
 }
 
 // Get filters
@@ -74,7 +80,9 @@ try {
 
 // Get Clients for Dropdown
 try {
-    $clients = $pdo->query("SELECT id, full_name, phone, subscription_plan FROM clients WHERE status = 'active' ORDER BY full_name ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $stmt = $pdo->prepare("SELECT id, full_name, phone, subscription_plan FROM clients WHERE status = 'active' AND tenant_id = ? ORDER BY full_name ASC");
+    $stmt->execute([$tenant_id]);
+    $clients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $clients = [];
 }
@@ -435,8 +443,8 @@ include 'includes/sidebar.php';
                 </div>
                 <div class="stat-value">KSh <?php echo number_format($revenue_today, 2); ?></div>
                 <div class="stat-label">Total Revenue Today</div>
-                <div class="stat-change positive">
-                    <i class="fas fa-arrow-up"></i> +12.5%
+                <div class="stat-change">
+                    <span class="metric-period">Total Today</span>
                 </div>
             </div>
 
@@ -448,8 +456,8 @@ include 'includes/sidebar.php';
                 </div>
                 <div class="stat-value"><?php echo $confirmed_transactions; ?></div>
                 <div class="stat-label">Confirmed Transactions</div>
-                <div class="stat-change positive">
-                    <i class="fas fa-arrow-up"></i> +8.2%
+                <div class="stat-change">
+                    <span class="metric-period">Total Today</span>
                 </div>
             </div>
 
@@ -462,7 +470,7 @@ include 'includes/sidebar.php';
                 <div class="stat-value"><?php echo $pending_payments; ?></div>
                 <div class="stat-label">Pending Payments</div>
                 <div class="stat-change">
-                    <i class="fas fa-minus"></i> 0%
+                    <span class="metric-period">Awaiting Completion</span>
                 </div>
             </div>
 
@@ -475,7 +483,7 @@ include 'includes/sidebar.php';
                 <div class="stat-value"><?php echo $failed_transactions; ?></div>
                 <div class="stat-label">Failed Transactions</div>
                 <div class="stat-change">
-                    <i class="fas fa-arrow-down"></i> -10.4%
+                    <span class="metric-period">Needs Attention</span>
                 </div>
             </div>
         </div>
@@ -558,7 +566,15 @@ include 'includes/sidebar.php';
                             </span>
                         </td>
                         <td>
-                            <span class="transaction-id"><?php echo htmlspecialchars($tx['transaction_id'] ?? 'N/A'); ?></span>
+                            <?php 
+                                $displayId = $tx['transaction_id'] ?? 'N/A';
+                                // Hide CheckoutRequestID (long string starting with ws_) for pending/processing
+                                if ($status === 'pending' || strpos($displayId, 'ws_') === 0) {
+                                    echo '<span style="font-style:italic; color:#9CA3AF;">Processing...</span>';
+                                } else {
+                                    echo '<span class="transaction-id">' . htmlspecialchars($displayId) . '</span>';
+                                }
+                            ?>
                         </td>
                         <td>
                             <span class="status-badge <?php echo $status; ?>">

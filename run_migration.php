@@ -1,14 +1,21 @@
 <?php
-require_once 'includes/config.php';
+require_once __DIR__ . '/includes/db_master.php';
 
-$sql = "ALTER TABLE packages 
-ADD COLUMN validity_value INT DEFAULT 30,
-ADD COLUMN validity_unit VARCHAR(20) DEFAULT 'days',
-ADD COLUMN device_limit INT DEFAULT 1";
+echo "Connected to database: " . $DB_NAME . "\n";
+
+$sqlFile = __DIR__ . '/sql/migrations/sms_schema.sql';
+if (!file_exists($sqlFile)) {
+    die("SQL file not found: $sqlFile\n");
+}
+
+$sql = file_get_contents($sqlFile);
 
 try {
+    // PDO can handle multiple statements if configured, but let's try separate execution if possible or just one big block
+    // MySQL PDO usually allows multiple statements if data fetching isn't involved in the middle
     $pdo->exec($sql);
-    echo "Migration successful.\n";
+    echo "Migration executed successfully!\n";
 } catch (PDOException $e) {
     echo "Migration failed: " . $e->getMessage() . "\n";
 }
+?>

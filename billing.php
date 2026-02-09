@@ -1,364 +1,139 @@
 <?php
-require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
 redirectIfNotLoggedIn();
 
-// Get billing data
-try {
-    // Create billing table if not exists
-    $pdo->exec("CREATE TABLE IF NOT EXISTS billing_expenses (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        amount DECIMAL(10,2),
-        message TEXT,
-        payment_date DATE,
-        invoice_number VARCHAR(100),
-        status VARCHAR(20) DEFAULT 'completed',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )");
-    
-    // Get all expenses
-    $expenses = $pdo->query("SELECT * FROM billing_expenses ORDER BY payment_date DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Calculate totals
-    $total_expenses = array_sum(array_column($expenses, 'amount'));
-    $current_month_expenses = 0;
-    
-    foreach ($expenses as $expense) {
-        if (date('Y-m', strtotime($expense['payment_date'])) === date('Y-m')) {
-            $current_month_expenses += $expense['amount'];
-        }
-    }
-    
-} catch (Exception $e) {
-    $expenses = [];
-    $total_expenses = 0;
-    $current_month_expenses = 0;
+// Get tenant context
+if (session_status() === PHP_SESSION_NONE) session_start();
+$user_id = $_SESSION['user_id'] ?? 0;
+$stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$stmt->execute([$user_id]);
+$tenant_id = $stmt->fetchColumn();
+
+// --- 1. Auto-Calculate Bill for Current Month ---
+$currentMonthStart = date('Y-m-01');
+$currentMonthEnd = date('Y-m-t');
+
+// Calculate Revenue
+$revStmt = $pdo->prepare("SELECT SUM(amount) FROM payments WHERE tenant_id = ? AND payment_date BETWEEN ? AND ?");
+$revStmt->execute([$tenant_id, $currentMonthStart . ' 00:00:00', $currentMonthEnd . ' 23:59:59']);
+$currentRevenue = $revStmt->fetchColumn() ?: 0.00;
+
+// Calculate Fees
+$baseFee = 500.00;
+$commissionRate = 0.10; // 10%
+$commission = $currentRevenue * $commissionRate;
+$totalDue = $baseFee + $commission;
+
+// Upsert into tenant_bills
+// Check if bill exists for this month
+$checkBill = $pdo->prepare("SELECT id FROM tenant_bills WHERE tenant_id = ? AND billing_period = ?");
+$checkBill->execute([$tenant_id, $currentMonthStart]);
+$billId = $checkBill->fetchColumn();
+
+if ($billId) {
+    // Update existing
+    $upd = $pdo->prepare("UPDATE tenant_bills SET total_collections = ?, commission_amount = ? WHERE id = ? AND status = 'pending'");
+    $upd->execute([$currentRevenue, $commission, $billId]);
+} else {
+    // Insert new
+    $ins = $pdo->prepare("INSERT INTO tenant_bills (tenant_id, billing_period, total_collections, base_fee, commission_rate, commission_amount, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')");
+    $ins->execute([$tenant_id, $currentMonthStart, $currentRevenue, $baseFee, $commissionRate * 100, $commission]);
 }
 
-// Get subscription info (mock data - replace with actual subscription logic)
-$subscription_expires = '2026-01-06';
-$subscription_amount = 625.00;
-$subscription_status = 'active';
+// --- 2. Fetch All Bills for Display ---
+$billsStmt = $pdo->prepare("SELECT * FROM tenant_bills WHERE tenant_id = ? ORDER BY billing_period DESC");
+$billsStmt->execute([$tenant_id]);
+$bills = $billsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Get current pending bill for the alert
+$currentBill = null;
+foreach ($bills as $b) {
+    if ($b['billing_period'] === $currentMonthStart) {
+        $currentBill = $b;
+        break;
+    }
+}
 
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
 
-<style>
-    .main-content-wrapper {
-        background: #F3F4F6 !important;
-    }
-    
-    .billing-container {
-        padding: 24px 32px;
-        max-width: 1400px;
-        margin: 0 auto;
-    }
-    
-    .billing-title {
-        font-size: 28px;
-        font-weight: 600;
-        color: #111827;
-        margin: 0 0 4px 0;
-    }
-    
-    .billing-subtitle {
-        font-size: 14px;
-        color: #6B7280;
-        margin: 0 0 24px 0;
-    }
-    
-    /* License Alert */
-    .license-alert {
-        background: white;
-        border-radius: 10px;
-        padding: 20px 24px;
-        margin-bottom: 24px;
-        border: 1px solid #E5E7EB;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-    
-    .alert-content {
-        flex: 1;
-    }
-    
-    .alert-title {
-        font-size: 16px;
-        font-weight: 600;
-        color: #111827;
-        margin-bottom: 4px;
-    }
-    
-    .alert-message {
-        font-size: 14px;
-        color: #6B7280;
-    }
-    
-    .view-invoice-btn {
-        padding: 10px 20px;
-        background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        text-decoration: none;
-    }
-    
-    /* Search Bar */
-    .search-bar {
-        background: white;
-        border-radius: 10px;
-        padding: 16px 20px;
-        margin-bottom: 20px;
-        border: 1px solid #E5E7EB;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    
-    .search-input {
-        flex: 1;
-        padding: 8px 12px;
-        border: 1px solid #D1D5DB;
-        border-radius: 6px;
-        font-size: 14px;
-    }
-    
-    .filter-icon {
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        border: 1px solid #D1D5DB;
-        background: white;
-        color: #6B7280;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-    }
-    
-    /* Expenses Table */
-    .expenses-section {
-        background: white;
-        border-radius: 10px;
-        border: 1px solid #E5E7EB;
-        overflow: hidden;
-    }
-    
-    .expenses-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    
-    .expenses-table thead {
-        background: #F9FAFB;
-        border-bottom: 1px solid #E5E7EB;
-    }
-    
-    .expenses-table th {
-        padding: 12px 16px;
-        text-align: left;
-        font-size: 11px;
-        font-weight: 600;
-        color: #6B7280;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    
-    .expenses-table td {
-        padding: 14px 16px;
-        border-bottom: 1px solid #F3F4F6;
-        font-size: 14px;
-        color: #111827;
-    }
-    
-    .expenses-table tbody tr:hover {
-        background: #F9FAFB;
-    }
-    
-    .status-badge {
-        padding: 4px 10px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 500;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-    }
-    
-    .status-badge.completed {
-        background: #D1FAE5;
-        color: #065F46;
-    }
-    
-    .action-btn {
-        color: #6B7280;
-        font-size: 18px;
-        cursor: pointer;
-        border: none;
-        background: none;
-    }
-    
-    .pagination {
-        padding: 16px 20px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        border-top: 1px solid #E5E7EB;
-    }
-    
-    .pagination-info {
-        font-size: 13px;
-        color: #6B7280;
-    }
-    
-    .pagination-controls {
-        display: flex;
-        gap: 8px;
-    }
-    
-    .page-btn {
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        border: 1px solid #E5E7EB;
-        background: white;
-        color: #374151;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        font-size: 14px;
-    }
-    
-    .page-btn.active {
-        background: #F59E0B;
-        color: white;
-        border-color: #F59E0B;
-    }
-</style>
-
 <div class="main-content-wrapper">
-    <div class="billing-container">
+    <div class="container-fluid">
         <!-- Header -->
-        <div>
-            <h1 class="billing-title">Fortunnet Licence</h1>
-            <p class="billing-subtitle">Manage your subscription and view billing history</p>
+        <div class="mb-4">
+            <h2 class="mb-1 text-dark fw-bold">Billing & Invoices</h2>
+            <p class="text-muted mb-0">Manage your subscription and view monthly statements.</p>
         </div>
 
-        <!-- License Alert -->
-        <div class="license-alert">
-            <div class="alert-content">
-                <div class="alert-title">Fortunnet Licence</div>
-                <div class="alert-message">
-                    Your subscription expires on <?php echo date('d.m.Y', strtotime($subscription_expires)); ?> at 09:22 AM. 
-                    Please renew your subscription before it expires.
+        <!-- Current Bill Card -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body p-4 d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="bg-primary bg-opacity-10 p-3 rounded-circle text-primary">
+                        <i class="fas fa-file-invoice-dollar fa-2x"></i>
+                    </div>
+                    <div>
+                        <h5 class="mb-1 fw-bold text-dark">Current Month's Bill (Estimate)</h5>
+                        <p class="mb-0 text-secondary">
+                            Your estimated bill for <strong><?php echo date('F Y'); ?></strong> is 
+                            <span class="text-primary fw-bold">KES <?php echo number_format($totalDue, 2); ?></span>.
+                            <br><small class="text-muted">Based on collected revenue of KES <?php echo number_format($currentRevenue, 2); ?>.</small>
+                        </p>
+                    </div>
                 </div>
+                <?php if ($currentBill): ?>
+                <button onclick='openInvoiceModal(<?php echo json_encode($currentBill); ?>)' class="btn btn-primary d-flex align-items-center gap-2">
+                    <i class="fas fa-eye"></i> View Details
+                </button>
+                <?php endif; ?>
             </div>
-            <a href="#" class="view-invoice-btn" onclick="viewInvoice(); return false;">
-                <i class="fas fa-file-invoice"></i>
-                View Invoice & Payment Details
-            </a>
         </div>
 
-        <!-- Search Bar -->
-        <div class="search-bar">
-            <i class="fas fa-search" style="color: #9CA3AF;"></i>
-            <input type="text" class="search-input" placeholder="Search">
-            <button class="filter-icon">
-                <i class="fas fa-th"></i>
-            </button>
-        </div>
-
-        <!-- Expenses Table -->
-        <div class="expenses-section">
-            <table class="expenses-table">
-                <thead>
-                    <tr>
-                        <th>AMOUNT</th>
-                        <th>MESSAGE</th>
-                        <th>PAYMENT DATE</th>
-                        <th>INVOICE</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($expenses)): ?>
-                    <!-- Sample data if no expenses exist -->
-                    <tr>
-                        <td>KES 625.00</td>
-                        <td>The service request is processed successfully.</td>
-                        <td>01.12.2025 13:27</td>
-                        <td>INV-ecolandattic-20251206</td>
-                        <td>
-                            <button class="action-btn" title="More options">
-                                <i class="fas fa-ellipsis-v"></i>
-                            </button>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>KES 705.00</td>
-                        <td>The service request is processed successfully.</td>
-                        <td>04.11.2025 09:35</td>
-                        <td>INV-ecolandattic-20251106</td>
-                        <td>
-                            <button class="action-btn" title="More options">
-                                <i class="fas fa-ellipsis-v"></i>
-                            </button>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>KES 500.00</td>
-                        <td>The service request is processed successfully.</td>
-                        <td>06.10.2025 15:26</td>
-                        <td>INV-ecolandattic-20251006</td>
-                        <td>
-                            <button class="action-btn" title="More options">
-                                <i class="fas fa-ellipsis-v"></i>
-                            </button>
-                        </td>
-                    </tr>
-                    <?php else: ?>
-                    <?php foreach ($expenses as $expense): ?>
-                    <tr>
-                        <td>KES <?php echo number_format($expense['amount'], 2); ?></td>
-                        <td><?php echo htmlspecialchars($expense['message']); ?></td>
-                        <td><?php echo date('d.m.Y H:i', strtotime($expense['payment_date'])); ?></td>
-                        <td><?php echo htmlspecialchars($expense['invoice_number']); ?></td>
-                        <td>
-                            <button class="action-btn" title="More options">
-                                <i class="fas fa-ellipsis-v"></i>
-                            </button>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-
-            <!-- Pagination -->
-            <div class="pagination">
-                <div class="pagination-info">
-                    Showing 1 to 3 of 3 results
-                </div>
-                <div class="pagination-controls">
-                    <select style="padding: 6px 10px; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 13px;">
-                        <option>Per page: 10</option>
-                        <option>Per page: 25</option>
-                        <option>Per page: 50</option>
-                    </select>
-                    <button class="page-btn active">1</button>
-                    <button class="page-btn">2</button>
-                    <button class="page-btn">
-                        <i class="fas fa-chevron-right"></i>
-                    </button>
+        <!-- Invoices Table -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0">
+                <h5 class="card-title mb-0">Invoice History</h5>
+            </div>
+            <div class="card-body p-4">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="py-3">Period</th>
+                                <th class="py-3 text-end">Revenue</th>
+                                <th class="py-3 text-end">Commission (10%)</th>
+                                <th class="py-3 text-end">Base Fee</th>
+                                <th class="py-3 text-end">Total Due</th>
+                                <th class="py-3 text-center">Status</th>
+                                <th class="py-3 text-end">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($bills as $bill): 
+                                $total = $bill['base_fee'] + $bill['commission_amount'];
+                            ?>
+                            <tr>
+                                <td class="fw-bold text-dark"><?php echo date('F Y', strtotime($bill['billing_period'])); ?></td>
+                                <td class="text-end">KES <?php echo number_format($bill['total_collections'], 2); ?></td>
+                                <td class="text-end text-danger">- KES <?php echo number_format($bill['commission_amount'], 2); ?></td>
+                                <td class="text-end text-danger">- KES <?php echo number_format($bill['base_fee'], 2); ?></td>
+                                <td class="text-end fw-bold text-dark">KES <?php echo number_format($total, 2); ?></td>
+                                <td class="text-center">
+                                    <span class="badge rounded-pill bg-<?php echo $bill['status'] === 'paid' ? 'success' : 'warning text-dark'; ?>">
+                                        <?php echo ucfirst($bill['status']); ?>
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-secondary" onclick='openInvoiceModal(<?php echo json_encode($bill); ?>)'>
+                                        View
+                                    </button>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -366,150 +141,83 @@ include 'includes/sidebar.php';
 </div>
 
 <!-- Invoice Modal -->
-<div id="invoiceModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; align-items: center; justify-content: center;">
-    <div style="background: white; border-radius: 10px; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
-        <!-- Modal Header -->
-        <div style="padding: 20px 24px; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; justify-content: space-between;">
-            <h3 style="margin: 0; font-size: 18px; font-weight: 600; color: #111827;">View Invoice & Payment Details</h3>
-            <button onclick="closeInvoice()" style="width: 32px; height: 32px; border-radius: 6px; border: none; background: #F3F4F6; color: #6B7280; cursor: pointer; font-size: 20px;">&times;</button>
-        </div>
-        
-        <!-- Invoice Content -->
-        <div style="padding: 32px 40px;">
-            <!-- Header Section -->
-            <div style="display: flex; justify-content: space-between; margin-bottom: 32px;">
-                <div>
-                    <h2 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 700; color: #F59E0B;">Fortunnet Technologies Ltd.</h2>
-                    <p style="margin: 0; font-size: 13px; color: #6B7280;">sales@fortunnet.com</p>
-                    <p style="margin: 4px 0 0 0; font-size: 13px; color: #6B7280;">+254 712 234 193</p>
-                    <p style="margin: 4px 0 0 0; font-size: 13px; color: #6B7280;">2nd Ngong Avenue, I & M Bank Building, 5th Floor</p>
-                    <p style="margin: 4px 0 0 0; font-size: 13px; color: #6B7280;">Upper Hill, Nairobi, Kenya</p>
+<div class="modal fade" id="invoiceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Invoice Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="text-center mb-4">
+                    <h2 class="fw-bold text-dark mb-0" id="modalTotal">KES 0.00</h2>
+                    <span class="badge bg-warning text-dark mt-2" id="modalStatus">Pending</span>
                 </div>
-                <div style="text-align: right;">
-                    <h1 style="margin: 0 0 12px 0; font-size: 32px; font-weight: 300; color: #111827;">INVOICE</h1>
-                    <p style="margin: 0; font-size: 13px; color: #6B7280;"><strong>Invoice #:</strong> INV-ecolandattic-<?php echo date('Ymd'); ?></p>
-                    <p style="margin: 4px 0 0 0; font-size: 13px; color: #6B7280;"><strong>Date:</strong> <?php echo date('M d, Y'); ?></p>
-                    <p style="margin: 4px 0 0 0; font-size: 13px; color: #6B7280;"><strong>Due Date:</strong> <?php echo date('M d, Y', strtotime('+30 days')); ?></p>
+                
+                <div class="border rounded p-3 bg-light mb-3">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">Billing Period</span>
+                        <span class="fw-bold" id="modalPeriod">-</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">Total Collections</span>
+                        <span class="fw-bold" id="modalRevenue">-</span>
+                    </div>
+                </div>
+
+                <h6 class="text-muted text-uppercase small fw-bold mb-3">Breakdown</h6>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Base Platform Fee</span>
+                    <span id="modalBase">-</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Commission (10%)</span>
+                    <span id="modalComm">-</span>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between fw-bold text-dark fs-5">
+                    <span>Total Due</span>
+                    <span id="modalTotalBottom">-</span>
                 </div>
             </div>
-            
-            <!-- Bill To & Status -->
-            <div style="display: flex; justify-content: space-between; margin-bottom: 32px;">
-                <div>
-                    <h4 style="margin: 0 0 8px 0; font-size: 12px; font-weight: 700; color: #F59E0B; text-transform: uppercase;">Bill To</h4>
-                    <p style="margin: 0; font-size: 14px; font-weight: 600; color: #111827;">EcolandAttic</p>
-                    <p style="margin: 4px 0 0 0; font-size: 13px; color: #6B7280;">kelvinmuruts82@gmail.com</p>
-                    <p style="margin: 4px 0 0 0; font-size: 13px; color: #6B7280;">+254791082822</p>
-                </div>
-                <div style="text-align: right;">
-                    <h4 style="margin: 0 0 8px 0; font-size: 12px; font-weight: 700; color: #F59E0B; text-transform: uppercase;">Status</h4>
-                    <span style="background: #FEF3C7; color: #92400E; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;">PENDING</span>
-                </div>
-            </div>
-            
-            <!-- Invoice Items Table -->
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
-                <thead>
-                    <tr style="border-bottom: 2px solid #E5E7EB;">
-                        <th style="padding: 12px 0; text-align: left; font-size: 12px; font-weight: 700; color: #F59E0B; text-transform: uppercase;">Description</th>
-                        <th style="padding: 12px 0; text-align: right; font-size: 12px; font-weight: 700; color: #F59E0B; text-transform: uppercase;">Price</th>
-                        <th style="padding: 12px 0; text-align: center; font-size: 12px; font-weight: 700; color: #F59E0B; text-transform: uppercase;">Quantity</th>
-                        <th style="padding: 12px 0; text-align: right; font-size: 12px; font-weight: 700; color: #F59E0B; text-transform: uppercase;">Total</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr style="border-bottom: 1px solid #F3F4F6;">
-                        <td style="padding: 16px 0; font-size: 14px; color: #111827;">PPPoE Users: 20</td>
-                        <td style="padding: 16px 0; text-align: right; font-size: 14px; color: #111827;">Ksh 500</td>
-                        <td style="padding: 16px 0; text-align: center; font-size: 14px; color: #111827;">1</td>
-                        <td style="padding: 16px 0; text-align: right; font-size: 14px; color: #111827;">Ksh 500</td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid #F3F4F6;">
-                        <td style="padding: 16px 0; font-size: 14px; color: #111827;">Hotspot Service Fee (3% of Ksh120 revenue)</td>
-                        <td style="padding: 16px 0; text-align: right; font-size: 14px; color: #111827;">Ksh 33</td>
-                        <td style="padding: 16px 0; text-align: center; font-size: 14px; color: #111827;">1</td>
-                        <td style="padding: 16px 0; text-align: right; font-size: 14px; color: #111827;">Ksh 33</td>
-                    </tr>
-                </tbody>
-            </table>
-            
-            <!-- Totals -->
-            <div style="display: flex; justify-content: flex-end; margin-bottom: 32px;">
-                <div style="width: 300px;">
-                    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F3F4F6;">
-                        <span style="font-size: 14px; color: #6B7280;">Service Subtotal:</span>
-                        <span style="font-size: 14px; font-weight: 600; color: #111827;">Ksh 533</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 12px 0; border-top: 2px solid #E5E7EB;">
-                        <span style="font-size: 16px; font-weight: 700; color: #F59E0B;">Total Due:</span>
-                        <span style="font-size: 16px; font-weight: 700; color: #F59E0B;">Ksh 533</span>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Payment Methods -->
-            <div style="margin-bottom: 32px;">
-                <h4 style="margin: 0 0 16px 0; font-size: 12px; font-weight: 700; color: #F59E0B; text-transform: uppercase;">Payment Methods</h4>
-                <div style="background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%); border-radius: 8px; padding: 20px; display: flex; align-items: center; justify-content: space-between;">
-                    <div style="display: flex; align-items: center; gap: 16px;">
-                        <div style="background: rgba(255,255,255,0.2); padding: 12px; border-radius: 8px;">
-                            <i class="fas fa-shield-alt" style="font-size: 24px; color: white;"></i>
-                        </div>
-                        <div>
-                            <h5 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600; color: white;">Pay Securely with Paystack</h5>
-                            <p style="margin: 0; font-size: 13px; color: rgba(255,255,255,0.9);">M-Pesa • Visa • Mastercard • Bank Transfer</p>
-                        </div>
-                    </div>
-                    <button style="background: white; color: #0891B2; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                        Pay Now
-                    </button>
-                </div>
-                <div style="display: flex; align-items: center; justify-content: center; gap: 24px; margin-top: 16px;">
-                    <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #10B981;">
-                        <i class="fas fa-check-circle"></i>
-                        <span>SSL Encrypted</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #10B981;">
-                        <i class="fas fa-check-circle"></i>
-                        <span>Bank-Level Security</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #10B981;">
-                        <i class="fas fa-check-circle"></i>
-                        <span>Instant Processing</span>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Footer -->
-            <div style="text-align: center; padding-top: 24px; border-top: 1px solid #E5E7EB;">
-                <p style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #F59E0B;">Thank you for your business!</p>
-                <p style="margin: 0; font-size: 12px; color: #6B7280;">For billing inquiries, please contact sales@fortunnet.com</p>
-                <p style="margin: 4px 0 0 0; font-size: 12px; color: #6B7280;">Access your account and manage your services by logging in at: https://ecolandattic.fortunnet.com/login</p>
-                <p style="margin: 8px 0 0 0; font-size: 11px; color: #9CA3AF;">© 2025 Fortunnet Technologies Ltd. All rights reserved.</p>
+            <div class="modal-footer border-0 bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="alert('Payment integration coming soon!')">Pay Now</button>
             </div>
         </div>
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-function viewInvoice() {
-    document.getElementById('invoiceModal').style.display = 'flex';
+function openInvoiceModal(bill) {
+    const revenue = parseFloat(bill.total_collections);
+    const base = parseFloat(bill.base_fee);
+    const comm = parseFloat(bill.commission_amount);
+    const total = base + comm;
+    
+    // Format Currency Helper
+    const fmt = n => 'KES ' + n.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+    
+    // Set Texts
+    document.getElementById('modalTotal').textContent = fmt(total);
+    document.getElementById('modalTotalBottom').textContent = fmt(total);
+    document.getElementById('modalRevenue').textContent = fmt(revenue);
+    document.getElementById('modalBase').textContent = fmt(base);
+    document.getElementById('modalComm').textContent = fmt(comm);
+    
+    // Date
+    const date = new Date(bill.billing_period);
+    document.getElementById('modalPeriod').textContent = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+    
+    // Status
+    const badge = document.getElementById('modalStatus');
+    badge.textContent = bill.status.charAt(0).toUpperCase() + bill.status.slice(1);
+    badge.className = bill.status === 'paid' ? 'badge bg-success mt-2' : 'badge bg-warning text-dark mt-2';
+    
+    // Show Modal
+    new bootstrap.Modal(document.getElementById('invoiceModal')).show();
 }
-
-function closeInvoice() {
-    document.getElementById('invoiceModal').style.display = 'none';
-}
-
-function downloadInvoice() {
-    alert('Invoice download functionality will be implemented soon!');
-}
-
-// Close modal when clicking outside
-document.getElementById('invoiceModal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closeInvoice();
-    }
-});
 </script>
 
 <?php include 'includes/footer.php'; ?>

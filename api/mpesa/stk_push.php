@@ -17,7 +17,13 @@ if (empty($phone) || empty($amount) || empty($client_id)) {
 }
 
 try {
-    $mpesa = new MpesaAPI();
+    // Get tenant_id for this client
+    $stmt = $pdo->prepare("SELECT tenant_id FROM clients WHERE id = ?");
+    $stmt->execute([$client_id]);
+    $tenant_id = $stmt->fetchColumn();
+
+    // Initialize M-Pesa with Tenant Context
+    $mpesa = new MpesaAPI($pdo, $tenant_id);
     
     // Generate unique reference
     $reference = 'PAY-' . $client_id . '-' . time();

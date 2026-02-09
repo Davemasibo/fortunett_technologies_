@@ -10,14 +10,49 @@ class MpesaAPI {
     private $env;
     private $base_url;
     
-    public function __construct() {
+    private $pdo;
+    private $tenant_id;
+
+    public function __construct($pdo = null, $tenant_id = null) {
         require_once __DIR__ . '/../config/mpesa.php';
         
-        $this->consumer_key = MPESA_CONSUMER_KEY;
-        $this->consumer_secret = MPESA_CONSUMER_SECRET;
-        $this->passkey = MPESA_PASSKEY;
-        $this->shortcode = MPESA_SHORTCODE;
-        $this->base_url = (MPESA_ENV === 'production') ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke';
+        $this->pdo = $pdo;
+        $this->tenant_id = $tenant_id;
+        
+        // Default to globals (Single Tenant Mode)
+        $this->consumer_key = defined('MPESA_CONSUMER_KEY') ? MPESA_CONSUMER_KEY : '';
+        $this->consumer_secret = defined('MPESA_CONSUMER_SECRET') ? MPESA_CONSUMER_SECRET : '';
+        $this->passkey = defined('MPESA_PASSKEY') ? MPESA_PASSKEY : '';
+        $this->shortcode = defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : '';
+        $this->env = defined('MPESA_ENV') ? MPESA_ENV : 'sandbox';
+        
+        // Multi-Tenant Override
+        if ($this->pdo && $this->tenant_id) {
+            $this->loadTenantCredentials();
+        }
+
+        $this->base_url = ($this->env === 'production') ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke';
+    }
+
+    private function loadTenantCredentials() {
+        try {
+            $stmt = $this->pdo->prepare("SELECT * FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa' AND is_active = 1 LIMIT 1");
+            $stmt->execute([$this->tenant_id]);
+            $gateway = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($gateway && !empty($gateway['credentials'])) {
+                $creds = json_decode($gateway['credentials'], true);
+                if (json_last_error() === JSON_ERROR_NONE) {
+                    $this->consumer_key = $creds['consumer_key'] ?? $this->consumer_key;
+                    $this->consumer_secret = $creds['consumer_secret'] ?? $this->consumer_secret;
+                    $this->passkey = $creds['passkey'] ?? $this->passkey;
+                    $this->shortcode = $creds['shortcode'] ?? $this->shortcode;
+                    $this->env = $creds['env'] ?? $this->env;
+                }
+            }
+        } catch (Exception $e) {
+            // Fallback to globals on error
+        }
     }
     
     /**

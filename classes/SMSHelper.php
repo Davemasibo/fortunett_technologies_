@@ -1,142 +1,129 @@
 <?php
-/**
- * SMS Helper Class
- * Sends SMS notifications to customers
- */
 class SMSHelper {
-    private $apiKey;
-    private $apiUrl;
-    private $senderId;
-    
-    public function __construct() {
-        // Configure your SMS provider details here
-        // Using Africa's Talking as example (you can change to your provider)
-        $this->apiKey = 'YOUR_API_KEY'; // Replace with your SMS API key
-        $this->apiUrl = 'https://api.africastalking.com/version1/messaging';
-        $this->senderId = 'FortuNNet'; // Your sender ID
+    private $pdo;
+    private $tenant_id;
+    private $config;
+
+    public function __construct($pdo, $tenant_id) {
+        $this->pdo = $pdo;
+        $this->tenant_id = $tenant_id;
+        $this->loadConfig();
     }
-    
-    /**
-     * Send SMS to a phone number
-     */
-    public function sendSMS($phone, $message) {
-        try {
-            // Format phone number (ensure it starts with country code)
-            $phone = $this->formatPhoneNumber($phone);
-            
-            // Log SMS for debugging
-            $this->logSMS($phone, $message);
-            
-            // For testing, you can disable actual sending
-            // Remove this return to enable real SMS
-            return [
-                'success' => true,
-                'message' => 'SMS logged (actual sending disabled for testing)',
-                'phone' => $phone
-            ];
-            
-            // Uncomment below to enable actual SMS sending via Africa's Talking
-            /*
-            $data = [
-                'username' => 'YOUR_USERNAME',
-                'to' => $phone,
-                'message' => $message,
-                'from' => $this->senderId
-            ];
-            
-            $headers = [
-                'apiKey: ' . $this->apiKey,
-                'Content-Type: application/x-www-form-urlencoded',
-                'Accept: application/json'
-            ];
-            
-            $ch = curl_init($this->apiUrl);
-            curl_setopt($ch, CURLOPT_POST, 1);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            
-            if ($httpCode == 200 || $httpCode == 201) {
-                return ['success' => true, 'message' => 'SMS sent successfully'];
-            } else {
-                return ['success' => false, 'message' => 'Failed to send SMS: ' . $response];
-            }
-            */
-            
-        } catch (Exception $e) {
-            return ['success' => false, 'message' => 'SMS error: ' . $e->getMessage()];
+
+    private function loadConfig() {
+        $stmt = $this->pdo->prepare("SELECT * FROM sms_configurations WHERE tenant_id = ? AND is_active = 1 LIMIT 1");
+        $stmt->execute([$this->tenant_id]);
+        $this->config = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function send($phone, $message, $clientId = null) {
+        if (!$this->config) {
+            return ['success' => false, 'message' => 'SMS configuration not found for this tenant.'];
         }
+
+        // Clean phone number
+        $phone = $this->formatPhone($phone);
+        
+        $response = $this->sendViaTalkSasa($phone, $message);
+
+        // Log the message
+        $this->logMessage($clientId, $phone, $message, $response);
+
+        return $response;
     }
-    
-    /**
-     * Send welcome SMS with credentials
-     */
-    public function sendWelcomeSMS($phone, $username, $password, $packageName) {
-        $message = "Welcome to FortuNNet Technologies!\n\n";
-        $message .= "Your account has been activated.\n";
-        $message .= "Package: {$packageName}\n";
-        $message .= "Username: {$username}\n";
-        $message .= "Password: {$password}\n\n";
-        $message .= "Login at: http://192.168.88.1/login\n";
-        $message .= "Support: +254700000000";
-        
-        return $this->sendSMS($phone, $message);
-    }
-    
-    /**
-     * Send payment confirmation SMS
-     */
-    public function sendPaymentConfirmationSMS($phone, $amount, $packageName, $expiryDate) {
-        $message = "Payment Received!\n\n";
-        $message .= "Amount: KES {$amount}\n";
-        $message .= "Package: {$packageName}\n";
-        $message .= "Valid until: {$expiryDate}\n\n";
-        $message .= "Thank you for choosing FortuNNet!";
-        
-        return $this->sendSMS($phone, $message);
-    }
-    
-    /**
-     * Format phone number to international format
-     */
-    private function formatPhoneNumber($phone) {
-        // Remove all non-numeric characters
-        $phone = preg_replace('/\D/', '', $phone);
-        
-        // If starts with 0, replace with 254 (Kenya)
-        if (substr($phone, 0, 1) === '0') {
-            $phone = '254' . substr($phone, 1);
-        }
-        
-        // If doesn't start with +, add it
-        if (substr($phone, 0, 1) !== '+') {
-            $phone = '+' . $phone;
-        }
-        
+
+    private function formatPhone($phone) {
+        // Basic formatting to 254...
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+        if (substr($phone, 0, 1) == '0') return '254' . substr($phone, 1);
         return $phone;
     }
-    
-    /**
-     * Log SMS for debugging and record keeping
-     */
-    private function logSMS($phone, $message) {
-        $logDir = __DIR__ . '/../logs';
-        if (!is_dir($logDir)) {
-            @mkdir($logDir, 0755, true);
+
+    private function sendViaTalkSasa($phone, $message) {
+        $url = $this->config['api_url'] ?? 'https://api.talksasa.com/v1/sms/send';
+        $apiKey = $this->config['api_key'];
+        $senderId = $this->config['sender_id'];
+
+        $data = [
+            'api_key' => $apiKey,
+            'sender_id' => $senderId,
+            'phone' => $phone,
+            'message' => $message
+        ];
+        
+        // Mock sending if no key provided (Localhost testing)
+        if (empty($apiKey) || $apiKey === 'TEST_KEY') {
+             return ['success' => true, 'message' => 'Simulated sent to ' . $phone];
+        }
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Accept: application/json']);
+        
+        $result = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode >= 200 && $httpCode < 300) {
+            return ['success' => true, 'response' => $result];
         }
         
-        $logFile = $logDir . '/sms_log.txt';
-        $logEntry = sprintf(
-            "[%s] To: %s | Message: %s\n",
-            date('Y-m-d H:i:s'),
-            $phone,
-            str_replace("\n", " | ", $message)
-        );
+        return ['success' => false, 'message' => 'Provider error: ' . $result];
+    }
+
+    private function logMessage($clientId, $phone, $message, $response) {
+        $status = $response['success'] ? 'sent' : 'failed';
+        $providerResponse = is_array($response) ? json_encode($response) : $response;
+
+        $stmt = $this->pdo->prepare("INSERT INTO sms_outbox (tenant_id, client_id, recipient_phone, message, status, provider_response) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$this->tenant_id, $clientId, $phone, $message, $status, $providerResponse]);
+    }
+
+    public function getTemplates() {
+        $stmt = $this->pdo->prepare("SELECT * FROM sms_templates WHERE tenant_id = ?");
+        $stmt->execute([$this->tenant_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    public function saveTemplate($key, $name, $content) {
+        // Insert or Update
+        $stmt = $this->pdo->prepare("INSERT INTO sms_templates (tenant_id, template_key, template_name, template_content) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE template_name = VALUES(template_name), template_content = VALUES(template_content)");
+        return $stmt->execute([$this->tenant_id, $key, $name, $content]);
+    }
+    
+    public function saveConfig($provider, $apiKey, $senderId, $apiUrl) {
+         $stmt = $this->pdo->prepare("INSERT INTO sms_configurations (tenant_id, provider, api_key, sender_id, api_url) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE provider = VALUES(provider), api_key = VALUES(api_key), sender_id = VALUES(sender_id), api_url = VALUES(api_url)");
+         return $stmt->execute([$this->tenant_id, $provider, $apiKey, $senderId, $apiUrl]);
+    }
+
+    public function sendTemplate($clientId, $templateKey) {
+        // Fetch Client
+        $cStmt = $this->pdo->prepare("SELECT * FROM clients WHERE id = ? AND tenant_id = ?");
+        $cStmt->execute([$clientId, $this->tenant_id]);
+        $client = $cStmt->fetch(PDO::FETCH_ASSOC);
         
-        file_put_contents($logFile, $logEntry, FILE_APPEND);
+        if (!$client) return ['success' => false, 'message' => 'Client not found'];
+
+        // Fetch Template
+        $tStmt = $this->pdo->prepare("SELECT * FROM sms_templates WHERE tenant_id = ? AND template_key = ?");
+        $tStmt->execute([$this->tenant_id, $templateKey]);
+        $template = $tStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$template) return ['success' => false, 'message' => 'Template not found'];
+
+        // Replace Variables
+        $message = $template['template_content'];
+        $message = str_replace('{name}', $client['full_name'], $message);
+        $message = str_replace('{username}', $client['mikrotik_username'] ?? '', $message);
+        $message = str_replace('{password}', $client['mikrotik_password'] ?? '', $message);
+        $message = str_replace('{phone}', $client['phone'] ?? '', $message);
+        $message = str_replace('{account_number}', $client['account_number'] ?? '', $message);
+        $message = str_replace('{expiry_date}', $client['expiry_date'] ?? '', $message);
+        $message = str_replace('{amount}', number_format($client['package_price'] ?? 0), $message);
+
+        return $this->send($client['phone'], $message, $clientId);
     }
 }
+?>

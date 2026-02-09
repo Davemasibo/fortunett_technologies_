@@ -105,54 +105,8 @@ function getActiveClientsFromMikrotik($host, $user, $pass, $port = 8728) {
         }
     }
 
-    // Mock fallback data
-    return [
-        [
-            'username' => 'Esther',
-            'ip' => '172.31.252.65',
-            'mac' => 'D8:32:14:58:59:00',
-            'router' => 'FortuneTt',
-            'start' => '3 minutes ago',
-            'end' => '13 hours from now',
-            'type' => 'hotspot'
-        ],
-        [
-            'username' => 'Rose',
-            'ip' => '172.31.252.62',
-            'mac' => '8E:09:8F:81:16:6E',
-            'router' => 'FortuneTt',
-            'start' => '4 minutes ago',
-            'end' => '13 hours from now',
-            'type' => 'hotspot'
-        ],
-        [
-            'username' => 'admin1',
-            'ip' => '172.31.253.161',
-            'mac' => '46:FC:65:20:A6:FF',
-            'router' => 'FortuneTt',
-            'start' => '2 hours ago',
-            'end' => '2 months from now',
-            'type' => 'pppoe'
-        ],
-        [
-            'username' => 'Vero',
-            'ip' => '172.31.252.120',
-            'mac' => '82:BC:64:8E:AC:E4',
-            'router' => 'FortuneTt',
-            'start' => '2 hours ago',
-            'end' => '1 hour from now',
-            'type' => 'pppoe'
-        ],
-        [
-            'username' => 'F84',
-            'ip' => '172.31.252.118',
-            'mac' => '76:18:C9:0A:43:ED',
-            'router' => 'FortuneTt',
-            'start' => '11 hours ago',
-            'end' => '50 minutes from now',
-            'type' => 'hotspot'
-        ],
-    ];
+    // Return empty array if connection fails
+    return [];
 }
 
 // Fetch clients

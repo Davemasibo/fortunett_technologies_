@@ -2,9 +2,9 @@
 require_once __DIR__ . '/includes/auth.php';
 $customer = requireCustomerLogin();
 
-// Get all active packages
-$stmt = $pdo->prepare("SELECT * FROM packages WHERE status = 'active' ORDER BY price ASC");
-$stmt->execute();
+// Get all active packages for this tenant
+$stmt = $pdo->prepare("SELECT * FROM packages WHERE status = 'active' AND tenant_id = ? ORDER BY price ASC");
+$stmt->execute([$customer['tenant_id']]);
 $packages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 include 'includes/header.php';

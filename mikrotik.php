@@ -1,6 +1,5 @@
 <?php
-require_once __DIR__ . '/includes/config.php';
-require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/mpesa.php';
 
@@ -10,14 +9,25 @@ $ngrok_url = defined('MPESA_CALLBACK_URL') ? dirname(dirname(dirname(MPESA_CALLB
 
 redirectIfNotLoggedIn();
 
+// Get current user's tenant_id
+$user_id = $_SESSION['user_id'];
+$stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$stmt->execute([$user_id]);
+$tenant_id = $stmt->fetchColumn();
+
+// Fetch Tenant Info
+$stmt = $pdo->prepare("SELECT * FROM tenants WHERE id = ?");
+$stmt->execute([$tenant_id]);
+$tenant = $stmt->fetch(PDO::FETCH_ASSOC);
+
 // Handle Filters
 $search = $_GET['search'] ?? '';
 $filter_status = $_GET['status'] ?? 'All Status';
 $filter_location = $_GET['location'] ?? 'All Locations'; // Assuming location column or just ignoring for now if not in DB
 
 // Build Query
-$query = "SELECT * FROM mikrotik_routers WHERE 1=1";
-$params = [];
+$query = "SELECT * FROM mikrotik_routers WHERE tenant_id = ?";
+$params = [$tenant_id];
 
 if ($search) {
     $query .= " AND (name LIKE ? OR ip_address LIKE ?)";
@@ -43,10 +53,12 @@ try {
 
 // Calculate stats (Real data)
 try {
-    $stmt = $pdo->query("SELECT COUNT(*) FROM mikrotik_routers");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mikrotik_routers WHERE tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $total_routers = (int)$stmt->fetchColumn();
     
-    $stmt = $pdo->query("SELECT COUNT(*) FROM mikrotik_routers WHERE status = 'online'");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mikrotik_routers WHERE status = 'online' AND tenant_id = ?");
+    $stmt->execute([$tenant_id]);
     $online_routers = (int)$stmt->fetchColumn();
     
     $offline_routers = $total_routers - $online_routers;
@@ -364,7 +376,7 @@ function updateWizard() {
     // Buttons
     if (currentStep === 1) {
         document.getElementById('prevBtn').style.display = 'none';
-        document.getElementById('nextBtn').textContent = 'Next Step';
+        document.getElementById('nextBtn').textContent = 'Next: Get Command';
         document.getElementById('nextBtn').onclick = nextStep;
         document.getElementById('nextBtn').disabled = false;
     } else if (currentStep === 2) {
@@ -392,9 +404,26 @@ function nextStep() {
         if (!name) return alert('Please enter a name');
         
         // Generate command
-        // Note: Using 'tool fetch' to call our valid endpoint
-        const endpoint = ngrokUrl + '/api/routers/provision.php'; 
-        const cmd = `/tool fetch mode=https url="${endpoint}?identity=${encodeURIComponent(name)}" keep-result=no check-certificate=no`;
+        const token = "<?php echo $tenant['provisioning_token'] ?? ''; ?>";
+        let host = window.location.host;
+        let protocol = window.location.protocol;
+        
+        // If we are on localhost, but we know our VPS IP, let's prioritize reachable IP for the router
+        // However, usually the user just needs it to be what they see in the address bar.
+        const endpoint = `${protocol}//${host}/fortunett_technologies_/api/routers/provision.php`;
+        
+        let cmd = `/tool fetch mode=http url="${endpoint}?token=${token}&identity=${encodeURIComponent(name)}&format=rsc" dst-path=provision.rsc; :delay 5s; /import provision.rsc;`;
+        
+        // Check if host is localhost and warn user
+        if (host.includes('localhost') || host.includes('127.0.0.1')) {
+            document.getElementById('step2').insertAdjacentHTML('afterbegin', `
+                <div class="alert alert-warning mb-3" style="font-size: 13px;">
+                    <i class="fas fa-exclamation-triangle"></i> <strong>Warning:</strong> You are on <b>localhost</b>. 
+                    If your router is NOT on your laptop's network, use your VPS IP (72.61.147.86) instead of localhost in the command.
+                </div>
+            `);
+        }
+
         document.getElementById('provisionCommand').textContent = cmd;
         
         currentStep = 2;
@@ -443,14 +472,56 @@ function resetSelections() {
 
 function finishWizard() {
     if(!selectedService) {
-        // Just finish without configuring
         location.reload();
         return;
     }
     
-    // Redirect to configure specific service if needed, or just reload
-    // For now, reloading as per flow
-    location.reload();
+    const btn = document.getElementById('nextBtn');
+    btn.textContent = 'Configuring...';
+    btn.disabled = true;
+    
+    const name = document.getElementById('mikrotikName').value;
+    
+    const formData = new FormData();
+    formData.append('identity', name);
+    formData.append('service', selectedService);
+    
+    fetch('api/routers/configure_service.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if(data.status === 'success') {
+            // Show result
+            document.getElementById('step3').innerHTML = `
+                <div style="text-align:center; padding:20px;">
+                    <div style="width:48px; height:48px; background:#D1FAE5; color:#059669; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
+                        <i class="fas fa-check" style="font-size:24px;"></i>
+                    </div>
+                    <h3 style="font-size:18px; font-weight:600; margin-bottom:8px;">Configuration Generated</h3>
+                    <p style="color:#6B7280; margin-bottom:16px;">Run this command to finalize the ${selectedService.toUpperCase()} setup:</p>
+                    
+                    <div class="command-box" style="text-align:left;">
+                        <button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.textContent).then(()=>alert('Copied'))">Copy</button>
+                        <div class="command-text">${data.command}</div>
+                    </div>
+                    
+                    <button onclick="location.reload()" style="margin-top:20px; padding:10px 24px; background:#3B6EA5; color:white; border:none; border-radius:6px; cursor:pointer;">Done</button>
+                </div>
+            `;
+            btn.style.display = 'none';
+        } else {
+            alert('Error: ' + data.message);
+            btn.textContent = 'Finish';
+            btn.disabled = false;
+        }
+    })
+    .catch(e => {
+        alert('Error: ' + e);
+        btn.textContent = 'Finish';
+        btn.disabled = false;
+    });
 }
 
 function prevStep() {
@@ -472,6 +543,7 @@ window.onclick = function(event) {
         if(provisioningTimer) clearInterval(provisioningTimer);
     }
 }
+</script>
 
 <!-- Edit Router Modal -->
 <div id="editRouterModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">

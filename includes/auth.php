@@ -130,4 +130,3 @@ function ensureRole($requiredRole) {
         exit;
     }
 }
-?>

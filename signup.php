@@ -1,78 +1,164 @@
 <?php
-require_once 'config/database.php';
+require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/db_connect.php';
+require_once __DIR__ . '/includes/email_helper.php';
 
 $error = '';
 $success = '';
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
+// Get business name
+$business_name = 'FortuNett Technologies';
+try {
+    $stmt = $pdo->query("SELECT business_name FROM isp_profile LIMIT 1");
+    $profile = $stmt->fetch();
+    if ($profile && !empty($profile['business_name'])) {
+        $business_name = $profile['business_name'];
+    }
+} catch (Exception $e) {}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username']);
-    $email = trim($_POST['email']);
+    $email    = trim($_POST['email']);
     $password = trim($_POST['password']);
+    $confirm  = trim($_POST['confirm_password']);
 
-    if (!empty($username) && !empty($email) && !empty($password)) {
-        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-
-        try {
-            $db = (new Database())->getConnection();
-            $stmt = $db->prepare("INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, 'operator')");
-            $stmt->execute([$username, $email, $hashedPassword]);
-            $success = "Account created successfully. <a href='login.php'>Login</a>";
-        } catch (PDOException $e) {
-            $error = "Error: " . $e->getMessage();
-        }
-    } else {
+    if ($username === '' || $email === '' || $password === '' || $confirm === '') {
         $error = "All fields are required.";
+    } elseif ($password !== $confirm) {
+        $error = "Passwords do not match.";
+    } else {
+        try {
+            // Check if username/email exists
+            $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
+            $stmt->execute([$username, $email]);
+            if ($stmt->fetch()) {
+                $error = "Username or email already exists.";
+            } else {
+                $hash = password_hash($password, PASSWORD_DEFAULT);
+                $token = bin2hex(random_bytes(32));
+
+                $stmt = $pdo->prepare("
+                    INSERT INTO users (username,email,password_hash,role,is_verified,verification_token)
+                    VALUES (?, ?, ?, 'operator', 0, ?)
+                ");
+                $stmt->execute([$username, $email, $hash, $token]);
+
+                // Send verification email
+                $verifyLink = "https://" . $_SERVER['HTTP_HOST'] . "/verify.php?token=" . $token;
+                $subject = "Verify Your Account - $business_name";
+                $body = "
+                    <h2>Welcome to $business_name</h2>
+                    <p>Click below to verify your account:</p>
+                    <p><a href='$verifyLink' style='padding:10px 20px;background:#28a745;color:white;text-decoration:none;border-radius:5px;'>Verify Email</a></p>
+                ";
+
+                if (function_exists('sendEmail') && sendEmail($email, $subject, $body)) {
+                    $success = "Account created! Please check your email to verify your account.";
+                } else {
+                    $success = "Account created, but failed to send verification email. Please contact admin.";
+                }
+            }
+        } catch (PDOException $e) {
+            $error = "Database error: " . $e->getMessage();
+        }
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Sign Up - <?php echo APP_NAME; ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - <?php echo htmlspecialchars($business_name); ?></title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="css/auth.css" rel="stylesheet">
 </head>
-<body class="bg-light">
-<div class="container">
-    <div class="row justify-content-center align-items-center min-vh-100">
-        <div class="col-md-6 col-lg-4">
-            <div class="card shadow-sm">
-                <div class="card-header bg-success text-white text-center">
-                    <h4>Create an Account</h4>
-                </div>
-                <div class="card-body">
-                    <?php if ($error): ?><div class="alert alert-danger"><?php echo $error; ?></div><?php endif; ?>
-                    <?php if ($success): ?><div class="alert alert-success"><?php echo $success; ?></div><?php endif; ?>
-
-                    <form method="POST">
-                        <div class="mb-3">
-                            <label class="form-label">Username</label>
-                            <input type="text" name="username" class="form-control" required>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Email</label>
-                            <input type="email" name="email" class="form-control" required>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Password</label>
-                            <input type="password" name="password" class="form-control" required>
-                        </div>
-
-                        <div class="d-grid">
-                            <button type="submit" class="btn btn-success">Sign Up</button>
-                        </div>
-                    </form>
-
-                    <div class="mt-3 text-center">
-                        <a href="login.php">Already have an account?</a>
-                    </div>
-                </div>
+<body class="auth-page">
+    <div class="auth-container">
+        <div class="auth-header">
+            <div class="icon-wrapper">
+                <i class="fas fa-user-plus"></i>
             </div>
+            <h1><?php echo htmlspecialchars($business_name); ?></h1>
+            <p>Create your account</p>
+        </div>
+        
+        <div class="auth-body">
+            <div class="welcome-text">
+                <h2>Get Started</h2>
+                <p>Enter your details to create an account</p>
+            </div>
+            
+            <?php if ($error): ?>
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <?php echo htmlspecialchars($error); ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($success): ?>
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i>
+                    <?php echo htmlspecialchars($success); ?>
+                </div>
+                <div class="auth-link">
+                    <a href="login.php">Proceed to Login</a>
+                </div>
+            <?php else: ?>
+                <form method="POST">
+                    <div class="form-group">
+                        <label>Username <span class="required">*</span></label>
+                        <input type="text" name="username" class="form-control-auth" required placeholder="Choose a username" value="<?php echo isset($_POST['username']) ? htmlspecialchars($_POST['username']) : ''; ?>">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Email Address <span class="required">*</span></label>
+                        <input type="email" name="email" class="form-control-auth" required placeholder="Enter your email" value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Password <span class="required">*</span></label>
+                        <div class="input-wrapper">
+                            <input type="password" name="password" id="password" class="form-control-auth" required placeholder="Create a password">
+                            <i class="fas fa-eye password-toggle" onclick="togglePassword('password', this)"></i>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Confirm Password <span class="required">*</span></label>
+                        <div class="input-wrapper">
+                            <input type="password" name="confirm_password" id="confirm_password" class="form-control-auth" required placeholder="Confirm your password">
+                            <i class="fas fa-eye password-toggle" onclick="togglePassword('confirm_password', this)"></i>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn-auth">
+                        <span>Sign Up</span>
+                        <i class="fas fa-user-plus"></i>
+                    </button>
+                </form>
+                
+                <div class="auth-link">
+                    Already have an account? <a href="login.php">Sign in here</a>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
-</div>
+    
+    <script>
+        function togglePassword(inputId, icon) {
+            const input = document.getElementById(inputId);
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+    </script>
 </body>
 </html>
