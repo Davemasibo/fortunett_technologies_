@@ -3,8 +3,21 @@
  * API Endpoint: Get Live Router Statistics
  */
 header('Content-Type: application/json');
-require_once '../../includes/config.php';
+require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
+
+// Security: Get tenant_id
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+if (!isset($_SESSION['user_id'])) {
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    exit;
+}
+$user_id = $_SESSION['user_id'];
+$t_stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$t_stmt->execute([$user_id]);
+$tenant_id = $t_stmt->fetchColumn();
 
 // Get router credentials
 $stmt = $pdo->query("SELECT * FROM mikrotik_routers WHERE status = 'active' LIMIT 1");
@@ -21,14 +34,26 @@ try {
     if ($api->connect()) {
         // 1. Get Active Sessions
         $activeSessions = $api->getActiveSessions();
+        
+        // Filter by Tenant
+        $stmt = $pdo->prepare("SELECT mikrotik_username FROM clients WHERE tenant_id = ?");
+        $stmt->execute([$tenant_id]);
+        $tenant_users = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        // Normalize for comparison (lowercase)
+        $tenant_users = array_map('strtolower', $tenant_users);
+        
         $hotspotActive = 0;
         $pppoeActive = 0;
+        $filteredActiveCount = 0;
         
         foreach ($activeSessions as $session) {
-            if (isset($session['service']) && $session['service'] == 'pppoe') {
-                $pppoeActive++;
-            } else {
-                $hotspotActive++;
+            if (isset($session['name']) && in_array(strtolower($session['name']), $tenant_users)) {
+                $filteredActiveCount++;
+                if (isset($session['service']) && $session['service'] == 'pppoe') {
+                    $pppoeActive++;
+                } else {
+                    $hotspotActive++;
+                }
             }
         }
         
@@ -55,7 +80,7 @@ try {
         echo json_encode([
             'success' => true,
             'data' => [
-                'active_users' => count($activeSessions),
+                'active_users' => $filteredActiveCount,
                 'pppoe_users' => $pppoeActive,
                 'hotspot_users' => $hotspotActive,
                 'cpu_load' => $resources['cpu-load'] ?? 0,

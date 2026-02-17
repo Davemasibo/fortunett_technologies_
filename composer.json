@@ -3,7 +3,8 @@
   "description": "Fortunett Technologies project setup for quality tooling.",
   "type": "project",
   "require": {
-    "php": ">=7.4"
+    "php": ">=7.4",
+    "phpmailer/phpmailer": "^7.0"
   },
   "require-dev": {
     "friendsofphp/php-cs-fixer": "^3.89",

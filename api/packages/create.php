@@ -5,7 +5,7 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 0); // Prevent HTML error output matching Invalid JSON
 header('Content-Type: application/json');
-require_once '../../includes/config.php';
+require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
 
 // Validate Inputs
@@ -27,12 +27,23 @@ if (empty($name) || empty($price)) {
     exit;
 }
 
+    // Get tenant_id
+    session_start();
+    if (!isset($_SESSION['user_id'])) {
+        echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+        exit;
+    }
+    $user_id = $_SESSION['user_id'];
+    $t_stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+    $t_stmt->execute([$user_id]);
+    $tenant_id = $t_stmt->fetchColumn();
+
 try {
     $pdo->beginTransaction();
 
-    // 1. Insert into DB
-    $stmt = $pdo->prepare("INSERT INTO packages (name, price, description, mikrotik_profile, rate_limit, connection_type, download_speed, upload_speed, data_limit, type, validity_value, validity_unit, device_limit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt = $pdo->prepare("INSERT INTO packages (tenant_id, name, price, description, mikrotik_profile, rate_limit, connection_type, download_speed, upload_speed, data_limit, type, validity_value, validity_unit, device_limit, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')");
     $stmt->execute([
+        $tenant_id,
         $name, $price, $description, $mikrotik_profile, $rate_limit, $connection_type,
         $download_speed, $upload_speed, $data_limit, $connection_type,
         $_POST['validity_value'] ?? 30,

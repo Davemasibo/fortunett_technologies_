@@ -9,25 +9,25 @@ $stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
 $tenant_id = $stmt->fetchColumn();
 
-// Calculate stats
+// Calculate stats from M-Pesa transactions
 try {
     // Total Revenue Today
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE DATE(payment_date) = CURDATE() AND status = 'completed' AND tenant_id = ?");
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM mpesa_transactions WHERE DATE(created_at) = CURDATE() AND result_code = '0' AND tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $revenue_today = (float)$stmt->fetchColumn();
     
     // Confirmed Transactions
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE status = 'completed' AND tenant_id = ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mpesa_transactions WHERE result_code = '0' AND tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $confirmed_transactions = (int)$stmt->fetchColumn();
     
     // Pending Payments
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE (status != 'completed' OR status IS NULL) AND tenant_id = ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mpesa_transactions WHERE (result_code IS NULL OR result_code = '') AND tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $pending_payments = (int)$stmt->fetchColumn();
     
     // Failed Transactions
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE status = 'failed' AND tenant_id = ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mpesa_transactions WHERE result_code NOT IN ('0', '', NULL) AND tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $failed_transactions = (int)$stmt->fetchColumn();
     
@@ -44,31 +44,30 @@ $date_from = $_GET['date_from'] ?? date('Y-m-d', strtotime('-30 days'));
 $date_to = $_GET['date_to'] ?? date('Y-m-d');
 $filter_method = $_GET['method'] ?? '';
 
-// Build Query
+// Build Query - Fetch real M-Pesa transactions
 $query = "
-    SELECT p.*, c.full_name, c.phone 
-    FROM payments p
-    LEFT JOIN clients c ON p.client_id = c.id
-    WHERE DATE(p.payment_date) BETWEEN ? AND ?
+    SELECT m.*, c.full_name, c.phone 
+    FROM mpesa_transactions m
+    LEFT JOIN clients c ON m.client_id = c.id
+    WHERE m.tenant_id = ? AND DATE(m.created_at) BETWEEN ? AND ?
 ";
-$params = [$date_from, $date_to];
+$params = [$tenant_id, $date_from, $date_to];
 
 if ($search) {
-    $query .= " AND (c.full_name LIKE ? OR c.phone LIKE ? OR p.transaction_id LIKE ?)";
+    $query .= " AND (c.full_name LIKE ? OR c.phone LIKE ? OR m.mpesa_receipt_number LIKE ? OR m.checkout_request_id LIKE ?)";
     $term = "%$search%";
-    $params = array_merge($params, [$term, $term, $term]);
+    $params = array_merge($params, [$term, $term, $term, $term]);
 }
 
 if ($filter_method && $filter_method !== 'All Methods') {
-    if ($filter_method === 'M-Pesa') {
-        // Assume non-empty ID is M-Pesa if not explicitly 'CASH' (simplified logic)
-        $query .= " AND p.transaction_id IS NOT NULL AND p.transaction_id NOT LIKE 'CASH%'";
-    } elseif ($filter_method === 'Cash') {
-        $query .= " AND (p.transaction_id IS NULL OR p.transaction_id LIKE 'CASH%')";
+    // M-Pesa filter - all records are M-Pesa in this table
+    // Cash filter would return empty since this is mpesa_transactions only
+    if ($filter_method === 'Cash') {
+        $query .= " AND 1=0"; // No cash in M-Pesa transactions
     }
 }
 
-$query .= " ORDER BY p.payment_date DESC LIMIT 100";
+$query .= " ORDER BY m.created_at DESC LIMIT 100";
 
 try {
     $stmt = $pdo->prepare($query);
@@ -80,7 +79,7 @@ try {
 
 // Get Clients for Dropdown
 try {
-    $stmt = $pdo->prepare("SELECT id, full_name, phone, subscription_plan FROM clients WHERE status = 'active' AND tenant_id = ? ORDER BY full_name ASC");
+    $stmt = $pdo->prepare("SELECT id, full_name, phone, subscription_plan FROM clients WHERE tenant_id = ? ORDER BY full_name ASC");
     $stmt->execute([$tenant_id]);
     $clients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
@@ -244,7 +243,7 @@ include 'includes/sidebar.php';
     }
     
     .filter-btn.primary {
-        background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%);
         color: white;
         border: none;
     }
@@ -291,7 +290,7 @@ include 'includes/sidebar.php';
     }
     
     .action-link.manual {
-        background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%);
         color: white;
     }
     
@@ -423,6 +422,13 @@ include 'includes/sidebar.php';
             grid-template-columns: 1fr;
         }
     }
+
+    /* Dynamic Button Hover */
+    #paymentForm button[type="submit"]:hover {
+        filter: brightness(110%);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
 </style>
 
 <div class="main-content-wrapper">
@@ -545,11 +551,10 @@ include 'includes/sidebar.php';
                 </thead>
                 <tbody>
                     <?php foreach ($transactions as $tx): 
-                        $status = strtolower($tx['status'] ?? 'pending');
-                        // Infer method from transaction ID format
-                        $txId = $tx['transaction_id'] ?? '';
-                        $isMpesa = !empty($txId) && stripos($txId, 'CASH') === false; 
-                        $method = $isMpesa ? 'mpesa' : 'cash';
+                        // M-Pesa status: result_code = '0' means success
+                        $resultCode = $tx['result_code'] ?? '';
+                        $status = ($resultCode === '0') ? 'completed' : (empty($resultCode) ? 'pending' : 'failed');
+                        $method = 'mpesa'; // All from mpesa_transactions
                     ?>
                     <tr>
                         <td>
@@ -567,9 +572,9 @@ include 'includes/sidebar.php';
                         </td>
                         <td>
                             <?php 
-                                $displayId = $tx['transaction_id'] ?? 'N/A';
+                                $displayId = $tx['mpesa_receipt_number'] ?? ($tx['checkout_request_id'] ?? 'N/A');
                                 // Hide CheckoutRequestID (long string starting with ws_) for pending/processing
-                                if ($status === 'pending' || strpos($displayId, 'ws_') === 0) {
+                                if ($status === 'pending' || empty($tx['mpesa_receipt_number'])) {
                                     echo '<span style="font-style:italic; color:#9CA3AF;">Processing...</span>';
                                 } else {
                                     echo '<span class="transaction-id">' . htmlspecialchars($displayId) . '</span>';
@@ -582,7 +587,7 @@ include 'includes/sidebar.php';
                                 <?php echo ucfirst($status); ?>
                             </span>
                         </td>
-                        <td><?php echo date('d/m/Y, H:i', strtotime($tx['payment_date'] ?? 'now')); ?></td>
+                        <td><?php echo date('d/m/Y, H:i', strtotime($tx['created_at'] ?? 'now')); ?></td>
                         <td>
                         <td>
                             <div class="action-icons" style="justify-content: center;">
@@ -612,7 +617,7 @@ include 'includes/sidebar.php';
                     <option value="">Select a Customer</option>
                     <?php foreach ($clients as $c): ?>
                     <option value="<?php echo $c['id']; ?>" data-phone="<?php echo htmlspecialchars($c['phone']); ?>">
-                        <?php echo htmlspecialchars($c['full_name']); ?> (<?php echo htmlspecialchars($c['subscription_plan']); ?>)
+                        <?php echo htmlspecialchars($c['full_name']); ?> - <?php echo htmlspecialchars($c['phone']); ?>
                     </option>
                     <?php endforeach; ?>
                 </select>
@@ -640,7 +645,7 @@ include 'includes/sidebar.php';
                  </div>
             </div>
 
-            <button type="submit" style="width: 100%; padding: 12px; background: #10B981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 16px;">
+            <button type="submit" style="width: 100%; padding: 12px; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 16px; transition: background 0.2s;">
                 Process Payment
             </button>
         </form>
@@ -672,9 +677,7 @@ function handlePaymentSubmit(e) {
     // Determine URL based on method
     let url = 'api/mpesa/stk_push.php';
     if (method === 'cash') {
-        // Implement cash endpoint later, or use dummy
-        alert('Manual cash entry not implemented yet. Using M-Pesa flow for demo.');
-        // For now, let's just proceed with STK push logic which requires phone.
+        url = 'api/payments/record_cash.php';
     }
     
     const btn = form.querySelector('button[type="submit"]');
@@ -688,17 +691,22 @@ function handlePaymentSubmit(e) {
     })
     .then(r => r.json())
     .then(data => {
-        if (data.Success || data.success) { // STK push returns Success logic?
-             if (data.ResponseCode === '0') {
-                 alert('STK Push Initiated. Check phone.');
+        if (data.Success || data.success || data.ResponseCode === '0') {
+             if (method === 'cash') {
+                 alert('Cash Payment Recorded: ' + data.transaction_id);
              } else {
-                 alert('Request Sent: ' + (data.CustomerMessage || data.message));
+                 // STK Push
+                 if (data.ResponseCode === '0') {
+                     alert('STK Push Initiated. Check phone.');
+                 } else {
+                     alert(data.CustomerMessage || 'Request Sent');
+                 }
              }
              closePaymentModal();
-             // Maybe refresh table?
+             // Refresh table
              location.reload();
         } else {
-            alert('Error: ' + (data.errorMessage || data.message));
+            alert('Error: ' + (data.errorMessage || data.message || 'Unknown error'));
         }
     })
     .catch(err => {

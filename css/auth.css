@@ -10,7 +10,7 @@
 
 body.auth-page {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 50%, #4A90E2 100%);
+    background: var(--brand-gradient, linear-gradient(135deg, #2C5282 0%, #3B6EA5 50%, #4A90E2 100%));
     min-height: 100vh;
     display: flex;
     align-items: center;
@@ -28,7 +28,7 @@ body.auth-page {
 }
 
 .auth-header {
-    background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+    background: var(--brand-gradient, linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%));
     padding: 40px 30px;
     text-align: center;
     color: white;
@@ -115,7 +115,8 @@ body.auth-page {
 
 .form-control-auth:focus {
     outline: none;
-    border-color: #3B6EA5;
+    outline: none;
+    border-color: var(--brand-color, #3B6EA5);
     background: white;
     box-shadow: 0 0 0 3px rgba(59, 110, 165, 0.1);
 }
@@ -123,7 +124,7 @@ body.auth-page {
 .btn-auth {
     width: 100%;
     padding: 14px;
-    background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+    background: var(--brand-color, #3B6EA5);
     color: white;
     border: none;
     border-radius: 8px;
@@ -138,7 +139,8 @@ body.auth-page {
 }
 
 .btn-auth:hover {
-    background: linear-gradient(135deg, #234161 0%, #2F5A8A 100%);
+    background: var(--brand-color, #2C5282);
+    filter: brightness(0.9);
     transform: translateY(-1px);
 }
 

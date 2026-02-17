@@ -1,20 +1,63 @@
 <?php
-require_once __DIR__ . '/includes/config.php';
-require_once __DIR__ . '/includes/db_connect.php';
+require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/email_helper.php';
 
 $error = '';
 $success = '';
 
-// Get business name
-$business_name = 'FortuNett Technologies';
-try {
-    $stmt = $pdo->query("SELECT business_name FROM isp_profile LIMIT 1");
-    $profile = $stmt->fetch();
-    if ($profile && !empty($profile['business_name'])) {
-        $business_name = $profile['business_name'];
-    }
-} catch (Exception $e) {}
+// Get tenant branding based on subdomain or request
+$branding = [
+    'name' => 'FortuNNet Technologies',
+    'color' => '#2C5282',
+    'logo' => '',
+    'background' => 'linear-gradient(135deg, #2C5282 0%, #3B6EA5 50%, #4A90E2 100%)'
+];
+
+$host = $_SERVER['HTTP_HOST'];
+$hostParts = explode('.', $host);
+$subdomain = $hostParts[0];
+
+if (isset($_GET['tenant'])) {
+    $subdomain = $_GET['tenant'];
+}
+
+$tenant_id = null;
+if ($subdomain && $subdomain !== 'localhost' && !filter_var($host, FILTER_VALIDATE_IP)) {
+    try {
+        $stmt = $pdo->prepare("SELECT id, company_name FROM tenants WHERE subdomain = ? LIMIT 1");
+        $stmt->execute([$subdomain]);
+        $tenant = $stmt->fetch();
+        
+        if ($tenant) {
+            $tenant_id = $tenant['id'];
+            $branding['name'] = $tenant['company_name'];
+            
+            $stmt = $pdo->prepare("SELECT setting_key, setting_value FROM tenant_settings WHERE tenant_id = ?");
+            $stmt->execute([$tenant_id]);
+            $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+            
+            if (!empty($settings['brand_color'])) {
+                $branding['color'] = $settings['brand_color'];
+                $branding['background'] = "linear-gradient(135deg, {$settings['brand_color']} 0%, {$settings['brand_color']}dd 100%)";
+            }
+            if (!empty($settings['system_logo'])) {
+                $branding['logo'] = $settings['system_logo'];
+            }
+        }
+    } catch (Exception $e) {}
+}
+
+if (!$tenant_id) {
+    try {
+        $stmt = $pdo->query("SELECT business_name FROM isp_profile LIMIT 1");
+        $profile = $stmt->fetch();
+        if ($profile && !empty($profile['business_name'])) {
+            $branding['name'] = $profile['business_name'];
+        }
+    } catch (Exception $e) {}
+}
+
+$business_name = $branding['name']; // Backwards compatibility for rest of file
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username']);
@@ -72,6 +115,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Sign Up - <?php echo htmlspecialchars($business_name); ?></title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="css/auth.css" rel="stylesheet">
+    <style>
+        :root {
+            --brand-color: <?php echo $branding['color']; ?>;
+            --brand-gradient: <?php echo $branding['background']; ?>;
+        }
+    </style>
 </head>
 <body class="auth-page">
     <div class="auth-container">

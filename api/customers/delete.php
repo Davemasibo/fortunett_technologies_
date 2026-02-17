@@ -3,8 +3,21 @@
  * API Endpoint: Delete Customer
  */
 header('Content-Type: application/json');
-require_once '../../includes/config.php';
+require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
+
+// Security: Get tenant_id
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+if (!isset($_SESSION['user_id'])) {
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    exit;
+}
+$user_id = $_SESSION['user_id'];
+$t_stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$t_stmt->execute([$user_id]);
+$tenant_id = $t_stmt->fetchColumn();
 
 $id = $_POST['id'] ?? 0;
 
@@ -16,14 +29,18 @@ if (empty($id)) {
 try {
     $pdo->beginTransaction();
 
-    // Get client details for router removal
-    $stmt = $pdo->prepare("SELECT mikrotik_username FROM clients WHERE id = ?");
-    $stmt->execute([$id]);
+    // Get client details for router removal (AND verify tenant ownership)
+    $stmt = $pdo->prepare("SELECT mikrotik_username, connection_type FROM clients WHERE id = ? AND tenant_id = ?");
+    $stmt->execute([$id, $tenant_id]);
     $client = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    // Delete from DB
-    $delStmt = $pdo->prepare("DELETE FROM clients WHERE id = ?");
-    $delStmt->execute([$id]);
+    if (!$client) {
+         throw new Exception("Customer not found or access denied");
+    }
+    
+    // Delete from DB (Verify tenant again ideally, but ID + Tenant check above is sufficient coverage)
+    $delStmt = $pdo->prepare("DELETE FROM clients WHERE id = ? AND tenant_id = ?");
+    $delStmt->execute([$id, $tenant_id]);
     
     // Remove from Router
     if ($client && !empty($client['mikrotik_username'])) {

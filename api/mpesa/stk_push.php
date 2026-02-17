@@ -3,8 +3,29 @@
  * API Endpoint: Initiate M-Pesa Payment
  */
 header('Content-Type: application/json');
-require_once '../../includes/config.php';
+require_once '../../includes/db_master.php';
+require_once '../../includes/auth.php'; // For session helper if needed, but we do manual check often
 require_once '../../classes/MpesaAPI.php';
+
+// Security: Tenant Context
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+if (!isset($_SESSION['user_id'])) {
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    exit;
+}
+
+$user_id = $_SESSION['user_id'];
+// Get current user's tenant
+$uStmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$uStmt->execute([$user_id]);
+$current_tenant_id = $uStmt->fetchColumn();
+
+if (!$current_tenant_id) {
+    echo json_encode(['success' => false, 'message' => 'Tenant context missing']);
+    exit;
+}
 
 // Validate Inputs
 $phone = $_POST['phone'] ?? '';
@@ -17,10 +38,17 @@ if (empty($phone) || empty($amount) || empty($client_id)) {
 }
 
 try {
-    // Get tenant_id for this client
-    $stmt = $pdo->prepare("SELECT tenant_id FROM clients WHERE id = ?");
-    $stmt->execute([$client_id]);
-    $tenant_id = $stmt->fetchColumn();
+    // Verify Client belongs to THIS Tenant
+    $stmt = $pdo->prepare("SELECT tenant_id FROM clients WHERE id = ? AND tenant_id = ?");
+    $stmt->execute([$client_id, $current_tenant_id]);
+    $client_tenant_id = $stmt->fetchColumn();
+    
+    if (!$client_tenant_id) {
+        echo json_encode(['success' => false, 'message' => 'Invalid customer or access denied']);
+        exit;
+    }
+
+    $tenant_id = $client_tenant_id; // Confirmed matches current session tenant
 
     // Initialize M-Pesa with Tenant Context
     $mpesa = new MpesaAPI($pdo, $tenant_id);

@@ -4,9 +4,10 @@ header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE");
 header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
 
-require_once '../config/database.php';
+require_once '../includes/db_master.php';
 require_once '../includes/auth.php';
 require_once '../includes/account_number_generator.php';
+require_once '../classes/MikrotikAPI.php';
 
 // Require authentication for all client operations
 session_start();
@@ -69,11 +70,20 @@ switch($method) {
                 $accountNumber = $accountGenerator->generateAccountNumber($tenantId);
             }
             
+            // Generate Credentials
+            // Username = Account Number (lowercase)
+            $portalUsername = strtolower($accountNumber);
+            
+            // Password = Random 6 digits if not provided
+            $plainPassword = $data->password ?? str_pad(mt_rand(0, 999999), 6, '0', STR_PAD_LEFT);
+            $hashedPassword = password_hash($plainPassword, PASSWORD_DEFAULT);
+            
             $stmt = $db->prepare("
                 INSERT INTO clients (
                     tenant_id, account_number, full_name, name, email, phone, 
-                    company, address, status, user_type
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    company, address, status, user_type, 
+                    username, password, mikrotik_username, mikrotik_password
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             
             $fullName = $data->full_name ?? $data->name ?? null;
@@ -91,13 +101,46 @@ switch($method) {
                 $data->company ?? null,
                 $data->address ?? null,
                 $status,
-                $userType
+                $userType,
+                $portalUsername,
+                $hashedPassword,
+                $portalUsername, // mikrotik_username same as portal
+                $plainPassword   // mikrotik_password plain
             ])) {
+                $clientId = $db->lastInsertId();
+                
+                // Sync to MikroTik
+                try {
+                    // Get active router
+                    $routerStmt = $db->prepare("SELECT * FROM mikrotik_routers WHERE tenant_id = ? AND status = 'active' LIMIT 1");
+                    $routerStmt->execute([$tenantId]);
+                    $router = $routerStmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($router) {
+                        $api = new MikrotikAPI($router['ip_address'], $router['username'], $router['password'], $router['api_port']);
+                        if ($api->connect()) {
+                            if ($userType === 'pppoe') {
+                                // Add PPPoE User
+                                $api->addPPPoEUser($portalUsername, $plainPassword, 'default', 'pppoe');
+                            } else {
+                                // Add Hotspot User
+                                $api->addHotspotUser($portalUsername, $plainPassword, 'default');
+                            }
+                            $api->disconnect();
+                        }
+                    }
+                } catch (Exception $e) {
+                    error_log("MikroTik Sync Failed: " . $e->getMessage());
+                    // Don't fail the request, just log it
+                }
+                
                 $response = array(
                     "success" => true,
-                    "message" => "Client created successfully",
-                    "id" => $db->lastInsertId(),
-                    "account_number" => $accountNumber
+                    "message" => "Client created successfully. Account: $accountNumber, Password: $plainPassword",
+                    "id" => $clientId,
+                    "account_number" => $accountNumber,
+                    "username" => $portalUsername,
+                    "password" => $plainPassword
                 );
             } else {
                 $err = $stmt->errorInfo();

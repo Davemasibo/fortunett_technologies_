@@ -1,11 +1,56 @@
+<?php
+// Ensure session is started and customer data is available
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+$tenant_branding = [
+    'company_name' => 'FortuNNet',
+    'brand_color' => '#2C5282',
+    'system_logo' => ''
+];
+
+if (isset($_SESSION['customer_data']['tenant_id'])) {
+    require_once __DIR__ . '/../../includes/db_connect.php';
+    $stmt = $pdo->prepare("SELECT setting_key, setting_value FROM tenant_settings WHERE tenant_id = ?");
+    $stmt->execute([$_SESSION['customer_data']['tenant_id']]);
+    $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    
+    if (!empty($settings['company_name'])) $tenant_branding['company_name'] = $settings['company_name'];
+    if (!empty($settings['brand_color'])) $tenant_branding['brand_color'] = $settings['brand_color'];
+    if (!empty($settings['system_logo'])) $tenant_branding['system_logo'] = $settings['system_logo'];
+    if (!empty($settings['support_number'])) $tenant_branding['support_number'] = $settings['support_number'];
+    if (!empty($settings['support_email'])) $tenant_branding['support_email'] = $settings['support_email'];
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Customer Portal - FortuNNet Technologies</title>
+    <title>Customer Portal - <?php echo htmlspecialchars($tenant_branding['company_name']); ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/fortunett_technologies_/customer/css/customer.css?v=<?php echo time(); ?>">
+    <style>
+        :root {
+            --primary: <?php echo $tenant_branding['brand_color']; ?>;
+            --primary-light: <?php echo $tenant_branding['brand_color']; ?>80; /* Fallback or opacity */
+        }
+        .sidebar-menu a.active {
+            border-left-color: var(--primary);
+            background: linear-gradient(90deg, <?php echo $tenant_branding['brand_color']; ?>1a 0%, transparent 100%);
+        }
+        .user-avatar, .package-icon {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary) 100%);
+        }
+        .btn-primary {
+            background: var(--primary);
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+    </style>
 </head>
 <body>
     <div class="portal-wrapper">
@@ -13,8 +58,12 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <i class="fas fa-wifi"></i>
-                    <span>FortuNNet</span>
+                    <?php if(!empty($tenant_branding['system_logo'])): ?>
+                        <img src="../../<?php echo htmlspecialchars($tenant_branding['system_logo']); ?>" alt="Logo" style="height: 32px; border-radius: 4px;">
+                    <?php else: ?>
+                        <i class="fas fa-wifi"></i>
+                    <?php endif; ?>
+                    <span><?php echo htmlspecialchars($tenant_branding['company_name']); ?></span>
                 </div>
                 <button class="sidebar-toggle" onclick="toggleSidebarDesk()">
                     <i class="fas fa-bars"></i>

@@ -1,6 +1,6 @@
 <?php
 header('Content-Type: application/json');
-require_once '../../includes/config.php';
+require_once '../../includes/db_master.php';
 require_once '../../classes/RouterOSAPI.php';
 
 $identity = $_POST['identity'] ?? '';

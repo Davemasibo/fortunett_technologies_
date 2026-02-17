@@ -251,7 +251,7 @@ include 'includes/sidebar.php';
     
     .btn-generate {
         padding: 12px 24px;
-        background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%);
         color: white;
         border: none;
         border-radius: 6px;
@@ -261,6 +261,12 @@ include 'includes/sidebar.php';
         display: flex;
         align-items: center;
         gap: 8px;
+        transition: all 0.2s ease;
+    }
+    
+    .btn-generate:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }
     
     /* Clients Table */

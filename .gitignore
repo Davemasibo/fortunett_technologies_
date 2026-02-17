@@ -1,16 +1,39 @@
-/vendor/
-/node_modules/
+# Environment and Secrets
 .env
-.env.*
-/storage/
-/cache/
-/build/
-/dist/
+.env.local
+.env.production
+
+# IDE and Editor
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS Files
 .DS_Store
 Thumbs.db
-.idea/
-.vscode/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-composer.phar
+desktop.ini
+
+# Logs
+*.log
+logs/
+*.error
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+
+# Upload Directories (if any)
+uploads/*
+!uploads/.gitkeep
+
+# Database Backups
+*.sql.backup
+backups/
+
+# Node modules (if using any)
+node_modules/
+
+# Vendor (if using Composer)
+vendor/

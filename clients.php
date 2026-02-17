@@ -1,5 +1,5 @@
 <?php
-require_once 'config/database.php';
+require_once __DIR__ . '/includes/db_master.php';
 require_once 'includes/auth.php';
 redirectIfNotLoggedIn();
 
@@ -396,15 +396,15 @@ include 'includes/sidebar.php';
     }
     
     .add-customer-btn {
-        background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%);
         border: none;
         color: white;
     }
     
     .add-customer-btn:hover {
-        background: linear-gradient(135deg, #234161 0%, #2F5A8A 100%);
+        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-light) 100%);
         transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(44, 82, 130, 0.3);
+        box-shadow: 0 4px 12px rgba(var(--primary-color), 0.3);
         color: white;
     }
     
@@ -981,13 +981,14 @@ include 'includes/sidebar.php';
                 </div>
              </div>
              
-             <!-- Mikrotik Credentials -->
+             <!-- Access Credentials (Merged) -->
              <div style="background: #F9FAFB; padding: 16px; border-radius: 8px; border: 1px solid #E5E7EB; margin-bottom: 20px;">
-                 <h4 style="font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; margin: 0 0 12px 0;">Router Authentication</h4>
+                 <h4 style="font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; margin: 0 0 12px 0;">Access Credentials (Portal & Internet)</h4>
                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                     <div class="form-group">
                         <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Username *</label>
                         <input type="text" name="mikrotik_username" id="formMikrotikUsername" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
+                        <small style="color: #6B7280; font-size: 11px;">Used for both Router PPPoE/Hotspot and Customer Portal login</small>
                     </div>
                     <div class="form-group">
                         <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Password</label>
@@ -996,23 +997,7 @@ include 'includes/sidebar.php';
                  </div>
              </div>
              
-             <!-- Portal Access -->
-             <div style="margin-bottom: 24px;">
-                 <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer;">
-                     <input type="checkbox" id="formEnablePortal" onchange="document.getElementById('portalFields').style.display = this.checked ? 'grid' : 'none'">
-                     Enable Customer Portal Access
-                 </label>
-                 <div id="portalFields" style="display: none; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 12px; padding: 16px; background: #F9FAFB; border-radius: 8px;">
-                    <div class="form-group">
-                        <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Portal Username</label>
-                        <input type="text" name="username" id="formPortalUsername" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
-                    </div>
-                    <div class="form-group">
-                        <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Portal Password</label>
-                        <input type="password" name="password" id="formPortalPassword" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
-                    </div>
-                 </div>
-             </div>
+             <!-- Portal Fields Removed (Merged with above) -->
 
              <div style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid #E5E7EB; padding-top: 20px;">
                 <button type="button" onclick="document.getElementById('customerFormModal').style.display='none'" style="padding: 10px 20px; background: white; border: 1px solid #D1D5DB; border-radius: 6px; cursor: pointer;">Cancel</button>
@@ -1183,9 +1168,7 @@ function openAddModal() {
     document.getElementById('customerForm').reset();
     document.getElementById('formId').value = '';
     
-    // Reset displays
-    document.getElementById('formEnablePortal').checked = false;
-    document.getElementById('portalFields').style.display = 'none';
+    // Reset displays - Portal is always enabled now, no UI elements to toggle
     
     document.getElementById('customerFormModal').style.display = 'flex';
 }
@@ -1212,16 +1195,8 @@ function openEditModal(customer) {
         document.getElementById('formExpiryDate').value = '';
     }
     
-    // Portal
-    if (customer.username) {
-        document.getElementById('formEnablePortal').checked = true;
-        document.getElementById('portalFields').style.display = 'grid';
-        document.getElementById('formPortalUsername').value = customer.username;
-        // Password not filled for security
-    } else {
-        document.getElementById('formEnablePortal').checked = false;
-        document.getElementById('portalFields').style.display = 'none';
-    }
+    // Portal (Merged) - Logic no longer needed as fields are removed
+    // We just ensure mikrotik_username is populated (done above)
     
     document.getElementById('customerFormModal').style.display = 'flex';
 }

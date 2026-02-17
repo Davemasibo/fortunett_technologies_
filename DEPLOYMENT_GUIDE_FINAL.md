@@ -25,15 +25,6 @@ Only upload these specific files that contain our recent improvements. This ensu
 
 If you are worried about missing something, do this safely:
 
-1.  **Zip your project** on your laptop.
-2.  **Delete everything** on the VPS `/var/www/html/` folder EXCEPT for:
-    *   `config/database.php`
-    *   `includes/db_master.php`
-    *   (These contain your VPS database password, don't lose them!)
-3.  **Upload and Unzip** your new project.
-4.  If you accidentally overwrote those two files, re-edit them on the VPS to point to your VPS database password.
-
----
 
 ## ⚙️ Automatic Provisioning URL
 

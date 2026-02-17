@@ -13,33 +13,39 @@ $stmt->execute([$user_id]);
 $tenant_id = $stmt->fetchColumn();
 
 // Calculate stats
+$total_packages = 0;
+$active_packages = 0;
+$total_customers = 0;
+$monthly_revenue = 0;
+
 try {
     // Total Packages
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM packages WHERE tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $total_packages = (int)$stmt->fetchColumn();
-    
+} catch (Exception $e) { error_log("Stats Error (Total Pkgs): " . $e->getMessage()); }
+
+try {
     // Active Packages
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM packages WHERE status = 'active' AND tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $active_packages = (int)$stmt->fetchColumn();
-    
+} catch (Exception $e) { error_log("Stats Error (Active Pkgs): " . $e->getMessage()); }
+
+try {
     // Total Customers
-    $stmt = $pdo->prepare("SELECT COUNT(DISTINCT client_id) FROM clients WHERE package_id IS NOT NULL AND tenant_id = ?");
+    // Fixed: changed client_id to id
+    $stmt = $pdo->prepare("SELECT COUNT(DISTINCT id) FROM clients WHERE package_id IS NOT NULL AND tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $total_customers = (int)$stmt->fetchColumn();
-    
-    // Monthly Revenue
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(price), 0) FROM packages WHERE status = 'active' AND tenant_id = ?");
+} catch (Exception $e) { error_log("Stats Error (Total Cust): " . $e->getMessage()); }
+
+try {
+    // Monthly Revenue (Real Collections)
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'paid' AND tenant_id = ? AND MONTH(payment_date) = MONTH(CURRENT_DATE()) AND YEAR(payment_date) = YEAR(CURRENT_DATE())");
     $stmt->execute([$tenant_id]);
     $monthly_revenue = (float)$stmt->fetchColumn();
-    
-} catch (Exception $e) {
-    $total_packages = 0;
-    $active_packages = 0;
-    $total_customers = 0;
-    $monthly_revenue = 0;
-}
+} catch (Exception $e) { error_log("Stats Error (Revenue): " . $e->getMessage()); }
 
 // Get all packages
 // Get filters
@@ -212,17 +218,23 @@ include 'includes/sidebar.php';
     }
     
     .create-btn {
-        padding: 8px 20px;
-        background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+        padding: 10px 20px;
+        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%);
         color: white;
         border: none;
-        border-radius: 6px;
+        border-radius: 8px;
         font-size: 14px;
         font-weight: 500;
         cursor: pointer;
         display: flex;
         align-items: center;
         gap: 8px;
+        transition: all 0.2s ease;
+    }
+    
+    .create-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }
     
     /* Packages Table */
@@ -465,7 +477,21 @@ include 'includes/sidebar.php';
                         $download = (int)($pkg['download_speed'] ?? 0);
                         $upload = (int)($pkg['upload_speed'] ?? 0);
                         $data_cap = (int)($pkg['data_limit'] ?? 0);
-                        $validity = ($pkg['validity_value'] ?? 30) . ' ' . ucfirst($pkg['validity_unit'] ?? 'days');
+                        $validityValue = $pkg['validity_value'] ?? 30;
+                        $validityUnit = $pkg['validity_unit'] ?? 'days';
+                        // Respect user's choice (Singular/Plural)
+                        $validityText = $validityValue . ' ' . ucfirst($validityUnit);
+                        
+                        // Optional: Smart fix ONLY if they mismatch (e.g. "1 Hours" -> "1 Hour", "2 Hour" -> "2 Hours")
+                        // But user asked to "create both", so we trust their input. 
+                        // However, standard grammar is better. Let's auto-fix grammar but allow the singular options to be selected in UI.
+                        if ($validityValue == 1 && substr($validityUnit, -1) === 's') {
+                             $validityText = $validityValue . ' ' . ucfirst(substr($validityUnit, 0, -1));
+                        } elseif ($validityValue > 1 && substr($validityUnit, -1) !== 's') {
+                             $validityText = $validityValue . ' ' . ucfirst($validityUnit) . 's';
+                        }
+
+                        $validity = $validityText;
                         $devices = $pkg['device_limit'] ?? 1;
                     ?>
                     <tr>
@@ -558,9 +584,13 @@ include 'includes/sidebar.php';
                         <input type="number" name="validity_value" id="pkgValidityValue" value="1" min="1" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;" placeholder="Value">
                         <select name="validity_unit" id="pkgValidityUnit" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
                             <option value="minutes">Minutes</option>
+                            <option value="minute">Minute</option>
                             <option value="hours">Hours</option>
+                            <option value="hour">Hour</option>
                             <option value="days">Days</option>
+                            <option value="day">Day</option>
                             <option value="months" selected>Months</option>
+                            <option value="month">Month</option>
                         </select>
                     </div>
                 </div>

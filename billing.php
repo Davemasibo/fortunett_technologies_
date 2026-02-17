@@ -59,19 +59,32 @@ include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
 
-<div class="main-content-wrapper">
-    <div class="container-fluid">
+<style>
+    /* Dashboard-style Card Effects */
+    .hover-card {
+        transition: all 0.2s;
+        border: 1px solid #E5E7EB !important;
+    }
+    .hover-card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+        transform: translateY(-2px);
+    }
+</style>
+
+<div class="main-content-wrapper" style="background: #F3F4F6;">
+    <div class="container-fluid p-4" style="max-width: 1400px; margin: 0 auto;">
         <!-- Header -->
         <div class="mb-4">
-            <h2 class="mb-1 text-dark fw-bold">Billing & Invoices</h2>
+            <h2 class="mb-1 text-dark fw-bold" style="font-size: 28px;">Billing & Invoices</h2>
             <p class="text-muted mb-0">Manage your subscription and view monthly statements.</p>
         </div>
 
         <!-- Current Bill Card -->
-        <div class="card border-0 shadow-sm mb-4">
+        <div class="card border-0 shadow-sm mb-4 hover-card" style="border-radius: 10px;">
             <div class="card-body p-4 d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
                 <div class="d-flex align-items-center gap-3">
-                    <div class="bg-primary bg-opacity-10 p-3 rounded-circle text-primary">
+                    <div class="rounded-circle text-white shadow-sm d-flex align-items-center justify-content-center" 
+                         style="background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%); width: 60px; height: 60px;">
                         <i class="fas fa-file-invoice-dollar fa-2x"></i>
                     </div>
                     <div>
@@ -117,8 +130,8 @@ include 'includes/sidebar.php';
                             <tr>
                                 <td class="fw-bold text-dark"><?php echo date('F Y', strtotime($bill['billing_period'])); ?></td>
                                 <td class="text-end">KES <?php echo number_format($bill['total_collections'], 2); ?></td>
-                                <td class="text-end text-danger">- KES <?php echo number_format($bill['commission_amount'], 2); ?></td>
-                                <td class="text-end text-danger">- KES <?php echo number_format($bill['base_fee'], 2); ?></td>
+                                <td class="text-end">- KES <?php echo number_format($bill['commission_amount'], 2); ?></td>
+                                <td class="text-end">- KES <?php echo number_format($bill['base_fee'], 2); ?></td>
                                 <td class="text-end fw-bold text-dark">KES <?php echo number_format($total, 2); ?></td>
                                 <td class="text-center">
                                     <span class="badge rounded-pill bg-<?php echo $bill['status'] === 'paid' ? 'success' : 'warning text-dark'; ?>">

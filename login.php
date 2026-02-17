@@ -1,6 +1,5 @@
 <?php
-require_once __DIR__ . '/includes/config.php';
-require_once __DIR__ . '/includes/db_connect.php'; // Ensure DB connection is loaded
+require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
 
 // Redirect if already logged in
@@ -41,29 +40,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Get business name from settings
-$business_name = 'FortuNett Technologies';
-try {
-    $stmt = $pdo->query("SELECT business_name FROM isp_profile LIMIT 1");
-    $profile = $stmt->fetch();
-    if ($profile && !empty($profile['business_name'])) {
-        $business_name = $profile['business_name'];
-    }
-} catch (Exception $e) {}
+// Get tenant branding based on subdomain or request
+$branding = [
+    'name' => 'FortuNNet Technologies',
+    'color' => '#2C5282', // Default base color
+    'logo' => '',
+    'background' => 'linear-gradient(135deg, #2C5282 0%, #3B6EA5 50%, #4A90E2 100%)' // Default gradient
+];
+
+// Detect subdomain
+$host = $_SERVER['HTTP_HOST'];
+$hostParts = explode('.', $host);
+$subdomain = $hostParts[0];
+
+// Allow override for testing ?tenant=subdomain
+if (isset($_GET['tenant'])) {
+    $subdomain = $_GET['tenant'];
+}
+
+$tenant_id = null;
+if ($subdomain && $subdomain !== 'localhost' && !filter_var($host, FILTER_VALIDATE_IP)) {
+    try {
+        $stmt = $pdo->prepare("SELECT id, company_name FROM tenants WHERE subdomain = ? LIMIT 1");
+        $stmt->execute([$subdomain]);
+        $tenant = $stmt->fetch();
+        
+        if ($tenant) {
+            $tenant_id = $tenant['id'];
+            $branding['name'] = $tenant['company_name'];
+            
+            // Fetch settings
+            $stmt = $pdo->prepare("SELECT setting_key, setting_value FROM tenant_settings WHERE tenant_id = ?");
+            $stmt->execute([$tenant_id]);
+            $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+            
+            if (!empty($settings['brand_color'])) {
+                $branding['color'] = $settings['brand_color'];
+                // Create a gradient variant
+                $branding['background'] = "linear-gradient(135deg, {$settings['brand_color']} 0%, {$settings['brand_color']}dd 100%)";
+            }
+            if (!empty($settings['system_logo'])) {
+                $branding['logo'] = $settings['system_logo'];
+            }
+        }
+    } catch (Exception $e) {}
+}
+
+// Fallback to ISP Profile if no tenant found
+if (!$tenant_id) {
+    try {
+        $stmt = $pdo->query("SELECT business_name FROM isp_profile LIMIT 1");
+        $profile = $stmt->fetch();
+        if ($profile && !empty($profile['business_name'])) {
+            $branding['name'] = $profile['business_name'];
+        }
+    } catch (Exception $e) {}
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - <?php echo htmlspecialchars($business_name); ?></title>
+    <title>Login - <?php echo htmlspecialchars($branding['name']); ?></title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="css/modern-design.css" rel="stylesheet">
     <style>
+        :root {
+            --brand-color: <?php echo $branding['color']; ?>;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 50%, #4A90E2 100%);
+            background: <?php echo $branding['background']; ?>;
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -79,7 +128,7 @@ try {
             overflow: hidden;
         }
         .login-header {
-            background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+            background: <?php echo $branding['background']; ?>;
             padding: 40px 30px;
             text-align: center;
             color: white;
@@ -117,14 +166,14 @@ try {
         }
         .form-group input:focus {
             outline: none;
-            border-color: #3B6EA5;
+            border-color: var(--brand-color);
             background: white;
-            box-shadow: 0 0 0 3px rgba(59, 110, 165, 0.1);
+            box-shadow: 0 0 0 3px rgba(59, 110, 165, 0.1); /* Slight transparency of brand color would be better, keeping generic for now */
         }
         .btn-login {
             width: 100%;
             padding: 14px;
-            background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+            background: <?php echo $branding['background']; ?>;
             color: white;
             border: none;
             border-radius: 8px;
@@ -138,7 +187,7 @@ try {
             gap: 8px;
         }
         .btn-login:hover {
-            background: linear-gradient(135deg, #234161 0%, #2F5A8A 100%);
+            opacity: 0.95;
             transform: translateY(-1px);
         }
         .alert {
@@ -168,7 +217,7 @@ try {
             font-size: 14px;
             color: #6B7280;
         }
-        .signup-link a { color: #3B6EA5; text-decoration: none; font-weight: 500; }
+        .signup-link a { color: var(--brand-color); text-decoration: none; font-weight: 500; }
         .signup-link a:hover { text-decoration: underline; }
     </style>
 </head>
@@ -178,7 +227,7 @@ try {
             <div class="icon-wrapper">
                 <i class="fas fa-wifi"></i>
             </div>
-            <h1><?php echo htmlspecialchars($business_name); ?></h1>
+            <h1><?php echo htmlspecialchars($branding['name']); ?></h1>
             <p>ISP Billing & Management</p>
         </div>
         

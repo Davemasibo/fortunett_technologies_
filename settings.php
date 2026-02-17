@@ -57,6 +57,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $upsertSetting('business_phone', $biz_phone);
             $upsertSetting('business_address', $biz_address);
             $upsertSetting('currency', $currency);
+            
+            // Save branding fields
+            $upsertSetting('brand_color', $_POST['brand_color'] ?? '#3B6EA5');
+            $upsertSetting('brand_font', $_POST['brand_font'] ?? 'Work Sans');
+            $upsertSetting('support_number', $_POST['support_number'] ?? '');
+            $upsertSetting('support_email', $_POST['support_email'] ?? '');
+            $upsertSetting('company_name', $company_name); // Also save to tenant_settings for consistency
+            
             $pdo->commit();
             $action_result = 'success|General settings updated successfully';
             $tenantStmt->execute([$tenant_id]); // Refresh
@@ -66,24 +74,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $action_result = 'error|' . $e->getMessage();
         }
     } 
-    // --- 2. Update/Add Router ---
-    elseif ($action === 'update_router') {
-        $router_ip = $_POST['router_ip'] ?? '';
-        $router_username = $_POST['router_username'] ?? '';
-        $router_password = $_POST['router_password'] ?? '';
-        $router_port = $_POST['router_port'] ?? 8728;
-        $router_name = $_POST['router_name'] ?? 'Main Router';
-        $router_id = $_POST['router_id'] ?? '';
+    // --- 2. Update Appearance ---
+    elseif ($action === 'update_appearance') {
+        $app_theme = $_POST['app_theme'] ?? 'light';
         try {
-            if ($router_id) {
-                $stmt = $pdo->prepare("UPDATE mikrotik_routers SET ip_address = ?, username = ?, password = ?, api_port = ?, name = ? WHERE id = ? AND tenant_id = ?");
-                $stmt->execute([$router_ip, $router_username, $router_password, $router_port, $router_name, $router_id, $tenant_id]);
-                $action_result = 'success|Router settings updated successfully';
-            } else {
-                $stmt = $pdo->prepare("INSERT INTO mikrotik_routers (tenant_id, name, ip_address, username, password, api_port, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')");
-                $stmt->execute([$tenant_id, $router_name, $router_ip, $router_username, $router_password, $router_port]);
-                $action_result = 'success|New router added successfully';
-            }
+            // Helper to upsert tenant_settings
+            $upsertSetting = function($key, $val) use ($pdo, $tenant_id) {
+                $chk = $pdo->prepare("SELECT id FROM tenant_settings WHERE tenant_id = ? AND setting_key = ?");
+                $chk->execute([$tenant_id, $key]);
+                if ($chk->fetch()) {
+                    $u = $pdo->prepare("UPDATE tenant_settings SET setting_value = ? WHERE tenant_id = ? AND setting_key = ?");
+                    $u->execute([$val, $tenant_id, $key]);
+                } else {
+                    $i = $pdo->prepare("INSERT INTO tenant_settings (tenant_id, setting_key, setting_value) VALUES (?, ?, ?)");
+                    $i->execute([$tenant_id, $key, $val]);
+                }
+            };
+            $upsertSetting('app_theme', $app_theme);
+            $action_result = 'success|Appearance settings updated successfully';
         } catch (Exception $e) {
             $action_result = 'error|' . $e->getMessage();
         }
@@ -148,9 +156,7 @@ $settingsStmt = $pdo->prepare("SELECT setting_key, setting_value FROM tenant_set
 $settingsStmt->execute([$tenant_id]);
 $tSettings = $settingsStmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
-$routersStmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE tenant_id = ?");
-$routersStmt->execute([$tenant_id]);
-$routers = $routersStmt->fetchAll(PDO::FETCH_ASSOC);
+// Removed Router fetch logic
 
 $gatewaysStmt = $pdo->prepare("SELECT * FROM payment_gateways WHERE tenant_id = ?");
 $gatewaysStmt->execute([$tenant_id]);
@@ -170,32 +176,54 @@ include 'includes/sidebar.php';
             </div>
         </div>
 
-        <!-- Provisioning Token Card -->
-        <div class="card border-0 shadow-sm mb-4 bg-primary text-white">
-            <div class="card-body p-4 d-flex align-items-center gap-3">
-                <i class="fas fa-key fa-2x text-white-50"></i>
-                <div class="flex-grow-1">
-                    <h5 class="mb-1 text-white">Provisioning Token</h5>
-                    <div class="d-flex align-items-center gap-2">
-                        <code class="bg-white bg-opacity-25 px-2 py-1 rounded text-white user-select-all"><?php echo htmlspecialchars($tenant['provisioning_token']); ?></code>
-                        <small class="text-white-50">Use this to auto-register routers via CLI.</small>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <style>
+            .nav-tabs .nav-link {
+                color: #6B7280;
+                font-weight: 500;
+                border: none;
+                border-bottom: 2px solid transparent;
+                padding: 12px 16px;
+            }
+            .nav-tabs .nav-link:hover {
+                color: var(--primary-color);
+                border-color: transparent;
+                background: rgba(0,0,0,0.02);
+            }
+            .nav-tabs .nav-link.active {
+                color: var(--primary-color);
+                border-bottom: 2px solid var(--primary-color);
+                background: transparent;
+                font-weight: 600;
+            }
+            .nav-tabs {
+                border-bottom: 1px solid #E5E7EB;
+            }
+            .cursor-pointer { cursor: pointer; }
+            .hover-card { transition: all 0.2s; }
+            .hover-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important; }
+        </style>
 
         <!-- Tabs -->
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0">
                 <ul class="nav nav-tabs card-header-tabs" id="settingsTabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button" role="tab"><i class="fas fa-cog me-2"></i>General</button>
+                    <li class="nav-item">
+                        <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general"><i class="fas fa-cog me-2"></i>General Settings</button>
                     </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="routers-tab" data-bs-toggle="tab" data-bs-target="#routers" type="button" role="tab"><i class="fas fa-network-wired me-2"></i>Routers</button>
+                    <li class="nav-item">
+                        <button class="nav-link" id="payments-tab" data-bs-toggle="tab" data-bs-target="#payments"><i class="fas fa-money-bill-wave me-2"></i>Payments</button>
                     </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="payments-tab" data-bs-toggle="tab" data-bs-target="#payments" type="button" role="tab"><i class="fas fa-money-bill-wave me-2"></i>Payments</button>
+                    <li class="nav-item">
+                        <button class="nav-link" id="pppoe-tab" data-bs-toggle="tab" data-bs-target="#pppoe"><i class="fas fa-network-wired me-2"></i>PPPoE</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="hotspot-tab" data-bs-toggle="tab" data-bs-target="#hotspot"><i class="fas fa-wifi me-2"></i>Hotspot</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="whatsapp-tab" data-bs-toggle="tab" data-bs-target="#whatsapp"><i class="fab fa-whatsapp me-2"></i>WhatsApp</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="notifications-tab" data-bs-toggle="tab" data-bs-target="#notifications"><i class="far fa-bell me-2"></i>Notifications</button>
                     </li>
                 </ul>
             </div>
@@ -204,242 +232,170 @@ include 'includes/sidebar.php';
                     
                     <!-- General Settings -->
                     <div class="tab-pane fade show active" id="general" role="tabpanel">
-                        <form method="POST">
+                        <form method="POST" enctype="multipart/form-data">
                             <input type="hidden" name="action" value="update_general">
-                            <div class="row g-3 mb-3">
+                            
+                            <h5 class="fw-bold mb-3">Appearance</h5>
+                            <p class="text-muted small mb-4">Configure your system appearance settings.</p>
+
+                            <!-- Logo -->
+                            <div class="mb-4">
+                                <label class="form-label fw-semibold">System Logo</label>
+                                <div class="border rounded p-4 text-center bg-light" style="border-style: dashed !important;">
+                                    <?php if(!empty($tSettings['system_logo'])): ?>
+                                        <img src="<?php echo htmlspecialchars($tSettings['system_logo']); ?>" class="mb-3" style="max-height: 50px;">
+                                        <br>
+                                    <?php endif; ?>
+                                    <span class="text-muted">Drag & Drop your files or <label for="logo_upload" class="text-primary cursor-pointer fw-bold">Browse</label></span>
+                                    <input type="file" name="system_logo" id="logo_upload" class="d-none" accept="image/*">
+                                </div>
+                                <small class="text-muted">Upload a Logo that will be used in the header of the system and login page.</small>
+                            </div>
+
+                            <div class="row g-4 mb-4">
                                 <div class="col-md-6">
-                                    <label class="form-label fw-bold">Company Name</label>
-                                    <input type="text" name="company_name" class="form-control" value="<?php echo htmlspecialchars($tenant['company_name']); ?>">
+                                    <label class="form-label fw-semibold">The name of your ISP / Wifi Company <span class="text-danger">*</span></label>
+                                    <input type="text" name="company_name" class="form-control" value="<?php echo htmlspecialchars($tenant['company_name']); ?>" required>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label fw-bold">Business Email</label>
-                                    <input type="email" name="business_email" class="form-control" value="<?php echo htmlspecialchars($tSettings['business_email'] ?? ''); ?>">
+                                    <label class="form-label fw-semibold">Color</label>
+                                    <div class="input-group">
+                                        <input type="color" class="form-control form-control-color" style="max-width: 50px;" name="brand_color_picker" value="<?php echo htmlspecialchars($tSettings['brand_color'] ?? '#fa8200'); ?>" onchange="document.getElementById('brand_code').value=this.value">
+                                        <input type="text" class="form-control" name="brand_color" id="brand_code" value="<?php echo htmlspecialchars($tSettings['brand_color'] ?? '#fa8200'); ?>">
+                                    </div>
+                                    <small class="text-muted">What color should we use for the system?</small>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label fw-bold">Business Phone</label>
-                                    <input type="text" name="business_phone" class="form-control" value="<?php echo htmlspecialchars($tSettings['business_phone'] ?? ''); ?>">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label fw-bold">Currency</label>
-                                    <select name="currency" class="form-select">
-                                        <option value="KES" <?php echo ($tSettings['currency'] ?? '') === 'KES' ? 'selected' : ''; ?>>KES (Kenyan Shilling)</option>
-                                        <option value="USD" <?php echo ($tSettings['currency'] ?? '') === 'USD' ? 'selected' : ''; ?>>USD (US Dollar)</option>
+                                    <label class="form-label fw-semibold">Font</label>
+                                    <select name="brand_font" class="form-select">
+                                        <option value="Work Sans" <?php echo ($tSettings['brand_font'] ?? '') === 'Work Sans' ? 'selected' : ''; ?>>Work Sans</option>
+                                        <option value="Inter" <?php echo ($tSettings['brand_font'] ?? '') === 'Inter' ? 'selected' : ''; ?>>Inter</option>
+                                        <option value="Roboto" <?php echo ($tSettings['brand_font'] ?? '') === 'Roboto' ? 'selected' : ''; ?>>Roboto</option>
                                     </select>
                                 </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold">Customer Support Number <span class="text-danger">*</span></label>
+                                    <input type="text" name="support_number" class="form-control" value="<?php echo htmlspecialchars($tSettings['support_number'] ?? ''); ?>" placeholder="+2547...">
+                                    <small class="text-muted">The number your clients can contact when they need support.</small>
+                                </div>
                                 <div class="col-12">
-                                    <label class="form-label fw-bold">Business Address</label>
-                                    <textarea name="business_address" class="form-control" rows="3"><?php echo htmlspecialchars($tSettings['business_address'] ?? ''); ?></textarea>
+                                    <label class="form-label fw-semibold">Customer Support Email</label>
+                                    <input type="email" name="support_email" class="form-control" value="<?php echo htmlspecialchars($tSettings['support_email'] ?? ''); ?>">
+                                    <small class="text-muted">The email your clients can contact when they need support.</small>
                                 </div>
                             </div>
-                            <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Save General Settings</button>
+                            
+                            <button type="submit" class="btn btn-primary fw-bold px-4">Save changes</button>
                         </form>
-                    </div>
-
-                    <!-- Routers -->
-                    <div class="tab-pane fade" id="routers" role="tabpanel">
-                        <!-- Easy Provisioning Section -->
-                        <div class="alert alert-info border-0 shadow-sm mb-4 d-flex align-items-start gap-3">
-                            <i class="fas fa-magic fa-2x mt-1"></i>
-                            <div class="w-100">
-                                <h5 class="alert-heading fw-bold">One-Click Provisioning</h5>
-                                <p class="mb-2">Run this command in your MikroTik Winbox Terminal to automatically connect this router to your portal.</p>
-                                <?php
-                                    $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http');
-                                    $host = $_SERVER['HTTP_HOST'];
-                                    $token = $tenant['provisioning_token'];
-                                    $cmd = "/tool fetch url=\"$protocol://$host/fortunett_technologies_/api/routers/provision.php?token=$token&identity=ManagedRouter&format=rsc\" dst-path=provision.rsc; :delay 5s; /import provision.rsc;";
-                                ?>
-                                <div class="bg-dark p-3 rounded position-relative">
-                                    <code class="text-success user-select-all" id="provisionCmd"><?php echo htmlspecialchars($cmd); ?></code>
-                                    <button class="btn btn-sm btn-light position-absolute top-0 end-0 m-2" onclick="copyToClipboard('<?php echo addslashes($cmd); ?>')">
-                                        <i class="fas fa-copy"></i> Copy
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="table-responsive mb-4">
-                            <table class="table table-hover align-middle">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>IP Address</th>
-                                        <th>Status</th>
-                                        <th class="text-end">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($routers as $r): ?>
-                                    <tr>
-                                        <td class="fw-bold"><?php echo htmlspecialchars($r['name']); ?></td>
-                                        <td><?php echo htmlspecialchars($r['ip_address']); ?></td>
-                                        <td><span class="badge bg-<?php echo $r['status'] === 'active' ? 'success' : 'danger'; ?>"><?php echo ucfirst($r['status']); ?></span></td>
-                                        <td class="text-end">
-                                            <button class="btn btn-sm btn-outline-primary" onclick='editRouter(<?php echo json_encode($r); ?>)'>Edit</button>
-                                        </td>
-                                    </tr>
-                                    <?php endforeach; ?>
-                                    <?php if (empty($routers)): ?>
-                                    <tr><td colspan="4" class="text-center text-muted py-4">No routers configured. Add one below.</td></tr>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div class="card bg-light border-0">
-                            <div class="card-body">
-                                <h5 class="card-title mb-3" id="routerFormTitle">Add New Router</h5>
-                                <form method="POST">
-                                    <input type="hidden" name="action" value="update_router">
-                                    <input type="hidden" name="router_id" id="router_id">
-                                    <div class="row g-3 mb-3">
-                                        <div class="col-md-4">
-                                            <label class="form-label">Router Name</label>
-                                            <input type="text" name="router_name" id="router_name" placeholder="Main HQ Router" class="form-control" required>
-                                        </div>
-                                        <div class="col-md-4">
-                                            <label class="form-label">IP Address</label>
-                                            <input type="text" name="router_ip" id="router_ip" placeholder="192.168.88.1" class="form-control" required>
-                                        </div>
-                                        <div class="col-md-4">
-                                            <label class="form-label">API Port</label>
-                                            <input type="number" name="router_port" id="router_port" value="8728" class="form-control">
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">Username</label>
-                                            <input type="text" name="router_username" id="router_username" placeholder="admin" class="form-control" required>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">Password</label>
-                                            <input type="password" name="router_password" id="router_password" class="form-control">
-                                        </div>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary">Save Router</button>
-                                </form>
-                            </div>
-                        </div>
                     </div>
 
                     <!-- Payments -->
                     <div class="tab-pane fade" id="payments" role="tabpanel">
-                        
-                        <!-- List -->
-                        <div class="d-flex flex-column gap-3 mb-4">
-                            <?php foreach ($gateways as $g): ?>
-                                <?php $creds = json_decode($g['credentials'], true); ?>
-                                <div class="card card-body border shadow-sm d-flex flex-row justify-content-between align-items-center">
-                                    <div>
-                                        <h6 class="mb-1 fw-bold"><?php echo htmlspecialchars($g['gateway_name']); ?></h6>
-                                        <span class="badge bg-secondary text-uppercase"><?php echo str_replace('_', ' ', $g['gateway_type']); ?></span>
-                                        <?php if ($g['gateway_type'] == 'paybill_no_api'): ?>
-                                            <small class="text-muted ms-2">Paybill: <?php echo htmlspecialchars($creds['paybill_number'] ?? '-'); ?></small>
-                                        <?php endif; ?>
-                                    </div>
-                                    <div class="d-flex gap-2">
-                                        <button class="btn btn-sm btn-outline-primary" onclick='editGateway(<?php echo json_encode($g); ?>)'>Edit</button>
-                                        <form method="POST" onsubmit="return confirm('Delete this gateway?');" class="d-inline">
-                                            <input type="hidden" name="action" value="delete_gateway">
-                                            <input type="hidden" name="gateway_id" value="<?php echo $g['id']; ?>">
-                                            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-                                        </form>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
+                        <!-- Existing Payment Logic -->
+                        <?php include 'settings_payments_partial.php'; ?>
+                    </div>
 
-                        <!-- Add Form -->
+                    <!-- PPPoE -->
+                    <div class="tab-pane fade" id="pppoe" role="tabpanel">
+                        <h5 class="fw-bold mb-3">PPPoE Maintenance</h5>
                         <div class="card bg-light border-0">
                             <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <h5 class="card-title mb-0" id="gatewayFormTitle">Add New Payment Gateway</h5>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="resetGatewayForm()">Reset Form</button>
-                                </div>
-                                <form method="POST" id="gatewayForm">
-                                    <input type="hidden" name="action" value="save_gateway">
-                                    <input type="hidden" name="gateway_id" id="gateway_id">
-
-                                    <div class="row g-3 mb-3">
-                                        <div class="col-md-6">
-                                            <label class="form-label">Gateway Name</label>
-                                            <input type="text" name="gateway_name" id="gateway_name" placeholder="e.g. Main M-Pesa" class="form-control" required>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">Gateway Type</label>
-                                            <select name="gateway_type" id="gateway_type" class="form-select" onchange="toggleGatewayFields()">
-                                                <option value="">-- Select Type --</option>
-                                                <option value="paybill_no_api">Paybill - Without API keys</option>
-                                                <option value="mpesa_api">M-Pesa Paybill / Till (With API)</option>
-                                                <option value="bank_account">Bank Account</option>
-                                                <option value="paypal">PayPal</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <!-- Dynamic Fields -->
-                                    <div id="fields_paybill_no_api" class="gateway-fields d-none">
-                                         <div class="mb-3">
-                                            <label class="form-label">Paybill / Till Number</label>
-                                            <input type="text" name="paybill_number" id="paybill_number" class="form-control">
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">Account Number (Optional/Instruction)</label>
-                                            <input type="text" name="account_number" id="account_number" class="form-control" placeholder="e.g. Enter your automated Account ID">
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">Payment Instructions</label>
-                                            <textarea name="instructions" id="instructions" class="form-control" placeholder="e.g. Go to M-Pesa > Lipa na M-Pesa..."></textarea>
-                                        </div>
-                                    </div>
-
-                                    <div id="fields_mpesa_api" class="gateway-fields d-none">
-                                        <div class="row g-3 mb-3">
-                                            <div class="col-md-6"><label class="form-label">Consumer Key</label><input type="text" name="mpesa_consumer_key" id="mpesa_consumer_key" class="form-control"></div>
-                                            <div class="col-md-6"><label class="form-label">Consumer Secret</label><input type="password" name="mpesa_consumer_secret" id="mpesa_consumer_secret" class="form-control"></div>
-                                            <div class="col-md-6"><label class="form-label">Passkey</label><input type="password" name="mpesa_passkey" id="mpesa_passkey" class="form-control"></div>
-                                            <div class="col-md-6"><label class="form-label">Shortcode</label><input type="text" name="mpesa_shortcode" id="mpesa_shortcode" class="form-control"></div>
-                                            <div class="col-md-12">
-                                                <label class="form-label">Environment</label>
-                                                <select name="mpesa_env" id="mpesa_env" class="form-select">
-                                                    <option value="sandbox">Sandbox</option>
-                                                    <option value="production">Production</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div id="fields_bank_account" class="gateway-fields d-none">
-                                        <div class="row g-3 mb-3">
-                                            <div class="col-md-6"><label class="form-label">Bank Name</label><input type="text" name="bank_name" id="bank_name" class="form-control"></div>
-                                            <div class="col-md-6"><label class="form-label">Account Name</label><input type="text" name="bank_account_name" id="bank_account_name" class="form-control"></div>
-                                            <div class="col-md-6"><label class="form-label">Account Number</label><input type="text" name="bank_account_number" id="bank_account_number" class="form-control"></div>
-                                            <div class="col-md-6"><label class="form-label">Bank Paybill</label><input type="text" name="bank_paybill" id="bank_paybill" class="form-control"></div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div id="fields_paypal" class="gateway-fields d-none">
-                                        <div class="row g-3 mb-3">
-                                            <div class="col-md-6"><label class="form-label">Client ID</label><input type="text" name="paypal_client_id" id="paypal_client_id" class="form-control"></div>
-                                            <div class="col-md-6"><label class="form-label">Client Secret</label><input type="password" name="paypal_client_secret" id="paypal_client_secret" class="form-control"></div>
-                                            <div class="col-md-12">
-                                                <label class="form-label">Mode</label>
-                                                <select name="paypal_mode" id="paypal_mode" class="form-select">
-                                                    <option value="sandbox">Sandbox</option>
-                                                    <option value="live">Live</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="form-check mb-3">
-                                        <input type="checkbox" name="is_active" id="is_active" class="form-check-input" checked>
-                                        <label class="form-check-label" for="is_active">Enable this gateway</label>
-                                    </div>
-                                    
-                                    <button type="submit" class="btn btn-primary">Save Payment Gateway</button>
+                                <h6 class="fw-bold">Clear Inactive Customers</h6>
+                                <p class="text-muted small">Remove customers who have been inactive for more than 90 days.</p>
+                                <form method="POST" onsubmit="return confirm('Are you sure? This cannot be undone.');">
+                                    <input type="hidden" name="action" value="clear_pppoe">
+                                    <button type="submit" class="btn btn-outline-danger"><i class="fas fa-trash me-2"></i>Clear Inactive PPPoE Customers</button>
                                 </form>
                             </div>
                         </div>
                     </div>
+
+                    <!-- Hotspot -->
+                    <div class="tab-pane fade" id="hotspot" role="tabpanel">
+                        <h5 class="fw-bold mb-3">Hotspot Maintenance</h5>
+                        <div class="card bg-light border-0">
+                            <div class="card-body">
+                                <h6 class="fw-bold">Clear Inactive Customers</h6>
+                                <p class="text-muted small">Remove hotspot users who haven't logged in for 90 days.</p>
+                                <form method="POST" onsubmit="return confirm('Are you sure? This cannot be undone.');">
+                                    <input type="hidden" name="action" value="clear_hotspot">
+                                    <button type="submit" class="btn btn-outline-danger"><i class="fas fa-trash me-2"></i>Clear Inactive Hotspot Users</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- WhatsApp -->
+                    <div class="tab-pane fade" id="whatsapp" role="tabpanel">
+                        <h5 class="fw-bold mb-3">WhatsApp Reminders</h5>
+                        <form method="POST">
+                            <input type="hidden" name="action" value="update_whatsapp">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" name="wa_enabled" id="wa_enabled" <?php echo ($tSettings['wa_enabled'] ?? '') == '1' ? 'checked' : ''; ?>>
+                                <label class="form-check-label fw-semibold" for="wa_enabled">Enable WhatsApp Reminders</label>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Days Before Expiry</label>
+                                <input type="number" name="wa_days" class="form-control" value="<?php echo htmlspecialchars($tSettings['wa_days'] ?? '3'); ?>" style="max-width: 100px;">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Message Template</label>
+                                <textarea name="wa_template" class="form-control" rows="3"><?php echo htmlspecialchars($tSettings['wa_template'] ?? 'Dear {name}, your package expires in {days} days. Please pay to avoid disconnection.'); ?></textarea>
+                                <small class="text-muted">Variables: {name}, {days}, {amount}</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary fw-bold">Save WhatsApp Settings</button>
+                        </form>
+                    </div>
+
+                    <!-- Notifications -->
+                    <div class="tab-pane fade" id="notifications" role="tabpanel">
+                        <form method="POST">
+                            <input type="hidden" name="action" value="update_notifications">
+                            
+                            <!-- Mikrotik Status -->
+                            <div class="card border rounded mb-4">
+                                <div class="card-header bg-white border-bottom-0 pt-3">
+                                    <h6 class="fw-bold mb-0">Mikrotik Status Notifications</h6>
+                                    <small class="text-muted">Notifications for Mikrotik status changes.</small>
+                                </div>
+                                <div class="card-body pt-0">
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" name="notify_mikrotik" id="notify_mikrotik" <?php echo ($tSettings['notify_mikrotik'] ?? '') == '1' ? 'checked' : ''; ?>>
+                                        <label class="form-check-label fw-semibold" for="notify_mikrotik">Enable Mikrotik Status Notifications</label>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold">Notification Phone Numbers</label>
+                                        <input type="text" name="notify_phones" class="form-control" value="<?php echo htmlspecialchars($tSettings['notify_phones'] ?? ''); ?>" placeholder="0722000000, 0733000000">
+                                        <small class="text-muted">Specify phone numbers that should receive Mikrotik offline notifications.</small>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold">Notification Emails</label>
+                                        <input type="text" name="notify_emails" class="form-control" value="<?php echo htmlspecialchars($tSettings['notify_emails'] ?? ''); ?>">
+                                        <small class="text-muted">Select users who should receive Mikrotik status notifications via email.</small>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Payment Confirmations -->
+                            <div class="card border rounded mb-4">
+                                <div class="card-header bg-white border-bottom-0 pt-3">
+                                    <h6 class="fw-bold mb-0">Payment Confirmation Notifications</h6>
+                                </div>
+                                <div class="card-body pt-0">
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" name="notify_payment_sms" id="notify_payment_sms" <?php echo ($tSettings['notify_payment_sms'] ?? '') == '1' ? 'checked' : ''; ?>>
+                                        <label class="form-check-label fw-semibold" for="notify_payment_sms">Send payment confirmation SMS to hotspot users</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary fw-bold">Save Notification Settings</button>
+                        </form>
+                    </div>
+
+                </div>
+            </div>
+        </div>
 
                 </div>
             </div>
@@ -472,17 +428,8 @@ function toggleGatewayFields() {
     }
 }
 
-function editRouter(r) {
-    document.getElementById('router_id').value = r.id;
-    document.getElementById('router_name').value = r.name;
-    document.getElementById('router_ip').value = r.ip_address;
-    document.getElementById('router_username').value = r.username;
-    document.getElementById('router_port').value = r.api_port;
-    document.getElementById('routerFormTitle').textContent = 'Edit Router';
-    
-    // Switch tab
-    new bootstrap.Tab(document.querySelector('#routers-tab')).show();
-    document.getElementById('routers').scrollIntoView();
+function resetRouterForm() {
+    // Deprecated
 }
 
 function editGateway(g) {

@@ -6,7 +6,44 @@ if (!function_exists('getCurrentTheme')) {
     require_once __DIR__ . '/auth.php';
 }
 
-$current_theme = getCurrentTheme();
+$current_theme = 'light';
+if (isLoggedIn()) {
+    $user_id = $_SESSION['user_id'];
+    $stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+    $stmt->execute([$user_id]);
+    $tenant_id = $stmt->fetchColumn();
+    
+    $stmt = $pdo->prepare("SELECT setting_key, setting_value FROM tenant_settings WHERE tenant_id = ?");
+    $stmt->execute([$tenant_id]);
+    $tSettings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    
+    $current_theme = $tSettings['app_theme'] ?? 'light';
+    $brand_color = $tSettings['brand_color'] ?? '#3B6EA5';
+    $brand_font = $tSettings['brand_font'] ?? '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+    // Calculate darker shade for sidebar gradient/hover
+    // Simple hex darken logic
+    $hex = str_replace('#', '', $brand_color);
+    if(strlen($hex) == 3) {
+        $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
+    }
+    $r = hexdec(substr($hex, 0, 2));
+    $g = hexdec(substr($hex, 2, 2));
+    $b = hexdec(substr($hex, 4, 2));
+    
+    // Darken by 20%
+    $r_dark = max(0, min(255, $r - 40));
+    $g_dark = max(0, min(255, $g - 40));
+    $b_dark = max(0, min(255, $b - 40));
+    $brand_color_dark = sprintf("#%02x%02x%02x", $r_dark, $g_dark, $b_dark);
+
+    // Lighten by 20%
+    $r_light = max(0, min(255, $r + 40));
+    $g_light = max(0, min(255, $g + 40));
+    $b_light = max(0, min(255, $b + 40));
+    $brand_color_light = sprintf("#%02x%02x%02x", $r_light, $g_light, $b_light);
+}
+
 $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Management'];
 ?>
 <!DOCTYPE html>
@@ -20,8 +57,14 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
     <link href="css/modern-design.css" rel="stylesheet">
     <link href="css/page-layout.css" rel="stylesheet">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&family=Work+Sans:wght@300;400;500;600;700&display=swap');
+
         :root {
-            --primary-color: #667eea;
+            --primary-color: <?php echo $brand_color; ?>;
+            --primary: <?php echo $brand_color; ?>;
+            --primary-dark: <?php echo $brand_color_dark ?? '#2C5282'; ?>;
+            --primary-light: <?php echo $brand_color_light ?? '#4A90E2'; ?>;
+            --brand-font: '<?php echo $brand_font; ?>', sans-serif;
             --secondary-color: #764ba2;
             --success-color: #28a745;
             --danger-color: #dc3545;
@@ -33,17 +76,73 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
             --sidebar-collapsed-width: 72px;
             --navbar-height: 60px;
         }
+        
+        /* Force Bootstrap to use Brand Color */
+        .btn-primary { background-color: var(--primary-color) !important; border-color: var(--primary-color) !important; color: white !important; }
+        .btn-outline-primary { color: var(--primary-color) !important; border-color: var(--primary-color) !important; }
+        .btn-outline-primary:hover { background-color: var(--primary-color) !important; color: white !important; }
+        .text-primary { color: var(--primary-color) !important; }
+        .bg-primary { background-color: var(--primary-color) !important; }
+        .border-primary { border-color: var(--primary-color) !important; }
+        
+        /* Override other button variants to use brand color - with high specificity */
+        .btn.btn-success, 
+        button.btn-success,
+        a.btn-success { 
+            background-color: var(--primary-color) !important; 
+            border-color: var(--primary-color) !important; 
+            color: white !important; 
+        }
+        .btn.btn-success:hover,
+        button.btn-success:hover,
+        a.btn-success:hover {
+            background-color: var(--primary-dark) !important; 
+            border-color: var(--primary-dark) !important; 
+        }
+        .btn.btn-info, 
+        button.btn-info,
+        a.btn-info { 
+            background-color: var(--primary-color) !important; 
+            border-color: var(--primary-color) !important; 
+            color: white !important; 
+        }
+        .btn.btn-info:hover,
+        button.btn-info:hover,
+        a.btn-info:hover {
+            background-color: var(--primary-dark) !important; 
+            border-color: var(--primary-dark) !important; 
+        }
+        .btn.btn-warning, 
+        button.btn-warning,
+        a.btn-warning { 
+            background-color: var(--primary-color) !important; 
+            border-color: var(--primary-color) !important; 
+            color: white !important; 
+        }
+        .btn.btn-warning:hover,
+        button.btn-warning:hover,
+        a.btn-warning:hover {
+            background-color: var(--primary-dark) !important; 
+            border-color: var(--primary-dark) !important; 
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #aaa; }
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: var(--brand-font);
             background: var(--light-bg);
         }
         .navbar {
-            background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%) !important;
+            background: var(--primary-color) !important;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
             height: var(--navbar-height);
             position: fixed;
@@ -62,6 +161,8 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
 
         .navbar-brand {
             margin-left: 60px !important;
+            font-weight: 700;
+            letter-spacing: 0.5px;
         }
 
         .main-layout {
@@ -124,7 +225,7 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
         }
 
         .sidebar-menu a.active {
-            background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+            background: var(--primary-color);
             color: white;
             border-left-color: #fff;
             font-weight: 600;
@@ -173,6 +274,7 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
             width: 100%;
             max-width: 1350px;
             padding: 0 40px;
+            padding-bottom: 60px; /* Space for footer */
         }
 
         @media (max-width: 768px) {
@@ -213,8 +315,12 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
 <nav class="navbar navbar-expand-lg navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="dashboard.php">
-            <i class="fas fa-wifi me-2"></i>
-            <?php echo htmlspecialchars($profile['business_name'] ?? 'ISP Management'); ?>
+            <?php if(!empty($tSettings['system_logo'])): ?>
+                <img src="<?php echo htmlspecialchars($tSettings['system_logo']); ?>" alt="Logo" height="36" class="me-2 rounded">
+            <?php else: ?>
+                <i class="fas fa-wifi me-2"></i>
+            <?php endif; ?>
+            <?php echo htmlspecialchars($tSettings['company_name'] ?? $tenant['company_name'] ?? $profile['business_name'] ?? 'ISP Management'); ?>
         </a>
         
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">

@@ -47,6 +47,20 @@ try {
     $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE()) AND tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $new_registrations = (int)$stmt->fetchColumn();
+
+    // Chart Data: Registrations Last 7 Days
+    $reg_labels = [];
+    $reg_data = [];
+    for ($i = 6; $i >= 0; $i--) {
+        $date = date('Y-m-d', strtotime("-$i days"));
+        $reg_labels[] = date('D', strtotime($date));
+        
+        $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE DATE(created_at) = ? AND tenant_id = ?");
+        $stmt->execute([$date, $tenant_id]);
+        $reg_data[] = (int)$stmt->fetchColumn();
+    }
+    $reg_labels_json = json_encode($reg_labels);
+    $reg_data_json = json_encode($reg_data);
     
 } catch (Exception $e) {
     $daily_revenue = 0;
@@ -55,6 +69,8 @@ try {
     $active_users = 0;
     $expired_accounts = 0;
     $new_registrations = 0;
+    $reg_labels_json = '[]';
+    $reg_data_json = '[]';
 }
 
 include 'includes/header.php';
@@ -133,7 +149,7 @@ include 'includes/sidebar.php';
         justify-content: center;
         gap: 10px;
         padding: 14px 20px;
-        background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%);
+        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%);
         color: white;
         border: none;
         border-radius: 8px;
@@ -145,7 +161,7 @@ include 'includes/sidebar.php';
     }
     
     .action-btn:hover {
-        background: linear-gradient(135deg, #234161 0%, #2F5A8A 100%);
+        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-dark) 100%);
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(44, 82, 130, 0.3);
         color: white;
@@ -589,7 +605,7 @@ include 'includes/sidebar.php';
                             <i class="fas fa-exclamation-triangle"></i>
                         </div>
                     </div>
-                    <div class="metric-value"><?php echo number_format($expired_accounts); ?></div>
+                    <div class="metric-value" id="live-active-users"><?php echo number_format($expired_accounts); ?></div>
                     <div class="metric-change">
                         <span class="metric-period">total</span>
                     </div>
@@ -886,7 +902,7 @@ if (paymentsCtx) {
 // Active Users Chart
 const activeUsersCtx = document.getElementById('activeUsersChart');
 if (activeUsersCtx) {
-    new Chart(activeUsersCtx, {
+    window.activeUsersChart = new Chart(activeUsersCtx, {
         type: 'line',
         data: {
             labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
@@ -1092,7 +1108,7 @@ if (smsCtx) {
 // Network Data Usage Chart
 const networkDataCtx = document.getElementById('networkDataChart');
 if (networkDataCtx) {
-    new Chart(networkDataCtx, {
+    window.networkDataChart = new Chart(networkDataCtx, {
         type: 'line',
         data: {
             labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
@@ -1127,10 +1143,10 @@ if (registrationsCtx) {
     new Chart(registrationsCtx, {
         type: 'bar',
         data: {
-            labels: ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+            labels: <?php echo $reg_labels_json; ?>,
             datasets: [{
                 label: 'Registrations',
-                data: [0, 0, 0, 0, 0, 0, 0],
+                data: <?php echo $reg_data_json; ?>,
                 backgroundColor: '#F59E0B',
                 borderRadius: 4
             }]
@@ -1154,11 +1170,59 @@ function updateDashboardStats() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Update Active Users
+                // Update Active Users Text
                 const activeUsers = document.getElementById('live-active-users');
                 if (activeUsers) activeUsers.textContent = data.data.active_users;
-                
+
+                // Update Active Users Chart (Push new data point, remove old)
+                if (window.activeUsersChart) { // Assuming chart instance is saved globally or accessible
+                     // For simplicity, let's just update the last point or shift
+                     // Ideally we need global access to the chart instances.
+                     // IMPORTANT: I need to assign charts to window variables first.
+                }
+
                 // Update Router Status (Green dot for all active)
+                document.querySelectorAll('.router-status-dot').forEach(el => {
+                    el.style.background = '#10B981';
+                    el.style.boxShadow = '0 0 0 2px rgba(16, 185, 129, 0.2)';
+                });
+                
+                // Update Router Client Count
+                document.querySelectorAll('.router-clients strong').forEach(el => {
+                    el.textContent = data.data.active_users;
+                });
+                
+                // Update Charts if they exist
+                if (typeof activeUsersChart !== 'undefined') {
+                    // Shift and Push
+                    const labels = activeUsersChart.data.labels;
+                    const pppoeData = activeUsersChart.data.datasets[1].data;
+                    const hotspotData = activeUsersChart.data.datasets[0].data;
+                    
+                    // Simple rotation for demo feeling or real time
+                    // For real time, we'd add a new label (Time) and remove first
+                    const now = new Date();
+                    const timeLabel = now.getHours() + ':' + now.getMinutes();
+                    
+                    if (labels.length > 10) {
+                        labels.shift();
+                        pppoeData.shift();
+                        hotspotData.shift();
+                    }
+                    
+                    labels.push(timeLabel);
+                    pppoeData.push(data.data.pppoe_users);
+                    hotspotData.push(data.data.hotspot_users);
+                    
+                    activeUsersChart.update();
+                }
+                
+                if (typeof networkDataChart !== 'undefined') {
+                     // Calculate speed (This API returns 0 for now as we don't have delta history in session/cache)
+                     // But we can simulate or show what we have.
+                     // Ideally API should return current rate (tx-byte/s) if available from /interface/monitor-traffic
+                     // But for now let's just try to update if data exists
+                }
                 document.querySelectorAll('.router-status-dot').forEach(el => {
                     el.style.background = '#10B981';
                     el.style.boxShadow = '0 0 0 2px rgba(16, 185, 129, 0.2)';

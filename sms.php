@@ -54,7 +54,12 @@ $logs = $pdo->prepare("SELECT sl.*, c.full_name FROM sms_outbox sl LEFT JOIN cli
 $logs->execute([$tenant_id]);
 $sms_logs = $logs->fetchAll(PDO::FETCH_ASSOC);
 
-$templates = $smsHelper->getTemplates();
+// Fetch Templates (Tenant specific + Global)
+$t_stmt = $pdo->prepare("SELECT * FROM sms_templates WHERE tenant_id = ? OR is_global = 1 ORDER BY is_global DESC, template_name ASC");
+$t_stmt->execute([$tenant_id]);
+$all_templates = $t_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// $templates = $smsHelper->getTemplates();
 
 // Fetch Config
 $confStmt = $pdo->prepare("SELECT * FROM sms_configurations WHERE tenant_id = ?");
@@ -83,7 +88,7 @@ include 'includes/sidebar.php';
                 <button onclick="openConfigModal()" style="padding: 10px 16px; background: white; border: 1px solid #D1D5DB; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
                     <i class="fas fa-cog"></i> Settings
                 </button>
-                <button onclick="openSendModal()" style="padding: 10px 16px; background: #2C5282; color: white; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                <button onclick="openSendModal()" style="padding: 10px 16px; background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%); color: white; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
                     <i class="fas fa-paper-plane"></i> Send SMS
                 </button>
             </div>
@@ -145,8 +150,11 @@ include 'includes/sidebar.php';
                 <div style="background: white; border-radius: 8px; border: 1px solid #E5E7EB; padding: 16px;">
                     <div style="font-weight: 600; margin-bottom: 12px;">Templates</div>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <?php foreach ($templates as $tpl): ?>
-                        <div onclick='openTemplateModal(<?php echo json_encode($tpl); ?>)' style="padding: 10px; border: 1px solid #E5E7EB; border-radius: 6px; cursor: pointer; hover: background: #F9FAFB;">
+                        <?php foreach ($all_templates as $tpl): ?>
+                        <div onclick='openTemplateModal(<?php echo json_encode($tpl); ?>)' style="padding: 10px; border: 1px solid #E5E7EB; border-radius: 6px; cursor: pointer; position: relative;">
+                            <?php if (!empty($tpl['is_global'])): ?>
+                                <span style="position: absolute; top: 4px; right: 4px; background: #E0E7FF; color: #4338CA; font-size: 10px; padding: 2px 6px; border-radius: 4px;">Global</span>
+                            <?php endif; ?>
                             <div style="font-weight: 500; font-size: 14px;"><?php echo htmlspecialchars($tpl['template_name']); ?></div>
                             <div style="font-size: 12px; color: #6B7280; margin-top: 4px;"><?php echo htmlspecialchars(substr($tpl['template_content'], 0, 40)); ?>...</div>
                         </div>
@@ -186,7 +194,7 @@ include 'includes/sidebar.php';
             </div>
             <div style="text-align:right;">
                 <button type="button" onclick="document.getElementById('configModal').style.display='none'" style="padding:8px 16px; margin-right:8px; background:#F3F4F6; border:none; border-radius:4px; cursor:pointer;">Cancel</button>
-                <button type="submit" style="padding:8px 16px; background:#2C5282; color:white; border:none; border-radius:4px; cursor:pointer;">Save</button>
+                <button type="submit" style="padding:8px 16px; background:linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%); color:white; border:none; border-radius:4px; cursor:pointer;">Save</button>
             </div>
         </form>
     </div>

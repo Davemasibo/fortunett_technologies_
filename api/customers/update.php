@@ -3,7 +3,7 @@
  * API Endpoint: Update Customer
  */
 header('Content-Type: application/json');
-require_once '../../includes/config.php';
+require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
 
 // Validate Inputs
@@ -11,7 +11,7 @@ $id = $_POST['id'] ?? 0;
 $name = $_POST['name'] ?? '';
 $email = $_POST['email'] ?? '';
 $phone = $_POST['phone'] ?? '';
-$username = $_POST['username'] ?? '';
+$username = $_POST['mikrotik_username'] ?? ''; // Sync with Mikrotik Username
 $mikrotik_username = $_POST['mikrotik_username'] ?? '';
 $mikrotik_password = $_POST['mikrotik_password'] ?? '';
 $package_id = $_POST['package_id'] ?? 0;
@@ -23,28 +23,43 @@ if (empty($id) || empty($name)) {
     exit;
 }
 
-try {
-    $pdo->beginTransaction();
+    // 0. Security: Get tenant_id
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    if (!isset($_SESSION['user_id'])) {
+        echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+        exit;
+    }
+    $user_id = $_SESSION['user_id'];
+    $t_stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+    $t_stmt->execute([$user_id]);
+    $tenant_id = $t_stmt->fetchColumn();
 
-    // 1. Get Old Details (to check if package changed)
-    $stmt = $pdo->prepare("SELECT * FROM clients WHERE id = ?");
-    $stmt->execute([$id]);
-    $oldClient = $stmt->fetch(PDO::FETCH_ASSOC);
+    try {
+        $pdo->beginTransaction();
     
-    if (!$oldClient) {
-        throw new Exception("Customer not found");
-    }
-
-    // 2. Get Package Details
-    $pkgName = $oldClient['subscription_plan'];
-    if ($package_id) {
-        $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ?");
-        $stmt->execute([$package_id]);
-        $package = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($package) {
-            $pkgName = $package['name'];
+        // 1. Get Old Details (to check if package changed) AND verify tenant
+        $stmt = $pdo->prepare("SELECT * FROM clients WHERE id = ? AND tenant_id = ?");
+        $stmt->execute([$id, $tenant_id]);
+        $oldClient = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$oldClient) {
+            throw new Exception("Customer not found or access denied");
         }
-    }
+    
+        // 2. Get Package Details (if changed)
+        $pkgName = $oldClient['subscription_plan'];
+        if ($package_id) {
+            $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND tenant_id = ?");
+            $stmt->execute([$package_id, $tenant_id]);
+            $package = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($package) {
+                $pkgName = $package['name'];
+            } else {
+                 throw new Exception("Invalid package selected or access denied");
+            }
+        }
     
     // 3. Update DB
     $expiry_date = !empty($_POST['expiry_date']) ? $_POST['expiry_date'] : null;
@@ -71,6 +86,10 @@ try {
     if (!empty($mikrotik_password)) {
         $fields[] = 'mikrotik_password = ?';
         $values[] = $mikrotik_password;
+        
+        // Sync portal password (hash)
+        $fields[] = 'auth_password = ?';
+        $values[] = password_hash($mikrotik_password, PASSWORD_DEFAULT);
     }
     
     if ($expiry_date) {
@@ -78,11 +97,13 @@ try {
         $values[] = $expiry_date;
     }
     
-    // Portal Password update
+    // Portal Password update (Removed - use Mikrotik Password)
+    /*
     if (!empty($_POST['password'])) {
-         $fields[] = 'password = ?'; // This was likely the missing column causing error before
+         $fields[] = 'password = ?'; 
          $values[] = $portal_password;
     }
+    */
     
     $sql = "UPDATE clients SET " . implode(', ', $fields) . " WHERE id = ?";
     $values[] = $id;

@@ -5,7 +5,7 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 0); // Prevent HTML error output
 header('Content-Type: application/json');
-require_once '../../includes/config.php';
+require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
 
 // Validate Inputs
@@ -23,6 +23,25 @@ $speed_display = $download_speed . "Mbps / " . $upload_speed . "Mbps";
 
 if (empty($id) || empty($name)) {
     echo json_encode(['success' => false, 'message' => 'ID and Name are required']);
+    exit;
+}
+
+// Security: Check Tenant
+session_start();
+if (!isset($_SESSION['user_id'])) {
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    exit;
+}
+$user_id = $_SESSION['user_id'];
+$t_stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$t_stmt->execute([$user_id]);
+$tenant_id = $t_stmt->fetchColumn();
+
+// Check if package belongs to tenant
+$check = $pdo->prepare("SELECT id FROM packages WHERE id = ? AND tenant_id = ?");
+$check->execute([$id, $tenant_id]);
+if (!$check->fetch()) {
+    echo json_encode(['success' => false, 'message' => 'Package not found or access denied']);
     exit;
 }
 

@@ -9,6 +9,8 @@ $ngrok_url = defined('MPESA_CALLBACK_URL') ? dirname(dirname(dirname(MPESA_CALLB
 
 redirectIfNotLoggedIn();
 
+$action_result = null;
+
 // Get current user's tenant_id
 $user_id = $_SESSION['user_id'];
 $stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
@@ -19,6 +21,24 @@ $tenant_id = $stmt->fetchColumn();
 $stmt = $pdo->prepare("SELECT * FROM tenants WHERE id = ?");
 $stmt->execute([$tenant_id]);
 $tenant = $stmt->fetch(PDO::FETCH_ASSOC);
+
+// Handle DELETE Action
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_router'])) {
+    $router_id = $_POST['router_id'] ?? 0;
+    try {
+        // Ensure tenant owns this router before deleting
+        $stmt = $pdo->prepare("DELETE FROM mikrotik_routers WHERE id = ? AND tenant_id = ?");
+        $stmt->execute([$router_id, $tenant_id]);
+        if ($stmt->rowCount() > 0) {
+            $action_result = 'success|Router deleted successfully';
+        } else {
+            $action_result = 'error|Router not found or access denied';
+        }
+    } catch (PDOException $e) {
+        $action_result = 'error|Failed to delete router: ' . $e->getMessage();
+    }
+}
+
 
 // Handle Filters
 $search = $_GET['search'] ?? '';
@@ -76,6 +96,32 @@ try {
 
 include 'includes/header.php';
 include 'includes/sidebar.php';
+
+// Handle Form Submissions
+$action_result = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    
+    if ($action === 'add_router') {
+        $router_ip = $_POST['router_ip'] ?? '';
+        $router_username = $_POST['router_username'] ?? '';
+        $router_password = $_POST['router_password'] ?? '';
+        $router_port = $_POST['router_port'] ?? 8728;
+        $router_name = $_POST['router_name'] ?? 'Main Router';
+        
+        try {
+            $stmt = $pdo->prepare("INSERT INTO mikrotik_routers (tenant_id, name, ip_address, username, password, api_port, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')");
+            $stmt->execute([$tenant_id, $router_name, $router_ip, $router_username, $router_password, $router_port]);
+            $action_result = 'success|New router added successfully';
+            // Refresh list
+            $stmt = $pdo->prepare($query); // Re-run query
+            $stmt->execute($params);
+            $routers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            $action_result = 'error|' . $e->getMessage();
+        }
+    }
+}
 ?>
 
 <style>
@@ -87,7 +133,8 @@ include 'includes/sidebar.php';
     .header-actions { display: flex; gap: 12px; }
     .sync-btn, .add-router-btn { padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; text-decoration: none; border: none; }
     .sync-btn { background: white; border: 1px solid #D1D5DB; color: #374151; }
-    .add-router-btn { background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%); color: white; }
+    .add-router-btn { background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%); color: white; }
+    .add-router-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
     
     /* Stats Cards */
     .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 24px; }
@@ -106,16 +153,69 @@ include 'includes/sidebar.php';
     .filters-grid { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 12px; align-items: end; }
     .filter-input, .filter-select { padding: 8px 12px; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 14px; width: 100%; }
     .filter-btn { padding: 8px 16px; background: white; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 14px; color: #374151; cursor: pointer; }
-    .filter-btn.primary { background: #3B6EA5; color: white; border: none; }
+    .filter-btn.primary { background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%); color: white; border: none; }
 
     /* Router Cards */
     .routers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
     .router-card { background: white; border-radius: 10px; border: 1px solid #E5E7EB; overflow: hidden; }
     .router-card-header { padding: 16px 20px; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; justify-content: space-between; }
     .router-info { display: flex; align-items: center; gap: 12px; }
-    .router-status-dot { width: 10px; height: 10px; border-radius: 50%; }
-    .router-status-dot.online { background: #10B981; }
-    .router-status-dot.offline { background: #EF4444; }
+    .router-status-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 8px;
+        animation: pulse 2s infinite;
+    }
+    
+    .router-status-dot.online {
+        background: #10B981;
+        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+    }
+    
+    .router-status-dot.offline {
+        background: #EF4444;
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+        animation: none;
+    }
+    
+    .router-status-dot.unknown {
+        background: #9CA3AF;
+        box-shadow: 0 0 0 3px rgba(156, 163, 175, 0.2);
+        animation: none;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .status-badge.online {
+        background: #D1FAE5;
+        color: #065F46;
+    }
+    
+    .status-badge.offline {
+        background: #FEE2E2;
+        color: #991B1B;
+    }
+    
+    .status-badge.unknown {
+        background: #F3F4F6;
+        color: #6B7280;
+    }
     .router-name { font-weight: 600; font-size: 14px; color: #111827; }
     .router-ip { font-size: 12px; color: #6B7280; }
     .router-status-badge { padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
@@ -165,6 +265,13 @@ include 'includes/sidebar.php';
     .command-box { background: #1F2937; padding: 16px; border-radius: 8px; margin: 16px 0; position: relative; }
     .command-text { color: #E5E7EB; font-family: monospace; font-size: 13px; word-break: break-all; line-height: 1.6; }
     .copy-btn { position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.1); color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    
+    /* Footer button styles */
+    .footer-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid #D1D5DB; background: white; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+    .footer-btn:hover { background: #F3F4F6; }
+    .footer-btn.secondary { color: #374151; }
+    .footer-btn.danger { background: #FEE2E2; color: #DC2626; border-color: #FCA5A5; }
+    .footer-btn.danger:hover { background: #DC2626; color: white; border-color: #DC2626; }
 </style>
 
 <div class="main-content-wrapper">
@@ -203,6 +310,42 @@ include 'includes/sidebar.php';
                 <div class="stat-label">Offline</div>
             </div>
         </div>
+
+        <!-- Manual Router Configuration (Moved from Settings) -->
+        <details class="mb-4">
+            <summary class="btn btn-outline-secondary mb-3"><i class="fas fa-plus-circle me-2"></i>Advanced: Manual Router Configuration</summary>
+            <div class="card border-0 bg-light mt-3">
+                <div class="card-body p-4">
+                    <h6 class="fw-bold mb-3">Add Router Manually</h6>
+                    <form method="POST">
+                        <input type="hidden" name="action" value="add_router">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Router Name</label>
+                                <input type="text" name="router_name" placeholder="e.g., Main HQ Router" class="form-control" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">IP Address</label>
+                                <input type="text" name="router_ip" placeholder="e.g., 192.168.88.1" class="form-control" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">API Port</label>
+                                <input type="number" name="router_port" value="8728" class="form-control">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Username</label>
+                                <input type="text" name="router_username" placeholder="admin" class="form-control" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Password</label>
+                                <input type="password" name="router_password" class="form-control">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Add Router</button>
+                    </form>
+                </div>
+            </div>
+        </details>
 
         <!-- Filters -->
         <div class="filters-section">
@@ -243,7 +386,10 @@ include 'includes/sidebar.php';
                             <div class="router-ip"><?php echo htmlspecialchars($router['ip_address'] ?? 'N/A'); ?></div>
                         </div>
                     </div>
-                    <span class="router-status-badge <?php echo $status; ?>"><?php echo ucfirst($status); ?></span>
+                    <span class="status-badge <?php echo $status; ?>">
+                        <i class="fas fa-<?php echo $status === 'online' ? 'check-circle' : ($status === 'offline' ? 'times-circle' : 'question-circle'); ?>"></i>
+                        <?php echo ucfirst($status); ?>
+                    </span>
                 </div>
                 <div class="router-card-body">
                     <div class="router-metric">
@@ -262,6 +408,7 @@ include 'includes/sidebar.php';
                     <div class="footer-actions">
                         <button class="footer-btn secondary" onclick="testConnection(<?php echo $router['id']; ?>, this)"><i class="fas fa-plug"></i> Test</button>
                         <button class="footer-btn secondary" onclick="editRouter(<?php echo htmlspecialchars(json_encode($router)); ?>)"><i class="fas fa-edit"></i> Edit</button>
+                        <button class="footer-btn danger" onclick="confirmDeleteRouter(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars($router['name']); ?>')"><i class="fas fa-trash"></i> Delete</button>
                     </div>
                 </div>
             </div>
@@ -269,6 +416,21 @@ include 'includes/sidebar.php';
         </div>
     </div>
 </div>
+
+<!-- Toast Notification -->
+<?php if ($action_result): ?>
+<div class="position-fixed top-0 end-0 p-3" style="z-index: 1100">
+  <div id="liveToast" class="toast align-items-center text-white <?php echo strpos($action_result, 'error') !== false ? 'bg-danger' : 'bg-success'; ?> border-0 show" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body">
+         <i class="fas <?php echo strpos($action_result, 'error') !== false ? 'fa-exclamation-circle' : 'fa-check-circle'; ?> me-2"></i>
+         <?php echo explode('|', $action_result)[1]; ?>
+      </div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
 
 <!-- Add Router Wizard Modal -->
 <div id="wizardModal">
@@ -403,13 +565,16 @@ function nextStep() {
         const name = document.getElementById('mikrotikName').value;
         if (!name) return alert('Please enter a name');
         
-        // Generate command
-        const token = "<?php echo $tenant['provisioning_token'] ?? ''; ?>";
-        let host = window.location.host;
-        let protocol = window.location.protocol;
+        // === PROVISIONING COMMAND GENERATION ===
+        // This automatically detects the current server URL from the browser
+        // LOCALHOST: Will show http://localhost/fortunett_technologies_/api/routers/provision.php
+        // VPS PRODUCTION: Will show http://72.61.147.86/fortunett_technologies_/api/routers/provision.php
+        // NO MANUAL CHANGES NEEDED - it adapts automatically!
         
-        // If we are on localhost, but we know our VPS IP, let's prioritize reachable IP for the router
-        // However, usually the user just needs it to be what they see in the address bar.
+        const token = "<?php echo $tenant['provisioning_token'] ?? ''; ?>";
+        let host = window.location.host;        // Auto-detects: localhost OR 72.61.147.86
+        let protocol = window.location.protocol; // Auto-detects: http OR https
+        
         const endpoint = `${protocol}//${host}/fortunett_technologies_/api/routers/provision.php`;
         
         let cmd = `/tool fetch mode=http url="${endpoint}?token=${token}&identity=${encodeURIComponent(name)}&format=rsc" dst-path=provision.rsc; :delay 5s; /import provision.rsc;`;
@@ -603,6 +768,12 @@ function saveRouter(e) {
     });
 }
 
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        alert('Copied to clipboard!');
+    });
+}
+
 function testConnection(id, btn) {
 
     const originalText = btn.innerHTML;
@@ -633,6 +804,19 @@ function testConnection(id, btn) {
         btn.innerHTML = originalText;
         btn.disabled = false;
     });
+}
+
+function confirmDeleteRouter(routerId, routerName) {
+    if (confirm(`Are you sure you want to delete router "${routerName}"? This action cannot be undone.`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.innerHTML = `
+            <input type="hidden" name="delete_router" value="1">
+            <input type="hidden" name="router_id" value="${routerId}">
+        `;
+        document.body.appendChild(form);
+        form.submit();
+    }
 }
 
 </script>

@@ -71,20 +71,12 @@
 </aside>
 
 <style>
-    :root {
-        --sidebar-width: 250px;
-        --sidebar-collapsed-width: 72px;
-        --navbar-height: 60px;
-        --primary-color: #667eea;
-        --secondary-color: #764ba2;
-    }
-
     /* Toggle button - fixed in top-left navbar area */
     #sidebarToggle {
         position: fixed;
         top: 12px;
         left: 12px;
-        z-index: 1001;
+        z-index: 1050;
         background: #fff;
         border: 1px solid rgba(0,0,0,0.1);
         border-radius: 6px;
@@ -117,7 +109,7 @@
         top: var(--navbar-height);
         bottom: 0;
         width: var(--sidebar-width);
-        background: linear-gradient(180deg, #1E3A5F 0%, #2C5282 100%);
+        background: linear-gradient(180deg, var(--primary-dark) 0%, var(--primary-color) 100%);
         box-shadow: 2px 0 8px rgba(0,0,0,0.15);
         z-index: 999;
         transition: transform 0.3s ease, width 0.3s ease, opacity 0.3s ease;
@@ -173,14 +165,14 @@
 
     .sidebar-menu a:hover {
         background: rgba(255, 255, 255, 0.1);
-        border-left-color: #60A5FA;
+        border-left-color: var(--primary-light);
         color: white;
     }
 
     .sidebar-menu a.active {
         background: rgba(255, 255, 255, 0.15);
         color: white;
-        border-left-color: #60A5FA;
+        border-left-color: var(--primary-light);
         font-weight: 600;
     }
 

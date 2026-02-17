@@ -109,8 +109,30 @@ function getActiveClientsFromMikrotik($host, $user, $pass, $port = 8728) {
     return [];
 }
 
-// Fetch clients
-$clients = getActiveClientsFromMikrotik($MK_HOST, $MK_USER, $MK_PASS, $MK_PORT);
+// Get current user's tenant_id
+$user_id = $_SESSION['user_id'];
+$stmt = $db->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$stmt->execute([$user_id]);
+$tenant_id = $stmt->fetchColumn();
+
+// Fetch clients from MikroTik
+$all_clients = getActiveClientsFromMikrotik($MK_HOST, $MK_USER, $MK_PASS, $MK_PORT);
+
+// Filter by Tenant's Customers
+$stmt = $db->prepare("SELECT mikrotik_username FROM clients WHERE tenant_id = ?");
+$stmt->execute([$tenant_id]);
+$tenant_usernames = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+// Normalize usernames for comparison
+$tenant_usernames_lower = array_map('strtolower', $tenant_usernames);
+
+$clients = [];
+foreach ($all_clients as $client) {
+    // Check if client username exists in tenant's client list
+    if (in_array(strtolower($client['username']), $tenant_usernames_lower)) {
+        $clients[] = $client;
+    }
+}
 
 // Get filter from query parameter
 $filter = $_GET['filter'] ?? 'all';
