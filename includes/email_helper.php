@@ -19,11 +19,11 @@ function sendEmail($to, $subject, $body) {
     }
 
     // Get Email Settings (prioritize .env, fallback to database)
-    $mailHost = $_ENV['MAIL_HOST'] ?? null;
-    $mailPort = $_ENV['MAIL_PORT'] ?? 587;
-    $mailUsername = $_ENV['MAIL_USERNAME'] ?? null;
-    $mailPassword = $_ENV['MAIL_PASSWORD'] ?? null;
-    $mailFromName = $_ENV['MAIL_FROM_NAME'] ?? 'ISP Portal';
+    $mailHost = get_env_var('MAIL_HOST');
+    $mailPort = get_env_var('MAIL_PORT', 587);
+    $mailUsername = get_env_var('MAIL_USERNAME');
+    $mailPassword = get_env_var('MAIL_PASSWORD');
+    $mailFromName = get_env_var('MAIL_FROM_NAME', 'ISP Portal');
 
     // If no .env, try database settings
     if (!$mailHost || !$mailUsername) {
