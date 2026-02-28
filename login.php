@@ -23,7 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($user && password_verify($password, $user['password_hash'])) {
                 // Check email verification (email_verified column)
                 if (isset($user['email_verified']) && $user['email_verified'] == 0) {
-                    $error = "Please verify your email address before logging in.";
+                    $encodedEmail = urlencode($user['email']);
+                    $error = "Please verify your email address before logging in. <br><a href='resend_verification.php?email={$encodedEmail}' style='color: #EF4444; text-decoration: underline; margin-top: 5px; display: inline-block;'>Resend verification email</a>";
                 } else {
                     loginUser($user['id'], $user['username'], $user['role']);
                     header("Location: dashboard.php");
