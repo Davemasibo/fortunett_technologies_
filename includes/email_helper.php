@@ -78,8 +78,9 @@ function sendEmail($to, $subject, $body) {
             $mail->send();
             return true;
         } catch (Exception $e) {
-            error_log("Email Error: {$mail->ErrorInfo}");
-            return false;
+            $errorMsg = "Mailer Error: " . $mail->ErrorInfo;
+            error_log("Email Error: " . $errorMsg);
+            return $errorMsg; // Return the exact error string
         }
     }
 
@@ -87,6 +88,11 @@ function sendEmail($to, $subject, $body) {
     $headers = "MIME-Version: 1.0\r\n";
     $headers .= "Content-type:text/html;charset=UTF-8\r\n";
     $headers .= "From: $mailFromName <$mailUsername>\r\n";
-    return mail($to, $subject, $body, $headers);
+    
+    if (mail($to, $subject, $body, $headers)) {
+        return true;
+    } else {
+        return "Failed to send email using PHP's mail() fallback. SMTP not configured properly.";
+    }
 }
 ?>
