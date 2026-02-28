@@ -38,7 +38,7 @@ services:
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Fortunett Technologies}
     ports:
-      - "${APP_PORT:-80}:80"
+      - "${APP_PORT:-8080}:80"
     volumes:
       - .:/var/www/html
       - ./cache:/var/www/html/cache
