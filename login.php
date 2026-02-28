@@ -241,7 +241,7 @@ if (!$tenant_id) {
             <?php if ($error): ?>
                 <div class="alert">
                     <i class="fas fa-exclamation-circle"></i>
-                    <?php echo htmlspecialchars($error); ?>
+                    <?php echo $error; ?>
                 </div>
             <?php endif; ?>
             
