@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../includes/env.php';
+
 class Database {
     private $host;
     private $db_name;
@@ -7,10 +9,10 @@ class Database {
     public $conn;
 
     public function __construct() {
-        $this->host = $_ENV['DB_HOST'] ?? 'localhost';
-        $this->db_name = $_ENV['DB_NAME'] ?? 'fortunnet_technologies';
-        $this->username = $_ENV['DB_USER'] ?? 'root';
-        $this->password = $_ENV['DB_PASS'] ?? '';
+        $this->host = get_env_var('DB_HOST', 'localhost');
+        $this->db_name = get_env_var('DB_NAME', 'fortunnet_technologies');
+        $this->username = get_env_var('DB_USER', 'root');
+        $this->password = get_env_var('DB_PASS', '');
     }
 
     public function getConnection() {

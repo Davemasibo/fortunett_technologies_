@@ -2,11 +2,12 @@
 // Database connection - unified for localhost and VPS
 // LOCALHOST: Uses hardcoded values below
 // VPS: Uses .env file values if present (loaded by env.php)
+require_once __DIR__ . '/env.php';
 
-$DB_HOST = $_ENV['DB_HOST'] ?? 'localhost';
-$DB_NAME = $_ENV['DB_NAME'] ?? 'fortunnet_technologies';
-$DB_USER = $_ENV['DB_USER'] ?? 'root';
-$DB_PASS = $_ENV['DB_PASS'] ?? '';
+$DB_HOST = get_env_var('DB_HOST', 'localhost');
+$DB_NAME = get_env_var('DB_NAME', 'fortunnet_technologies');
+$DB_USER = get_env_var('DB_USER', 'root');
+$DB_PASS = get_env_var('DB_PASS', '');
 
 class Database {
     private $pdo;
