@@ -10,11 +10,10 @@ require_once '../../classes/MikrotikAPI.php';
 
 // Validate Inputs
 $name = $_POST['name'] ?? '';
-$price = $_POST['price'] ?? 0;
-// Speed text is display only, but we should parse or accept raw int
-$download_speed = $_POST['download_speed'] ?? 0; 
-$upload_speed = $_POST['upload_speed'] ?? 0;
-$data_limit = $_POST['data_limit'] ?? 0; // Bytes
+$price = (float)($_POST['price'] ?? 0);
+$download_speed = (int)($_POST['download_speed'] ?? 0); 
+$upload_speed = (int)($_POST['upload_speed'] ?? 0);
+$data_limit = (int)($_POST['data_limit'] ?? 0); // Bytes
 
 $speed_display = $download_speed . "Mbps / " . $upload_speed . "Mbps"; // Construct display string
 $description = $_POST['description'] ?? '';
@@ -46,9 +45,9 @@ try {
         $tenant_id,
         $name, $price, $description, $mikrotik_profile, $rate_limit, $connection_type,
         $download_speed, $upload_speed, $data_limit, $connection_type,
-        $_POST['validity_value'] ?? 30,
+        (int)($_POST['validity_value'] ?? 30),
         $_POST['validity_unit'] ?? 'days',
-        $_POST['device_limit'] ?? 1
+        (int)($_POST['device_limit'] ?? 1)
     ]);
     $package_id = $pdo->lastInsertId();
     
