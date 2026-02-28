@@ -38,7 +38,7 @@ if (!isset($_GET['token'])) {
             $messageType = "danger";
             $icon = "fa-times-circle";
         } else {
-            $pdo->prepare("UPDATE users SET is_verified = 1, verification_token = NULL WHERE id = ?")->execute([$user['id']]);
+            $pdo->prepare("UPDATE users SET is_verified = 1, email_verified = 1, verification_token = NULL WHERE id = ?")->execute([$user['id']]);
             $title = "Verified Successfully";
             $message = "Your email has been successfully verified. You can now access your account.";
             $messageType = "success";
