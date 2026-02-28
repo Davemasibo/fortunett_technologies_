@@ -85,20 +85,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     VALUES (?, ?, ?, 'operator', 0, ?)
                 ");
                 $stmt->execute([$username, $email, $hash, $token]);
+                $user_id = $pdo->lastInsertId();
 
-                // Send verification email
-                $verifyLink = "https://" . $_SERVER['HTTP_HOST'] . "/verify.php?token=" . $token;
-                $subject = "Verify Your Account - $business_name";
-                $body = "
-                    <h2>Welcome to $business_name</h2>
-                    <p>Click below to verify your account:</p>
-                    <p><a href='$verifyLink' style='padding:10px 20px;background:#28a745;color:white;text-decoration:none;border-radius:5px;'>Verify Email</a></p>
-                ";
+                // Generate Subdomain and Create Tenant
+                require_once __DIR__ . '/includes/tenant.php';
+                $tenantManager = TenantManager::getInstance($pdo);
+                
+                $baseSubdomain = TenantManager::sanitizeSubdomain($username);
+                if (empty($baseSubdomain)) {
+                    $baseSubdomain = 'tenant' . $user_id;
+                }
+                
+                $subdomain = $baseSubdomain;
+                $counter = 1;
+                while (!$tenantManager->isSubdomainAvailable($subdomain)) {
+                    $subdomain = $baseSubdomain . $counter;
+                    $counter++;
+                }
 
-                if (function_exists('sendEmail') && sendEmail($email, $subject, $body)) {
-                    $success = "Account created! Please check your email to verify your account.";
+                $companyName = $username . ' Network Solutions';
+                $tenantId = $tenantManager->createTenant($subdomain, $companyName, $user_id);
+
+                if ($tenantId) {
+                    $accountPrefix = substr($baseSubdomain, 0, 1);
+                    $pdo->prepare("UPDATE users SET tenant_id = ?, account_prefix = ? WHERE id = ?")
+                        ->execute([$tenantId, $accountPrefix, $user_id]);
+                        
+                    $tenantUrl = "https://" . $subdomain . ".fortunetttech.site";
+                    $loginLink = $tenantUrl . "/login.php";
+                    $verifyLink = $tenantUrl . "/verify.php?token=" . $token;
+
+                    // Send verification email
+                    $subject = "Welcome to $business_name - Your Account Details";
+                    $body = "
+                        <h2>Welcome to $business_name</h2>
+                        <p>Your tenant account has been successfully created!</p>
+                        <p><strong>Your dedicated dashboard URL is:</strong> <a href='$tenantUrl'>$tenantUrl</a></p>
+                        <br>
+                        <p>Click below to verify your account and login:</p>
+                        <p><a href='$verifyLink' style='padding:10px 20px;background:#28a745;color:white;text-decoration:none;border-radius:5px;'>Verify Email & Login</a></p>
+                    ";
+
+                    if (function_exists('sendEmail') && sendEmail($email, $subject, $body)) {
+                        $success = "Account created successfully! We've sent an email with your dedicated URL ($tenantUrl) to verify your account.";
+                    } else {
+                        $success = "Account created with URL: $tenantUrl. However, we failed to send the verification email. Please contact support.";
+                    }
                 } else {
-                    $success = "Account created, but failed to send verification email. Please contact admin.";
+                    $error = "User created, but failed to provision tenant workspace. Please contact support.";
                 }
             }
         } catch (PDOException $e) {
