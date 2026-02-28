@@ -1,10 +1,17 @@
 <?php
 class Database {
-    private $host = "localhost";
-    private $db_name = "fortunnet_technologies";
-    private $username = "root";
-    private $password = "";
+    private $host;
+    private $db_name;
+    private $username;
+    private $password;
     public $conn;
+
+    public function __construct() {
+        $this->host = $_ENV['DB_HOST'] ?? 'localhost';
+        $this->db_name = $_ENV['DB_NAME'] ?? 'fortunnet_technologies';
+        $this->username = $_ENV['DB_USER'] ?? 'root';
+        $this->password = $_ENV['DB_PASS'] ?? '';
+    }
 
     public function getConnection() {
         $this->conn = null;
