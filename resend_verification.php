@@ -51,6 +51,14 @@ if (isset($_GET['email']) || $_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
                 
+                $subject = "Verify Your Account - $business_name";
+                $body = "
+                    <h2>Welcome to $business_name</h2>
+                    <p>We received a request to resend your verification email.</p>
+                    <p>Click below to verify your account:</p>
+                    <p><a href='$verifyUrl' style='padding:10px 20px;background:#28a745;color:white;text-decoration:none;border-radius:5px;'>Verify Email & Login</a></p>
+                ";
+
                 $sendResult = false;
                 if (function_exists('sendEmail')) {
                     $sendResult = sendEmail($email, $subject, $body);
