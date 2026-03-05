@@ -132,6 +132,65 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
         ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #aaa; }
 
+        /* ─── Mobile Responsive Tables ─────────────────────────────── */
+        /* Wrap any <table> inside a .table-wrap or .transactions-section
+           and it will scroll horizontally on small screens               */
+        .table-responsive-auto,
+        .table-wrap,
+        .transactions-section table,
+        .clients-table,
+        .packages-table {
+            display: block;
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        @media (max-width: 768px) {
+            /* Force ALL content tables to scroll */
+            .main-content-wrapper table:not(.no-scroll) {
+                display: block;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                white-space: nowrap;
+            }
+
+            /* Condensed padding on mobile table cells */
+            .main-content-wrapper table th,
+            .main-content-wrapper table td {
+                padding: 10px 12px !important;
+                font-size: 13px !important;
+            }
+
+            /* Stats cards stack vertically */
+            .stats-row {
+                grid-template-columns: 1fr 1fr !important;
+                gap: 12px !important;
+            }
+
+            /* Filters column on mobile */
+            .filters-grid {
+                grid-template-columns: 1fr !important;
+            }
+
+            /* Stat values slightly smaller */
+            .stat-value { font-size: 22px !important; }
+
+            /* Page paddings */
+            .payments-container,
+            .clients-container,
+            .packages-container {
+                padding: 16px !important;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stats-row {
+                grid-template-columns: 1fr !important;
+            }
+        }
+        /* ─── End Mobile Table styles ────────────────────────────────── */
+
         * {
             box-sizing: border-box;
             margin: 0;

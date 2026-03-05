@@ -59,54 +59,63 @@ class AccountNumberGenerator {
      */
     private function getPrefix($tenantId) {
         try {
-            // First check if user has explicit account_prefix set
+            // Try to get: (1) explicit account_prefix, (2) subdomain of tenant, (3) admin username
             $stmt = $this->db->prepare("
-                SELECT u.account_prefix, u.username
-                FROM users u
-                JOIN tenants t ON t.admin_user_id = u.id
+                SELECT t.subdomain, u.account_prefix, u.username
+                FROM tenants t
+                LEFT JOIN users u ON t.admin_user_id = u.id
                 WHERE t.id = ?
                 LIMIT 1
             ");
             $stmt->execute([$tenantId]);
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            
+
             if (!$result) {
-                return null;
+                // Last resort: derive prefix from tenant_id itself
+                return 'T' . str_pad($tenantId, 2, '0', STR_PAD_LEFT);
             }
-            
-            // Use explicit prefix if set
+
+            // Priority 1: explicit account_prefix already stored on user
             if (!empty($result['account_prefix'])) {
-                return strtolower($result['account_prefix']);
+                return strtoupper($result['account_prefix']);
             }
-            
-            // Otherwise, extract from username
-            $username = $result['username'];
-            
-            // Get first 1-3 characters from username
-            // Try to get first letter(s) before numbers or special chars
-            preg_match('/^([a-zA-Z]{1,3})/', $username, $matches);
-            
-            if (isset($matches[1])) {
-                $prefix = strtolower($matches[1]);
-                
-                // Update the account_prefix in users table for future use
-                $updateStmt = $this->db->prepare("
-                    UPDATE users u
-                    JOIN tenants t ON t.admin_user_id = u.id
-                    SET u.account_prefix = ?
-                    WHERE t.id = ?
-                ");
-                $updateStmt->execute([$prefix, $tenantId]);
-                
-                return $prefix;
+
+            // Priority 2: subdomain (e.g. 'best' => 'B')
+            $subdomain = $result['subdomain'] ?? '';
+            if (!empty($subdomain)) {
+                preg_match('/^([a-zA-Z]{1,3})/', $subdomain, $matches);
+                if (!empty($matches[1])) {
+                    $prefix = strtoupper($matches[1]);
+                    // Cache it on the user row if admin_user_id is set
+                    if (!empty($result['username'])) {
+                        try {
+                            $this->db->prepare("
+                                UPDATE users u
+                                JOIN tenants t ON t.admin_user_id = u.id
+                                SET u.account_prefix = ?
+                                WHERE t.id = ?
+                            ")->execute([$prefix, $tenantId]);
+                        } catch (\Exception $e) { /* ignore cache errors */ }
+                    }
+                    return $prefix;
+                }
             }
-            
-            // Fallback: use 't' for tenant if no letters found
-            return 't';
-            
-        } catch (PDOException $e) {
+
+            // Priority 3: admin username
+            $username = $result['username'] ?? '';
+            if (!empty($username)) {
+                preg_match('/^([a-zA-Z]{1,3})/', $username, $matches);
+                if (!empty($matches[1])) {
+                    return strtoupper($matches[1]);
+                }
+            }
+
+            // Absolute fallback
+            return 'C';
+
+        } catch (\PDOException $e) {
             error_log("Prefix retrieval error: " . $e->getMessage());
-            return null;
+            return 'C';
         }
     }
     
