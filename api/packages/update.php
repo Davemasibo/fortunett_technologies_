@@ -11,10 +11,10 @@ require_once '../../classes/MikrotikAPI.php';
 // Validate Inputs
 $id = (int)($_POST['id'] ?? 0);
 $name = $_POST['name'] ?? '';
-$price = (float)($_POST['price'] ?? 0);
-$download_speed = (int)($_POST['download_speed'] ?? 0); 
-$upload_speed = (int)($_POST['upload_speed'] ?? 0);
-$data_limit = (int)($_POST['data_limit'] ?? 0);
+$price = isset($_POST['price']) && $_POST['price'] !== '' ? (float)$_POST['price'] : 0;
+$download_speed = isset($_POST['download_speed']) && $_POST['download_speed'] !== '' ? (int)$_POST['download_speed'] : 0; 
+$upload_speed = isset($_POST['upload_speed']) && $_POST['upload_speed'] !== '' ? (int)$_POST['upload_speed'] : 0;
+$data_limit = isset($_POST['data_limit']) && $_POST['data_limit'] !== '' ? (int)$_POST['data_limit'] : 0;
 $description = $_POST['description'] ?? '';
 $mikrotik_profile = $_POST['mikrotik_profile'] ?? '';
 $rate_limit = $_POST['rate_limit'] ?? ($upload_speed . 'M/' . $download_speed . 'M');
@@ -53,9 +53,9 @@ try {
     $stmt->execute([
         $name, $price, $description, $mikrotik_profile, $rate_limit, $connection_type,
         $download_speed, $upload_speed, $data_limit, $connection_type,
-        (int)($_POST['validity_value'] ?? 30),
+        isset($_POST['validity_value']) && $_POST['validity_value'] !== '' ? (int)$_POST['validity_value'] : 30,
         $_POST['validity_unit'] ?? 'days',
-        (int)($_POST['device_limit'] ?? 1),
+        isset($_POST['device_limit']) && $_POST['device_limit'] !== '' ? (int)$_POST['device_limit'] : 1,
         $id
     ]);
     
