@@ -39,7 +39,9 @@ try {
         
         // Dynamic URL construction
         $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
-        $serverUrl = $protocol . $_SERVER['HTTP_HOST'] . '/fortunett_technologies_/api/routers/auto_register.php';
+        $scriptPath = $_SERVER['SCRIPT_NAME'];
+        $basePath = str_replace('/provision.php', '', $scriptPath);
+        $serverUrl = $protocol . $_SERVER['HTTP_HOST'] . $basePath . '/auto_register.php';
         
         // Generate a secure password for the admin user
         $adminPassword = bin2hex(random_bytes(8));

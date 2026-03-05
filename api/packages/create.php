@@ -51,11 +51,12 @@ try {
     ]);
     $package_id = $pdo->lastInsertId();
     
-    // 2. Create Profile on Router
-    $router_stmt = $pdo->query("SELECT * FROM mikrotik_routers WHERE status = 'active' LIMIT 1");
-    $router = $router_stmt->fetch(PDO::FETCH_ASSOC);
+    // 2. Create Profile on all active Routers for this tenant
+    $router_stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ?");
+    $router_stmt->execute([$tenant_id]);
+    $routers = $router_stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    if ($router) {
+    foreach ($routers as $router) {
         try {
             $api = new MikrotikAPI($router['ip_address'], $router['username'], $router['password'], $router['api_port']);
             if ($api->connect()) {
@@ -63,8 +64,8 @@ try {
                     // Hotspot Profile
                     $profiles = $api->getHotspotUserProfiles();
                     $exists = false;
-                    foreach ($profiles as $p) {
-                        if ($p['name'] == $mikrotik_profile) {
+                    foreach ((array)$profiles as $p) {
+                        if (isset($p['name']) && $p['name'] == $mikrotik_profile) {
                             $exists = true;
                             break;
                         }
@@ -77,8 +78,8 @@ try {
                     // PPPoE Profile (Default)
                     $profiles = $api->getPPPoEProfiles();
                     $exists = false;
-                    foreach ($profiles as $p) {
-                        if ($p['name'] == $mikrotik_profile) {
+                    foreach ((array)$profiles as $p) {
+                        if (isset($p['name']) && $p['name'] == $mikrotik_profile) {
                             $exists = true;
                             break;
                         }
@@ -92,8 +93,8 @@ try {
                 $api->disconnect();
             }
         } catch (Exception $e) {
-            // Log error, but don't fail DB insert?
-             error_log("Router profile sync failed: " . $e->getMessage());
+            // Log error, but don't fail DB insert
+             error_log("Router profile sync failed for router ID " . $router['id'] . ": " . $e->getMessage());
         }
     }
 
