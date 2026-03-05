@@ -4,6 +4,7 @@
  */
 header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
+require_once '../../includes/account_number_generator.php';
 require_once '../../classes/MikrotikAPI.php';
 
 // Validate Inputs
@@ -74,9 +75,20 @@ if (empty($name) || empty($package_id)) {
         ]);
     
     $client_id = $pdo->lastInsertId();
-    
-    // 3. Create on MikroTik Router
-    $router_stmt = $pdo->query("SELECT * FROM mikrotik_routers WHERE status = 'active' LIMIT 1");
+
+    // 2b. Generate and assign account number for paybill tracking
+    try {
+        $acctGen = new AccountNumberGenerator($pdo);
+        $account_number = $acctGen->generateAccountNumber($tenant_id);
+        $pdo->prepare("UPDATE clients SET account_number = ? WHERE id = ?")
+            ->execute([$account_number, $client_id]);
+    } catch (Exception $e) {
+        error_log("Account number generation failed: " . $e->getMessage());
+    }
+
+    // 3. Create on MikroTik Router (tenant-scoped)
+    $router_stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ? LIMIT 1");
+    $router_stmt->execute([$tenant_id]);
     $router = $router_stmt->fetch(PDO::FETCH_ASSOC);
     
     if ($router && !empty($mikrotik_username) && !empty($mikrotik_password)) {

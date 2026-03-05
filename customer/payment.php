@@ -127,13 +127,39 @@ include 'includes/header.php';
                                             <input type="tel" id="stk_phone" class="form-control" value="<?php echo htmlspecialchars($customer['phone']); ?>" placeholder="07xxxxxxxx">
                                             <button class="btn btn-success" onclick="initiateSTK(<?php echo $g['id']; ?>, <?php echo $amountToPay; ?>)">Pay Now</button>
                                         </div>
-                                    <?php elseif ($g['gateway_type'] == 'paybill_no_api'): ?>
+                                    <?php elseif ($g['gateway_type'] == 'paybill_no_api'): 
+                                        $useGenerated = !empty($creds['use_generated_accounts']) && $creds['use_generated_accounts'] == '1';
+                                        $displayAcct = $useGenerated ? ($customer['account_number'] ?? '') : ($creds['account_number'] ?? '');
+                                    ?>
                                         <div class="bg-white p-3 rounded border">
-                                            <div class="mb-2"><span class="text-muted small">Paybill Number:</span> <strong class="fs-5"><?php echo htmlspecialchars($creds['paybill_number']); ?></strong></div>
-                                            <div class="mb-2"><span class="text-muted small">Account Name/No:</span> <strong><?php echo htmlspecialchars($creds['account_number'] ?: $customer['account_number']); ?></strong></div>
-                                            <div class="alert alert-warning py-2 px-3 small mt-2">
-                                                <i class="fas fa-info-circle me-1"></i> <?php echo htmlspecialchars($creds['instructions'] ?: 'Pay via M-Pesa then submit the code below.'); ?>
+                                            <!-- Paybill Number Row -->
+                                            <div class="d-flex justify-content-between align-items-center mb-3 p-2 bg-light rounded">
+                                                <div>
+                                                    <div class="text-muted" style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; font-weight:600;">Business Number (Paybill)</div>
+                                                    <div style="font-size:24px; font-weight:800; letter-spacing:2px; color:#111;"><?php echo htmlspecialchars($creds['paybill_number'] ?? 'N/A'); ?></div>
+                                                </div>
+                                                <button onclick="copyText('<?php echo htmlspecialchars($creds['paybill_number'] ?? ''); ?>', this)" class="btn btn-sm btn-outline-secondary"><i class="fas fa-copy"></i></button>
                                             </div>
+                                            <!-- Account Number Row -->
+                                            <?php if ($displayAcct): ?>
+                                            <div class="d-flex justify-content-between align-items-center p-2 rounded mb-2" style="background:<?php echo $useGenerated ? '#eef2ff' : '#f9fafb'; ?>; border:1px solid <?php echo $useGenerated ? '#c7d2fe' : '#e5e7eb'; ?>;">
+                                                <div>
+                                                    <div class="text-muted" style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; font-weight:600;">
+                                                        <?php echo $useGenerated ? '🎯 Your Unique Account Number' : 'Account Number'; ?>
+                                                    </div>
+                                                    <div style="font-size:26px; font-weight:900; letter-spacing:4px; color:<?php echo $useGenerated ? '#4338ca' : '#111'; ?>;">
+                                                        <?php echo htmlspecialchars($displayAcct); ?>
+                                                    </div>
+                                                    <?php if ($useGenerated): ?><div style="font-size:11px; color:#6366f1;">Use this as your M-Pesa account reference</div><?php endif; ?>
+                                                </div>
+                                                <button onclick="copyText('<?php echo htmlspecialchars($displayAcct); ?>', this)" class="btn btn-sm btn-outline-primary"><i class="fas fa-copy"></i></button>
+                                            </div>
+                                            <?php endif; ?>
+                                            <?php if (!empty($creds['instructions'])): ?>
+                                            <div class="alert alert-warning py-2 px-3 small mb-0">
+                                                <i class="fas fa-info-circle me-1"></i> <?php echo htmlspecialchars($creds['instructions']); ?>
+                                            </div>
+                                            <?php endif; ?>
                                         </div>
                                     <?php elseif ($g['gateway_type'] == 'bank_account'): ?>
                                         <div class="bg-white p-3 rounded border">
@@ -239,6 +265,17 @@ function pollStatus(checkoutId) {
             }
         });
     }, 3000);
+}
+
+function copyText(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check"></i>';
+        btn.classList.add('btn-success');
+        setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('btn-success'); }, 1500);
+    }).catch(() => {
+        alert('Copied: ' + text);
+    });
 }
 
 function activateWithBalance() {

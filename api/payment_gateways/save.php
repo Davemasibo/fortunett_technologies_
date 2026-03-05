@@ -53,9 +53,11 @@ try {
     switch ($gatewayType) {
         case 'paybill_no_api':
             $credentials = [
-                'paybill_number' => $_POST['paybill_number'] ?? '',
-                'account_number' => $_POST['account_number'] ?? '',
-                'currency' => $_POST['currency'] ?? 'KES'
+                'paybill_number'        => $_POST['paybill_number'] ?? '',
+                'account_number'        => $_POST['account_number'] ?? '',
+                'use_generated_accounts'=> isset($_POST['use_generated_accounts']) ? '1' : '0',
+                'currency'              => $_POST['currency'] ?? 'KES',
+                'instructions'          => $_POST['instructions'] ?? ''
             ];
             break;
             
