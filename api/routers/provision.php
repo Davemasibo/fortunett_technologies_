@@ -63,13 +63,14 @@ try {
         // Add Scheduler for Heartbeat/Auto-Register (every 5 minutes)
         // This scheduler posts data to auto_register.php with the TOKEN
         // Note: Using a variable for the command to handle escaping better
-        echo ":local cmd \"/tool fetch url=\\\"$serverUrl\\\" http-method=post http-data=\\\"provisioning_token=$token&router_ip=192.168.88.1&router_mac=\\$[/interface ethernet get ether1 mac-address]&router_identity=\\$[/system identity get name]&router_username=fortunett_admin&router_password=$adminPassword\\\" keep-result=no\";\n";
+        $mode = (strpos($serverUrl, 'https://') === 0) ? "mode=https" : "mode=http";
+        echo ":local cmd \"/tool fetch $mode url=\\\"$serverUrl\\\" http-method=post http-data=\\\"provisioning_token=$token&router_ip=192.168.88.1&router_mac=\\$[/interface ethernet get ether1 mac-address]&router_identity=\\$[/system identity get name]&router_username=fortunett_admin&router_password=$adminPassword\\\" keep-result=no\";\n";
         echo "/system scheduler remove [find name=\"fortunett_heartbeat\"];\n";
         echo "/system scheduler add name=\"fortunett_heartbeat\" interval=5m on-event=\$cmd start-time=startup;\n";
         
         // Run Heartbeat Immediately to register
         echo ":delay 2s;\n";
-        echo "/tool fetch url=\"$serverUrl\" http-method=post http-data=\"provisioning_token=$token&router_ip=192.168.88.1&router_mac=$[/interface ethernet get ether1 mac-address]&router_identity=$[/system identity get name]&router_username=fortunett_admin&router_password=$adminPassword\" keep-result=no;\n";
+        echo "/tool fetch $mode url=\"$serverUrl\" http-method=post http-data=\"provisioning_token=$token&router_ip=192.168.88.1&router_mac=$[/interface ethernet get ether1 mac-address]&router_identity=$[/system identity get name]&router_username=fortunett_admin&router_password=$adminPassword\" keep-result=no;\n";
         
         echo ":log info \"Provisioning Complete\";\n";
         exit;

@@ -577,7 +577,7 @@ function nextStep() {
         
         const endpoint = `${protocol}//${host}/fortunett_technologies_/api/routers/provision.php`;
         
-        let cmd = `/tool fetch mode=http url="${endpoint}?token=${token}&identity=${encodeURIComponent(name)}&format=rsc" dst-path=provision.rsc; :delay 5s; /import provision.rsc;`;
+        let cmd = `/tool fetch url="${endpoint}?token=${token}&identity=${encodeURIComponent(name)}&format=rsc" dst-path=provision.rsc; :delay 5s; /import provision.rsc;`;
         
         // Check if host is localhost and warn user
         if (host.includes('localhost') || host.includes('127.0.0.1')) {
