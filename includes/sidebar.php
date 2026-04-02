@@ -68,6 +68,72 @@
             </a>
         </li>
     </ul>
+
+    <?php
+    // Tenant subscription status widget
+    if (isLoggedIn()) {
+        try {
+            $uid = $_SESSION['user_id'] ?? null;
+            if ($uid) {
+                $tSub = $pdo->prepare("
+                    SELECT t.status, t.trial_ends_at, t.subscription_ends_at,
+                           p.name AS plan_name
+                    FROM users u
+                    JOIN tenants t ON t.id = u.tenant_id
+                    LEFT JOIN platform_subscription_plans p ON p.id = t.subscription_plan_id
+                    WHERE u.id = ?
+                ");
+                $tSub->execute([$uid]);
+                $tInfo = $tSub->fetch(PDO::FETCH_ASSOC);
+
+                // Overdue invoice check
+                $tenantIdSub = $_SESSION['tenant_id'] ?? null;
+                $hasOverdue  = false;
+                if ($tenantIdSub) {
+                    $oInv = $pdo->prepare("SELECT 1 FROM platform_invoices WHERE tenant_id = ? AND status = 'overdue' LIMIT 1");
+                    $oInv->execute([$tenantIdSub]);
+                    $hasOverdue = (bool)$oInv->fetchColumn();
+                }
+
+                if ($tInfo):
+                    $expiryDate = $tInfo['trial_ends_at'] ?? $tInfo['subscription_ends_at'] ?? null;
+                    $daysLeft   = 0;
+                    $pct        = 100;
+                    $barClass   = '';
+                    if ($expiryDate) {
+                        $diff = (new DateTime())->diff(new DateTime($expiryDate));
+                        $daysLeft = max(0, (int)$diff->days * ($diff->invert ? -1 : 1));
+                        $total = ($tInfo['status'] === 'trial') ? 30 : 30;
+                        $pct   = max(0, min(100, round(($daysLeft / $total) * 100)));
+                        $barClass = $pct < 20 ? 'danger' : ($pct < 40 ? 'warning' : '');
+                    }
+            ?>
+            <div class="sidebar-tenant-footer">
+                <div class="plan-badge">
+                    <i class="fas fa-layer-group"></i>
+                    <?= htmlspecialchars($tInfo['plan_name'] ?? 'Starter') ?>
+                    <?php if ($tInfo['status'] === 'trial'): ?>
+                    &nbsp;· Trial
+                    <?php endif; ?>
+                </div>
+                <?php if ($expiryDate && $daysLeft >= 0): ?>
+                <div class="trial-bar-wrap">
+                    <div class="trial-bar <?= $barClass ?>" style="width:<?= $pct ?>%"></div>
+                </div>
+                <div class="trial-label"><?= $daysLeft ?> day<?= $daysLeft !== 1 ? 's' : '' ?> remaining</div>
+                <?php endif; ?>
+                <?php if ($hasOverdue): ?>
+                <a href="billing.php" class="billing-alert">
+                    <i class="fas fa-exclamation-circle"></i> Invoice overdue — Pay now
+                </a>
+                <?php endif; ?>
+            </div>
+            <?php
+                endif;
+            }
+        } catch (Throwable $e) { /* Non-fatal */ }
+    }
+    ?>
 </aside>
 
 <style>
@@ -138,7 +204,7 @@
         display: flex;
         flex-direction: column;
         flex: 1;
-        justify-content: space-evenly;
+        justify-content: flex-start;
         overflow-y: auto;
         overflow-x: hidden;
     }
@@ -286,6 +352,16 @@
             mainContent.classList.remove('sidebar-collapsed', 'sidebar-hidden');
             if (currentState === 1) mainContent.classList.add('sidebar-collapsed');
             if (currentState === 2) mainContent.classList.add('sidebar-hidden');
+        }
+
+        // Sync footer padding with sidebar state
+        const footer = document.querySelector('.main-layout > footer');
+        if (footer) {
+            const pl = currentState === 1
+                ? 'var(--sidebar-collapsed-width, 72px)'
+                : currentState === 2 ? '0'
+                : 'var(--sidebar-width, 250px)';
+            footer.style.paddingLeft = pl;
         }
 
         if (toggle) {

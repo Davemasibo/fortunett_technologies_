@@ -9,25 +9,25 @@ $stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
 $tenant_id = $stmt->fetchColumn();
 
-// Calculate stats from M-Pesa transactions
+// Calculate stats from payments table
 try {
     // Total Revenue Today
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM mpesa_transactions WHERE DATE(created_at) = CURDATE() AND result_code = '0' AND tenant_id = ?");
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE DATE(payment_date) = CURDATE() AND status = 'completed' AND tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $revenue_today = (float)$stmt->fetchColumn();
     
-    // Confirmed Transactions
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mpesa_transactions WHERE result_code = '0' AND tenant_id = ?");
+    // Confirmed Transactions (overall)
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE status = 'completed' AND tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $confirmed_transactions = (int)$stmt->fetchColumn();
     
     // Pending Payments
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mpesa_transactions WHERE (result_code IS NULL OR result_code = '') AND tenant_id = ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE status = 'pending' AND tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $pending_payments = (int)$stmt->fetchColumn();
     
     // Failed Transactions
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mpesa_transactions WHERE result_code NOT IN ('0', '', NULL) AND tenant_id = ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE status = 'failed' AND tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $failed_transactions = (int)$stmt->fetchColumn();
     
@@ -44,30 +44,33 @@ $date_from = $_GET['date_from'] ?? date('Y-m-d', strtotime('-30 days'));
 $date_to = $_GET['date_to'] ?? date('Y-m-d');
 $filter_method = $_GET['method'] ?? '';
 
-// Build Query - Fetch real M-Pesa transactions
+// Build Query - Fetch real payments (join mpesa_transactions for confirmation status)
 $query = "
-    SELECT m.*, c.full_name, c.phone 
-    FROM mpesa_transactions m
-    LEFT JOIN clients c ON m.client_id = c.id
-    WHERE m.tenant_id = ? AND DATE(m.created_at) BETWEEN ? AND ?
+    SELECT p.*, c.full_name, c.phone,
+           mt.result_code AS mpesa_result_code
+    FROM payments p
+    LEFT JOIN clients c ON p.client_id = c.id
+    LEFT JOIN mpesa_transactions mt
+           ON mt.checkout_request_id = p.transaction_id AND mt.result_code = '0'
+    WHERE p.tenant_id = ? AND DATE(p.payment_date) BETWEEN ? AND ?
 ";
 $params = [$tenant_id, $date_from, $date_to];
 
 if ($search) {
-    $query .= " AND (c.full_name LIKE ? OR c.phone LIKE ? OR m.mpesa_receipt_number LIKE ? OR m.checkout_request_id LIKE ?)";
+    $query .= " AND (c.full_name LIKE ? OR c.phone LIKE ? OR p.transaction_id LIKE ?)";
     $term = "%$search%";
-    $params = array_merge($params, [$term, $term, $term, $term]);
+    $params = array_merge($params, [$term, $term, $term]);
 }
 
 if ($filter_method && $filter_method !== 'All Methods') {
-    // M-Pesa filter - all records are M-Pesa in this table
-    // Cash filter would return empty since this is mpesa_transactions only
-    if ($filter_method === 'Cash') {
-        $query .= " AND 1=0"; // No cash in M-Pesa transactions
-    }
+    $query .= " AND p.payment_method = ?";
+    // Clean string (e.g. from UI 'Cash', 'M-Pesa')
+    $filterVal = strtolower($filter_method);
+    if ($filterVal == 'm-pesa') $filterVal = 'mpesa';
+    $params[] = $filterVal;
 }
 
-$query .= " ORDER BY m.created_at DESC LIMIT 100";
+$query .= " ORDER BY p.payment_date DESC, p.created_at DESC LIMIT 100";
 
 try {
     $stmt = $pdo->prepare($query);
@@ -253,7 +256,6 @@ include 'includes/sidebar.php';
         background: white;
         border-radius: 10px;
         border: 1px solid #E5E7EB;
-        overflow: hidden;
     }
     
     .transactions-header {
@@ -417,10 +419,14 @@ include 'includes/sidebar.php';
         color: #3B6EA5;
     }
     
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .transactions-table { min-width: 700px; }
+
     @media (max-width: 1024px) {
-        .filters-grid {
-            grid-template-columns: 1fr;
-        }
+        .filters-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+        .payments-container { padding: 16px; }
     }
 
     /* Dynamic Button Hover */
@@ -525,36 +531,46 @@ include 'includes/sidebar.php';
 
         <!-- Recent Transactions -->
         <div class="transactions-section">
-            <div class="transactions-header">
-                <h3 class="transactions-title">Recent Transactions</h3>
-                <div class="transactions-actions">
-                    <a href="#" class="action-link refresh">
-                        <i class="fas fa-sync-alt"></i> Auto-refresh: 30s
-                    </a>
-                    <button class="action-link manual" onclick="openPaymentModal()">
+            <div class="transactions-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 class="transactions-title" style="margin:0;">Recent Transactions</h3>
+                <div class="transactions-actions" style="display:flex; gap:12px;">
+                    <button class="action-link manual filter-btn primary" onclick="openPaymentModal()">
                         <i class="fas fa-plus"></i> New Payment
                     </button>
                 </div>
             </div>
 
+          <div class="table-scroll">
             <table class="transactions-table">
                 <thead>
                     <tr>
-                        <th>CUSTOMER ID</th>
+                        <th>CUSTOMER / PHONE</th>
                         <th>AMOUNT</th>
-                        <th>PAYMENT METHOD</th>
+                        <th>METHOD</th>
                         <th>TRANSACTION ID</th>
                         <th>STATUS</th>
-                        <th>TIMESTAMP</th>
-                        <th>ACTIONS</th>
+                        <th>DATE</th>
+                        <th style="text-align:center;">ACTIONS</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($transactions as $tx): 
-                        // M-Pesa status: result_code = '0' means success
-                        $resultCode = $tx['result_code'] ?? '';
-                        $status = ($resultCode === '0') ? 'completed' : (empty($resultCode) ? 'pending' : 'failed');
-                        $method = 'mpesa'; // All from mpesa_transactions
+                    <?php if (empty($transactions)): ?>
+                        <tr><td colspan="7" style="text-align:center;padding:20px;">No transactions found.</td></tr>
+                    <?php else: ?>
+                    <?php foreach ($transactions as $tx):
+                        $status = $tx['status'] ?? 'pending';
+                        $method = strtolower($tx['payment_method'] ?? 'cash');
+                        // Determine display status: only "Confirmed" when result_code='0' in mpesa_transactions
+                        $isConfirmed = ($tx['mpesa_result_code'] ?? null) === '0';
+                        if ($isConfirmed) {
+                            $badgeClass = 'completed'; $badgeLabel = 'Confirmed';
+                        } elseif ($status === 'completed') {
+                            $badgeClass = 'completed'; $badgeLabel = 'Completed';
+                        } elseif ($status === 'failed') {
+                            $badgeClass = 'failed'; $badgeLabel = 'Failed';
+                        } else {
+                            $badgeClass = 'pending'; $badgeLabel = 'Pending';
+                        }
                     ?>
                     <tr>
                         <td>
@@ -562,19 +578,18 @@ include 'includes/sidebar.php';
                             <div class="customer-id"><?php echo htmlspecialchars($tx['phone'] ?? 'N/A'); ?></div>
                         </td>
                         <td>
-                            <strong>KSh <?php echo number_format($tx['amount'] ?? 0, 2); ?></strong>
+                            <strong>KES <?php echo number_format($tx['amount'] ?? 0, 2); ?></strong>
                         </td>
                         <td>
-                            <span class="payment-method <?php echo $method; ?>">
+                            <span class="payment-method <?php echo $method === 'mpesa' ? 'mpesa' : 'cash'; ?>">
                                 <i class="fas fa-<?php echo $method === 'mpesa' ? 'mobile-alt' : 'money-bill'; ?>"></i>
-                                <?php echo $method === 'mpesa' ? 'M-Pesa C2B' : 'Manual - Cash'; ?>
+                                <?php echo ucfirst($method); ?>
                             </span>
                         </td>
                         <td>
-                            <?php 
-                                $displayId = $tx['mpesa_receipt_number'] ?? ($tx['checkout_request_id'] ?? 'N/A');
-                                // Hide CheckoutRequestID (long string starting with ws_) for pending/processing
-                                if ($status === 'pending' || empty($tx['mpesa_receipt_number'])) {
+                            <?php
+                                $displayId = $tx['transaction_id'] ?? 'N/A';
+                                if ($status === 'pending' && strpos($displayId, 'ws_') === 0) {
                                     echo '<span style="font-style:italic; color:#9CA3AF;">Processing...</span>';
                                 } else {
                                     echo '<span class="transaction-id">' . htmlspecialchars($displayId) . '</span>';
@@ -582,83 +597,274 @@ include 'includes/sidebar.php';
                             ?>
                         </td>
                         <td>
-                            <span class="status-badge <?php echo $status; ?>">
+                            <span class="status-badge <?php echo $badgeClass; ?>">
                                 <span class="status-dot"></span>
-                                <?php echo ucfirst($status); ?>
+                                <?php echo $badgeLabel; ?>
                             </span>
                         </td>
-                        <td><?php echo date('d/m/Y, H:i', strtotime($tx['created_at'] ?? 'now')); ?></td>
-                        <td>
-                        <td>
+                        <td><?php echo date('d/m/Y H:i', strtotime($tx['payment_date'] ?? $tx['created_at'])); ?></td>
+                        <td style="text-align:center;">
                             <div class="action-icons" style="justify-content: center;">
-                                <button class="action-icon" title="View" onclick="openViewModal(<?php echo htmlspecialchars(json_encode($tx), ENT_QUOTES, 'UTF-8'); ?>)"><i class="fas fa-eye"></i></button>
-                                <button class="action-icon" title="Print Receipt" onclick="printReceipt(<?php echo htmlspecialchars(json_encode($tx), ENT_QUOTES, 'UTF-8'); ?>)"><i class="fas fa-print"></i></button>
+                                <button class="action-icon" title="View" onclick='openViewModal(<?php echo htmlspecialchars(json_encode($tx), ENT_QUOTES, "UTF-8"); ?>)'><i class="fas fa-eye"></i></button>
+                                <button class="action-icon" title="Print Receipt" onclick='printReceipt(<?php echo htmlspecialchars(json_encode($tx), ENT_QUOTES, "UTF-8"); ?>)'><i class="fas fa-print"></i></button>
                             </div>
                         </td>
                     </tr>
-                    <?php endforeach; ?>
+                    <?php endforeach; endif; ?>
                 </tbody>
             </table>
+          </div><!-- end table-scroll -->
         </div>
     </div>
 </div>
 
 <!-- Payment Modal -->
-<div id="paymentModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-    <div style="background: white; width: 100%; max-width: 500px; border-radius: 12px; padding: 32px; position: relative;">
-        <button onclick="closePaymentModal()" style="position: absolute; top: 20px; right: 20px; background: none; border: none; font-size: 20px; cursor: pointer; color: #6B7280;">&times;</button>
-        
-        <h2 style="font-size: 20px; font-weight: 600; color: #111827; margin: 0 0 24px 0;">New Payment</h2>
-        
-        <form id="paymentForm" onsubmit="handlePaymentSubmit(event)">
-            <div class="form-group" style="margin-bottom: 20px;">
-                <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Select Customer</label>
-                <select name="client_id" id="payClient" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;" onchange="updatePhone(this)">
-                    <option value="">Select a Customer</option>
-                    <?php foreach ($clients as $c): ?>
-                    <option value="<?php echo $c['id']; ?>" data-phone="<?php echo htmlspecialchars($c['phone']); ?>">
-                        <?php echo htmlspecialchars($c['full_name']); ?> - <?php echo htmlspecialchars($c['phone']); ?>
-                    </option>
-                    <?php endforeach; ?>
-                </select>
+<div id="paymentModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1050;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+    <div style="background:#fff;width:100%;max-width:620px;max-height:90vh;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden;">
+
+        <!-- Modal Header -->
+        <div style="padding:20px 24px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <div>
+                <h2 style="font-size:18px;font-weight:700;color:#111827;margin:0 0 2px 0;">Payment Entry</h2>
+                <p style="font-size:13px;color:#6B7280;margin:0;">Initiate or record a customer payment</p>
             </div>
-            
-            <div class="form-group" style="margin-bottom: 20px;">
-                <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Phone Number (M-Pesa)</label>
-                <input type="text" name="phone" id="payPhone" required placeholder="2547..." style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
-            </div>
-            
-            <div class="form-group" style="margin-bottom: 20px;">
-                <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Amount (KES)</label>
-                <input type="number" name="amount" id="payAmount" required placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
-            </div>
-            
-            <div class="form-group" style="margin-bottom: 24px;">
-                 <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Payment Method</label>
-                 <div style="display: flex; gap: 12px;">
-                     <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px; flex: 1; justify-content: center;">
-                         <input type="radio" name="method" value="mpesa" checked> M-Pesa STK
-                     </label>
-                     <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px; flex: 1; justify-content: center;">
-                         <input type="radio" name="method" value="cash"> Manual Cash
-                     </label>
-                 </div>
+            <button onclick="closePaymentModal()" style="width:32px;height:32px;border-radius:50%;border:none;background:#F3F4F6;color:#6B7280;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&times;</button>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div style="display:flex;border-bottom:1px solid #E5E7EB;flex-shrink:0;">
+            <button id="tabBtnNew" class="tab-button active" onclick="showPaymentTab('newPaymentTab')"
+                style="flex:1;padding:12px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:var(--primary-color,#3B6EA5);border-bottom:2px solid var(--primary-color,#3B6EA5);transition:all .2s;">
+                <i class="fas fa-bolt" style="margin-right:6px;"></i>New Payment
+            </button>
+            <button id="tabBtnPast" class="tab-button" onclick="showPaymentTab('recordPastTab')"
+                style="flex:1;padding:12px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:500;color:#6B7280;border-bottom:2px solid transparent;transition:all .2s;">
+                <i class="fas fa-history" style="margin-right:6px;"></i>Record Past Transaction
+            </button>
+        </div>
+
+        <!-- Scrollable Body -->
+        <div style="overflow-y:auto;flex:1;padding:24px;">
+
+            <!-- Tab 1: New Payment (STK Push / Manual Cash) -->
+            <div id="newPaymentTab" class="tab-content">
+                <form id="newPaymentForm" onsubmit="handlePaymentSubmit(event)">
+                    <!-- Section: Customer -->
+                    <div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #F3F4F6;">
+                        <p style="font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px 0;">Customer</p>
+                        <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Select Customer</label>
+                        <select name="client_id" id="payClient" required
+                            style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;color:#111827;background:#fff;outline:none;transition:border-color .2s;"
+                            onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'"
+                            onchange="updatePhone(this)">
+                            <option value="">Select a customer...</option>
+                            <?php foreach ($clients as $c): ?>
+                            <option value="<?php echo $c['id']; ?>" data-phone="<?php echo htmlspecialchars($c['phone']); ?>">
+                                <?php echo htmlspecialchars($c['full_name']); ?> — <?php echo htmlspecialchars($c['phone']); ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <!-- Section: Payment Details -->
+                    <div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #F3F4F6;">
+                        <p style="font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px 0;">Payment Details</p>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                            <div>
+                                <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Phone (M-Pesa)</label>
+                                <input type="text" name="phone" id="payPhone" required placeholder="2547XXXXXXXX"
+                                    style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box;"
+                                    onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                            </div>
+                            <div>
+                                <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Amount (KES)</label>
+                                <input type="number" name="amount" id="payAmount" required placeholder="0.00" min="1" step="0.01"
+                                    style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box;"
+                                    onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                            </div>
+                        </div>
+                        <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:8px;">Payment Method</label>
+                        <div style="display:flex;gap:10px;">
+                            <label id="radioMpesa" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--primary-color,#3B6EA5);border-radius:8px;flex:1;justify-content:center;background:#EBF4FF;font-size:14px;font-weight:600;color:var(--primary-color,#3B6EA5);">
+                                <input type="radio" name="method" value="mpesa" checked onchange="highlightMethodRadio()"> <i class="fas fa-mobile-alt"></i> M-Pesa STK
+                            </label>
+                            <label id="radioCash" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;flex:1;justify-content:center;background:#fff;font-size:14px;font-weight:500;color:#374151;">
+                                <input type="radio" name="method" value="cash" onchange="highlightMethodRadio()"> <i class="fas fa-money-bill"></i> Manual Cash
+                            </label>
+                        </div>
+                    </div>
+                    <button type="submit" id="newPayBtn"
+                        style="width:100%;padding:13px;background:linear-gradient(135deg,var(--primary-dark,#2C5282) 0%,var(--primary-color,#3B6EA5) 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:15px;letter-spacing:.02em;">
+                        <i class="fas fa-paper-plane" style="margin-right:8px;"></i>Process Payment
+                    </button>
+                </form>
             </div>
 
-            <button type="submit" style="width: 100%; padding: 12px; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 16px; transition: background 0.2s;">
-                Process Payment
-            </button>
-        </form>
+            <!-- Tab 2: Record Past Transaction -->
+            <div id="recordPastTab" class="tab-content" style="display:none;">
+                <form id="recordPastForm" onsubmit="handleRecordPastSubmit(event)">
+
+                    <!-- Section: Transaction Details -->
+                    <div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #F3F4F6;">
+                        <p style="font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px 0;">Transaction Details</p>
+
+                        <div style="margin-bottom:14px;">
+                            <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Customer <span style="color:#EF4444;">*</span></label>
+                            <select name="client_id" id="recordClient" required
+                                style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;background:#fff;"
+                                onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                                <option value="">Select a customer...</option>
+                                <?php foreach ($clients as $c): ?>
+                                <option value="<?php echo $c['id']; ?>">
+                                    <?php echo htmlspecialchars($c['full_name']); ?> — <?php echo htmlspecialchars($c['phone']); ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                            <div>
+                                <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Amount (KES) <span style="color:#EF4444;">*</span></label>
+                                <input type="number" name="amount" required placeholder="0.00" min="1" step="0.01"
+                                    style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box;"
+                                    onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                            </div>
+                            <div>
+                                <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Payment Method <span style="color:#EF4444;">*</span></label>
+                                <select name="method" required
+                                    style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;background:#fff;box-sizing:border-box;"
+                                    onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                                    <option value="">Select...</option>
+                                    <option value="M-Pesa">M-Pesa</option>
+                                    <option value="Cash">Cash</option>
+                                    <option value="Bank Transfer">Bank Transfer</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Reference / Confirmation Code <span style="color:#EF4444;">*</span></label>
+                            <input type="text" name="reference_code" required
+                                placeholder="e.g. QJK3X7A1P2 — M-Pesa code, bank ref, receipt #"
+                                style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;font-family:monospace;letter-spacing:.04em;text-transform:uppercase;box-sizing:border-box;"
+                                onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'"
+                                oninput="this.value=this.value.toUpperCase()">
+                        </div>
+                    </div>
+
+                    <!-- Section: Date & Verification -->
+                    <div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #F3F4F6;">
+                        <p style="font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px 0;">Date &amp; Verification</p>
+
+                        <div style="margin-bottom:14px;">
+                            <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Date &amp; Time of Payment <span style="color:#EF4444;">*</span></label>
+                            <input type="datetime-local" name="transaction_date" required
+                                value="<?php echo date('Y-m-d\TH:i'); ?>"
+                                style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box;"
+                                onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                        </div>
+
+                        <div style="margin-bottom:14px;">
+                            <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Notes (optional)</label>
+                            <input type="text" name="notes"
+                                placeholder="e.g. Customer called to confirm payment"
+                                style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box;"
+                                onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                        </div>
+
+                        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:14px 16px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;">
+                            <input type="checkbox" name="is_verified" value="1" checked
+                                style="width:16px;height:16px;accent-color:#059669;flex-shrink:0;margin-top:1px;">
+                            <div>
+                                <div style="font-size:13px;font-weight:600;color:#065F46;">Mark as Verified / Confirmed</div>
+                                <div style="font-size:12px;color:#6B7280;margin-top:2px;">Records as "Confirmed" — use only when you have verified the payment reference is genuine.</div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <button type="submit" id="recordPastBtn"
+                        style="width:100%;padding:13px;background:linear-gradient(135deg,var(--primary-dark,#2C5282) 0%,var(--primary-color,#3B6EA5) 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:15px;letter-spacing:.02em;">
+                        <i class="fas fa-save" style="margin-right:8px;"></i>Record Transaction
+                    </button>
+                </form>
+            </div>
+
+        </div><!-- end scrollable body -->
+    </div>
+</div>
+
+<!-- View Modal -->
+<div id="viewModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+    <div style="background: white; width: 100%; max-width: 500px; border-radius: 12px; padding: 32px; position: relative;">
+        <button onclick="closeViewModal()" style="position: absolute; top: 20px; right: 20px; background: none; border: none; font-size: 20px; cursor: pointer; color: #6B7280;">&times;</button>
+        <h2 style="font-size: 20px; font-weight: 600; color: #111827; margin: 0 0 24px 0;">Transaction Details</h2>
+        <div id="viewModalContent">
+            <!-- Content will be loaded here by JS -->
+        </div>
+        <div style="margin-top: 24px; text-align: right;">
+            <button onclick="printCurrentReceipt()" style="padding: 10px 20px; background: #3B82F6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Print Receipt</button>
+        </div>
     </div>
 </div>
 
 <script>
 function openPaymentModal() {
     document.getElementById('paymentModal').style.display = 'flex';
+    showPaymentTab('newPaymentTab'); // Default to 'New Payment' tab
 }
 
 function closePaymentModal() {
     document.getElementById('paymentModal').style.display = 'none';
+    document.getElementById('newPaymentForm').reset(); // Reset new payment form
+    document.getElementById('recordPastForm').reset(); // Reset record past form
+}
+
+function showPaymentTab(tabId) {
+    document.querySelectorAll('#paymentModal .tab-content').forEach(t => t.style.display = 'none');
+    document.getElementById(tabId).style.display = 'block';
+
+    const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#3B6EA5';
+    ['tabBtnNew','tabBtnPast'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.style.color = '#6B7280';
+        btn.style.borderBottom = '2px solid transparent';
+        btn.style.fontWeight = '500';
+    });
+    const activeId = tabId === 'newPaymentTab' ? 'tabBtnNew' : 'tabBtnPast';
+    const active = document.getElementById(activeId);
+    if (active) {
+        active.style.color = primary;
+        active.style.borderBottom = '2px solid ' + primary;
+        active.style.fontWeight = '600';
+    }
+}
+
+function highlightMethodRadio() {
+    const mpesa = document.querySelector('input[name="method"][value="mpesa"]');
+    const cash  = document.querySelector('input[name="method"][value="cash"]');
+    const lMpesa = document.getElementById('radioMpesa');
+    const lCash  = document.getElementById('radioCash');
+    const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#3B6EA5';
+    if (mpesa && mpesa.checked) {
+        lMpesa.style.border = '2px solid ' + primary;
+        lMpesa.style.background = '#EBF4FF';
+        lMpesa.style.color = primary;
+        lMpesa.style.fontWeight = '600';
+        lCash.style.border = '1px solid #D1D5DB';
+        lCash.style.background = '#fff';
+        lCash.style.color = '#374151';
+        lCash.style.fontWeight = '500';
+    } else {
+        lCash.style.border = '2px solid ' + primary;
+        lCash.style.background = '#EBF4FF';
+        lCash.style.color = primary;
+        lCash.style.fontWeight = '600';
+        lMpesa.style.border = '1px solid #D1D5DB';
+        lMpesa.style.background = '#fff';
+        lMpesa.style.color = '#374151';
+        lMpesa.style.fontWeight = '500';
+    }
 }
 
 function updatePhone(select) {
@@ -680,52 +886,106 @@ function handlePaymentSubmit(e) {
         url = 'api/payments/record_cash.php';
     }
     
-    const btn = form.querySelector('button[type="submit"]');
-    const originalText = btn.textContent;
-    btn.textContent = 'Processing...';
+    const btn = document.getElementById('newPayBtn') || form.querySelector('button[type="submit"]');
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Processing...';
     btn.disabled = true;
     
     fetch(url, {
         method: 'POST',
         body: formData
     })
-    .then(r => r.json())
+    .then(r => {
+        if (!r.ok) throw new Error('Server returned ' + r.status);
+        return r.json();
+    })
     .then(data => {
-        if (data.Success || data.success || data.ResponseCode === '0') {
-             if (method === 'cash') {
-                 alert('Cash Payment Recorded: ' + data.transaction_id);
-             } else {
-                 // STK Push
-                 if (data.ResponseCode === '0') {
-                     alert('STK Push Initiated. Check phone.');
-                 } else {
-                     alert(data.CustomerMessage || 'Request Sent');
-                 }
-             }
-             closePaymentModal();
-             // Refresh table
-             location.reload();
+        if (data.success) {
+            if (method === 'cash') {
+                showFnToast('Cash payment recorded successfully', 'success');
+            } else {
+                const msg = data.CustomerMessage || 'STK Push sent — check your phone.';
+                showFnToast(msg, 'success');
+            }
+            closePaymentModal();
+            setTimeout(() => location.reload(), 1800);
         } else {
-            alert('Error: ' + (data.errorMessage || data.message || 'Unknown error'));
+            const errMsg = data.message || data.errorMessage || 'Unknown error';
+            showFnToast(errMsg, 'error');
+            btn.innerHTML = originalHTML;
+            btn.disabled = false;
         }
     })
     .catch(err => {
         console.error(err);
-        alert('Error connecting to server');
-    })
-    .finally(() => {
-        btn.textContent = originalText;
+        showFnToast('Connection error. Check your network.', 'error');
+        btn.innerHTML = originalHTML;
         btn.disabled = false;
     });
 }
+
+function handleRecordPastSubmit(e) {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
+    
+    const btn = document.getElementById('recordPastBtn') || form.querySelector('button[type="submit"]');
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Saving...';
+    btn.disabled = true;
+
+    fetch('api/payments/record_manual.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showFnToast('✅ Transaction recorded: ' + data.transaction_id, 'success');
+            closePaymentModal();
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showFnToast('Error: ' + (data.message || 'Unknown error'), 'error');
+        }
+    })
+    .catch(() => showFnToast('Connection error. Please try again.', 'error'))
+    .finally(() => { btn.innerHTML = originalHTML; btn.disabled = false; });
+}
+
+function showFnToast(message, type) {
+    const existing = document.getElementById('fnToast');
+    if (existing) existing.remove();
+    const bg = type === 'success' ? '#059669' : '#DC2626';
+    const icon = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
+    const toast = document.createElement('div');
+    toast.id = 'fnToast';
+    toast.style.cssText = `position:fixed;top:20px;right:20px;z-index:9999;background:${bg};color:white;padding:14px 20px;border-radius:10px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,0.2);max-width:360px;`;
+    toast.innerHTML = `<i class="fas ${icon}"></i><span>${message}</span>`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+}
+
 let currentViewTx = null;
 
 function openViewModal(tx) {
     currentViewTx = tx;
     const content = document.getElementById('viewModalContent');
-    const isMpesa = tx.transaction_id && !tx.transaction_id.toLowerCase().includes('cash');
-    const method = isMpesa ? 'M-Pesa' : 'Cash';
-    const statusClass = tx.status === 'completed' ? 'color: #059669; background: #D1FAE5;' : 'color: #D97706; background: #FEF3C7;';
+    // Check for mpesa_receipt_number or transaction_id to determine method
+    const isMpesa = tx.mpesa_receipt_number || (tx.transaction_id && tx.transaction_id.toLowerCase().includes('mpesa'));
+    const method = isMpesa ? 'M-Pesa' : (tx.method || 'Cash'); // Use tx.method if available, else default to Cash
+    
+    // Determine status based on result_code for M-Pesa or 'status' for recorded transactions
+    let status = 'pending';
+    if (tx.result_code === '0') {
+        status = 'completed';
+    } else if (tx.result_code && tx.result_code !== '0') {
+        status = 'failed';
+    } else if (tx.status) { // For manually recorded transactions
+        status = tx.status;
+    }
+
+    const statusClass = status === 'completed' ? 'color: #059669; background: #D1FAE5;' : 
+                        (status === 'failed' ? 'color: #DC2626; background: #FEE2E2;' : 'color: #D97706; background: #FEF3C7;');
     
     content.innerHTML = `
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
@@ -743,11 +1003,11 @@ function openViewModal(tx) {
         <div style="background: #F3F4F6; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                 <span style="font-size: 13px; color: #6B7280;">Transaction ID</span>
-                <span style="font-size: 13px; font-weight: 600; font-family: monospace;">${tx.transaction_id || 'N/A'}</span>
+                <span style="font-size: 13px; font-weight: 600; font-family: monospace;">${tx.mpesa_receipt_number || tx.transaction_id || 'N/A'}</span>
             </div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                 <span style="font-size: 13px; color: #6B7280;">Date</span>
-                <span style="font-size: 13px; font-weight: 600;">${new Date(tx.payment_date).toLocaleString()}</span>
+                <span style="font-size: 13px; font-weight: 600;">${new Date(tx.created_at || tx.payment_date).toLocaleString()}</span>
             </div>
              <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                 <span style="font-size: 13px; color: #6B7280;">Method</span>
@@ -755,7 +1015,7 @@ function openViewModal(tx) {
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span style="font-size: 13px; color: #6B7280;">Status</span>
-                <span style="padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; ${statusClass}">${tx.status.toUpperCase()}</span>
+                <span style="padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; ${statusClass}">${status.toUpperCase()}</span>
             </div>
         </div>
     `;
@@ -768,6 +1028,10 @@ function closeViewModal() {
     currentViewTx = null;
 }
 
+// Backdrop click-to-close
+document.getElementById('paymentModal').addEventListener('click', function(e) { if (e.target === this) closePaymentModal(); });
+document.getElementById('viewModal').addEventListener('click', function(e) { if (e.target === this) closeViewModal(); });
+
 function printCurrentReceipt() {
     if (currentViewTx) printReceipt(currentViewTx);
 }
@@ -779,7 +1043,7 @@ function printReceipt(tx) {
     const html = `
         <html>
         <head>
-            <title>Receipt - ${tx.transaction_id || tx.id}</title>
+            <title>Receipt - ${tx.mpesa_receipt_number || tx.transaction_id || tx.id}</title>
             <style>
                 body { font-family: 'Courier New', Courier, monospace; padding: 20px; text-align: center; }
                 .header { margin-bottom: 20px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
@@ -800,7 +1064,7 @@ function printReceipt(tx) {
             
             <div class="meta">
                 Receipt #: ${tx.id}<br>
-                Date: ${new Date(tx.payment_date).toLocaleString()}
+                Date: ${new Date(tx.created_at || tx.payment_date).toLocaleString()}
             </div>
             
             <div class="details">
@@ -815,7 +1079,7 @@ function printReceipt(tx) {
                 </div>
                 <div class="row">
                     <span>Ref:</span>
-                    <span>${tx.transaction_id || '-'}</span>
+                    <span>${tx.mpesa_receipt_number || tx.transaction_id || '-'}</span>
                 </div>
             </div>
             

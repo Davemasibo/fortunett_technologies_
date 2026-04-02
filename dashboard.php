@@ -1,11 +1,9 @@
 <?php
-require_once 'config/database.php';
+require_once 'includes/db_master.php';
 require_once 'includes/auth.php';
 redirectIfNotLoggedIn();
 
-$database = new Database();
-$db = $database->getConnection();
-$pdo = $db; // Make it available globally for header.php
+$db = $pdo; // Alias used throughout this file
 
 // Get current user's tenant_id
 $user_id = $_SESSION['user_id'];
@@ -547,7 +545,7 @@ include 'includes/sidebar.php';
                             <i class="fas fa-chart-line"></i>
                         </div>
                     </div>
-                    <div class="metric-value">KES <?php echo number_format($daily_revenue, 0); ?></div>
+                    <div class="metric-value" id="stat-daily">KES <?php echo number_format($daily_revenue, 0); ?></div>
                     <div class="metric-change">
                         <span class="metric-period">Today</span>
                     </div>
@@ -560,7 +558,7 @@ include 'includes/sidebar.php';
                             <i class="fas fa-dollar-sign"></i>
                         </div>
                     </div>
-                    <div class="metric-value">KES <?php echo number_format($monthly_revenue, 0); ?></div>
+                    <div class="metric-value" id="stat-monthly">KES <?php echo number_format($monthly_revenue, 0); ?></div>
                     <div class="metric-change">
                         <span class="metric-period">This Month</span>
                     </div>
@@ -573,7 +571,7 @@ include 'includes/sidebar.php';
                             <i class="fas fa-chart-bar"></i>
                         </div>
                     </div>
-                    <div class="metric-value">KES <?php echo number_format($yearly_revenue, 0); ?></div>
+                    <div class="metric-value" id="stat-yearly">KES <?php echo number_format($yearly_revenue, 0); ?></div>
                     <div class="metric-change">
                         <span class="metric-period">This Year</span>
                     </div>
@@ -592,7 +590,7 @@ include 'includes/sidebar.php';
                             <i class="fas fa-users"></i>
                         </div>
                     </div>
-                    <div class="metric-value" id="live-active-users"><?php echo number_format($active_users); ?></div>
+                    <div class="metric-value" id="stat-active"><?php echo number_format($active_users); ?></div>
                     <div class="metric-change">
                         <span class="metric-period">current</span>
                     </div>
@@ -605,7 +603,7 @@ include 'includes/sidebar.php';
                             <i class="fas fa-exclamation-triangle"></i>
                         </div>
                     </div>
-                    <div class="metric-value" id="live-active-users"><?php echo number_format($expired_accounts); ?></div>
+                    <div class="metric-value" id="stat-expired"><?php echo number_format($expired_accounts); ?></div>
                     <div class="metric-change">
                         <span class="metric-period">total</span>
                     </div>
@@ -618,7 +616,7 @@ include 'includes/sidebar.php';
                             <i class="fas fa-user-plus"></i>
                         </div>
                     </div>
-                    <div class="metric-value"><?php echo number_format($new_registrations); ?></div>
+                    <div class="metric-value" id="stat-newreg"><?php echo number_format($new_registrations); ?></div>
                     <div class="metric-change">
                         <span class="metric-period">this month</span>
                     </div>
@@ -632,7 +630,7 @@ include 'includes/sidebar.php';
             <div class="status-card">
                 <div class="card-header">
                     <h3 class="card-title">Router Status</h3>
-                    <i class="fas fa-sync-alt" style="color: #9CA3AF; cursor: pointer;" title="Refresh" onclick="updateDashboardStats()"></i>
+                    <i class="fas fa-sync-alt" id="dash-refresh-icon" style="color: #9CA3AF; cursor: pointer;" title="Refresh dashboard" onclick="refreshDashboard()"></i>
                 </div>
                 <div class="router-list">
                     <?php
@@ -712,8 +710,8 @@ include 'includes/sidebar.php';
                 <div class="status-card">
                     <div class="card-header">
                         <div>
-                            <h3 class="card-title">Active Users</h3>
-                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">Active now: 4 users | Average: 3 | Peak: 7 this week</p>
+                            <h3 class="card-title">Monthly Revenue</h3>
+                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;" id="activeUsersSubtitle">Last 6 months revenue trend</p>
                         </div>
                         <select style="padding: 6px 12px; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 13px;">
                             <option>This week</option>
@@ -874,374 +872,177 @@ include 'includes/sidebar.php';
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 <script>
-// Payments Chart
-const paymentsCtx = document.getElementById('paymentsChart');
-if (paymentsCtx) {
-    new Chart(paymentsCtx, {
-        type: 'bar',
-        data: {
-            labels: ['Jan', 'Feb', 'Mar'],
-            datasets: [{
-                label: 'Payments',
-                data: [0, 0, 0],
-                backgroundColor: '#3B6EA5',
-                borderRadius: 4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true, max: 20000, ticks: { stepSize: 2000 } }
+// ── Chart instances (kept global for live refresh) ────────────────────────────
+let chartPayments, chartRegistrations, chartMonthly, chartPackage, chartSMS;
+
+const PRIMARY = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#3B6EA5';
+const PRIMARY_DARK = getComputedStyle(document.documentElement).getPropertyValue('--primary-dark').trim() || '#2C5282';
+
+function hexAlpha(hex, a) {
+    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${a})`;
+}
+
+// ── Build / re-build all charts from stats data ───────────────────────────────
+function buildCharts(s) {
+    const primary = PRIMARY || '#3B6EA5';
+
+    // Payments (daily last 7 days)
+    const pCtx = document.getElementById('paymentsChart');
+    if (pCtx) {
+        if (chartPayments) chartPayments.destroy();
+        chartPayments = new Chart(pCtx, {
+            type: 'bar',
+            data: {
+                labels: s.payments_labels || [],
+                datasets: [{ label: 'KES', data: s.payments_data || [], backgroundColor: primary, borderRadius: 5 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { callback: v => 'KES '+v.toLocaleString() } } }
             }
-        }
-    });
-}
+        });
+    }
 
-// Active Users Chart
-const activeUsersCtx = document.getElementById('activeUsersChart');
-if (activeUsersCtx) {
-    window.activeUsersChart = new Chart(activeUsersCtx, {
-        type: 'line',
-        data: {
-            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-            datasets: [{
-                label: 'Hotspot Users',
-                data: [0, 0, 0, 0, 0],
-                borderColor: '#F59E0B',
-                backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                fill: true,
-                tension: 0.4
-            }, {
-                label: 'PPPoE Users',
-                data: [0, 0, 0, 0, 0],
-                borderColor: '#3B6EA5',
-                backgroundColor: 'rgba(59, 110, 165, 0.1)',
-                fill: true,
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom' } },
-            scales: { y: { beginAtZero: true, max: 8 } }
-        }
-    });
-}
-
-// Customer Retention Chart
-const retentionCtx = document.getElementById('retentionChart');
-if (retentionCtx) {
-    new Chart(retentionCtx, {
-        type: 'line',
-        data: {
-            labels: ['Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025', 'Dec 2025', 'Jan 2026'],
-            datasets: [{
-                label: 'New Customers',
-                data: [0, 0, 0, 0, 0, 0],
-                borderColor: '#3B82F6',
-                backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                fill: true,
-                tension: 0.4
-            }, {
-                label: 'Returning Customers',
-                data: [0, 0, 0, 0, 0, 0],
-                borderColor: '#10B981',
-                backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                fill: true,
-                tension: 0.4
-            }, {
-                label: 'Churned Customers',
-                data: [0, 0, 0, 0, 0, 0],
-                borderColor: '#EF4444',
-                backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                fill: true,
-                tension: 0.4
-            }, {
-                label: 'Retention Rate (%)',
-                data: [0, 0, 0, 0, 0, 0],
-                borderColor: '#F59E0B',
-                borderDash: [5, 5],
-                fill: false,
-                yAxisID: 'y1'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
-            scales: {
-                y: { beginAtZero: true, max: 35, position: 'left' },
-                y1: { beginAtZero: true, max: 100, position: 'right', grid: { display: false } }
+    // Monthly revenue (last 6 months)
+    const mCtx = document.getElementById('activeUsersChart');
+    if (mCtx) {
+        if (chartMonthly) chartMonthly.destroy();
+        chartMonthly = new Chart(mCtx, {
+            type: 'line',
+            data: {
+                labels: s.monthly_labels || [],
+                datasets: [{
+                    label: 'Monthly Revenue (KES)',
+                    data: s.monthly_data || [],
+                    borderColor: primary,
+                    backgroundColor: hexAlpha(primary.replace('var(--primary-color)','#3B6EA5'), 0.12),
+                    fill: true, tension: 0.4, pointRadius: 4
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { callback: v => 'KES '+v.toLocaleString() } } }
             }
-        }
-    });
-}
+        });
+    }
 
-// Data Usage Chart
-const dataUsageCtx = document.getElementById('dataUsageChart');
-if (dataUsageCtx) {
-    new Chart(dataUsageCtx, {
-        type: 'line',
-        data: {
-            labels: ['26 Dec', '27 Dec', '28 Dec', '29 Dec', '30 Dec', '31 Dec', '01 Jan', '02 Jan'],
-            datasets: [{
-                label: 'Hotspot',
-                data: [0, 0, 0, 0, 0, 0, 0, 0],
-                borderColor: '#F59E0B',
-                backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                fill: true,
-                tension: 0.4
-            }, {
-                label: 'PPPoE',
-                data: [0, 0, 0, 0, 0, 0, 0, 0],
-                borderColor: '#3B6EA5',
-                backgroundColor: 'rgba(59, 110, 165, 0.1)',
-                fill: true,
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom' } },
-            scales: { y: { beginAtZero: true, max: 120 } }
-        }
-    });
-}
-
-// Package Utilization Chart
-const packageCtx = document.getElementById('packageChart');
-if (packageCtx) {
-    new Chart(packageCtx, {
-        type: 'doughnut',
-        data: {
-            labels: ['4 Hours 5Mbps', '1 Hour', 'pppoe 6Mbps', 'pppoe 4 Mbps', 'Daily'],
-            datasets: [{
-                data: [],
-                backgroundColor: ['#92400E', '#F59E0B', '#FCD34D', '#FEF3C7', '#FEFCE8'],
-                borderWidth: 0
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: { boxWidth: 12, font: { size: 11 }, padding: 10 }
-                }
+    // User Registrations (last 7 days)
+    const rCtx = document.getElementById('registrationsChart');
+    if (rCtx) {
+        if (chartRegistrations) chartRegistrations.destroy();
+        chartRegistrations = new Chart(rCtx, {
+            type: 'bar',
+            data: {
+                labels: s.reg_labels || [],
+                datasets: [{ label: 'New Customers', data: s.reg_data || [], backgroundColor: '#10B981', borderRadius: 5 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
             }
+        });
+    }
+
+    // SMS sent (last 7 days)
+    const smsCtx = document.getElementById('smsChart');
+    if (smsCtx) {
+        if (chartSMS) chartSMS.destroy();
+        chartSMS = new Chart(smsCtx, {
+            type: 'bar',
+            data: {
+                labels: s.sms_labels || [],
+                datasets: [{ label: 'SMS Sent', data: s.sms_data || [], backgroundColor: '#8B5CF6', borderRadius: 5 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            }
+        });
+    }
+
+    // Package utilization (doughnut)
+    const pkgCtx = document.getElementById('packageChart');
+    if (pkgCtx) {
+        if (chartPackage) chartPackage.destroy();
+        const pkgColors = [primary, '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4'];
+        chartPackage = new Chart(pkgCtx, {
+            type: 'doughnut',
+            data: {
+                labels: s.pkg_labels && s.pkg_labels.length ? s.pkg_labels : ['No data'],
+                datasets: [{
+                    data: s.pkg_data && s.pkg_data.length ? s.pkg_data : [1],
+                    backgroundColor: pkgColors.slice(0, Math.max(s.pkg_labels?.length || 1, 1)),
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+            }
+        });
+    }
+}
+
+// ── Update stat cards ─────────────────────────────────────────────────────────
+function updateStatCards(s) {
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('stat-daily',   'KES ' + (s.daily_revenue   || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
+    set('stat-monthly', 'KES ' + (s.monthly_revenue || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
+    set('stat-yearly',  'KES ' + (s.yearly_revenue  || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
+    set('stat-active',  (s.active_users       || 0).toLocaleString());
+    set('stat-expired', (s.expired_accounts   || 0).toLocaleString());
+    set('stat-newreg',  (s.new_registrations  || 0).toLocaleString());
+}
+
+// ── Update router status dots from live MikroTik data ─────────────────────────
+function updateRouterStatus(routers) {
+    if (!routers || !routers.length) return;
+    routers.forEach(r => {
+        const dot = document.getElementById('router-dot-' + r.id);
+        const clients = document.getElementById('router-clients-' + r.id);
+        if (dot) {
+            dot.style.background = r.online ? '#10B981' : '#EF4444';
+            dot.title = r.online ? 'Online' : 'Offline';
+        }
+        if (clients) {
+            clients.textContent = r.online ? r.active_clients : '—';
         }
     });
 }
 
-// Revenue Forecast Chart
-const revenueForecastCtx = document.getElementById('revenueForecastChart');
-if (revenueForecastCtx) {
-    new Chart(revenueForecastCtx, {
-        type: 'line',
-        data: {
-            labels: ['Jan 2025', 'Feb 2025', 'Mar 2025', 'Apr 2025', 'May 2025', 'Jun 2025', 'Jul 2025', 'Aug 2025', 'Sep 2025'],
-            datasets: [{
-                label: 'Historical Revenue',
-                data: [],
-                borderColor: '#3B6EA5',
-                backgroundColor: 'rgba(59, 110, 165, 0.1)',
-                fill: true,
-                tension: 0.4
-            }, {
-                label: 'Forecast Revenue',
-                data: [],
-                borderColor: '#10B981',
-                backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                fill: true,
-                tension: 0.4
-            }, {
-                label: 'Upper Confidence',
-                data: [],
-                borderColor: '#F59E0B',
-                borderDash: [5, 5],
-                fill: false
-            }, {
-                label: 'Lower Confidence',
-                data: [],
-                borderColor: '#F59E0B',
-                borderDash: [5, 5],
-                fill: false
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
-            scales: { y: { beginAtZero: true, max: 16000 } }
-        }
-    });
+// ── Fetch and refresh everything ──────────────────────────────────────────────
+function refreshDashboard() {
+    const refreshIcon = document.getElementById('dash-refresh-icon');
+    if (refreshIcon) refreshIcon.classList.add('fa-spin');
+
+    fetch('api/dashboard/stats.php')
+        .then(r => r.json())
+        .then(s => {
+            if (!s.success) { console.warn('Dashboard stats:', s.message); return; }
+            updateStatCards(s);
+            buildCharts(s);
+            updateRouterStatus(s.router_status || []);
+        })
+        .catch(err => console.error('Dashboard refresh error:', err))
+        .finally(() => {
+            if (refreshIcon) refreshIcon.classList.remove('fa-spin');
+        });
 }
 
-// SMS Chart
-const smsCtx = document.getElementById('smsChart');
-if (smsCtx) {
-    new Chart(smsCtx, {
-        type: 'bar',
-        data: {
-            labels: ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-            datasets: [{
-                label: 'SMS Sent',
-                data: [0, 0, 0, 0, 0, 0, 0],
-                backgroundColor: '#F59E0B',
-                borderRadius: 4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true, max: 3 } }
-        }
-    });
-}
+// Initial load
+document.addEventListener('DOMContentLoaded', refreshDashboard);
+// Auto-refresh every 60 seconds
+setInterval(refreshDashboard, 60000);
 
-// Network Data Usage Chart
-const networkDataCtx = document.getElementById('networkDataChart');
-if (networkDataCtx) {
-    window.networkDataChart = new Chart(networkDataCtx, {
-        type: 'line',
-        data: {
-            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-            datasets: [{
-                label: 'Download',
-                data: [0, 0, 0, 0, 0],
-                borderColor: '#F59E0B',
-                backgroundColor: 'rgba(245, 158, 11, 0.3)',
-                fill: true,
-                tension: 0.4
-            }, {
-                label: 'Upload',
-                data: [0, 0, 0, 0, 0],
-                borderColor: '#3B6EA5',
-                backgroundColor: 'rgba(59, 110, 165, 0.3)',
-                fill: true,
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom' } },
-            scales: { y: { beginAtZero: true, max: 45 } }
-        }
-    });
-}
+// Keep old updateDashboardStats function working (called by router sync icon)
+function updateDashboardStats() { refreshDashboard(); }
 
-// User Registrations Chart
-const registrationsCtx = document.getElementById('registrationsChart');
-if (registrationsCtx) {
-    new Chart(registrationsCtx, {
-        type: 'bar',
-        data: {
-            labels: <?php echo $reg_labels_json; ?>,
-            datasets: [{
-                label: 'Registrations',
-                data: <?php echo $reg_data_json; ?>,
-                backgroundColor: '#F59E0B',
-                borderRadius: 4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true, max: 1 } }
-        }
-    });
-}
+// All charts are built by refreshDashboard() — no static initialization needed
 </script>
 
 <?php include 'includes/footer.php'; ?>
-
-<script>
-// Live Dashboard Updates
-function updateDashboardStats() {
-    fetch('api/mikrotik/get_stats.php')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Update Active Users Text
-                const activeUsers = document.getElementById('live-active-users');
-                if (activeUsers) activeUsers.textContent = data.data.active_users;
-
-                // Update Active Users Chart (Push new data point, remove old)
-                if (window.activeUsersChart) { // Assuming chart instance is saved globally or accessible
-                     // For simplicity, let's just update the last point or shift
-                     // Ideally we need global access to the chart instances.
-                     // IMPORTANT: I need to assign charts to window variables first.
-                }
-
-                // Update Router Status (Green dot for all active)
-                document.querySelectorAll('.router-status-dot').forEach(el => {
-                    el.style.background = '#10B981';
-                    el.style.boxShadow = '0 0 0 2px rgba(16, 185, 129, 0.2)';
-                });
-                
-                // Update Router Client Count
-                document.querySelectorAll('.router-clients strong').forEach(el => {
-                    el.textContent = data.data.active_users;
-                });
-                
-                // Update Charts if they exist
-                if (typeof activeUsersChart !== 'undefined') {
-                    // Shift and Push
-                    const labels = activeUsersChart.data.labels;
-                    const pppoeData = activeUsersChart.data.datasets[1].data;
-                    const hotspotData = activeUsersChart.data.datasets[0].data;
-                    
-                    // Simple rotation for demo feeling or real time
-                    // For real time, we'd add a new label (Time) and remove first
-                    const now = new Date();
-                    const timeLabel = now.getHours() + ':' + now.getMinutes();
-                    
-                    if (labels.length > 10) {
-                        labels.shift();
-                        pppoeData.shift();
-                        hotspotData.shift();
-                    }
-                    
-                    labels.push(timeLabel);
-                    pppoeData.push(data.data.pppoe_users);
-                    hotspotData.push(data.data.hotspot_users);
-                    
-                    activeUsersChart.update();
-                }
-                
-                if (typeof networkDataChart !== 'undefined') {
-                     // Calculate speed (This API returns 0 for now as we don't have delta history in session/cache)
-                     // But we can simulate or show what we have.
-                     // Ideally API should return current rate (tx-byte/s) if available from /interface/monitor-traffic
-                     // But for now let's just try to update if data exists
-                }
-                document.querySelectorAll('.router-status-dot').forEach(el => {
-                    el.style.background = '#10B981';
-                    el.style.boxShadow = '0 0 0 2px rgba(16, 185, 129, 0.2)';
-                });
-                
-                // Update Router Client Count (Apply same count to all listed routers since API is single-source)
-                document.querySelectorAll('.router-clients strong').forEach(el => {
-                    el.textContent = data.data.active_users;
-                });
-            } else {
-                 console.log('Stats update failed:', data.message);
-            }
-        })
-        .catch(err => console.error('Failed to fetch stats:', err));
-}
-
-// Update every 30 seconds
-setInterval(updateDashboardStats, 30000);
-
-// Initial call after 2 seconds to allow charts to load
-setTimeout(updateDashboardStats, 2000);
-</script>

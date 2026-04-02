@@ -1,13 +1,13 @@
 <?php
 /**
- * API Endpoint: Initiate M-Pesa Payment
+ * API Endpoint: Initiate M-Pesa STK Push
+ * Works for both customer payments (with client_id) and tenant invoice payments (no client_id)
  */
 header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
-require_once '../../includes/auth.php'; // For session helper if needed, but we do manual check often
+require_once '../../includes/auth.php';
 require_once '../../classes/MpesaAPI.php';
 
-// Security: Tenant Context
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -17,7 +17,6 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $user_id = $_SESSION['user_id'];
-// Get current user's tenant
 $uStmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $uStmt->execute([$user_id]);
 $current_tenant_id = $uStmt->fetchColumn();
@@ -27,74 +26,165 @@ if (!$current_tenant_id) {
     exit;
 }
 
-// Validate Inputs
-$phone = $_POST['phone'] ?? '';
-$amount = $_POST['amount'] ?? 0;
-$client_id = $_POST['client_id'] ?? 0;
+// client_id is OPTIONAL — billing invoice payments won't have one
+$phone       = trim($_POST['phone'] ?? '');
+$amount      = (float)($_POST['amount'] ?? 0);
+$client_id   = (int)($_POST['client_id'] ?? 0);
+$account_ref = trim($_POST['account_ref'] ?? ($_POST['reference'] ?? 'Payment'));
 
-if (empty($phone) || empty($amount) || empty($client_id)) {
-    echo json_encode(['success' => false, 'message' => 'Missing required fields']);
+if (empty($phone) || $amount <= 0) {
+    echo json_encode(['success' => false, 'message' => 'Phone number and amount are required']);
     exit;
 }
 
 try {
-    // Verify Client belongs to THIS Tenant
-    $stmt = $pdo->prepare("SELECT tenant_id FROM clients WHERE id = ? AND tenant_id = ?");
-    $stmt->execute([$client_id, $current_tenant_id]);
-    $client_tenant_id = $stmt->fetchColumn();
-    
-    if (!$client_tenant_id) {
-        echo json_encode(['success' => false, 'message' => 'Invalid customer or access denied']);
+    $tenant_id = $current_tenant_id;
+
+    if ($client_id > 0) {
+        $stmt = $pdo->prepare("SELECT tenant_id FROM clients WHERE id = ? AND tenant_id = ?");
+        $stmt->execute([$client_id, $current_tenant_id]);
+        if (!$stmt->fetchColumn()) {
+            echo json_encode(['success' => false, 'message' => 'Invalid customer or access denied']);
+            exit;
+        }
+        if ($account_ref === 'Payment') {
+            $account_ref = 'PAY-' . $client_id . '-' . time();
+        }
+    }
+
+    // Check whether this tenant has their own active M-Pesa API gateway
+    $gwCheck = $pdo->prepare(
+        "SELECT credentials FROM payment_gateways
+         WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1
+         ORDER BY is_default DESC LIMIT 1"
+    );
+    $gwCheck->execute([$tenant_id]);
+    $tenantGw = $gwCheck->fetch(PDO::FETCH_ASSOC);
+    $hasTenantCreds = false;
+    if ($tenantGw) {
+        $gwCreds = json_decode($tenantGw['credentials'], true) ?? [];
+        $hasTenantCreds = !empty($gwCreds['consumer_key'])
+                       && !empty($gwCreds['consumer_secret'])
+                       && !empty($gwCreds['passkey'])
+                       && !empty($gwCreds['shortcode']);
+    }
+
+    // Initialize M-Pesa: use tenant's own credentials if available, else platform fallback
+    $mpesa         = new MpesaAPI($pdo, $hasTenantCreds ? $tenant_id : null);
+    $usingPlatform = false;
+
+    if (!$hasTenantCreds) {
+        // No tenant-specific gateway — load platform (FortuNett shared) credentials
+        try {
+            $plStmt = $pdo->query(
+                "SELECT consumer_key, consumer_secret, passkey, shortcode, environment, callback_url
+                 FROM platform_mpesa_config LIMIT 1"
+            );
+            $platCreds = $plStmt ? $plStmt->fetch(PDO::FETCH_ASSOC) : null;
+            if ($platCreds && !empty($platCreds['consumer_key'])) {
+                $mpesa->loadFromArray($platCreds);
+                $usingPlatform = true;
+            }
+        } catch (Exception $pe) {
+            // platform_mpesa_config table may not exist yet
+        }
+    }
+
+    $isSandbox = $mpesa->getEnvironment() !== 'production';
+    $response = $mpesa->stkPush($phone, $amount, $account_ref);
+
+    // Guard: null response means curl/network failure or empty body
+    if ($response === null) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'M-Pesa API returned no response. Verify your Consumer Key/Secret in Settings → Payments.'
+        ]);
         exit;
     }
 
-    $tenant_id = $client_tenant_id; // Confirmed matches current session tenant
+    $responseCode = $response->ResponseCode ?? $response->errorCode ?? null;
 
-    // Initialize M-Pesa with Tenant Context
-    $mpesa = new MpesaAPI($pdo, $tenant_id);
-    
-    // Generate unique reference
-    $reference = 'PAY-' . $client_id . '-' . time();
-    
-    $response = $mpesa->stkPush($phone, $amount, $reference);
-    
-    if (isset($response->ResponseCode) && $response->ResponseCode == '0') {
-        // Save pending transaction in Mpesa Log
-        $stmt = $pdo->prepare("INSERT INTO mpesa_transactions 
-            (client_id, phone_number, amount, merchant_request_id, checkout_request_id, status) 
-            VALUES (?, ?, ?, ?, ?, 'pending')");
-            
-        $stmt->execute([
-            $client_id,
-            $phone,
-            $amount,
-            $response->MerchantRequestID,
-            $response->CheckoutRequestID
-        ]);
+    if ($responseCode === '0' || $responseCode === 0) {
 
-        // ALSO Save pending transaction in Payments Table (for immediate UI visibility)
-        // We use checkout_request_id as transaction_id temporarily
-        $payStmt = $pdo->prepare("INSERT INTO payments 
-            (client_id, amount, payment_date, status, transaction_id) 
-            VALUES (?, ?, NOW(), 'pending', ?)");
-        
-        $payStmt->execute([
-            $client_id, 
-            $amount, 
-            $response->CheckoutRequestID 
-        ]);
-        
+        // Log the transaction if a client is linked
+        if ($client_id > 0) {
+            try {
+                $txStmt = $pdo->prepare(
+                    "INSERT INTO mpesa_transactions
+                     (client_id, tenant_id, phone_number, amount, merchant_request_id, checkout_request_id,
+                      result_code, result_desc, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, 'pending', 'STK Push Initiated', NOW(), NOW())"
+                );
+                $txStmt->execute([
+                    $client_id, $tenant_id, $phone, $amount,
+                    $response->MerchantRequestID ?? 'N/A',
+                    $response->CheckoutRequestID ?? 'N/A'
+                ]);
+
+                // Try to record with collection_type (added by platform migration); fall back without
+                $collectionType = $usingPlatform ? 'platform' : 'direct';
+                try {
+                    $payStmt = $pdo->prepare(
+                        "INSERT INTO payments
+                         (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, collection_type)
+                         VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending', ?)"
+                    );
+                    $payStmt->execute([
+                        $client_id, $tenant_id, $amount,
+                        $response->CheckoutRequestID ?? ('STK-' . time()),
+                        $collectionType
+                    ]);
+                } catch (PDOException $colEx) {
+                    // column may not exist yet — insert without it
+                    $payStmt = $pdo->prepare(
+                        "INSERT INTO payments
+                         (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status)
+                         VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending')"
+                    );
+                    $payStmt->execute([
+                        $client_id, $tenant_id, $amount,
+                        $response->CheckoutRequestID ?? ('STK-' . time())
+                    ]);
+                }
+            } catch (Exception $dbEx) {
+                error_log("STK push DB error: " . $dbEx->getMessage());
+            }
+        }
+
+        $custMsg = $response->CustomerMessage ?? 'Request accepted.';
+        if ($isSandbox) {
+            $custMsg = 'SANDBOX MODE: Request accepted but no real phone prompt is sent. Switch to Production in Settings → Payments.';
+        }
+        if ($usingPlatform) {
+            $custMsg .= ' (via FortuNett shared paybill ' . $mpesa->getShortcode() . ')';
+        }
+
         echo json_encode([
-            'success' => true, 
-            'message' => 'STK Push sent to ' . $phone,
-            'checkout_request_id' => $response->CheckoutRequestID
+            'success'             => true,
+            'sandbox'             => $isSandbox,
+            'using_platform'      => $usingPlatform,
+            'ResponseCode'        => '0',
+            'CustomerMessage'     => $custMsg,
+            'checkout_request_id' => $response->CheckoutRequestID ?? '',
+            'shortcode'           => $mpesa->getShortcode(),
         ]);
+
     } else {
-        echo json_encode([
-            'success' => false, 
-            'message' => 'M-Pesa Error: ' . ($response->errorMessage ?? 'Unknown error')
-        ]);
+        // Build a useful error message from whatever M-Pesa returned
+        $msg = $response->errorMessage
+            ?? $response->ResultDesc
+            ?? $response->ResponseDescription
+            ?? null;
+
+        if (!$msg) {
+            // Try to decode a nested error body
+            $msg = 'M-Pesa request failed (Code: ' . ($responseCode ?? 'unknown') . '). Check your credentials in Settings → Payments.';
+        }
+
+        echo json_encode(['success' => false, 'message' => $msg]);
     }
-} catch (Exception $e) {
+
+} catch (Throwable $e) {
+    // Catch both Exception and PHP Error (e.g. property access on null)
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }

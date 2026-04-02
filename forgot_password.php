@@ -70,56 +70,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Forgot Password - <?php echo htmlspecialchars($business_name); ?></title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="css/auth.css" rel="stylesheet">
+    <title>Forgot Password — <?php echo htmlspecialchars($business_name); ?></title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/auth.css?v=3">
 </head>
 <body class="auth-page">
     <div class="auth-container">
         <div class="auth-header">
-            <div class="icon-wrapper">
-                <i class="fas fa-lock-open"></i>
+            <div class="auth-icon-wrap">
+                <i class="fas fa-key"></i>
             </div>
             <h1><?php echo htmlspecialchars($business_name); ?></h1>
-            <p>Recover your password</p>
+            <p>Account Recovery</p>
         </div>
-        
+
         <div class="auth-body">
-            <div class="welcome-text">
+            <div class="auth-subtitle">
                 <h2>Forgot Password?</h2>
-                <p>Enter your email to reset your password</p>
+                <p>Enter your email to receive a reset link</p>
             </div>
-            
+
             <?php if ($error): ?>
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-circle"></i>
-                    <?php echo htmlspecialchars($error); ?>
+                    <span><?php echo htmlspecialchars($error); ?></span>
                 </div>
             <?php endif; ?>
 
             <?php if ($success): ?>
                 <div class="alert alert-success">
-                    <i class="fas fa-check-circle"></i>
-                    <?php echo htmlspecialchars($success); ?>
+                    <i class="fas fa-paper-plane"></i>
+                    <span><?php echo htmlspecialchars($success); ?></span>
                 </div>
                 <div class="auth-link">
-                    <a href="login.php">Back to Login</a>
+                    <a href="login.php">&larr; Back to Login</a>
                 </div>
             <?php else: ?>
                 <form method="POST">
                     <div class="form-group">
                         <label>Email Address <span class="required">*</span></label>
-                        <input type="email" name="email" class="form-control-auth" required placeholder="Enter your email" value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>">
+                        <input type="email" name="email" class="form-control-auth" required
+                               placeholder="Enter your email"
+                               value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>">
                     </div>
-                    
+
                     <button type="submit" class="btn-auth">
                         <span>Send Reset Link</span>
                         <i class="fas fa-paper-plane"></i>
                     </button>
                 </form>
-                
+
                 <div class="auth-link">
-                    Remembered your password? <a href="login.php">Sign in here</a>
+                    Remembered it? <a href="login.php">Sign in here</a>
                 </div>
             <?php endif; ?>
         </div>

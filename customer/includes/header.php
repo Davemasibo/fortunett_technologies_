@@ -6,12 +6,12 @@ if (session_status() === PHP_SESSION_NONE) {
 
 $tenant_branding = [
     'company_name' => 'FortuNNet',
-    'brand_color' => '#2C5282',
+    'brand_color' => '#0f3460',
     'system_logo' => ''
 ];
 
 if (isset($_SESSION['customer_data']['tenant_id'])) {
-    require_once __DIR__ . '/../../includes/db_connect.php';
+    require_once __DIR__ . '/../../includes/db_master.php';
     $stmt = $pdo->prepare("SELECT setting_key, setting_value FROM tenant_settings WHERE tenant_id = ?");
     $stmt->execute([$_SESSION['customer_data']['tenant_id']]);
     $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
@@ -95,7 +95,6 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
                         <span>Account</span>
                     </a>
                 </li>
-                <!-- NEW: Devices Page -->
                 <li>
                     <a href="devices.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'devices.php' ? 'active' : ''; ?>">
                         <i class="fas fa-laptop"></i>
@@ -109,7 +108,25 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
                     </a>
                 </li>
             </ul>
+
+            <?php
+            $acctNum = $_SESSION['customer_data']['account_number'] ?? null;
+            $custName = $_SESSION['customer_data']['full_name'] ?? $_SESSION['customer_data']['name'] ?? null;
+            if ($acctNum || $custName):
+            ?>
+            <div class="sidebar-footer-info">
+                <?php if ($custName): ?>
+                <div class="sfi-name"><?= htmlspecialchars($custName) ?></div>
+                <?php endif; ?>
+                <?php if ($acctNum): ?>
+                <div class="sfi-acct"><i class="fas fa-id-badge"></i> <?= htmlspecialchars($acctNum) ?></div>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
         </aside>
+
+        <!-- Mobile overlay for sidebar -->
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebarMobile()"></div>
         
         <!-- Main Content -->
         <main class="main-content" id="mainContent">
@@ -122,28 +139,51 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
                 <div class="topbar-right">
                     <div class="user-info">
                         <div class="user-avatar">
-                            <i class="fas fa-user"></i>
+                            <?php echo strtoupper(substr($_SESSION['customer_data']['full_name'] ?? $_SESSION['customer_data']['name'] ?? 'C', 0, 1)); ?>
                         </div>
                         <div class="user-details">
                             <div class="user-name"><?php echo htmlspecialchars($_SESSION['customer_data']['full_name'] ?? $_SESSION['customer_data']['name'] ?? 'Customer'); ?></div>
-                            <div class="user-email"><?php echo htmlspecialchars($_SESSION['customer_data']['email'] ?? ''); ?></div>
+                            <div class="user-email"><?php echo htmlspecialchars($_SESSION['customer_data']['account_number'] ?? $_SESSION['customer_data']['email'] ?? ''); ?></div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <script>
+                const CUST_SIDEBAR_KEY = 'customer-sidebar-collapsed';
+
                 function toggleSidebarDesk() {
                     const sidebar = document.getElementById('sidebar');
                     const mainContent = document.getElementById('mainContent');
-                    sidebar.classList.toggle('collapsed');
-                    mainContent.classList.toggle('expanded');
+                    const collapsed = sidebar.classList.toggle('collapsed');
+                    mainContent.classList.toggle('expanded', collapsed);
+                    localStorage.setItem(CUST_SIDEBAR_KEY, collapsed ? '1' : '0');
                 }
 
                 function toggleSidebarMobile() {
                     const sidebar = document.getElementById('sidebar');
-                    sidebar.classList.toggle('active');
+                    const overlay = document.getElementById('sidebarOverlay');
+                    const open = sidebar.classList.toggle('active');
+                    if (overlay) overlay.classList.toggle('active', open);
                 }
+
+                function closeSidebarMobile() {
+                    const sidebar = document.getElementById('sidebar');
+                    const overlay = document.getElementById('sidebarOverlay');
+                    sidebar.classList.remove('active');
+                    if (overlay) overlay.classList.remove('active');
+                }
+
+                // Restore sidebar collapsed state on desktop
+                document.addEventListener('DOMContentLoaded', function() {
+                    if (window.innerWidth > 768) {
+                        const stored = localStorage.getItem(CUST_SIDEBAR_KEY);
+                        if (stored === '1') {
+                            document.getElementById('sidebar').classList.add('collapsed');
+                            document.getElementById('mainContent').classList.add('expanded');
+                        }
+                    }
+                });
             </script>
             
             <div class="content-wrapper">

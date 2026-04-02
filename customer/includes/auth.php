@@ -4,10 +4,10 @@
  * Include this file to protect customer portal pages
  */
 
-require_once __DIR__ . '/../../includes/config.php';
+require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../classes/CustomerAuth.php';
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) session_start();
 
 /**
  * Check if customer is logged in

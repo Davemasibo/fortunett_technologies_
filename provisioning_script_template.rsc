@@ -20,7 +20,7 @@
 :log info "Attempting router registration with ISP management system..."
 
 # Make HTTP POST request
-/tool fetch url=$ApiUrl mode=http http-method=post http-data=$PostData keep-result=no
+/tool fetch url=$ApiUrl http-method=post http-data=$PostData keep-result=no
 
 # Log success
 :log info "Router registration request sent successfully. Check admin portal for confirmation."

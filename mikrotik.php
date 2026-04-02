@@ -468,6 +468,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- Step 2: Provisioning -->
         <div class="wizard-body" id="step2" style="display:none;">
+
+            <!-- LOCALHOST TESTING INFO (shown automatically when on localhost) -->
+            <div id="localhostInfoPanel" style="display:none; margin-bottom:20px; border-radius:10px; overflow:hidden; border:1px solid #FED7AA;">
+                <div style="background:#FFF7ED; padding:14px 18px; border-bottom:1px solid #FED7AA;">
+                    <div style="display:flex; align-items:center; gap:10px; font-size:15px; font-weight:700; color:#C2410C;">
+                        <i class="fas fa-laptop-code"></i>&nbsp;Localhost Detected — Testing Options
+                    </div>
+                    <div style="font-size:12px; color:#92400E; margin-top:4px;">Your app is running on <strong>localhost</strong>. Your MikroTik router can't reach this from the internet. Use one of the options below to test provisioning:</div>
+                </div>
+                <div style="background:white; padding:16px 18px;">
+                    <!-- Option A -->
+                    <div style="margin-bottom:12px; padding:12px; background:#F0FDF4; border-radius:8px; border-left:4px solid #10B981;">
+                        <div style="font-size:13px; font-weight:700; color:#065F46; margin-bottom:4px;"><i class="fas fa-network-wired"></i> Option A — Same Local Network (Simplest)</div>
+                        <div style="font-size:12px; color:#374151; line-height:1.7;">
+                            If your router and this PC are on the <strong>same WiFi/LAN</strong>, replace <code>localhost</code> in the command with your PC's local IP (e.g., <code>192.168.1.100</code>).<br>
+                            <em>Find it:</em> Open Command Prompt → type <code>ipconfig</code> → look for <strong>IPv4 Address</strong>.
+                        </div>
+                    </div>
+                    <!-- Option B -->
+                    <div style="margin-bottom:12px; padding:12px; background:#EFF6FF; border-radius:8px; border-left:4px solid #3B82F6;">
+                        <div style="font-size:13px; font-weight:700; color:#1E40AF; margin-bottom:4px;"><i class="fas fa-cloud"></i> Option B — Ngrok Tunnel (Different network)</div>
+                        <div style="font-size:12px; color:#374151; line-height:1.7;">
+                            1. Download <a href="https://ngrok.com/download" target="_blank" style="color:#3B82F6; font-weight:600;">ngrok</a> and run: <code style="background:#1F2937; color:#E5E7EB; padding:2px 6px; border-radius:4px;">ngrok http 80</code><br>
+                            2. Copy the <code>https://xxxxx.ngrok.io</code> URL ngrok provides.<br>
+                            3. Update <code>MPESA_CALLBACK_URL</code> in your <code>.env</code> file to use that URL.<br>
+                            4. Reload this page — the provisioning command will update automatically.
+                        </div>
+                    </div>
+                    <!-- Option C -->
+                    <div style="padding:12px; background:#F9FAFB; border-radius:8px; border-left:4px solid #9CA3AF;">
+                        <div style="font-size:13px; font-weight:700; color:#374151; margin-bottom:4px;"><i class="fas fa-keyboard"></i> Option C — Manual Entry (Skip provisioning)</div>
+                        <div style="font-size:12px; color:#374151;">
+                            Use the <strong>"Advanced: Manual Router Configuration"</strong> section on this page to add your router's IP, username, and password directly — no script needed.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- END LOCALHOST INFO -->
+
             <p style="margin-bottom:16px; color:#374151;">Run this command in your Mikrotik Terminal to connect:</p>
             <div class="command-box">
                 <button class="copy-btn" onclick="copyCommand()">Copy</button>
@@ -579,14 +618,10 @@ function nextStep() {
         
         let cmd = `/tool fetch url="${endpoint}?token=${token}&identity=${encodeURIComponent(name)}&format=rsc" dst-path=provision.rsc; :delay 5s; /import provision.rsc;`;
         
-        // Check if host is localhost and warn user
+        // Check if host is localhost and warn user + show the info panel
         if (host.includes('localhost') || host.includes('127.0.0.1')) {
-            document.getElementById('step2').insertAdjacentHTML('afterbegin', `
-                <div class="alert alert-warning mb-3" style="font-size: 13px;">
-                    <i class="fas fa-exclamation-triangle"></i> <strong>Warning:</strong> You are on <b>localhost</b>. 
-                    If your router is NOT on your laptop's network, use your VPS IP (72.61.147.86) instead of localhost in the command.
-                </div>
-            `);
+            const infoPanel = document.getElementById('localhostInfoPanel');
+            if (infoPanel) infoPanel.style.display = 'block';
         }
 
         document.getElementById('provisionCommand').textContent = cmd;

@@ -63,11 +63,12 @@ try {
             
         case 'mpesa_api':
             $credentials = [
-                'consumer_key' => $_POST['consumer_key'] ?? '',
-                'consumer_secret' => $_POST['consumer_secret'] ?? '',
-                'passkey' => $_POST['passkey'] ?? '',
-                'shortcode' => $_POST['shortcode'] ?? '',
-                'environment' => $_POST['environment'] ?? 'sandbox'
+                'consumer_key'    => $_POST['mpesa_consumer_key']    ?? $_POST['consumer_key']    ?? '',
+                'consumer_secret' => $_POST['mpesa_consumer_secret'] ?? $_POST['consumer_secret'] ?? '',
+                'passkey'         => $_POST['mpesa_passkey']         ?? $_POST['passkey']         ?? '',
+                'shortcode'       => $_POST['mpesa_shortcode']       ?? $_POST['shortcode']       ?? '',
+                'environment'     => $_POST['mpesa_env']             ?? $_POST['environment']     ?? 'sandbox',
+                'callback_url'    => trim($_POST['mpesa_callback_url'] ?? ''),
             ];
             break;
             
@@ -117,28 +118,68 @@ try {
         exit;
     }
     
-    // Save gateway
+    // Save or Update gateway
     $paymentGateway = new PaymentGatewayManager($db);
-    $gatewayId = $paymentGateway->saveGateway(
-        $tenantId,
-        $gatewayType,
-        $gatewayName,
-        $credentials,
-        $isDefault
-    );
+    $gatewayIdPost = $_POST['gateway_id'] ?? null;
     
-    if ($gatewayId) {
-        echo json_encode([
-            'success' => true,
-            'message' => 'Payment gateway saved successfully',
-            'gateway_id' => $gatewayId
-        ]);
+    if (!empty($gatewayIdPost)) {
+        // Update existing gateway
+        $existing = $paymentGateway->getGatewayById($gatewayIdPost, true);
+        if (!$existing || $existing['tenant_id'] != $tenantId) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            exit;
+        }
+        
+        // Merge blank secrets to prevent overwriting with empty
+        if ($gatewayType === 'mpesa_api' && isset($existing['credentials'])) {
+            if (empty($credentials['consumer_secret'])) $credentials['consumer_secret'] = $existing['credentials']['consumer_secret'] ?? '';
+            if (empty($credentials['passkey']))         $credentials['passkey']         = $existing['credentials']['passkey']         ?? '';
+            if (empty($credentials['callback_url']))    $credentials['callback_url']    = $existing['credentials']['callback_url']    ?? '';
+        } elseif ($gatewayType === 'paypal' && isset($existing['credentials'])) {
+            if (empty($credentials['secret'])) $credentials['secret'] = $existing['credentials']['secret'] ?? '';
+        } elseif ($gatewayType === 'kopo_kopo' && isset($existing['credentials'])) {
+            if (empty($credentials['client_secret'])) $credentials['client_secret'] = $existing['credentials']['client_secret'] ?? '';
+        }
+
+        $success = $paymentGateway->updateGateway(
+            $gatewayIdPost,
+            $gatewayName,
+            $credentials,
+            $existing['is_active'],
+            $isDefault
+        );
+        
+        if ($success) {
+            echo json_encode([
+                'success' => true,
+                'message' => 'Payment gateway updated successfully',
+                'gateway_id' => $gatewayIdPost
+            ]);
+        } else {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'message' => 'Failed to update payment gateway']);
+        }
     } else {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'message' => 'Failed to save payment gateway'
-        ]);
+        // Insert new gateway
+        $gatewayId = $paymentGateway->saveGateway(
+            $tenantId,
+            $gatewayType,
+            $gatewayName,
+            $credentials,
+            $isDefault
+        );
+        
+        if ($gatewayId) {
+            echo json_encode([
+                'success' => true,
+                'message' => 'Payment gateway saved successfully',
+                'gateway_id' => $gatewayId
+            ]);
+        } else {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'message' => 'Failed to save payment gateway']);
+        }
     }
     
 } catch (Exception $e) {

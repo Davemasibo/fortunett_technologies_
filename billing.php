@@ -10,43 +10,85 @@ $stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
 $tenant_id = $stmt->fetchColumn();
 
-// --- 1. Auto-Calculate Bill for Current Month ---
+// --- Fetch Tenant & Admin User Details ---
+$tenantStmt = $pdo->prepare("
+    SELECT t.*, u.username AS admin_username, u.email AS admin_email
+    FROM tenants t
+    LEFT JOIN users u ON t.admin_user_id = u.id
+    WHERE t.id = ? LIMIT 1
+");
+$tenantStmt->execute([$tenant_id]);
+$tenant = $tenantStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+$orgName     = $tenant['company_name'] ?? ($_SESSION['business_name'] ?? 'Your Company');
+$adminEmail  = $tenant['admin_email']  ?? ($_SESSION['user_email'] ?? '');
+$adminPhone  = ''; // phone not stored in users table
+$orgSlug     = strtoupper(preg_replace('/[^a-z0-9]/i', '', $orgName));
+
+// --- Billing Period ---
 $currentMonthStart = date('Y-m-01');
-$currentMonthEnd = date('Y-m-t');
+$currentMonthEnd   = date('Y-m-t');
 
-// Calculate Revenue
-$revStmt = $pdo->prepare("SELECT SUM(amount) FROM payments WHERE tenant_id = ? AND payment_date BETWEEN ? AND ?");
-$revStmt->execute([$tenant_id, $currentMonthStart . ' 00:00:00', $currentMonthEnd . ' 23:59:59']);
-$currentRevenue = $revStmt->fetchColumn() ?: 0.00;
+// --- PPPoE User Count ---
+try {
+    $pppoeStmt = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE tenant_id = ? AND subscription_plan LIKE '%pppoe%'");
+    $pppoeStmt->execute([$tenant_id]);
+    $pppoeCount = (int)$pppoeStmt->fetchColumn();
 
-// Calculate Fees
-$baseFee = 500.00;
-$commissionRate = 0.10; // 10%
-$commission = $currentRevenue * $commissionRate;
-$totalDue = $baseFee + $commission;
+    // If no 'pppoe' label, just count all clients (fallback)
+    if ($pppoeCount === 0) {
+        $allStmt = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE tenant_id = ?");
+        $allStmt->execute([$tenant_id]);
+        $pppoeCount = (int)$allStmt->fetchColumn();
+    }
+} catch (Exception $e) { $pppoeCount = 0; }
 
-// Upsert into tenant_bills
-// Check if bill exists for this month
+// --- Revenue ---
+try {
+    $revStmt = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE tenant_id = ? AND payment_date BETWEEN ? AND ?");
+    $revStmt->execute([$tenant_id, $currentMonthStart . ' 00:00:00', $currentMonthEnd . ' 23:59:59']);
+    $currentRevenue = (float)$revStmt->fetchColumn();
+} catch (Exception $e) { $currentRevenue = 0; }
+
+// --- Billing Calculation ---
+// PPPoE monthly fee: Ksh 25 per user
+$pppoeRate    = 25.00;
+$pppoeSubtotal = $pppoeCount * $pppoeRate;
+
+// Hotspot service fee: 3% of total monthly revenue
+$hotspotRate  = 0.03;
+$hotspotFee   = $currentRevenue * $hotspotRate;
+
+$serviceSubtotal = $pppoeSubtotal + $hotspotFee;
+$totalDue        = $serviceSubtotal;
+
+// Invoice number
+$invoiceDate   = date('Ymd');
+$invoiceNumber = 'INV-' . $orgSlug . '/' . $invoiceDate;
+$dueDate       = date('d M Y', strtotime('+14 days'));
+$issueDate     = date('d M Y');
+
+// --- Upsert into tenant_bills ---
 $checkBill = $pdo->prepare("SELECT id FROM tenant_bills WHERE tenant_id = ? AND billing_period = ?");
 $checkBill->execute([$tenant_id, $currentMonthStart]);
 $billId = $checkBill->fetchColumn();
 
-if ($billId) {
-    // Update existing
-    $upd = $pdo->prepare("UPDATE tenant_bills SET total_collections = ?, commission_amount = ? WHERE id = ? AND status = 'pending'");
-    $upd->execute([$currentRevenue, $commission, $billId]);
-} else {
-    // Insert new
-    $ins = $pdo->prepare("INSERT INTO tenant_bills (tenant_id, billing_period, total_collections, base_fee, commission_rate, commission_amount, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')");
-    $ins->execute([$tenant_id, $currentMonthStart, $currentRevenue, $baseFee, $commissionRate * 100, $commission]);
-}
+try {
+    if ($billId) {
+        $upd = $pdo->prepare("UPDATE tenant_bills SET total_collections = ?, commission_amount = ? WHERE id = ? AND status = 'pending'");
+        $upd->execute([$currentRevenue, $hotspotFee, $billId]);
+    } else {
+        $ins = $pdo->prepare("INSERT INTO tenant_bills (tenant_id, billing_period, total_collections, base_fee, commission_rate, commission_amount, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')");
+        $ins->execute([$tenant_id, $currentMonthStart, $currentRevenue, $pppoeSubtotal, 3, $hotspotFee]);
+    }
+} catch (Exception $e) {}
 
-// --- 2. Fetch All Bills for Display ---
+// --- Fetch All Bills ---
 $billsStmt = $pdo->prepare("SELECT * FROM tenant_bills WHERE tenant_id = ? ORDER BY billing_period DESC");
 $billsStmt->execute([$tenant_id]);
 $bills = $billsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Get current pending bill for the alert
+// Current pending bill
 $currentBill = null;
 foreach ($bills as $b) {
     if ($b['billing_period'] === $currentMonthStart) {
@@ -55,182 +97,815 @@ foreach ($bills as $b) {
     }
 }
 
+// M-Pesa config for STK push
+$mpesaConfig = [];
+try {
+    require_once __DIR__ . '/config/mpesa.php';
+    $mpesaConfig = [
+        'shortcode' => defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : '',
+        'env'       => defined('MPESA_ENV') ? MPESA_ENV : 'sandbox',
+    ];
+} catch (Exception $e) {}
+
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
 
 <style>
-    /* Dashboard-style Card Effects */
-    .hover-card {
-        transition: all 0.2s;
-        border: 1px solid #E5E7EB !important;
-    }
-    .hover-card:hover {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
-        transform: translateY(-2px);
-    }
+/* ===================== BILLING PAGE STYLES ===================== */
+.billing-wrapper { background: #F3F4F6 !important; }
+.billing-container { padding: 28px 32px; max-width: 1300px; margin: 0 auto; }
+
+.billing-header h2 { font-size: 28px; font-weight: 700; color: #111827; margin: 0 0 4px 0; }
+.billing-header p  { font-size: 14px; color: #6B7280; margin: 0 0 24px 0; }
+
+/* Current bill card */
+.bill-summary-card { background: white; border-radius: 12px; border: 1px solid #E5E7EB; padding: 24px 28px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.bill-icon-wrap { width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, var(--primary-dark, #1E3A8A), var(--primary-color, #3B82F6)); display: flex; align-items: center; justify-content: center; color: white; font-size: 22px; flex-shrink: 0; }
+.bill-info h3 { font-size: 18px; font-weight: 700; color: #111827; margin: 0 0 4px 0; }
+.bill-info p  { color: #6B7280; font-size: 14px; margin: 0; }
+.bill-amount-wrap { text-align: right; }
+.bill-amount      { font-size: 32px; font-weight: 800; color: #111827; }
+.bill-amount span { font-size: 16px; font-weight: 500; color: #6B7280; }
+.view-invoice-btn { padding: 12px 24px; background: var(--primary-color, #3B6EA5); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity 0.2s; white-space: nowrap; }
+.view-invoice-btn:hover { opacity: 0.88; }
+
+/* History table card */
+.history-card { background: white; border-radius: 12px; border: 1px solid #E5E7EB; overflow: hidden; }
+.history-card-header { padding: 20px 24px; border-bottom: 1px solid #E5E7EB; font-size: 16px; font-weight: 700; color: #111827; }
+
+/* ===================== INVOICE MODAL ===================== */
+.inv-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    z-index: 1050;
+    align-items: center; justify-content: center;
+    padding: 20px;
+}
+.inv-box {
+    background: white; width: 100%; max-width: 720px;
+    border-radius: 16px; overflow: hidden;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.35);
+    display: flex; flex-direction: column;
+    max-height: 92vh;
+    animation: modalSlideIn .22s cubic-bezier(.34,1.26,.64,1);
+}
+@keyframes modalSlideIn {
+    from { opacity:0; transform: scale(.95) translateY(16px); }
+    to   { opacity:1; transform: scale(1) translateY(0); }
+}
+.inv-modal-header {
+    padding: 14px 20px;
+    background: linear-gradient(135deg, var(--primary-dark,#2C5282) 0%, var(--primary-color,#3B6EA5) 100%);
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+}
+.inv-modal-header-left { display: flex; align-items: center; gap: 10px; }
+.inv-modal-header-icon { width: 32px; height: 32px; background: rgba(255,255,255,.2); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; }
+.inv-modal-header-title { font-size: 14px; font-weight: 700; color: #fff; }
+.inv-modal-header-sub   { font-size: 11px; color: rgba(255,255,255,.7); margin-top: 1px; }
+.inv-close {
+    width: 30px; height: 30px; background: rgba(255,255,255,.15);
+    border: none; border-radius: 8px; cursor: pointer;
+    color: rgba(255,255,255,.9); font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s;
+}
+.inv-close:hover { background: rgba(255,255,255,.25); }
+
+/* Invoice paper section */
+.inv-paper { padding: 32px 36px; overflow-y: auto; flex: 1; }
+.inv-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; }
+.inv-brand h2 { font-size: 22px; font-weight: 800; color: #1E3A5F; margin: 0 0 6px 0; }
+.inv-brand-details { font-size: 12.5px; color: #555; line-height: 1.7; }
+.inv-label { font-size: 11px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+.inv-number-block { text-align: right; }
+.inv-number-block .inv-num { font-size: 18px; font-weight: 800; color: #1E3A5F; }
+.inv-number-block .inv-dates { font-size: 12.5px; color: #6B7280; line-height: 1.8; }
+
+.inv-divider { border: none; border-top: 2px solid #E5E7EB; margin: 0 0 24px 0; }
+.inv-divider-accent { border: none; border-top: 3px solid #3B6EA5; margin: 0 0 24px 0; }
+
+/* Bill To & Status */
+.inv-bill-status { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; }
+.inv-bill-to { }
+.inv-bill-to-label { font-size: 11px; font-weight: 700; color: #3B6EA5; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+.inv-bill-to-name  { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 2px; }
+.inv-bill-to-details { font-size: 13px; color: #6B7280; line-height: 1.6; }
+.inv-status-badge { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+.inv-status-badge.pending { background: #FEF3C7; color: #92400E; }
+.inv-status-badge.paid    { background: #D1FAE5; color: #065F46; }
+
+/* Line Items */
+.inv-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+.inv-table thead tr { background: #F3F4F6; }
+.inv-table th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; }
+.inv-table th:not(:first-child) { text-align: right; }
+.inv-table td { padding: 14px; border-bottom: 1px solid #F3F4F6; font-size: 14px; color: #374151; }
+.inv-table td:not(:first-child) { text-align: right; }
+.inv-table .desc-main { font-weight: 600; color: #111827; }
+.inv-table .desc-sub  { font-size: 12px; color: #9CA3AF; margin-top: 2px; }
+.inv-table tr.subtotal-row td { border-bottom: none; padding-top: 10px; padding-bottom: 4px; color: #6B7280; font-size: 13px; }
+.inv-table tr.total-row td { font-size: 18px; font-weight: 800; color: #1E3A5F; padding-top: 14px; border-top: 2px solid #1E3A5F; }
+
+/* Pay Now Bar — sticky at modal bottom */
+.inv-pay-bar { background: linear-gradient(135deg, var(--primary-dark, #1E3A8A), var(--primary-color, #3B82F6)); padding: 18px 32px; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-shrink: 0; }
+.inv-pay-bar-text { color: rgba(255,255,255,0.8); font-size: 13px; }
+.inv-pay-bar-amount { color: white; font-size: 20px; font-weight: 800; }
+.inv-pay-bar-methods { display: flex; gap: 8px; align-items: center; }
+.inv-pay-method-icon { font-size: 11px; background: rgba(255,255,255,0.15); color: white; padding: 4px 8px; border-radius: 4px; }
+.inv-pay-now-btn { background: white; color: #1E3A5F; border: none; padding: 12px 28px; border-radius: 8px; font-size: 15px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.inv-pay-now-btn:hover { background: #EEF2FF; }
+
+/* ===================== PAYSTACK CHECKOUT MODAL ===================== */
+.pst-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1100; align-items: center; justify-content: center; }
+.pst-box { background: white; width: 100%; max-width: 420px; border-radius: 12px; overflow: hidden; box-shadow: 0 24px 64px rgba(0,0,0,0.3); }
+.pst-header { background: #F9FAFB; padding: 18px 24px; border-bottom: 1px solid #E5E7EB; }
+.pst-brand { font-size: 11px; font-weight: 700; color: #00C3F7; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 4px; }
+.pst-tagline { font-size: 13px; color: #6B7280; }
+.pst-tagline strong { color: #111827; font-weight: 700; }
+.pst-options { padding: 8px 0; }
+.pst-option { display: flex; align-items: center; gap: 14px; padding: 16px 24px; border-bottom: 1px solid #F3F4F6; cursor: pointer; transition: background 0.15s; }
+.pst-option:hover { background: #F9FAFB; }
+.pst-option-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.pst-option-icon.mpesa { background: #D1FAE5; color: #065F46; }
+.pst-option-icon.airtel { background: #FEE2E2; color: #991B1B; }
+.pst-option-icon.card  { background: #DBEAFE; color: #1E40AF; }
+.pst-option-text { font-size: 15px; font-weight: 600; color: #111827; flex: 1; }
+.pst-option-arrow { font-size: 12px; color: #9CA3AF; }
+.pst-footer { padding: 14px 24px; text-align: center; font-size: 11px; color: #9CA3AF; border-top: 1px solid #F3F4F6; }
+.pst-footer i { color: #9CA3AF; margin-right: 4px; }
+.pst-cancel-btn { background: none; border: 1px solid #E5E7EB; border-radius: 8px; padding: 8px 18px; color: #6B7280; font-size: 13px; cursor: pointer; }
+.pst-cancel-btn:hover { background: #F3F4F6; }
+
+/* ===================== MPESA STEP MODAL ===================== */
+.mpesa-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    z-index: 1200; align-items: center; justify-content: center;
+}
+.mpesa-box {
+    background: white; width: 100%; max-width: 400px;
+    border-radius: 16px; overflow: hidden;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.4);
+    animation: modalSlideIn .2s ease;
+}
+.mpesa-topbar { background: #F9FAFB; padding: 14px 20px; border-bottom: 1px solid #E5E7EB; display: flex; justify-content: space-between; align-items: flex-start; }
+.mpesa-topbar-left { display: flex; align-items: center; gap: 10px; }
+.mpesa-topbar-logo { font-size: 18px; font-weight: 800; color: #00C3F7; }
+.mpesa-topbar-type { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #9CA3AF; }
+.mpesa-topbar-right { text-align: right; font-size: 12px; color: #6B7280; }
+.mpesa-topbar-right strong { display: block; font-size: 14px; color: #111827; font-weight: 700; }
+.mpesa-body { padding: 28px 24px; text-align: center; }
+.mpesa-logo-badge { font-size: 24px; font-weight: 900; letter-spacing: -1px; margin-bottom: 18px; }
+.mpesa-logo-badge span.m { color: #e2162d; }
+.mpesa-logo-badge span.p { color: #138a36; }
+.mpesa-logo-badge span.dot { color: #138a36; font-size: 14px; vertical-align: super; }
+.mpesa-body h4 { font-size: 14px; color: #374151; margin: 0 0 18px 0; font-weight: 400; line-height: 1.5; }
+
+/* ── Phone input ─── */
+.mpesa-phone-wrap { margin-bottom: 6px; }
+.mpesa-phone-group {
+    display: flex; align-items: stretch; border: 2px solid #E5E7EB;
+    border-radius: 12px; overflow: hidden; transition: border-color .2s;
+}
+.mpesa-phone-group:focus-within { border-color: #138a36; box-shadow: 0 0 0 3px rgba(19,138,54,.1); }
+.mpesa-phone-group.invalid { border-color: #DC2626; box-shadow: 0 0 0 3px rgba(220,38,38,.1); }
+.mpesa-phone-group.valid   { border-color: #138a36; box-shadow: 0 0 0 3px rgba(19,138,54,.1); }
+.mpesa-phone-prefix {
+    background: #F3F4F6; padding: 12px 12px 12px 14px;
+    font-size: 16px; font-weight: 700; color: #374151;
+    display: flex; align-items: center; gap: 6px;
+    border-right: 2px solid #E5E7EB; white-space: nowrap;
+}
+.mpesa-phone-prefix .flag { font-size: 18px; }
+#mpesaPhone {
+    flex: 1; padding: 12px 14px; border: none; outline: none;
+    font-size: 20px; font-weight: 700; color: #111827;
+    letter-spacing: 1.5px; background: transparent;
+    min-width: 0;
+}
+#mpesaPhone::placeholder { font-weight: 400; letter-spacing: 0; color: #D1D5DB; font-size: 16px; }
+.mpesa-phone-status {
+    width: 40px; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+}
+.mpesa-phone-hint { font-size: 11.5px; color: #9CA3AF; margin-bottom: 16px; text-align: left; padding: 0 2px; min-height: 16px; }
+.mpesa-phone-hint.err { color: #DC2626; }
+.mpesa-phone-hint.ok  { color: #059669; }
+
+.mpesa-pay-btn {
+    width: 100%; padding: 15px; background: #138a36; color: white;
+    border: none; border-radius: 10px; font-size: 16px; font-weight: 800;
+    cursor: pointer; margin-bottom: 14px; transition: background .15s, transform .1s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.mpesa-pay-btn:hover:not(:disabled) { background: #0f7a2e; transform: translateY(-1px); }
+.mpesa-pay-btn:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
+.mpesa-alt { font-size: 13px; color: #6B7280; margin-bottom: 6px; }
+.mpesa-alt a { color: #138a36; font-weight: 600; cursor: pointer; text-decoration: none; }
+.mpesa-footer { padding: 14px 20px; border-top: 1px solid #F3F4F6; display: flex; gap: 10px; justify-content: center; }
+
+/* ── STK Waiting State ─── */
+.stk-waiting { text-align: center; padding: 20px 0; }
+.stk-phone-ring { font-size: 52px; display: inline-block; animation: phoneRing .9s ease-in-out infinite alternate; }
+@keyframes phoneRing { from { transform: rotate(-12deg) scale(1); } to { transform: rotate(12deg) scale(1.05); } }
+.stk-progress { width: 100%; height: 4px; background: #E5E7EB; border-radius: 2px; margin: 18px 0; overflow: hidden; }
+.stk-progress-bar { height: 100%; background: #138a36; border-radius: 2px; animation: stkLoad 2.5s ease-in-out infinite; }
+@keyframes stkLoad { 0%{width:10%;margin-left:0} 50%{width:60%;margin-left:20%} 100%{width:10%;margin-left:80%} }
+.stk-cb-note {
+    background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px;
+    padding: 10px 14px; font-size: 12px; color: #166534; text-align: left;
+    margin-top: 14px; line-height: 1.6;
+}
+.stk-cb-note.warn { background: #FEF3C7; border-color: #FCD34D; color: #92400E; }
 </style>
 
-<div class="main-content-wrapper" style="background: #F3F4F6;">
-    <div class="container-fluid p-4" style="max-width: 1400px; margin: 0 auto;">
-        <!-- Header -->
-        <div class="mb-4">
-            <h2 class="mb-1 text-dark fw-bold" style="font-size: 28px;">Billing & Invoices</h2>
-            <p class="text-muted mb-0">Manage your subscription and view monthly statements.</p>
-        </div>
+<div class="main-content-wrapper billing-wrapper">
+<div class="billing-container">
+    <!-- Header -->
+    <div class="billing-header">
+        <h2>Billing &amp; Invoices</h2>
+        <p>View your subscription invoices and pay your FortuNett Technologies platform fee.</p>
+    </div>
 
-        <!-- Current Bill Card -->
-        <div class="card border-0 shadow-sm mb-4 hover-card" style="border-radius: 10px;">
-            <div class="card-body p-4 d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
-                <div class="d-flex align-items-center gap-3">
-                    <div class="rounded-circle text-white shadow-sm d-flex align-items-center justify-content-center" 
-                         style="background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%); width: 60px; height: 60px;">
-                        <i class="fas fa-file-invoice-dollar fa-2x"></i>
-                    </div>
-                    <div>
-                        <h5 class="mb-1 fw-bold text-dark">Current Month's Bill (Estimate)</h5>
-                        <p class="mb-0 text-secondary">
-                            Your estimated bill for <strong><?php echo date('F Y'); ?></strong> is 
-                            <span class="text-primary fw-bold">KES <?php echo number_format($totalDue, 2); ?></span>.
-                            <br><small class="text-muted">Based on collected revenue of KES <?php echo number_format($currentRevenue, 2); ?>.</small>
-                        </p>
-                    </div>
-                </div>
-                <?php if ($currentBill): ?>
-                <button onclick='openInvoiceModal(<?php echo json_encode($currentBill); ?>)' class="btn btn-primary d-flex align-items-center gap-2">
-                    <i class="fas fa-eye"></i> View Details
-                </button>
-                <?php endif; ?>
-            </div>
+    <div class="bill-summary-card">
+        <div class="bill-icon-wrap"><i class="fas fa-file-invoice-dollar"></i></div>
+        <div class="bill-info" style="flex:1;">
+            <h3>Current Month – <?php echo date('F Y'); ?></h3>
+            <p>Invoice: <strong><?php echo htmlspecialchars($invoiceNumber); ?></strong> &nbsp;|&nbsp; Due: <strong><?php echo $dueDate; ?></strong></p>
         </div>
+        <div class="bill-amount-wrap">
+            <div class="bill-amount"><span>KES </span><?php echo number_format($totalDue, 2); ?></div>
+            <div style="font-size:12px; color:#9CA3AF; margin-top:4px;">Total Due</div>
+        </div>
+        <?php
+        // Always build a bill object for the View Invoice button (use DB record or computed values)
+        $viewBill = $currentBill ?? [
+            'id'                => 0,
+            'billing_period'    => $currentMonthStart,
+            'total_collections' => $currentRevenue,
+            'base_fee'          => $pppoeSubtotal,
+            'commission_rate'   => 3,
+            'commission_amount' => $hotspotFee,
+            'status'            => 'pending',
+        ];
+        ?>
+        <button class="view-invoice-btn" onclick='openInvoiceModal(<?php echo json_encode($viewBill); ?>)'>
+            <i class="fas fa-eye"></i> View Invoice
+        </button>
+    </div>
 
-        <!-- Invoices Table -->
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0">
-                <h5 class="card-title mb-0">Invoice History</h5>
-            </div>
-            <div class="card-body p-4">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th class="py-3">Period</th>
-                                <th class="py-3 text-end">Revenue</th>
-                                <th class="py-3 text-end">Commission (10%)</th>
-                                <th class="py-3 text-end">Base Fee</th>
-                                <th class="py-3 text-end">Total Due</th>
-                                <th class="py-3 text-center">Status</th>
-                                <th class="py-3 text-end">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($bills as $bill): 
-                                $total = $bill['base_fee'] + $bill['commission_amount'];
-                            ?>
-                            <tr>
-                                <td class="fw-bold text-dark"><?php echo date('F Y', strtotime($bill['billing_period'])); ?></td>
-                                <td class="text-end">KES <?php echo number_format($bill['total_collections'], 2); ?></td>
-                                <td class="text-end">- KES <?php echo number_format($bill['commission_amount'], 2); ?></td>
-                                <td class="text-end">- KES <?php echo number_format($bill['base_fee'], 2); ?></td>
-                                <td class="text-end fw-bold text-dark">KES <?php echo number_format($total, 2); ?></td>
-                                <td class="text-center">
-                                    <span class="badge rounded-pill bg-<?php echo $bill['status'] === 'paid' ? 'success' : 'warning text-dark'; ?>">
-                                        <?php echo ucfirst($bill['status']); ?>
-                                    </span>
-                                </td>
-                                <td class="text-end">
-                                    <button class="btn btn-sm btn-outline-secondary" onclick='openInvoiceModal(<?php echo json_encode($bill); ?>)'>
-                                        View
-                                    </button>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+    <!-- Invoice History -->
+    <div class="history-card">
+        <div class="history-card-header">Invoice History</div>
+        <div style="overflow-x:auto;">
+            <table class="table table-hover align-middle mb-0" style="font-size:14px;">
+                <thead class="table-light">
+                    <tr>
+                        <th class="py-3 px-4">Period</th>
+                        <th class="py-3 text-end">Revenue Collected</th>
+                        <th class="py-3 text-end">PPPoE Fee</th>
+                        <th class="py-3 text-end">Hotspot 3%</th>
+                        <th class="py-3 text-end fw-bold">Total Due</th>
+                        <th class="py-3 text-center">Status</th>
+                        <th class="py-3 text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($bills as $bill):
+                        $bTotal = $bill['base_fee'] + $bill['commission_amount'];
+                    ?>
+                    <tr>
+                        <td class="px-4 fw-bold text-dark"><?php echo date('F Y', strtotime($bill['billing_period'])); ?></td>
+                        <td class="text-end">KES <?php echo number_format($bill['total_collections'], 2); ?></td>
+                        <td class="text-end">KES <?php echo number_format($bill['base_fee'], 2); ?></td>
+                        <td class="text-end">KES <?php echo number_format($bill['commission_amount'], 2); ?></td>
+                        <td class="text-end fw-bold text-dark">KES <?php echo number_format($bTotal, 2); ?></td>
+                        <td class="text-center">
+                            <span class="badge rounded-pill bg-<?php echo $bill['status'] === 'paid' ? 'success' : 'warning text-dark'; ?>">
+                                <?php echo ucfirst($bill['status']); ?>
+                            </span>
+                        </td>
+                        <td class="text-end pe-4">
+                            <button class="btn btn-sm btn-outline-secondary" onclick='openInvoiceModal(<?php echo json_encode($bill); ?>)'>View</button>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
-
-<!-- Invoice Modal -->
-<div class="modal fade" id="invoiceModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">Invoice Details</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body p-4">
-                <div class="text-center mb-4">
-                    <h2 class="fw-bold text-dark mb-0" id="modalTotal">KES 0.00</h2>
-                    <span class="badge bg-warning text-dark mt-2" id="modalStatus">Pending</span>
-                </div>
-                
-                <div class="border rounded p-3 bg-light mb-3">
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted">Billing Period</span>
-                        <span class="fw-bold" id="modalPeriod">-</span>
-                    </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted">Total Collections</span>
-                        <span class="fw-bold" id="modalRevenue">-</span>
-                    </div>
-                </div>
-
-                <h6 class="text-muted text-uppercase small fw-bold mb-3">Breakdown</h6>
-                <div class="d-flex justify-content-between mb-2">
-                    <span>Base Platform Fee</span>
-                    <span id="modalBase">-</span>
-                </div>
-                <div class="d-flex justify-content-between mb-2">
-                    <span>Commission (10%)</span>
-                    <span id="modalComm">-</span>
-                </div>
-                <hr>
-                <div class="d-flex justify-content-between fw-bold text-dark fs-5">
-                    <span>Total Due</span>
-                    <span id="modalTotalBottom">-</span>
-                </div>
-            </div>
-            <div class="modal-footer border-0 bg-light">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" onclick="alert('Payment integration coming soon!')">Pay Now</button>
-            </div>
-        </div>
-    </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-function openInvoiceModal(bill) {
-    const revenue = parseFloat(bill.total_collections);
-    const base = parseFloat(bill.base_fee);
-    const comm = parseFloat(bill.commission_amount);
-    const total = base + comm;
-    
-    // Format Currency Helper
-    const fmt = n => 'KES ' + n.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
-    
-    // Set Texts
-    document.getElementById('modalTotal').textContent = fmt(total);
-    document.getElementById('modalTotalBottom').textContent = fmt(total);
-    document.getElementById('modalRevenue').textContent = fmt(revenue);
-    document.getElementById('modalBase').textContent = fmt(base);
-    document.getElementById('modalComm').textContent = fmt(comm);
-    
-    // Date
-    const date = new Date(bill.billing_period);
-    document.getElementById('modalPeriod').textContent = date.toLocaleString('default', { month: 'long', year: 'numeric' });
-    
-    // Status
-    const badge = document.getElementById('modalStatus');
-    badge.textContent = bill.status.charAt(0).toUpperCase() + bill.status.slice(1);
-    badge.className = bill.status === 'paid' ? 'badge bg-success mt-2' : 'badge bg-warning text-dark mt-2';
-    
-    // Show Modal
-    new bootstrap.Modal(document.getElementById('invoiceModal')).show();
+<!-- ========================= INVOICE MODAL ========================= -->
+<div class="inv-overlay" id="invoiceModal" onclick="closeIfBg(event, 'invoiceModal')">
+<div class="inv-box">
+    <!-- Modal Header -->
+    <div class="inv-modal-header">
+        <div class="inv-modal-header-left">
+            <div class="inv-modal-header-icon"><i class="fas fa-file-invoice-dollar"></i></div>
+            <div>
+                <div class="inv-modal-header-title">Platform Invoice</div>
+                <div class="inv-modal-header-sub" id="invHeaderSub">FortuNett Technologies</div>
+            </div>
+        </div>
+        <button class="inv-close" onclick="closeModal('invoiceModal')" title="Close">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+
+    <!-- Invoice Paper (scrollable) -->
+    <div class="inv-paper">
+        <!-- TOP: FortuNett (left) | INVOICE # (right) -->
+        <div class="inv-top">
+            <div class="inv-brand">
+                <h2>FortuNett Technologies Ltd.</h2>
+                <div class="inv-brand-details">
+                    fortunettech1@gmail.com<br>
+                    +254 700 000 000<br>
+                    Upper Hill, Nairobi, Kenya<br>
+                    <em style="font-size:11px; color:#9CA3AF;">Your ISP Management Platform</em>
+                </div>
+            </div>
+            <div class="inv-number-block">
+                <div class="inv-label">Invoice</div>
+                <div class="inv-num" id="invNumber"><?php echo htmlspecialchars($invoiceNumber); ?></div>
+                <div class="inv-dates">
+                    <strong>Date:</strong> <span id="invDate"><?php echo $issueDate; ?></span><br>
+                    <strong>Due:</strong> <span id="invDue"><?php echo $dueDate; ?></span>
+                </div>
+            </div>
+        </div>
+
+        <hr class="inv-divider-accent">
+
+        <!-- BILL TO & STATUS -->
+        <div class="inv-bill-status">
+            <div class="inv-bill-to">
+                <div class="inv-bill-to-label">Bill To</div>
+                <div class="inv-bill-to-name" id="invBillName"><?php echo htmlspecialchars($orgName); ?></div>
+                <div class="inv-bill-to-details">
+                    <?php echo htmlspecialchars($adminEmail); ?><br>
+                    <?php if ($adminPhone): ?><?php echo htmlspecialchars($adminPhone); ?><?php endif; ?>
+                </div>
+            </div>
+            <div>
+                <span class="inv-status-badge pending" id="invStatusBadge">PENDING</span>
+            </div>
+        </div>
+
+        <!-- LINE ITEMS TABLE -->
+        <table class="inv-table" id="invLineItems">
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th>Price</th>
+                    <th>Qty</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>
+                        <div class="desc-main">Platform Fee</div>
+                        <div class="desc-sub">Monthly base fee for ISP Management Platform</div>
+                    </td>
+                    <td>—</td>
+                    <td>1</td>
+                    <td id="invBaseFee">KES <?php echo number_format($pppoeSubtotal, 2); ?></td>
+                </tr>
+                <tr>
+                    <td>
+                        <div class="desc-main">Transaction Fee</div>
+                        <div class="desc-sub">Commission on collections</div>
+                    </td>
+                    <td id="invCommRate">3%</td>
+                    <td>1</td>
+                    <td id="invCommAmt">KES <?php echo number_format($hotspotFee, 2); ?></td>
+                </tr>
+            </tbody>
+            <tfoot>
+                <tr class="subtotal-row">
+                    <td colspan="3" style="text-align:right;">Service Subtotal</td>
+                    <td id="invServiceSubtotal">KES <?php echo number_format($totalDue, 2); ?></td>
+                </tr>
+                <tr class="total-row">
+                    <td colspan="3" style="text-align:right; font-weight:800;">Total Due</td>
+                    <td id="invTotalDue">KES <?php echo number_format($totalDue, 2); ?></td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <!-- Footer note -->
+        <div style="text-align:center; font-size:11px; color:#9CA3AF; margin-top:8px;">
+            Thank you for your business! For billing inquiries, contact fortunettech1@gmail.com<br>
+            Access your account at <a href="#" style="color:#3B6EA5;">fortunetttech.site</a> &nbsp;|&nbsp; © <?php echo date('Y'); ?> FortuNett Technologies Ltd. All rights reserved.
+        </div>
+    </div>
+
+    <!-- PAY NOW BAR -->
+    <div class="inv-pay-bar" id="invPayBar">
+        <div>
+            <div class="inv-pay-bar-text">Payment methods accepted</div>
+            <div class="inv-pay-bar-methods">
+                <span class="inv-pay-method-icon">M-Pesa</span>
+                <span class="inv-pay-method-icon">Airtel</span>
+                <span class="inv-pay-method-icon">Card</span>
+            </div>
+        </div>
+        <div>
+            <div class="inv-pay-bar-text">Amount due</div>
+            <div class="inv-pay-bar-amount" id="invPayBarAmt">KES <?php echo number_format($totalDue, 2); ?></div>
+        </div>
+        <button class="inv-pay-now-btn" id="invPayNowBtn" onclick="openPaystackModal()">
+            Pay Now <i class="fas fa-arrow-right"></i>
+        </button>
+    </div>
+</div>
+</div>
+
+<!-- ========================= PAYSTACK CHECKOUT MODAL ========================= -->
+<div class="pst-overlay" id="paystackModal" onclick="closeIfBg(event, 'paystackModal')">
+<div class="pst-box">
+    <div class="pst-header">
+        <div class="pst-brand">Paystack Checkout</div>
+        <div class="pst-tagline">Use one of the payment methods below to pay <strong id="pstAmount">KES 0</strong> to FortuNett Technologies</div>
+    </div>
+    <div class="pst-options">
+        <div class="pst-option" onclick="openMpesaStep('stk')">
+            <div class="pst-option-icon mpesa"><i class="fas fa-mobile-alt"></i></div>
+            <div class="pst-option-text">Pay with M-PESA</div>
+            <div class="pst-option-arrow"><i class="fas fa-chevron-right"></i></div>
+        </div>
+        <div class="pst-option" onclick="openMpesaStep('till')">
+            <div class="pst-option-icon mpesa"><i class="fas fa-store"></i></div>
+            <div class="pst-option-text">Pay with M-PESA Till</div>
+            <div class="pst-option-arrow"><i class="fas fa-chevron-right"></i></div>
+        </div>
+        <div class="pst-option" onclick="openMpesaStep('airtel')">
+            <div class="pst-option-icon airtel"><i class="fas fa-sim-card"></i></div>
+            <div class="pst-option-text">Pay with Airtel Money</div>
+            <div class="pst-option-arrow"><i class="fas fa-chevron-right"></i></div>
+        </div>
+        <div class="pst-option" onclick="openMpesaStep('card')">
+            <div class="pst-option-icon card"><i class="fas fa-credit-card"></i></div>
+            <div class="pst-option-text">Pay with Card</div>
+            <div class="pst-option-arrow"><i class="fas fa-chevron-right"></i></div>
+        </div>
+    </div>
+    <div class="pst-footer">
+        <button class="pst-cancel-btn" onclick="closeModal('paystackModal')">&times; Cancel Payment</button>
+        <br><br>
+        <i class="fas fa-lock"></i> Secured by <strong>paystack</strong>
+    </div>
+</div>
+</div>
+
+<!-- ========================= M-PESA STK MODAL ========================= -->
+<div class="mpesa-overlay" id="mpesaModal" onclick="closeIfBg(event, 'mpesaModal')">
+<div class="mpesa-box">
+    <!-- Top bar: Logo + email + amount -->
+    <div class="mpesa-topbar">
+        <div class="mpesa-topbar-left">
+            <div>
+                <div class="mpesa-topbar-logo">paystack</div>
+                <div class="mpesa-topbar-type" id="mpesaMethodLabel">Pay with M-PESA</div>
+            </div>
+        </div>
+        <div class="mpesa-topbar-right">
+            <span><?php echo htmlspecialchars($adminEmail ?: 'fortunettech1@gmail.com'); ?></span>
+            <strong id="mpesaTopAmt">Pay KES 0</strong>
+        </div>
+    </div>
+
+    <!-- Body -->
+    <div class="mpesa-body" id="mpesaInputSection">
+        <!-- M-Pesa Logo -->
+        <div class="mpesa-logo-badge">
+            <span class="m">M</span><span class="dot">-</span><span class="p">PESA</span>
+        </div>
+
+        <h4>Enter your M-Pesa number to receive<br>the payment prompt on your phone</h4>
+
+        <!-- Smart phone input -->
+        <div class="mpesa-phone-wrap">
+            <div class="mpesa-phone-group" id="mpesaPhoneGroup">
+                <div class="mpesa-phone-prefix">
+                    <span class="flag">🇰🇪</span> +254
+                </div>
+                <input type="tel" id="mpesaPhone" maxlength="9"
+                       placeholder="7XX XXX XXX"
+                       oninput="onPhoneInput(this)"
+                       onkeypress="return event.charCode>=48&&event.charCode<=57">
+                <div class="mpesa-phone-status" id="mpesaPhoneStatus"></div>
+            </div>
+            <div class="mpesa-phone-hint" id="mpesaPhoneHint">e.g. 0712 345 678 or 0700 000 000</div>
+        </div>
+
+        <button class="mpesa-pay-btn" id="mpesaPayBtn" onclick="submitMpesaPayment()" disabled>
+            <i class="fas fa-lock" style="font-size:14px;opacity:.8;"></i>
+            Pay KES <span id="mpesaPayBtnAmt">0</span>
+        </button>
+
+        <div class="mpesa-alt">No STK Push? <a onclick="switchToPaybill()">Pay via Paybill manually</a></div>
+    </div>
+
+    <!-- Waiting for PIN Section (hidden initially) -->
+    <div class="mpesa-body stk-waiting" id="mpesaWaitSection" style="display:none;">
+        <div class="stk-phone-ring">📱</div>
+        <h4 style="font-size:17px; font-weight:700; color:#111827; margin:14px 0 8px;">Check your phone!</h4>
+        <p style="color:#6B7280; font-size:13px; line-height:1.6;">
+            An M-Pesa prompt has been sent to<br>
+            <strong id="mpesaPhoneDisplay" style="color:#111827; font-size:15px;"></strong><br>
+            Enter your <strong>M-Pesa PIN</strong> to complete payment.
+        </p>
+        <div class="stk-progress"><div class="stk-progress-bar"></div></div>
+        <div id="stkCallbackNote" class="stk-cb-note">
+            <strong>✅ Payment will auto-confirm</strong> once you enter your PIN —
+            your callback URL is configured and Safaricom will notify the system automatically.
+        </div>
+        <p style="font-size:12px; color:#9CA3AF; margin-top:12px;">
+            Didn't get the prompt?
+            <a href="#" onclick="resetToPhoneInput()" style="color:#138a36;font-weight:600;">Try again</a>
+            &nbsp;·&nbsp;
+            <a href="payments.php" style="color:#6B7280;">Verify manually in Payments</a>
+        </p>
+    </div>
+
+    <!-- Footer buttons -->
+    <div class="mpesa-footer" id="mpesaFooter">
+        <button class="pst-cancel-btn" onclick="closeModal('mpesaModal'); document.getElementById('paystackModal').style.display='flex';">
+            ⇐ Change Payment Method
+        </button>
+        <button class="pst-cancel-btn" onclick="closeModal('mpesaModal')">
+            &times; Cancel Payment
+        </button>
+    </div>
+</div>
+</div>
+
+<style>
+@keyframes loadbar {
+    0%   { width: 20px; opacity: 0.4; }
+    50%  { width: 100px; opacity: 1; }
+    100% { width: 20px; opacity: 0.4; }
 }
+</style>
+
+<script>
+let currentInvoiceAmount = <?php echo $totalDue; ?>;
+let currentMpesaMethod   = 'stk';
+const isSandbox          = <?php echo MPESA_ENV === 'sandbox' ? 'true' : 'false'; ?>;
+
+// ════════════════════════════════════════
+// Invoice Modal
+// ════════════════════════════════════════
+function openInvoiceModal(bill) {
+    const base  = parseFloat(bill.base_fee || 0);
+    const comm  = parseFloat(bill.commission_amount || 0);
+    const total = base + comm;
+
+    document.getElementById('invBaseFee').textContent         = 'KES ' + fmt(base);
+    document.getElementById('invCommAmt').textContent         = 'KES ' + fmt(comm);
+    document.getElementById('invServiceSubtotal').textContent = 'KES ' + fmt(total);
+    document.getElementById('invTotalDue').textContent        = 'KES ' + fmt(total);
+    document.getElementById('invPayBarAmt').textContent       = 'KES ' + fmt(total);
+    currentInvoiceAmount = total;
+
+    // Period + due date
+    if (bill.billing_period) {
+        const d = new Date(bill.billing_period + 'T00:00:00');
+        document.getElementById('invDate').textContent = d.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+        const due = new Date(d); due.setDate(due.getDate() + 14);
+        document.getElementById('invDue').textContent  = due.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+        // Header subtitle
+        const sub = document.getElementById('invHeaderSub');
+        if (sub) sub.textContent = d.toLocaleDateString('en-GB', {month:'long',year:'numeric'});
+    }
+
+    const badge = document.getElementById('invStatusBadge');
+    const isPaid = bill.status === 'paid';
+    badge.textContent = isPaid ? '✅ PAID' : '⏳ PENDING';
+    badge.className   = 'inv-status-badge ' + (isPaid ? 'paid' : 'pending');
+
+    document.getElementById('invPayBar').style.display = isPaid ? 'none' : 'flex';
+    document.getElementById('invoiceModal').style.display = 'flex';
+}
+
+// ════════════════════════════════════════
+// Checkout flow
+// ════════════════════════════════════════
+function openPaystackModal() {
+    closeModal('invoiceModal');
+    document.getElementById('pstAmount').textContent = 'KES ' + fmt(currentInvoiceAmount);
+    document.getElementById('paystackModal').style.display = 'flex';
+}
+
+function openMpesaStep(method) {
+    currentMpesaMethod = method;
+    closeModal('paystackModal');
+
+    const labels = { stk:'Pay with M-PESA', till:'Pay with M-PESA Till', airtel:'Pay with Airtel Money', card:'Pay with Card' };
+    document.getElementById('mpesaMethodLabel').textContent  = labels[method] || 'Pay with M-PESA';
+    document.getElementById('mpesaTopAmt').textContent       = 'Pay KES ' + fmt(currentInvoiceAmount);
+    document.getElementById('mpesaPayBtnAmt').textContent    = fmt(currentInvoiceAmount);
+
+    resetToPhoneInput();
+    document.getElementById('mpesaModal').style.display = 'flex';
+}
+
+function resetToPhoneInput() {
+    document.getElementById('mpesaInputSection').style.display = 'block';
+    document.getElementById('mpesaWaitSection').style.display  = 'none';
+    document.getElementById('mpesaFooter').style.display       = 'flex';
+    // Re-enable button, re-validate phone
+    const ph = document.getElementById('mpesaPhone');
+    if (ph) onPhoneInput(ph);
+}
+
+function switchToPaybill() {
+    closeModal('mpesaModal');
+    document.getElementById('mpesaInputSection').innerHTML = `
+        <div class="mpesa-logo-badge"><span class="m">M</span><span class="dot">-</span><span class="p">PESA</span></div>
+        <h4 style="font-weight:700;color:#111827;">Pay via M-PESA Paybill</h4>
+        <div style="background:#F0FDF4;border-radius:10px;padding:16px;margin-bottom:16px;text-align:left;font-size:13px;line-height:1.9;">
+            <strong>Steps:</strong><br>
+            1. Open <b>M-PESA</b> on your phone<br>
+            2. Select <b>Lipa na M-PESA → Pay Bill</b><br>
+            3. Business No: <b><?php echo htmlspecialchars(defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : 'FortuNett Paybill'); ?></b><br>
+            4. Account No: <b><?php echo htmlspecialchars($orgName); ?></b><br>
+            5. Amount: <b>KES ${fmt(currentInvoiceAmount)}</b><br>
+            6. Enter your M-PESA PIN and confirm
+        </div>
+        <p style="font-size:12px;color:#6B7280;">Once paid, record the reference code in the
+            <a href="payments.php" style="color:#138a36;font-weight:600;">Payments page</a>.</p>
+    `;
+    document.getElementById('mpesaModal').style.display = 'flex';
+}
+
+// ════════════════════════════════════════
+// Phone input: live formatting & validation
+// ════════════════════════════════════════
+function onPhoneInput(el) {
+    // Strip non-digits
+    let raw = el.value.replace(/\D/g, '');
+    // Max 9 digits after the +254 prefix (7XXXXXXXX)
+    if (raw.length > 9) raw = raw.slice(0, 9);
+    el.value = raw;
+
+    const group  = document.getElementById('mpesaPhoneGroup');
+    const hint   = document.getElementById('mpesaPhoneHint');
+    const status = document.getElementById('mpesaPhoneStatus');
+    const btn    = document.getElementById('mpesaPayBtn');
+
+    if (raw.length === 0) {
+        group.className  = 'mpesa-phone-group';
+        hint.textContent = 'e.g. 0712 345 678 or 0700 000 000';
+        hint.className   = 'mpesa-phone-hint';
+        status.textContent = '';
+        if (btn) btn.disabled = true;
+        return;
+    }
+
+    // Must start with 7 (Safaricom) or some valid prefix
+    const valid = raw.length === 9 && /^[17]/.test(raw);
+
+    if (raw.length < 9) {
+        group.className  = 'mpesa-phone-group';
+        hint.textContent = `${9 - raw.length} more digits needed`;
+        hint.className   = 'mpesa-phone-hint';
+        status.textContent = '';
+        if (btn) btn.disabled = true;
+    } else if (!valid) {
+        group.className  = 'mpesa-phone-group invalid';
+        hint.textContent = 'Number should start with 07XX... (Safaricom) or 01XX...';
+        hint.className   = 'mpesa-phone-hint err';
+        status.innerHTML = '<span style="color:#DC2626">✕</span>';
+        if (btn) btn.disabled = true;
+    } else {
+        group.className  = 'mpesa-phone-group valid';
+        hint.textContent = 'Sending prompt to: +254 ' + raw.slice(0,3) + ' ' + raw.slice(3,6) + ' ' + raw.slice(6);
+        hint.className   = 'mpesa-phone-hint ok';
+        status.innerHTML = '<span style="color:#059669">✓</span>';
+        if (btn) btn.disabled = false;
+    }
+}
+
+// ════════════════════════════════════════
+// Submit STK Push
+// ════════════════════════════════════════
+function submitMpesaPayment() {
+    const rawDigits = document.getElementById('mpesaPhone')?.value?.replace(/\D/g,'') || '';
+    if (rawDigits.length !== 9) {
+        showBillingToast('Please enter a valid 9-digit number after +254', 'error');
+        return;
+    }
+
+    // Always send as 254XXXXXXXXX (full international format)
+    const phone = '254' + rawDigits;
+
+    const btn = document.getElementById('mpesaPayBtn');
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending prompt…';
+    btn.disabled  = true;
+
+    const fd = new FormData();
+    fd.append('phone',       phone);
+    fd.append('amount',      currentInvoiceAmount);
+    fd.append('account_ref', 'INV-<?php echo htmlspecialchars($orgSlug); ?>');
+
+    fetch('api/mpesa/stk_push.php', { method:'POST', body:fd })
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(data => {
+            btn.innerHTML = origHtml;
+            btn.disabled  = false;
+
+            if (data.success) {
+                if (data.sandbox) {
+                    // Sandbox — show inline warning, do NOT show "check phone"
+                    showSandboxWarning();
+                } else {
+                    showStkWaiting(phone, data);
+                }
+            } else {
+                showBillingToast((data.message || 'M-Pesa request failed'), 'error');
+            }
+        })
+        .catch(() => {
+            btn.innerHTML = origHtml;
+            btn.disabled  = false;
+            showBillingToast('Connection error. Please try again.', 'error');
+        });
+}
+
+function showStkWaiting(phone, data) {
+    document.getElementById('mpesaInputSection').style.display = 'none';
+    document.getElementById('mpesaWaitSection').style.display  = 'block';
+    document.getElementById('mpesaFooter').style.display       = 'none';
+
+    // Format display number
+    const digits  = phone.replace(/^254/, '');
+    const display = '+254 ' + digits.slice(0,3) + ' ' + digits.slice(3,6) + ' ' + digits.slice(6);
+    document.getElementById('mpesaPhoneDisplay').textContent = display;
+
+    // Callback note
+    const note = document.getElementById('stkCallbackNote');
+    if (data.using_platform) {
+        note.className   = 'stk-cb-note';
+        note.innerHTML   = '<strong>✅ Using FortuNett shared paybill</strong> ' + (data.shortcode ? '(' + data.shortcode + ')' : '') +
+            ' — payment will be auto-confirmed when you enter your PIN.';
+    } else {
+        // Check if callback is properly set — guide based on environment
+        note.className   = 'stk-cb-note';
+        note.innerHTML   = '✅ STK prompt sent. Enter your M-Pesa PIN and payment will be confirmed automatically. ' +
+            'If it doesn\'t update, <a href="payments.php" style="color:#166534;font-weight:600;">verify manually in Payments</a>.';
+    }
+}
+
+function showSandboxWarning() {
+    const section = document.getElementById('mpesaInputSection');
+    section.innerHTML = `
+        <div style="text-align:center;padding:10px 0;">
+            <div style="font-size:44px;margin-bottom:16px;">🧪</div>
+            <h4 style="font-size:16px;font-weight:700;color:#92400E;margin-bottom:12px;">Sandbox Mode Active</h4>
+            <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;padding:14px 16px;text-align:left;font-size:13px;color:#92400E;line-height:1.7;margin-bottom:16px;">
+                <strong>Your credentials are currently in Sandbox.</strong> Safaricom accepted the request
+                but <strong>no real phone prompt was sent</strong> — sandbox does not ring real phones.<br><br>
+                <strong>To go live:</strong><br>
+                1. Go to <a href="settings.php#payments" style="color:#92400E;font-weight:700;">Settings → Payments</a><br>
+                2. Edit your M-Pesa API gateway<br>
+                3. Change <strong>Environment → Production</strong><br>
+                4. Enter your live Consumer Key, Secret &amp; Passkey from Safaricom Daraja
+            </div>
+            <button class="mpesa-pay-btn" style="background:#92400E;" onclick="resetToPhoneInput()">
+                <i class="fas fa-arrow-left"></i> Go Back
+            </button>
+        </div>`;
+}
+
+// ════════════════════════════════════════
+// Helpers
+// ════════════════════════════════════════
+function showBillingToast(msg, type, dur) {
+    if (typeof showToast === 'function') { showToast(msg, type || 'info', dur || 5000); return; }
+    // Fallback inline alert banner
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;background:'+(type==='error'?'#DC2626':'#D97706')+';color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;max-width:360px;box-shadow:0 8px 24px rgba(0,0,0,.2);';
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), dur || 5000);
+}
+
+function fmt(n) {
+    return parseFloat(n).toLocaleString('en-KE', { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+function closeModal(id) { const el = document.getElementById(id); if (el) el.style.display = 'none'; }
+function closeIfBg(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
 </script>
 
 <?php include 'includes/footer.php'; ?>

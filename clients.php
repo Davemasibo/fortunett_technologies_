@@ -539,36 +539,84 @@ include 'includes/sidebar.php';
         color: #6B7280;
     }
     
-    .action-buttons {
-        display: flex;
-        gap: 8px;
-    }
-    
+    .action-buttons { display: flex; gap: 8px; }
+
     .action-btn {
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        border: 1px solid #E5E7EB;
-        background: white;
-        color: #6B7280;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.2s;
-        text-decoration: none;
+        width: 32px; height: 32px; border-radius: 6px;
+        border: 1px solid #E5E7EB; background: white; color: #6B7280;
+        display: inline-flex; align-items: center; justify-content: center;
+        cursor: pointer; transition: all 0.2s; text-decoration: none;
     }
-    
-    .action-btn:hover {
-        background: #F3F4F6;
-        border-color: #3B6EA5;
-        color: #3B6EA5;
+    .action-btn:hover { background: #F3F4F6; border-color: var(--primary-color,#3B6EA5); color: var(--primary-color,#3B6EA5); }
+
+    /* Row-level action dropdown */
+    .row-action-wrap { display: flex; gap: 6px; align-items: center; }
+    .row-action-dropdown { position: relative; }
+    .row-dd-menu {
+        display: none; position: absolute; right: 0; top: calc(100% + 4px);
+        width: 180px; background: white; border: 1px solid #E5E7EB;
+        border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 50;
     }
-    
+    .row-action-dropdown.open .row-dd-menu { display: block; }
+    .row-dd-menu a {
+        display: flex; align-items: center; gap: 8px;
+        padding: 9px 14px; font-size: 13px; color: #374151; text-decoration: none;
+    }
+    .row-dd-menu a i { width: 14px; color: #6B7280; }
+    .row-dd-menu a:hover { background: #F9FAFB; }
+    .row-dd-menu a.danger { color: #EF4444; }
+    .row-dd-menu a.danger i { color: #EF4444; }
+    .row-dd-divider { border-top: 1px solid #E5E7EB; margin: 3px 0; }
+
+    /* Modal tabs */
+    .modal-tabs { display: flex; gap: 0; border-bottom: 1px solid #E5E7EB; background: white; flex-shrink: 0; }
+    .modal-tab-btn {
+        padding: 10px 16px; font-size: 13px; font-weight: 500; color: #6B7280;
+        background: none; border: none; border-bottom: 2px solid transparent;
+        cursor: pointer; white-space: nowrap; transition: all .15s;
+    }
+    .modal-tab-btn.active { color: var(--primary-color,#3B6EA5); border-bottom-color: var(--primary-color,#3B6EA5); }
+    .modal-tab-btn:hover:not(.active) { color: #374151; background: #F9FAFB; }
+    .modal-tab-panel { display: none; }
+    .modal-tab-panel.active { display: block; }
+
+    /* Stat mini-cards in reports tab */
+    .report-stat { background: white; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; }
+    .report-stat-label { font-size: 10px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+    .report-stat-value { font-size: 20px; font-weight: 700; color: #111827; }
+    .report-stat-sub { font-size: 11px; color: #6B7280; margin-top: 2px; }
+
+    /* Payments / SMS table in modal */
+    .modal-data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .modal-data-table th { padding: 8px 10px; text-align: left; font-size: 10px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: .4px; border-bottom: 1px solid #E5E7EB; }
+    .modal-data-table td { padding: 9px 10px; border-bottom: 1px solid #F3F4F6; color: #374151; }
+    .modal-data-table tr:last-child td { border-bottom: none; }
+    .modal-data-table tr:hover td { background: #FAFAFA; }
+    .pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .pill.success { background: #D1FAE5; color: #065F46; }
+    .pill.pending { background: #FEF3C7; color: #92400E; }
+    .pill.failed  { background: #FEE2E2; color: #991B1B; }
+    .pill.sent    { background: #DBEAFE; color: #1D4ED8; }
+    .pill.delivered { background: #D1FAE5; color: #065F46; }
+
+    .expiry-quick-btn {
+        padding: 6px 12px; font-size: 12px; font-weight: 500; color: var(--primary-color,#3B6EA5);
+        background: white; border: 1px solid var(--primary-color,#3B6EA5); border-radius: 6px;
+        cursor: pointer; transition: all .15s;
+    }
+    .expiry-quick-btn:hover { background: var(--primary-color,#3B6EA5); color: white; }
+
+    @keyframes pulseDot {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50%       { opacity: 0.5; transform: scale(1.3); }
+    }
+
     @media (max-width: 1024px) {
-        .filters-grid {
-            grid-template-columns: 1fr;
-        }
+        .filters-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+        #userModal > div { max-width: 100% !important; margin: 0 !important; border-radius: 10px !important; }
+        #customerFormModal > div { max-width: 100% !important; margin: 0 !important; border-radius: 10px !important; }
     }
 </style>
 
@@ -693,13 +741,14 @@ include 'includes/sidebar.php';
                         <th>CONTACT</th>
                         <th>PACKAGE</th>
                         <th>STATUS</th>
+                        <th>ONLINE</th>
                         <th>EXPIRY</th>
                         <th>PAYMENTS</th>
-                        <th>ACTIONS</th>
+                        <th>VIEW</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($customers as $customer): 
+                    <?php foreach ($customers as $customer):
                         $initials = '';
                         if (!empty($customer['full_name'])) {
                             $names = explode(' ', $customer['full_name']);
@@ -709,70 +758,68 @@ include 'includes/sidebar.php';
                             }
                         }
                         
-                        $status = strtolower($customer['status'] ?? 'active');
+                        // DB subscription status only — no MikroTik logic here (done client-side)
+                        $dbStatus    = strtolower($customer['status'] ?? 'inactive');
                         $expiry_date = $customer['expiry_date'] ?? null;
-                        $is_expired = $expiry_date && strtotime($expiry_date) < time();
-                        if ($is_expired) $status = 'expired';
-                        
+                        $is_expired  = $expiry_date && strtotime($expiry_date) < time();
+                        $dispStatus  = $is_expired ? 'expired' : $dbStatus;
+
+                        $statusMeta = [
+                            'active'    => ['bg'=>'#D1FAE5','color'=>'#065F46','label'=>'Active'],
+                            'inactive'  => ['bg'=>'#F3F4F6','color'=>'#6B7280','label'=>'Inactive'],
+                            'suspended' => ['bg'=>'#FEF3C7','color'=>'#92400E','label'=>'Suspended'],
+                            'expired'   => ['bg'=>'#FEE2E2','color'=>'#991B1B','label'=>'Expired'],
+                        ];
+                        $sm = $statusMeta[$dispStatus] ?? $statusMeta['inactive'];
+
                         // Prepare JSON for JS
                         $customerJson = htmlspecialchars(json_encode($customer), ENT_QUOTES, 'UTF-8');
+                        $mikrotikUser = htmlspecialchars($customer['mikrotik_username'] ?? '', ENT_QUOTES, 'UTF-8');
                     ?>
-                    <tr onclick='viewCustomer(<?php echo $customerJson; ?>)' style="cursor: pointer;">
+                    <tr onclick='viewCustomer(<?php echo $customerJson; ?>)' style="cursor:pointer;" data-username="<?php echo $mikrotikUser; ?>" data-client-id="<?php echo $customer['id']; ?>">
                         <td>
                             <div class="customer-info">
                                 <div class="customer-avatar"><?php echo $initials; ?></div>
                                 <div>
                                     <div class="customer-name"><?php echo htmlspecialchars($customer['full_name'] ?? 'N/A'); ?></div>
-                                    <div class="customer-id">ID: <?php echo htmlspecialchars($customer['account_number'] ?? $customer['id']); ?></div>
+                                    <div class="customer-id"><?php echo htmlspecialchars($customer['account_number'] ?? ('#'.$customer['id'])); ?></div>
                                 </div>
                             </div>
                         </td>
                         <td>
                             <div class="contact-info">
-                                <div class="contact-phone"><?php echo htmlspecialchars($customer['phone'] ?? 'N/A'); ?></div>
-                                <div class="contact-email"><?php echo htmlspecialchars($customer['email'] ?? 'N/A'); ?></div>
+                                <div class="contact-phone"><?php echo htmlspecialchars($customer['phone'] ?? '—'); ?></div>
+                                <div class="contact-email"><?php echo htmlspecialchars($customer['email'] ?? ''); ?></div>
                             </div>
                         </td>
-                        <td><?php echo htmlspecialchars($customer['package_name'] ?? $customer['subscription_plan'] ?? 'N/A'); ?></td>
+                        <td><?php echo htmlspecialchars($customer['package_name'] ?? $customer['subscription_plan'] ?? '—'); ?></td>
                         <td>
-                            <span class="status-badge <?php echo $status; ?>">
-                                <span class="status-dot"></span>
-                                <?php echo ucfirst($status); ?>
+                            <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:<?php echo $sm['bg']; ?>;color:<?php echo $sm['color']; ?>;">
+                                <?php if ($dispStatus === 'active'): ?><span style="width:6px;height:6px;border-radius:50%;background:<?php echo $sm['color']; ?>;flex-shrink:0;"></span><?php endif; ?>
+                                <?php echo $sm['label']; ?>
+                            </span>
+                        </td>
+                        <!-- ONLINE column — filled by JS after MikroTik fetch -->
+                        <td class="online-badge-cell">
+                            <span class="online-badge" title="Checking…">
+                                <span style="font-size:11px;color:#D1D5DB;">—</span>
                             </span>
                         </td>
                         <td>
                             <div class="expiry-date <?php echo $is_expired ? 'expiry-warning' : ''; ?>">
-                                <?php 
-                                if ($expiry_date) {
-                                    echo date('d/m/Y', strtotime($expiry_date));
-                                    if ($is_expired) {
-                                        echo '<br><small>Expired</small>';
-                                    }
-                                } else {
-                                    echo '—';
-                                }
-                                ?>
+                                <?php echo $expiry_date ? date('d/m/Y', strtotime($expiry_date)) : '—'; ?>
+                                <?php if ($is_expired): ?><br><small style="color:#EF4444;">Expired</small><?php endif; ?>
                             </div>
                         </td>
                         <td>
                             <div class="payment-amount">KES <?php echo number_format($customer['package_price'] ?? 0, 0); ?></div>
                             <div class="payment-period"><?php echo $customer['payments_count'] ?? 0; ?> payments</div>
                         </td>
-                        <td>
-                            <div class="action-buttons" onclick="event.stopPropagation()">
-                                <button onclick='viewCustomer(<?php echo json_encode($customer); ?>)' class="action-btn" title="View Customer Details">
-                                    <i class="fas fa-eye"></i>
-                                </button>
-                                <button onclick='openEditModal(<?php echo json_encode($customer); ?>)' class="action-btn" title="Edit Customer">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                <button onclick='openSMSModal(<?php echo json_encode($customer); ?>)' class="action-btn" title="Send SMS">
-                                    <i class="fas fa-comment"></i>
-                                </button>
-                                <button class="action-btn" title="Delete" onclick="confirmDelete(<?php echo $customer['id']; ?>, '<?php echo addslashes($customer['full_name']); ?>')">
-                                    <i class="fas fa-trash-alt" style="color: #EF4444;"></i>
-                                </button>
-                            </div>
+                        <!-- VIEW column — just eye icon, all other actions inside the modal -->
+                        <td onclick="event.stopPropagation()">
+                            <button onclick='viewCustomer(<?php echo $customerJson; ?>)' class="action-btn" title="View Customer" style="color:var(--primary-color,#3B6EA5);">
+                                <i class="fas fa-eye"></i>
+                            </button>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -784,263 +831,416 @@ include 'includes/sidebar.php';
 
 <?php include 'includes/footer.php'; ?>
 
-<!-- Detailed User Modal (Replaces previous modal) -->
-<div id="userModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-    <div style="background: white; width: 100%; max-width: 900px; border-radius: 12px; padding: 0; position: relative; max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column;">
-        
-        <!-- Header -->
-        <div style="padding: 24px; border-bottom: 1px solid #E5E7EB; display: flex; justify-content: space-between; align-items: flex-start;">
-            <div style="display: flex; gap: 16px; align-items: center;">
-                 <div style="font-size: 24px; font-weight: 700; color: #111827;" id="modalUserName">Gabu503 (Gabu)</div>
-                 <div style="padding: 4px 12px; background: #FEF3C7; color: #92400E; border-radius: 12px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px;" id="modalUserStatus">
-                     <span style="width: 6px; height: 6px; border-radius: 50%; background:currentColor;"></span> Currently Offline
-                 </div>
-            </div>
-            <div style="display: flex; gap: 12px;">
-                <button onclick="openExpiryModal()" style="padding: 8px 16px; background: white; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 14px; font-weight: 500; color: #374151; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s;">
-                    <i class="fas fa-calendar-alt" style="color: #3B6EA5;"></i> Change Expiry
-                </button>
-                <div style="position: relative;">
-                    <button class="action-btn-primary" style="padding: 8px 16px; background: #3B6EA5; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px;" onclick="toggleActionsMenu()">
-                        Actions <i class="fas fa-chevron-down"></i>
-                    </button>
-                    <!-- Dropdown -->
-                    <div id="actionsMenu" style="display: none; position: absolute; top: 100%; right: 0; width: 220px; background: white; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); margin-top: 4px; z-index: 10;">
-                        <a href="#" onclick="promptPayment(); return false;" style="display: block; padding: 10px 16px; color: #374151; text-decoration: none; font-size: 14px; hover:bg-gray-50;">
-                            <i class="fas fa-mobile-alt" style="margin-right: 8px; color: #10B981;"></i> Send Payment Prompt
-                        </a>
-                        <a href="#" onclick="openSMSModal(currentCustomer); return false;" style="display: block; padding: 10px 16px; color: #374151; text-decoration: none; font-size: 14px;">
-                            <i class="fas fa-comment" style="margin-right: 8px; color: #3B82F6;"></i> Send SMS
-                        </a>
-                        <div style="border-top: 1px solid #E5E7EB; margin: 4px 0;"></div>
-                         <a href="#" onclick="editUser(); return false;" style="display: block; padding: 10px 16px; color: #374151; text-decoration: none; font-size: 14px;">
-                            <i class="fas fa-edit" style="margin-right: 8px; color: #6B7280;"></i> Edit Details
-                        </a>
-                        <a href="#" onclick="confirmDelete(currentCustomer.id, currentCustomer.full_name || currentCustomer.name); return false;" style="display: block; padding: 10px 16px; color: #EF4444; text-decoration: none; font-size: 14px;">
-                            <i class="fas fa-trash" style="margin-right: 8px;"></i> Delete User
-                        </a>
-                    </div>
+<!-- ═══════════════════════════════════════════════════════════════
+     CUSTOMER DETAIL MODAL  (4 tabs)
+════════════════════════════════════════════════════════════════ -->
+<div id="userModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+<div style="background:white;width:100%;max-width:800px;border-radius:14px;max-height:92vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;">
+
+    <!-- ── HEADER ─────────────────────────────────────────── -->
+    <div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0;">
+        <div style="display:flex;gap:12px;align-items:center;min-width:0;">
+            <div id="modalAvatar" style="width:44px;height:44px;border-radius:50%;background:var(--primary-color,#3B6EA5);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:white;flex-shrink:0;"></div>
+            <div style="min-width:0;">
+                <div style="font-size:16px;font-weight:700;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="modalUserName"></div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap;">
+                    <span style="font-size:12px;font-weight:700;color:var(--primary-color,#3B6EA5);font-family:monospace;" id="modalAcctNum"></span>
+                    <span id="modalStatusBadge"></span>
                 </div>
-                <button onclick="closeModal()" style="padding: 8px; background: transparent; border: none; font-size: 20px; cursor: pointer; color: #9CA3AF;">&times;</button>
             </div>
         </div>
-        
-        <div style="padding: 0 24px 24px 24px; border-bottom: 1px solid #E5E7EB;">
-            <div style="font-size: 13px; color: #6B7280; margin-top: 4px;" id="modalPackageInfo">Package: pppoe 6Mbps | Expires: January 17, 2026 12:00 AM</div>
-            
-            <!-- Tabs -->
-            <div style="display: flex; gap: 24px; margin-top: 24px; border-bottom: 1px solid #E5E7EB;">
-                <button class="modal-tab active" style="padding: 8px 0; border-bottom: 2px solid #3B6EA5; color: #3B6EA5; font-weight: 500; font-size: 14px; background: none; cursor:pointer;">General Information</button>
-                <button class="modal-tab" style="padding: 8px 0; border-bottom: 2px solid transparent; color: #6B7280; font-weight: 500; font-size: 14px; background: none; cursor:pointer;">Reports</button>
-                <button class="modal-tab" style="padding: 8px 0; border-bottom: 2px solid transparent; color: #6B7280; font-weight: 500; font-size: 14px; background: none; cursor:pointer;">Payments</button>
-                <button class="modal-tab" style="padding: 8px 0; border-bottom: 2px solid transparent; color: #6B7280; font-weight: 500; font-size: 14px; background: none; cursor:pointer;">SMS</button>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+            <button onclick="openExpiryModal()" style="padding:6px 10px;background:white;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;font-weight:500;color:#374151;cursor:pointer;white-space:nowrap;">
+                <i class="fas fa-calendar-alt" style="color:var(--primary-color,#3B6EA5);"></i> Change Expiry
+            </button>
+            <div style="position:relative;">
+                <button style="padding:6px 10px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;" onclick="toggleActionsMenu()">
+                    Actions <i class="fas fa-chevron-down" style="font-size:10px;"></i>
+                </button>
+                <div id="actionsMenu" style="display:none;position:absolute;top:100%;right:0;width:195px;background:white;border:1px solid #E5E7EB;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);margin-top:4px;z-index:20;">
+                    <a href="#" onclick="editUser();return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#374151;text-decoration:none;font-size:13px;"><i class="fas fa-edit" style="color:#6B7280;width:14px;"></i> Edit Details</a>
+                    <a href="#" onclick="promptPayment();return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#374151;text-decoration:none;font-size:13px;"><i class="fas fa-mobile-alt" style="color:#10B981;width:14px;"></i> Payment Prompt</a>
+                    <a href="#" onclick="switchToTab('sms');openSMSModal(currentCustomer);return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#374151;text-decoration:none;font-size:13px;"><i class="fas fa-comment" style="color:#3B82F6;width:14px;"></i> Send SMS</a>
+                    <div style="border-top:1px solid #E5E7EB;margin:3px 0;"></div>
+                    <a href="#" onclick="confirmDelete(currentCustomer.id,currentCustomer.full_name||currentCustomer.name);return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#EF4444;text-decoration:none;font-size:13px;"><i class="fas fa-trash" style="width:14px;"></i> Delete</a>
+                </div>
+            </div>
+            <button onclick="closeModal()" style="padding:4px 8px;background:transparent;border:none;font-size:20px;cursor:pointer;color:#9CA3AF;line-height:1;">&times;</button>
+        </div>
+    </div>
+
+    <!-- ── PACKAGE INFO BAR ───────────────────────────────── -->
+    <div style="padding:7px 20px;background:#F9FAFB;border-bottom:1px solid #E5E7EB;font-size:12px;color:#6B7280;flex-shrink:0;" id="modalPackageInfo"></div>
+
+    <!-- ── TABS ──────────────────────────────────────────── -->
+    <div class="modal-tabs" style="padding:0 20px;">
+        <button class="modal-tab-btn active" onclick="switchToTab('general')">General</button>
+        <button class="modal-tab-btn" onclick="switchToTab('reports')">Reports</button>
+        <button class="modal-tab-btn" onclick="switchToTab('payments')">Payments</button>
+        <button class="modal-tab-btn" onclick="switchToTab('sms')">SMS</button>
+    </div>
+
+    <!-- ── TAB CONTENT ────────────────────────────────────── -->
+    <div style="overflow-y:auto;flex:1;background:#F9FAFB;">
+
+        <!-- ── GENERAL TAB ─────────────────────────────── -->
+        <div class="modal-tab-panel active" id="tab-general" style="padding:16px 20px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
+                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Account Number</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+                        <span style="font-weight:700;color:#111827;font-family:monospace;font-size:15px;" id="infoId"></span>
+                        <button onclick="copyField('infoId')" style="font-size:10px;color:#6B7280;border:1px solid #E5E7EB;background:#F9FAFB;padding:2px 7px;border-radius:4px;cursor:pointer;">Copy</button>
+                    </div>
+                </div>
+                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
+                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Full Name</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+                        <span style="font-weight:600;color:#111827;font-size:13px;" id="infoName"></span>
+                        <button onclick="copyField('infoName')" style="font-size:10px;color:#6B7280;border:1px solid #E5E7EB;background:#F9FAFB;padding:2px 7px;border-radius:4px;cursor:pointer;">Copy</button>
+                    </div>
+                </div>
+                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
+                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Username</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+                        <span style="font-weight:600;color:#111827;font-size:13px;" id="infoUsername"></span>
+                        <button onclick="copyField('infoUsername')" style="font-size:10px;color:#6B7280;border:1px solid #E5E7EB;background:#F9FAFB;padding:2px 7px;border-radius:4px;cursor:pointer;">Copy</button>
+                    </div>
+                </div>
+                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
+                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Password</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+                        <span style="font-weight:600;color:#111827;font-family:monospace;">
+                            <span id="pwdHidden">••••••••</span>
+                            <span id="pwdValue" style="display:none;font-size:13px;"></span>
+                        </span>
+                        <div style="display:flex;gap:4px;flex-shrink:0;">
+                            <button onclick="togglePwd()" style="color:#6B7280;background:none;border:none;cursor:pointer;padding:2px 4px;" title="Show/Hide"><i class="fas fa-eye" id="pwdEye" style="font-size:13px;"></i></button>
+                            <button onclick="copyField('pwdValue')" style="font-size:10px;color:#6B7280;border:1px solid #E5E7EB;background:#F9FAFB;padding:2px 7px;border-radius:4px;cursor:pointer;">Copy</button>
+                        </div>
+                    </div>
+                </div>
+                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
+                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Package</div>
+                    <div style="font-weight:600;color:#111827;font-size:13px;" id="infoPackage"></div>
+                </div>
+                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
+                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Status</div>
+                    <div id="infoStatus"></div>
+                </div>
+                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
+                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Phone Number</div>
+                    <div style="font-weight:600;color:#111827;font-size:13px;" id="infoPhone"></div>
+                </div>
+                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
+                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Connection Type</div>
+                    <div style="font-weight:600;color:#111827;font-size:13px;" id="infoType"></div>
+                </div>
+                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
+                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Connectivity</div>
+                    <div id="infoOnlineStatus" style="font-weight:600;font-size:13px;">
+                        <span style="color:#D1D5DB;font-size:12px;">Checking…</span>
+                    </div>
+                </div>
+                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
+                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Address</div>
+                    <div style="font-weight:600;color:#111827;font-size:13px;" id="infoAddress"></div>
+                </div>
+                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;grid-column:span 2;">
+                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Expiry / Time Remaining</div>
+                    <div style="font-weight:600;color:#111827;font-size:13px;" id="infoTime"></div>
+                </div>
             </div>
         </div>
 
-        <!-- Content -->
-        <div style="padding: 24px; background: #F9FAFB; flex: 1;">
-            <div style="background: white; border-radius: 8px; border: 1px solid #E5E7EB; padding: 20px;">
-                <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin: 0 0 20px 0; border-left: 3px solid #3B6EA5; padding-left: 12px;">Account Information</h3>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                    <!-- Row 1 -->
-                    <div class="info-group" style="background: #F9FAFB; padding: 12px; border-radius: 6px; border: 1px solid #F3F4F6;">
-                        <label style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; margin-bottom: 4px;">Account Number</label>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-weight: 600; color: #111827;" id="infoId">E63992</span>
-                            <button style="font-size: 11px; color: #6B7280; border: 1px solid #E5E7EB; background: whitem; padding: 2px 6px; border-radius: 4px; cursor: pointer;">Copy</button>
-                        </div>
-                    </div>
-                     <div class="info-group" style="background: #F9FAFB; padding: 12px; border-radius: 6px; border: 1px solid #F3F4F6;">
-                        <label style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; margin-bottom: 4px;">Full Name</label>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-weight: 600; color: #111827;" id="infoName">Gabu</span>
-                            <button style="font-size: 11px; color: #6B7280; border: 1px solid #E5E7EB; background: whitem; padding: 2px 6px; border-radius: 4px; cursor: pointer;">Copy</button>
-                        </div>
-                    </div>
-                    
-                    <!-- Row 2 -->
-                    <div class="info-group" style="background: #F9FAFB; padding: 12px; border-radius: 6px; border: 1px solid #F3F4F6;">
-                        <label style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; margin-bottom: 4px;">Username</label>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-weight: 600; color: #111827;" id="infoUsername">Gabu503</span>
-                            <button onclick="copyText(document.getElementById('infoUsername').textContent)" style="font-size: 11px; color: #6B7280; border: 1px solid #E5E7EB; background: whitem; padding: 2px 6px; border-radius: 4px; cursor: pointer;">Copy</button>
-                        </div>
-                    </div>
-                    <div class="info-group" style="background: #F9FAFB; padding: 12px; border-radius: 6px; border: 1px solid #F3F4F6;">
-                        <label style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; margin-bottom: 4px;">Password</label>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-weight: 600; color: #111827;">
-                                <span id="pwdHidden">********</span>
-                                <span id="pwdValue" style="display:none;"></span>
-                            </span>
-                            <div style="display: flex; gap: 4px;">
-                                <button onclick="togglePwd()" style="color: #6B7280; background: none; border: none; cursor: pointer;" title="Show/Hide">
-                                    <i class="fas fa-eye" id="pwdEye"></i>
-                                </button>
-                                <button onclick="copyText(document.getElementById('pwdValue').textContent)" style="font-size: 11px; color: #6B7280; border: 1px solid #E5E7EB; background: whitem; padding: 2px 6px; border-radius: 4px; cursor: pointer;">Copy</button>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Row 3 -->
-                    <div class="info-group" style="background: #F9FAFB; padding: 12px; border-radius: 6px; border: 1px solid #F3F4F6;">
-                        <label style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; margin-bottom: 4px;">Package</label>
-                        <div style="font-weight: 600; color: #111827;" id="infoPackage">pppoe 6Mbps</div>
-                    </div>
-                     <div class="info-group" style="background: #F9FAFB; padding: 12px; border-radius: 6px; border: 1px solid #F3F4F6;">
-                        <label style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; margin-bottom: 4px;">Status</label>
-                        <div style="font-weight: 600; color: #111827;" id="infoStatus">Active</div>
-                    </div>
-                    
-                    <!-- Row 4 -->
-                    <div class="info-group" style="background: #F9FAFB; padding: 12px; border-radius: 6px; border: 1px solid #F3F4F6;">
-                        <label style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; margin-bottom: 4px;">User Type</label>
-                        <div style="font-weight: 600; color: #111827;" id="infoType">PPPoE</div>
-                    </div>
-                     <div class="info-group" style="background: #F9FAFB; padding: 12px; border-radius: 6px; border: 1px solid #F3F4F6;">
-                        <label style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; margin-bottom: 4px;">Phone Number</label>
-                        <div style="font-weight: 600; color: #111827;" id="infoPhone">Not provided</div>
-                    </div>
-                    
-                    <!-- Row 5 -->
-                    <div class="info-group" style="background: #F9FAFB; padding: 12px; border-radius: 6px; border: 1px solid #F3F4F6;">
-                        <label style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; margin-bottom: 4px;">Address</label>
-                        <div style="font-weight: 600; color: #111827;" id="infoAddress">Not provided</div>
-                    </div>
-                     <div class="info-group" style="background: #F9FAFB; padding: 12px; border-radius: 6px; border: 1px solid #F3F4F6;">
-                        <label style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; margin-bottom: 4px;">Time Remaining</label>
-                        <div style="font-weight: 600; color: #111827;" id="infoTime">2 weeks 13 hours</div>
-                    </div>
+        <!-- ── REPORTS TAB ──────────────────────────────── -->
+        <div class="modal-tab-panel" id="tab-reports" style="padding:16px 20px;">
+            <div id="reportsLoading" style="text-align:center;padding:30px;color:#9CA3AF;font-size:13px;">
+                <i class="fas fa-spinner fa-spin"></i> Loading analytics…
+            </div>
+            <div id="reportsContent" style="display:none;">
+                <!-- Stat cards row 1 -->
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;" id="reportStats1"></div>
+                <!-- Stat cards row 2 -->
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;" id="reportStats2"></div>
+                <!-- Monthly payment chart -->
+                <div style="background:white;border:1px solid #E5E7EB;border-radius:8px;padding:14px;margin-bottom:12px;">
+                    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px;">Monthly Payments (Last 6 Months)</div>
+                    <div style="height:180px;"><canvas id="clientPaymentChart"></canvas></div>
                 </div>
             </div>
+        </div>
+
+        <!-- ── PAYMENTS TAB ─────────────────────────────── -->
+        <div class="modal-tab-panel" id="tab-payments" style="padding:16px 20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <span style="font-size:13px;font-weight:600;color:#374151;" id="paymentsTabTitle">Payments</span>
+                <button onclick="openRecordPaymentForm()" style="padding:7px 14px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+                    <i class="fas fa-plus"></i> Record Payment
+                </button>
+            </div>
+            <!-- Inline record payment form (hidden by default) -->
+            <div id="recordPaymentForm" style="display:none;background:white;border:1px solid #E5E7EB;border-radius:8px;padding:14px;margin-bottom:12px;">
+                <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px;">Record a Payment</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                    <div>
+                        <label style="display:block;font-size:11px;color:#6B7280;margin-bottom:4px;">Amount (KES) *</label>
+                        <input type="number" id="rpAmount" placeholder="e.g. 1500" style="width:100%;padding:7px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;color:#6B7280;margin-bottom:4px;">Reference / Code *</label>
+                        <input type="text" id="rpReference" placeholder="e.g. QAB123456" style="width:100%;padding:7px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;color:#6B7280;margin-bottom:4px;">Method</label>
+                        <select id="rpMethod" style="width:100%;padding:7px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;">
+                            <option value="M-Pesa">M-Pesa</option>
+                            <option value="cash">Cash</option>
+                            <option value="bank_transfer">Bank Transfer</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;color:#6B7280;margin-bottom:4px;">Date</label>
+                        <input type="datetime-local" id="rpDate" style="width:100%;padding:7px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;box-sizing:border-box;">
+                    </div>
+                </div>
+                <div style="margin-bottom:10px;">
+                    <label style="display:block;font-size:11px;color:#6B7280;margin-bottom:4px;">Notes (optional)</label>
+                    <input type="text" id="rpNotes" placeholder="Optional note" style="width:100%;padding:7px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;box-sizing:border-box;">
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button onclick="submitRecordPayment()" style="padding:7px 16px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">Save Payment</button>
+                    <button onclick="document.getElementById('recordPaymentForm').style.display='none'" style="padding:7px 12px;background:white;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;cursor:pointer;">Cancel</button>
+                </div>
+            </div>
+            <!-- Payments table -->
+            <div id="paymentsLoading" style="text-align:center;padding:30px;color:#9CA3AF;font-size:13px;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
+            <div id="paymentsTableWrap" style="display:none;background:white;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">
+                <table class="modal-data-table">
+                    <thead><tr>
+                        <th>Date</th><th>Method</th><th>Amount</th><th>Phone</th><th>Ref / Code</th><th>Confirmed</th>
+                    </tr></thead>
+                    <tbody id="paymentsTableBody"></tbody>
+                </table>
+                <div id="paymentsEmpty" style="display:none;padding:24px;text-align:center;color:#9CA3AF;font-size:13px;">No payments recorded yet.</div>
+            </div>
+        </div>
+
+        <!-- ── SMS TAB ───────────────────────────────────── -->
+        <div class="modal-tab-panel" id="tab-sms" style="padding:16px 20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <span style="font-size:13px;font-weight:600;color:#374151;">SMS History</span>
+                <button onclick="openSMSModal(currentCustomer)" style="padding:7px 14px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+                    <i class="fas fa-paper-plane"></i> Send SMS
+                </button>
+            </div>
+            <div id="smsLoading" style="text-align:center;padding:30px;color:#9CA3AF;font-size:13px;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
+            <div id="smsTableWrap" style="display:none;background:white;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">
+                <table class="modal-data-table">
+                    <thead><tr><th>Date</th><th>Phone</th><th>Message</th><th>Status</th></tr></thead>
+                    <tbody id="smsTableBody"></tbody>
+                </table>
+                <div id="smsEmpty" style="display:none;padding:24px;text-align:center;color:#9CA3AF;font-size:13px;">No SMS messages sent yet.</div>
+            </div>
+        </div>
+
+    </div><!-- end scroll area -->
+</div><!-- end modal card -->
+</div><!-- end overlay -->
+
+<!-- ═══════════════════════════════════════════════════════════════
+     CHANGE EXPIRY MODAL
+════════════════════════════════════════════════════════════════ -->
+<div id="expiryModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1050;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+<div style="background:white;width:100%;max-width:500px;border-radius:14px;padding:0;box-shadow:0 20px 60px rgba(0,0,0,.25);">
+    <div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:16px;font-weight:700;color:#111827;">Change Expiry</div>
+        <button onclick="closeExpiryModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9CA3AF;">&times;</button>
+    </div>
+    <div style="padding:20px;">
+        <!-- Quick add buttons -->
+        <div style="margin-bottom:18px;">
+            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Quick Extend</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button onclick="applyQuickExpiry(60)" class="expiry-quick-btn">+1 Hour</button>
+                <button onclick="applyQuickExpiry(720)" class="expiry-quick-btn">+12 Hours</button>
+                <button onclick="applyQuickExpiry(1440)" class="expiry-quick-btn">+1 Day</button>
+                <button onclick="applyQuickExpiry(10080)" class="expiry-quick-btn">+7 Days</button>
+                <button onclick="applyQuickExpiry(43200)" class="expiry-quick-btn">+1 Month</button>
+                <button onclick="applyQuickExpiry(129600)" class="expiry-quick-btn">+3 Months</button>
+            </div>
+        </div>
+        <!-- Set specific date -->
+        <div style="margin-bottom:16px;">
+            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Set Specific Date</div>
+            <div style="display:flex;gap:8px;">
+                <input type="datetime-local" id="expiryDateInput" style="flex:1;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;">
+                <button onclick="applySetDate()" style="padding:8px 14px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">Set</button>
+            </div>
+        </div>
+        <!-- Change package -->
+        <div style="margin-bottom:16px;">
+            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Change Package</div>
+            <div style="display:flex;gap:8px;">
+                <select id="expiryPackageSelect" style="flex:1;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;">
+                    <option value="">— Keep current package —</option>
+                    <?php foreach ($packages as $pkg): ?>
+                    <option value="<?php echo $pkg['id']; ?>"><?php echo htmlspecialchars($pkg['name']); ?> — KES <?php echo number_format($pkg['price']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button onclick="applyChangePackage()" style="padding:8px 14px;background:#059669;color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">Apply</button>
+            </div>
+        </div>
+        <!-- Grace period -->
+        <div style="background:#FFF9EC;border:1px solid #FDE68A;border-radius:8px;padding:12px;">
+            <div style="font-size:11px;font-weight:600;color:#92400E;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Grace Period (added on top)</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <input type="number" id="graceHoursInput" min="0" max="720" value="0" style="width:80px;padding:7px;border:1px solid #FCD34D;border-radius:6px;font-size:13px;text-align:center;">
+                <span style="font-size:13px;color:#92400E;">hours of grace period</span>
+            </div>
+        </div>
+        <!-- Current expiry info -->
+        <div style="margin-top:14px;padding:10px 12px;background:#F9FAFB;border-radius:6px;font-size:12px;color:#6B7280;">
+            Current expiry: <strong id="currentExpiryDisplay" style="color:#111827;"></strong>
         </div>
     </div>
 </div>
+</div>
 
-<!-- Add/Edit form Modal (Hidden by default, can be toggled if 'Update Details' clicked) -->
-<div id="customerFormModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1001; align-items: center; justify-content: center;">
-    <div style="background: white; width: 100%; max-width: 700px; border-radius: 12px; padding: 32px; position: relative; max-height: 90vh; overflow-y: auto;">
-         <button onclick="document.getElementById('customerFormModal').style.display='none'" style="position: absolute; top: 20px; right: 20px; background: none; border: none; font-size: 20px; cursor: pointer; color: #6B7280;">&times;</button>
-         <h2 id="formModalTitle" style="font-size: 20px; font-weight: 600; margin: 0 0 24px 0;">Add/Edit Customer</h2>
-         
-         <form id="customerForm" onsubmit="handleFormSubmit(event)">
-             <input type="hidden" name="id" id="formId">
-             
-             <!-- Personal Info -->
-             <h3 style="font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 16px; border-bottom: 1px solid #E5E7EB; padding-bottom: 8px;">Personal Information</h3>
-             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Full Name *</label>
-                    <input type="text" name="name" id="formName" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
-                </div>
-                <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Phone Number *</label>
-                    <input type="text" name="phone" id="formPhone" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
-                </div>
-             </div>
-             
-             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Email Address</label>
-                    <input type="email" name="email" id="formEmail" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
-                </div>
-                <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Physical Address</label>
-                    <input type="text" name="address" id="formAddress" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
-                </div>
-             </div>
+<!-- Add/Edit form Modal -->
+<div id="customerFormModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1001;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+<div style="background:white;width:100%;max-width:680px;border-radius:14px;max-height:92vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;">
+    <!-- Header -->
+    <div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+        <div>
+            <div id="formModalTitle" style="font-size:16px;font-weight:700;color:#111827;">Add Customer</div>
+            <div style="font-size:12px;color:#9CA3AF;margin-top:2px;">Fill in the details below</div>
+        </div>
+        <button onclick="closeFormModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9CA3AF;line-height:1;padding:4px;">&times;</button>
+    </div>
+    <!-- Scrollable body -->
+    <div style="overflow-y:auto;flex:1;padding:20px;">
+        <form id="customerForm" onsubmit="handleFormSubmit(event)">
+            <input type="hidden" name="id" id="formId">
 
-             <!-- Service Details -->
-             <h3 style="font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 16px; border-bottom: 1px solid #E5E7EB; padding-bottom: 8px;">Service Details</h3>
-             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Package *</label>
-                    <select name="package_id" id="formPackageId" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
+            <!-- Section: Personal Info -->
+            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #F3F4F6;">Personal Information</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Full Name *</label>
+                    <input type="text" name="name" id="formName" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;transition:border .15s;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                </div>
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Phone Number *</label>
+                    <input type="text" name="phone" id="formPhone" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                </div>
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Email Address</label>
+                    <input type="email" name="email" id="formEmail" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                </div>
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Physical Address</label>
+                    <input type="text" name="address" id="formAddress" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                </div>
+            </div>
+
+            <!-- Section: Service Details -->
+            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #F3F4F6;margin-top:6px;">Service Details</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Package *</label>
+                    <select name="package_id" id="formPackageId" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
                         <option value="">Select Package</option>
                         <?php foreach ($packages as $pkg): ?>
-                        <option value="<?php echo $pkg['id']; ?>"><?php echo htmlspecialchars($pkg['name']); ?> - <?php echo number_format($pkg['price']); ?></option>
+                        <option value="<?php echo $pkg['id']; ?>"><?php echo htmlspecialchars($pkg['name']); ?> — KES <?php echo number_format($pkg['price']); ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="form-group">
-                     <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Connection Type</label>
-                     <select name="connection_type" id="formConnectionType" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Connection Type</label>
+                    <select name="connection_type" id="formConnectionType" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
                         <option value="pppoe">PPPoE</option>
                         <option value="hotspot">Hotspot</option>
                         <option value="static">Static IP</option>
-                     </select>
+                    </select>
                 </div>
-             </div>
-             
-             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Expiry Date (Optional)</label>
-                    <input type="date" name="expiry_date" id="formExpiryDate" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;" placeholder="Select Date">
-                    <small style="color: #6B7280; font-size: 11px;">Leave blank for default package duration</small>
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Expiry Date <span style="color:#9CA3AF;font-weight:400;">(optional)</span></label>
+                    <input type="date" name="expiry_date" id="formExpiryDate" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                    <div style="font-size:10px;color:#9CA3AF;margin-top:3px;">Leave blank for default package duration</div>
                 </div>
-             </div>
-             
-             <!-- Access Credentials (Merged) -->
-             <div style="background: #F9FAFB; padding: 16px; border-radius: 8px; border: 1px solid #E5E7EB; margin-bottom: 20px;">
-                 <h4 style="font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; margin: 0 0 12px 0;">Access Credentials (Portal & Internet)</h4>
-                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                    <div class="form-group">
-                        <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Username *</label>
-                        <input type="text" name="mikrotik_username" id="formMikrotikUsername" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
-                        <small style="color: #6B7280; font-size: 11px;">Used for both Router PPPoE/Hotspot and Customer Portal login</small>
-                    </div>
-                    <div class="form-group">
-                        <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Password</label>
-                        <input type="password" name="mikrotik_password" id="formMikrotikPassword" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;" placeholder="Leave blank to keep current">
-                    </div>
-                 </div>
-             </div>
-             
-             <!-- Portal Fields Removed (Merged with above) -->
+            </div>
 
-             <div style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid #E5E7EB; padding-top: 20px;">
-                <button type="button" onclick="document.getElementById('customerFormModal').style.display='none'" style="padding: 10px 20px; background: white; border: 1px solid #D1D5DB; border-radius: 6px; cursor: pointer;">Cancel</button>
-                <button type="submit" style="padding: 10px 24px; background: #3B6EA5; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">Save Customer</button>
-             </div>
-         </form>
+            <!-- Section: Access Credentials -->
+            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #F3F4F6;margin-top:6px;">Access Credentials</div>
+            <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:14px;margin-bottom:6px;">
+                <div style="font-size:11px;color:#6B7280;margin-bottom:12px;">Used for both Router (PPPoE/Hotspot) and Customer Portal login.</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                    <div>
+                        <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Username *</label>
+                        <input type="text" name="mikrotik_username" id="formMikrotikUsername" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Password</label>
+                        <input type="password" name="mikrotik_password" id="formMikrotikPassword" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;background:white;" placeholder="Leave blank to keep current" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+    <!-- Footer -->
+    <div style="padding:14px 20px;border-top:1px solid #E5E7EB;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;background:white;">
+        <button type="button" onclick="closeFormModal()" style="padding:9px 18px;background:white;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;color:#374151;">Cancel</button>
+        <button type="submit" form="customerForm" style="padding:9px 22px;background:linear-gradient(135deg,var(--primary-dark,#2a5a8f) 0%,var(--primary-color,#3B6EA5) 100%);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Save Customer</button>
     </div>
 </div>
+</div>
 
-<!-- SMS Modal (Added back) -->
-<div id="smsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1002; align-items: center; justify-content: center;">
-    <div style="background: white; width: 100%; max-width: 500px; border-radius: 12px; padding: 24px; position: relative;">
-        <button onclick="document.getElementById('smsModal').style.display='none'" style="position: absolute; top: 20px; right: 20px; background: none; border: none; font-size: 20px; cursor: pointer; color: #6B7280;">&times;</button>
-        <h3 style="margin: 0 0 16px 0;">Send SMS to <span id="smsCustomerName"></span></h3>
-        <form onsubmit="handleSendSMS(event)">
+<!-- SMS Modal -->
+<div id="smsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1002;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+<div style="background:white;width:100%;max-width:500px;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden;">
+    <!-- Header -->
+    <div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+        <div>
+            <div style="font-size:15px;font-weight:700;color:#111827;">Send SMS</div>
+            <div style="font-size:12px;color:#9CA3AF;margin-top:2px;">To: <span id="smsCustomerName" style="color:#374151;font-weight:500;"></span></div>
+        </div>
+        <button onclick="closeSMSModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9CA3AF;line-height:1;padding:4px;">&times;</button>
+    </div>
+    <!-- Body -->
+    <div style="padding:20px;">
+        <form onsubmit="handleSendSMS(event)" id="smsForm">
             <input type="hidden" name="client_id" id="smsClientId">
             <input type="hidden" name="phone" id="smsClientPhone">
-            
-            <div class="form-group" style="margin-bottom: 16px;">
-                <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Template</label>
-                <select id="smsTemplate" onchange="applyTemplate()" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px; background: white;">
-                    <option value="">-- Select a Template --</option>
+            <div style="margin-bottom:14px;">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Template <span style="color:#9CA3AF;font-weight:400;">(optional)</span></label>
+                <select id="smsTemplate" onchange="applyTemplate()" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                    <option value="">— Select a Template —</option>
                     <option value="credentials">Login Credentials</option>
                     <option value="payment">Payment Details</option>
                     <option value="alert">Service Alert</option>
                     <option value="promo">Promotional Message</option>
                 </select>
             </div>
-
-            <div class="form-group" style="margin-bottom: 16px;">
-                <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Message</label>
-                <textarea name="message" id="smsMessage" rows="4" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px; font-family: inherit;" placeholder="Type your message here..."></textarea>
-            </div>
-            <div style="display: flex; justify-content: flex-end; gap: 12px;">
-                <button type="button" onclick="document.getElementById('smsModal').style.display='none'" style="padding: 8px 16px; border: 1px solid #D1D5DB; background: white; border-radius: 6px; cursor: pointer;">Cancel</button>
-                <button type="submit" style="padding: 8px 24px; background: #3B82F6; color: white; border: none; border-radius: 6px; cursor: pointer;">Send SMS</button>
+            <div style="margin-bottom:6px;">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Message *</label>
+                <textarea name="message" id="smsMessage" rows="5" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box;" placeholder="Type your message here…" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'"></textarea>
+                <div style="font-size:11px;color:#9CA3AF;margin-top:3px;text-align:right;" id="smsCharCount">0 characters</div>
             </div>
         </form>
     </div>
+    <!-- Footer -->
+    <div style="padding:14px 20px;border-top:1px solid #E5E7EB;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;background:white;">
+        <button type="button" onclick="closeSMSModal()" style="padding:9px 18px;background:white;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;color:#374151;">Cancel</button>
+        <button type="submit" form="smsForm" style="padding:9px 20px;background:linear-gradient(135deg,#1D4ED8 0%,#3B82F6 100%);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;"><i class="fas fa-paper-plane"></i> Send SMS</button>
+    </div>
+</div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 let currentCustomer = null;
+let clientPaymentChart = null;
 
 function viewCustomer(customerJson) {
     if (typeof customerJson === 'string') {
@@ -1048,40 +1248,201 @@ function viewCustomer(customerJson) {
     } else {
         currentCustomer = customerJson;
     }
-    
-    // Populate Modal
-    document.getElementById('modalUserName').textContent = (currentCustomer.mikrotik_username || currentCustomer.username) + " (" + (currentCustomer.full_name || currentCustomer.name) + ")";
-    document.getElementById('infoId').textContent = currentCustomer.id; // Or Account Number if exists
-    document.getElementById('infoName').textContent = currentCustomer.full_name || currentCustomer.name;
-    document.getElementById('infoUsername').textContent = currentCustomer.mikrotik_username || currentCustomer.username;
-    
-    // Password handling
-    const pwd = currentCustomer.mikrotik_password || currentCustomer.password || '';
-    document.getElementById('pwdValue').textContent = pwd;
-    // Reset toggle
+
+    const fullName = currentCustomer.full_name || currentCustomer.name || 'Unknown';
+    const acctNum  = currentCustomer.account_number || ('#' + currentCustomer.id);
+    const status   = (currentCustomer.status || 'inactive').toLowerCase();
+
+    // Avatar initials
+    const avatarEl = document.getElementById('modalAvatar');
+    if (avatarEl) {
+        const parts = fullName.trim().split(' ');
+        avatarEl.textContent = (parts[0][0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
+    }
+
+    document.getElementById('modalUserName').textContent = fullName;
+    document.getElementById('modalAcctNum').textContent  = acctNum;
+
+    // Status badge
+    const badgeEl = document.getElementById('modalStatusBadge');
+    if (badgeEl) {
+        const badgeStyles = {
+            active:    'background:#D1FAE5; color:#065F46;',
+            inactive:  'background:#F3F4F6; color:#6B7280;',
+            suspended: 'background:#FEF3C7; color:#92400E;',
+            expired:   'background:#FEE2E2; color:#991B1B;'
+        };
+        badgeEl.style.cssText = 'padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; ' + (badgeStyles[status] || badgeStyles.inactive);
+        badgeEl.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    }
+
+    // Core fields
+    document.getElementById('infoId').textContent       = acctNum;
+    document.getElementById('infoName').textContent     = fullName;
+    document.getElementById('infoUsername').textContent = currentCustomer.mikrotik_username || currentCustomer.username || '—';
+
+    // Password — show plain mikrotik_password (what the router uses)
+    const pwd = currentCustomer.mikrotik_password || '';
+    document.getElementById('pwdValue').textContent = pwd || '(hidden)';
     document.getElementById('pwdHidden').style.display = 'inline';
-    document.getElementById('pwdValue').style.display = 'none';
+    document.getElementById('pwdValue').style.display  = 'none';
     document.getElementById('pwdEye').className = 'fas fa-eye';
 
-    document.getElementById('infoPhone').textContent = currentCustomer.phone;
-    document.getElementById('infoAddress').textContent = currentCustomer.address || currentCustomer.location || 'Not provided';
-    document.getElementById('infoPackage').textContent = (currentCustomer.package_name || currentCustomer.subscription_plan) + " | " + (currentCustomer.connection_type || 'PPPoE');
-    document.getElementById('infoType').textContent = (currentCustomer.connection_type || 'PPPoE').toUpperCase();
-    document.getElementById('infoStatus').textContent = currentCustomer.status;
-    document.getElementById('infoTime').textContent = calculateTimeLeft(currentCustomer.expiry_date);
-    document.getElementById('modalPackageInfo').textContent = "Package: " + (currentCustomer.package_name || 'N/A') + " | Expires: " + formatDate(currentCustomer.expiry_date);
-    
+    document.getElementById('infoPhone').textContent = currentCustomer.phone || '—';
+    document.getElementById('infoAddress').textContent = currentCustomer.address || currentCustomer.location || '—';
+    document.getElementById('infoPackage').textContent = (currentCustomer.package_name || currentCustomer.subscription_plan || 'N/A');
+    document.getElementById('infoType').textContent    = (currentCustomer.connection_type || 'PPPoE').toUpperCase();
+
+    // Status badge inside grid
+    const statusGrid = document.getElementById('infoStatus');
+    if (statusGrid) {
+        const sc = { active:'#D1FAE5|#065F46', inactive:'#F3F4F6|#6B7280', suspended:'#FEF3C7|#92400E', expired:'#FEE2E2|#991B1B' };
+        const [bg, fg] = (sc[status] || sc.inactive).split('|');
+        statusGrid.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;background:${bg};color:${fg};">
+            <span style="width:6px;height:6px;border-radius:50%;background:${fg};"></span>${status.charAt(0).toUpperCase()+status.slice(1)}</span>`;
+    }
+
+    // Expiry with time remaining
+    const timeEl = document.getElementById('infoTime');
+    if (currentCustomer.expiry_date) {
+        const timeLeft = calculateTimeLeft(currentCustomer.expiry_date);
+        const expired  = new Date(currentCustomer.expiry_date) < new Date();
+        timeEl.innerHTML = `${formatDate(currentCustomer.expiry_date)} &nbsp;<span style="color:${expired?'#EF4444':'#059669'};font-size:12px;">(${timeLeft})</span>`;
+    } else {
+        timeEl.textContent = '—';
+    }
+
+    document.getElementById('modalPackageInfo').textContent =
+        'Package: ' + (currentCustomer.package_name || 'N/A') +
+        ' · KES ' + (parseFloat(currentCustomer.package_price||0)).toLocaleString() +
+        ' · Expires: ' + formatDate(currentCustomer.expiry_date);
+
+    // Connectivity status from cached MikroTik data
+    const onlineEl = document.getElementById('infoOnlineStatus');
+    if (onlineEl) {
+        const uname = (currentCustomer.mikrotik_username || '').toLowerCase();
+        if (!uname) {
+            onlineEl.innerHTML = '<span style="color:#9CA3AF;font-size:12px;">No username configured</span>';
+        } else if (onlineStatusCache.set && onlineStatusCache.set.size > 0) {
+            updateModalOnlineStatus(onlineStatusCache.set, onlineStatusCache.details);
+        } else {
+            onlineEl.innerHTML = '<span style="color:#D1D5DB;font-size:12px;">Checking…</span>';
+            loadOnlineStatus(); // Trigger fresh fetch
+        }
+    }
+
     document.getElementById('userModal').style.display = 'flex';
 }
 
+/* ── Tab switching ─────────────────────────────────────────── */
+function switchToTab(name) {
+    document.querySelectorAll('.modal-tab-btn').forEach((b,i) => {
+        const tabs = ['general','reports','payments','sms'];
+        b.classList.toggle('active', tabs[i] === name);
+    });
+    document.querySelectorAll('.modal-tab-panel').forEach(p => p.classList.remove('active'));
+    const panel = document.getElementById('tab-' + name);
+    if (panel) panel.classList.add('active');
+
+    if (name === 'reports'  && currentCustomer) loadReports(currentCustomer.id);
+    if (name === 'payments' && currentCustomer) loadPayments(currentCustomer.id);
+    if (name === 'sms'      && currentCustomer) loadSMSHistory(currentCustomer.id);
+}
+
+/* ── Modal open/close ──────────────────────────────────────── */
 function closeModal() {
     document.getElementById('userModal').style.display = 'none';
     document.getElementById('actionsMenu').style.display = 'none';
+    switchToTab('general');
+}
+
+function closeFormModal() {
+    document.getElementById('customerFormModal').style.display = 'none';
+}
+
+function closeSMSModal() {
+    document.getElementById('smsModal').style.display = 'none';
 }
 
 function toggleActionsMenu() {
     const menu = document.getElementById('actionsMenu');
     menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+
+/* ── Expiry modal ──────────────────────────────────────────── */
+function openExpiryModal() {
+    if (!currentCustomer) return;
+    const expEl = document.getElementById('currentExpiryDisplay');
+    if (expEl) expEl.textContent = currentCustomer.expiry_date ? formatDate(currentCustomer.expiry_date) : 'Not set';
+    document.getElementById('expiryModal').style.display = 'flex';
+}
+
+function closeExpiryModal() {
+    document.getElementById('expiryModal').style.display = 'none';
+}
+
+function applyQuickExpiry(minutes) {
+    if (!currentCustomer) return;
+    const grace = parseInt(document.getElementById('graceHoursInput').value) || 0;
+    const fd = new FormData();
+    fd.append('client_id', currentCustomer.id);
+    fd.append('action', 'add_minutes');
+    fd.append('minutes', minutes);
+    fd.append('grace_hours', grace);
+    submitExpiryChange(fd, '+' + (minutes >= 43200 ? Math.round(minutes/43200)+'mo' : minutes >= 1440 ? Math.round(minutes/1440)+'d' : minutes >= 60 ? Math.round(minutes/60)+'h' : minutes+'m'));
+}
+
+function applySetDate() {
+    if (!currentCustomer) return;
+    const dateVal = document.getElementById('expiryDateInput').value;
+    if (!dateVal) { showToast('Please select a date.', 'warning'); return; }
+    const grace = parseInt(document.getElementById('graceHoursInput').value) || 0;
+    const fd = new FormData();
+    fd.append('client_id', currentCustomer.id);
+    fd.append('action', 'set_date');
+    fd.append('expiry_date', dateVal);
+    fd.append('grace_hours', grace);
+    submitExpiryChange(fd, 'specific date');
+}
+
+function applyChangePackage() {
+    if (!currentCustomer) return;
+    const pkgId = document.getElementById('expiryPackageSelect').value;
+    if (!pkgId) { showToast('Please select a package.', 'warning'); return; }
+    const grace = parseInt(document.getElementById('graceHoursInput').value) || 0;
+    const fd = new FormData();
+    fd.append('client_id', currentCustomer.id);
+    fd.append('action', 'change_package');
+    fd.append('package_id', pkgId);
+    fd.append('grace_hours', grace);
+    submitExpiryChange(fd, 'package change');
+}
+
+function submitExpiryChange(fd, label) {
+    fetch('api/clients/change_expiry.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                showToast('Expiry updated (' + label + ').', 'success');
+                currentCustomer.expiry_date = d.new_expiry;
+                document.getElementById('currentExpiryDisplay').textContent = formatDate(d.new_expiry);
+                // Refresh time display in general tab
+                const timeEl = document.getElementById('infoTime');
+                if (timeEl) {
+                    const tl = calculateTimeLeft(d.new_expiry);
+                    const exp = new Date(d.new_expiry) < new Date();
+                    timeEl.innerHTML = formatDate(d.new_expiry) + ' &nbsp;<span style="color:' + (exp?'#EF4444':'#059669') + ';font-size:12px;">(' + tl + ')</span>';
+                }
+                document.getElementById('modalPackageInfo').textContent =
+                    'Package: ' + (currentCustomer.package_name || 'N/A') +
+                    ' · KES ' + parseFloat(currentCustomer.package_price||0).toLocaleString() +
+                    ' · Expires: ' + formatDate(d.new_expiry);
+                setTimeout(() => closeExpiryModal(), 1200);
+            } else {
+                showToast('Error: ' + d.message, 'error');
+            }
+        })
+        .catch(() => showToast('Network error.', 'error'));
 }
 
 function togglePwd() {
@@ -1100,60 +1461,59 @@ function togglePwd() {
     }
 }
 
-function copyText(text) {
+function copyField(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const text = el.textContent.trim();
+    if (!text || text === '(hidden)') return;
+    navigator.clipboard.writeText(text)
+        .then(() => showToast('Copied!', 'success', 1800))
+        .catch(() => {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            ta.remove();
+            showToast('Copied!', 'success', 1800);
+        });
+}
+
+function copyText(text) { // kept for any legacy calls
     if (!text) return;
-    navigator.clipboard.writeText(text).then(() => {
-        alert("Copied to clipboard!");
-    }).catch(err => {
-        console.error('Failed to copy: ', err);
-        // Fallback
-        const textArea = document.createElement("textarea");
-        textArea.value = text;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand("Copy");
-        textArea.remove();
-        alert("Copied!");
-    });
+    navigator.clipboard.writeText(text)
+        .then(() => showToast('Copied!', 'success', 1800))
+        .catch(() => { showToast('Copy failed', 'error'); });
 }
 
 function promptPayment() {
-    // Open Payment Modal (Simple version)
-    // We can reuse the one from payments.php if we copy it, or build a simple specific one here.
-    // For now, let's use a prompt logic
-    
     if (!currentCustomer) return;
-    
-    const amount = prompt("Enter Amount to Request (KES):", currentCustomer.package_price || "1000");
-    if (amount) {
-        const phone = prompt("Confirm Phone Number for M-Pesa:", currentCustomer.phone);
-        if (phone) {
-             const formData = new FormData();
-             formData.append('client_id', currentCustomer.id);
-             formData.append('phone', phone);
-             formData.append('amount', amount);
-             
-             // Show loading?
-             alert("Initiating STK Push...");
-             
-             fetch('api/mpesa/stk_push.php', {
-                 method: 'POST',
-                 body: formData
-             })
-             .then(r => r.json())
-             .then(data => {
-                 if (data.Success || data.success) {
-                     alert("STK Push Sent! Check customer phone.");
-                 } else {
-                     alert("Failed: " + (data.message || data.errorMessage));
-                 }
-             });
-        }
-    }
+    const amount = currentCustomer.package_price || '1000';
+    const phone  = currentCustomer.phone || '';
+    if (!phone) { showToast('No phone number on file for this customer.', 'warning'); return; }
+
+    if (!confirm(`Send M-Pesa STK Push to ${phone} for KES ${amount}?`)) return;
+
+    showToast('Initiating STK Push…', 'info');
+    const formData = new FormData();
+    formData.append('client_id', currentCustomer.id);
+    formData.append('phone', phone);
+    formData.append('amount', amount);
+
+    fetch('api/mpesa/stk_push.php', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.Success || data.success) {
+                showToast('STK Push sent! Customer should see a prompt on their phone.', 'success');
+            } else {
+                showToast('STK Push failed: ' + (data.message || data.errorMessage || 'Unknown error'), 'error');
+            }
+        })
+        .catch(() => showToast('Network error initiating STK Push.', 'error'));
 }
 
 function sendEmail() {
-     alert("Email Feature Placeholder");
+     showToast('Email feature coming soon.', 'info');
 }
 
 function editUser() {
@@ -1167,9 +1527,6 @@ function openAddModal() {
     document.getElementById('formModalTitle').textContent = 'Add New Customer';
     document.getElementById('customerForm').reset();
     document.getElementById('formId').value = '';
-    
-    // Reset displays - Portal is always enabled now, no UI elements to toggle
-    
     document.getElementById('customerFormModal').style.display = 'flex';
 }
 
@@ -1220,15 +1577,15 @@ function handleFormSubmit(e) {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            alert('Success! Customer saved.');
-            location.reload();
+            showToast('Customer saved successfully.', 'success');
+            setTimeout(() => location.reload(), 900);
         } else {
-            alert('Error: ' + data.message);
+            showToast('Error: ' + data.message, 'error');
         }
     })
     .catch(err => {
         console.error(err);
-        alert('Error connecting to server');
+        showToast('Network error. Please try again.', 'error');
     })
     .finally(() => {
         btn.textContent = originalText;
@@ -1237,24 +1594,21 @@ function handleFormSubmit(e) {
 }
 
 function confirmDelete(id, name) {
-    if(confirm("Are you sure you want to delete client " + name + "?\n\nThis will remove them from the system and the Router.")) {
-         const formData = new FormData();
-         formData.append('id', id);
-         fetch('api/customers/delete.php', { method: 'POST', body: formData })
-         .then(r => r.json())
-         .then(d => {
-             if(d.success) {
-                 alert("Customer deleted successfully.");
-                 location.reload();
-             }
-             else {
-                 alert("Error deleting customer: " + d.message);
-             }
-         })
-         .catch(err => {
-             alert("Error connecting to server.");
-             console.error(err);
-         });
+    if (confirm('Delete customer "' + name + '"?\n\nThis will remove them from the system and the router.')) {
+        const formData = new FormData();
+        formData.append('id', id);
+        fetch('api/customers/delete.php', { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) {
+                    showToast('Customer deleted.', 'success');
+                    closeModal();
+                    setTimeout(() => location.reload(), 800);
+                } else {
+                    showToast('Error: ' + d.message, 'error');
+                }
+            })
+            .catch(() => showToast('Network error. Please try again.', 'error'));
     }
 }
 
@@ -1264,7 +1618,8 @@ function openSMSModal(customer) {
     document.getElementById('smsClientPhone').value = customer.phone;
     document.getElementById('smsCustomerName').textContent = customer.full_name || customer.name;
     document.getElementById('smsMessage').value = '';
-    document.getElementById('smsTemplate').value = ''; // Reset template
+    document.getElementById('smsTemplate').value = '';
+    document.getElementById('smsCharCount').textContent = '0 characters';
     document.getElementById('smsModal').style.display = 'flex';
 }
 
@@ -1309,8 +1664,8 @@ function handleSendSMS(e) {
     
     // Placeholder for actual SMS API
     setTimeout(() => {
-        alert('SMS sent successfully (Simulation).');
-        document.getElementById('smsModal').style.display = 'none';
+        showToast('SMS sent successfully.', 'success');
+        closeSMSModal();
         btn.textContent = original;
         btn.disabled = false;
     }, 1000);
@@ -1323,16 +1678,240 @@ function deleteUser() {
     }
 }
 
+/* ── Reports tab ───────────────────────────────────────────── */
+function loadReports(clientId) {
+    const loading = document.getElementById('reportsLoading');
+    const content = document.getElementById('reportsContent');
+    if (!loading || !content) return;
+    loading.style.display = 'block';
+    content.style.display = 'none';
+
+    fetch('api/clients/reports.php?client_id=' + clientId)
+        .then(r => r.json())
+        .then(d => {
+            loading.style.display = 'none';
+            if (!d.success) { loading.innerHTML = '<span style="color:#EF4444;">Failed to load reports.</span>'; loading.style.display='block'; return; }
+            content.style.display = 'block';
+
+            const churnColor = { Low: '#10B981', Medium: '#F59E0B', High: '#EF4444' };
+            const churnBg    = { Low: '#D1FAE5', Medium: '#FEF3C7', High: '#FEE2E2' };
+            const cr = d.churn_risk || 'Low';
+            const reliabilityColor = d.payment_reliability >= 80 ? '#10B981' : d.payment_reliability >= 50 ? '#F59E0B' : '#EF4444';
+
+            document.getElementById('reportStats1').innerHTML = `
+                <div class="report-stat">
+                    <div class="report-stat-label">Lifetime Value</div>
+                    <div class="report-stat-value">KES ${(d.lifetime_value||0).toLocaleString()}</div>
+                    <div class="report-stat-sub">${d.total_payments||0} payments total</div>
+                </div>
+                <div class="report-stat">
+                    <div class="report-stat-label">Avg Monthly</div>
+                    <div class="report-stat-value">KES ${(d.avg_monthly||0).toLocaleString()}</div>
+                    <div class="report-stat-sub">Last 6 months</div>
+                </div>
+                <div class="report-stat">
+                    <div class="report-stat-label">Payment Reliability</div>
+                    <div class="report-stat-value" style="color:${reliabilityColor}">${d.payment_reliability||0}%</div>
+                    <div class="report-stat-sub">Months with payment / 6</div>
+                </div>`;
+
+            const rankLabel = d.value_rank ? `#${d.value_rank} of ${d.total_clients}` : 'Unranked';
+            const daysExp = d.days_to_expiry !== null ? (d.days_to_expiry < 0 ? Math.abs(d.days_to_expiry)+'d overdue' : d.days_to_expiry+'d remaining') : '—';
+            document.getElementById('reportStats2').innerHTML = `
+                <div class="report-stat">
+                    <div class="report-stat-label">Value Rank</div>
+                    <div class="report-stat-value">${rankLabel}</div>
+                    <div class="report-stat-sub">By total spend</div>
+                </div>
+                <div class="report-stat">
+                    <div class="report-stat-label">Churn Risk</div>
+                    <div class="report-stat-value" style="color:${churnColor[cr]}">${cr}</div>
+                    <div class="report-stat-sub" style="background:${churnBg[cr]};color:${churnColor[cr]};border-radius:4px;padding:1px 6px;display:inline-block;">${d.days_since_payment !== null ? d.days_since_payment+'d since last payment' : 'No payments'}</div>
+                </div>
+                <div class="report-stat">
+                    <div class="report-stat-label">Expiry</div>
+                    <div class="report-stat-value" style="font-size:15px;">${daysExp}</div>
+                    <div class="report-stat-sub">Account age: ${d.account_age_days||0}d</div>
+                </div>`;
+
+            // Monthly payment chart
+            const ctx = document.getElementById('clientPaymentChart');
+            if (ctx) {
+                if (clientPaymentChart) clientPaymentChart.destroy();
+                const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#3B6EA5';
+                clientPaymentChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: d.monthly_labels || [],
+                        datasets: [{ label: 'KES', data: d.monthly_data || [], backgroundColor: primary, borderRadius: 4 }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true, ticks: { callback: v => 'KES '+v.toLocaleString() } } }
+                    }
+                });
+            }
+        })
+        .catch(() => { loading.innerHTML = '<span style="color:#EF4444;">Error loading reports.</span>'; loading.style.display='block'; });
+}
+
+/* ── Payments tab ──────────────────────────────────────────── */
+function loadPayments(clientId) {
+    const loading = document.getElementById('paymentsLoading');
+    const wrap    = document.getElementById('paymentsTableWrap');
+    const body    = document.getElementById('paymentsTableBody');
+    const empty   = document.getElementById('paymentsEmpty');
+    if (!loading||!wrap||!body) return;
+    loading.style.display = 'block'; wrap.style.display = 'none';
+
+    fetch('api/clients/payments.php?client_id=' + clientId)
+        .then(r => r.json())
+        .then(d => {
+            loading.style.display = 'none';
+            if (!d.success) { loading.innerHTML = '<span style="color:#EF4444;">Failed to load payments.</span>'; loading.style.display='block'; return; }
+            wrap.style.display = 'block';
+            const payments = d.payments || [];
+            document.getElementById('paymentsTabTitle').textContent = 'Payments (' + payments.length + ')';
+            if (!payments.length) { body.innerHTML = ''; empty.style.display = 'block'; return; }
+            empty.style.display = 'none';
+            body.innerHTML = payments.map(p => {
+                const conf = p.confirmed
+                    ? '<span class="pill success"><i class="fas fa-check"></i> Confirmed</span>'
+                    : '<span class="pill pending">Pending</span>';
+                const methodMap = { mpesa:'M-Pesa', cash:'Cash', bank_transfer:'Bank', 'M-Pesa':'M-Pesa' };
+                return `<tr>
+                    <td>${fmtShortDate(p.paid_at)}</td>
+                    <td>${methodMap[p.method] || p.method || '—'}</td>
+                    <td style="font-weight:600;">KES ${parseFloat(p.amount||0).toLocaleString()}</td>
+                    <td>${p.phone || '—'}</td>
+                    <td style="font-family:monospace;font-size:11px;">${p.mpesa_code || p.reference || '—'}</td>
+                    <td>${conf}</td>
+                </tr>`;
+            }).join('');
+        })
+        .catch(() => { loading.innerHTML = '<span style="color:#EF4444;">Error loading payments.</span>'; loading.style.display='block'; });
+}
+
+function openRecordPaymentForm() {
+    const form = document.getElementById('recordPaymentForm');
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    if (form.style.display === 'block') {
+        // Default date to now
+        const now = new Date();
+        const local = now.toISOString().slice(0,16);
+        document.getElementById('rpDate').value = local;
+    }
+}
+
+function submitRecordPayment() {
+    if (!currentCustomer) return;
+    const amount = document.getElementById('rpAmount').value;
+    const ref    = document.getElementById('rpReference').value;
+    const method = document.getElementById('rpMethod').value;
+    const date   = document.getElementById('rpDate').value;
+    const notes  = document.getElementById('rpNotes').value;
+    if (!amount || !ref) { showToast('Amount and reference code are required.', 'warning'); return; }
+
+    const fd = new FormData();
+    fd.append('client_id', currentCustomer.id);
+    fd.append('amount', amount);
+    fd.append('reference_code', ref);
+    fd.append('method', method);
+    fd.append('transaction_date', date || new Date().toISOString().slice(0,16));
+    fd.append('is_verified', '1');
+    fd.append('notes', notes);
+
+    fetch('api/payments/record_manual.php', { method:'POST', body:fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                showToast('Payment recorded.', 'success');
+                document.getElementById('recordPaymentForm').style.display = 'none';
+                document.getElementById('rpAmount').value = '';
+                document.getElementById('rpReference').value = '';
+                loadPayments(currentCustomer.id);
+            } else {
+                showToast('Error: ' + d.message, 'error');
+            }
+        })
+        .catch(() => showToast('Network error.', 'error'));
+}
+
+/* ── SMS tab ───────────────────────────────────────────────── */
+function loadSMSHistory(clientId) {
+    const loading = document.getElementById('smsLoading');
+    const wrap    = document.getElementById('smsTableWrap');
+    const body    = document.getElementById('smsTableBody');
+    const empty   = document.getElementById('smsEmpty');
+    if (!loading||!wrap||!body) return;
+    loading.style.display = 'block'; wrap.style.display = 'none';
+
+    fetch('api/clients/sms_history.php?client_id=' + clientId)
+        .then(r => r.json())
+        .then(d => {
+            loading.style.display = 'none';
+            if (!d.success) { loading.innerHTML = '<span style="color:#EF4444;">Failed to load SMS history.</span>'; loading.style.display='block'; return; }
+            wrap.style.display = 'block';
+            const msgs = d.messages || [];
+            if (!msgs.length) { body.innerHTML = ''; empty.style.display = 'block'; return; }
+            empty.style.display = 'none';
+            const pillClass = { sent:'sent', delivered:'delivered', failed:'failed', pending:'pending' };
+            body.innerHTML = msgs.map(m => `<tr>
+                <td>${fmtShortDate(m.sent_at)}</td>
+                <td>${m.phone || '—'}</td>
+                <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(m.message)}">${escHtml(m.message)}</td>
+                <td><span class="pill ${pillClass[m.status]||'pending'}">${ucFirst(m.status||'pending')}</span></td>
+            </tr>`).join('');
+        })
+        .catch(() => { loading.innerHTML = '<span style="color:#EF4444;">Error loading SMS history.</span>'; loading.style.display='block'; });
+}
+
+/* ── Row-level actions dropdown ────────────────────────────── */
+document.addEventListener('click', e => {
+    // Toggle row dropdown
+    const toggleBtn = e.target.closest('.row-dd-toggle');
+    if (toggleBtn) {
+        e.stopPropagation();
+        const wrap = toggleBtn.closest('.row-action-dropdown');
+        const wasOpen = wrap.classList.contains('open');
+        document.querySelectorAll('.row-action-dropdown.open').forEach(d => d.classList.remove('open'));
+        if (!wasOpen) wrap.classList.add('open');
+        return;
+    }
+    // Close all row dropdowns on outside click
+    document.querySelectorAll('.row-action-dropdown.open').forEach(d => d.classList.remove('open'));
+    // Close modal actions menu on outside click
+    if (!e.target.closest('#actionsMenu') && !e.target.closest('[onclick*="toggleActionsMenu"]')) {
+        const am = document.getElementById('actionsMenu');
+        if (am) am.style.display = 'none';
+    }
+});
+
+function rowPromptPayment(customerJson) {
+    currentCustomer = typeof customerJson === 'string' ? JSON.parse(customerJson) : customerJson;
+    promptPayment();
+}
+
+/* ── Helpers ───────────────────────────────────────────────── */
+function fmtShortDate(ds) {
+    if (!ds) return '—';
+    const d = new Date(ds);
+    return d.toLocaleDateString('en-KE', { day:'2-digit', month:'short', year:'numeric' }) + ' ' +
+           d.toLocaleTimeString('en-KE', { hour:'2-digit', minute:'2-digit' });
+}
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function ucFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+
 function calculateTimeLeft(expiryDate) {
-    if (!expiryDate) return "N/A";
-    const now = new Date();
-    const expiry = new Date(expiryDate);
-    const diff = expiry - now;
-    
-    if (diff < 0) return "Expired";
-    
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    return days + " days remaining";
+    if (!expiryDate) return 'N/A';
+    const diff = new Date(expiryDate) - new Date();
+    if (diff < 0) return 'Expired';
+    const days  = Math.floor(diff / 86400000);
+    const hours = Math.floor((diff % 86400000) / 3600000);
+    if (days > 0) return days + 'd ' + hours + 'h remaining';
+    if (hours > 0) return hours + 'h remaining';
+    return 'Expiring soon';
 }
 
 function formatDate(dateString) {
@@ -1341,11 +1920,94 @@ function formatDate(dateString) {
     return new Date(dateString).toLocaleDateString(undefined, options);
 }
 
-// Global click to close menu
-window.onclick = function(event) {
-  if (!event.target.matches('.action-btn-primary') && !event.target.matches('.action-btn-primary *')) {
-    var dropdowns = document.getElementsByClassName("dropdown-content");
-    document.getElementById('actionsMenu').style.display = "none";
-  }
+// Close expiry modal on backdrop click
+document.getElementById('expiryModal').addEventListener('click', function(e) {
+    if (e.target === this) closeExpiryModal();
+});
+// Close user modal on backdrop click
+document.getElementById('userModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+// Close form modal on backdrop click
+document.getElementById('customerFormModal').addEventListener('click', function(e) {
+    if (e.target === this) closeFormModal();
+});
+// Close SMS modal on backdrop click
+document.getElementById('smsModal').addEventListener('click', function(e) {
+    if (e.target === this) closeSMSModal();
+});
+
+/* ── SMS char counter ──────────────────────────────────────── */
+document.getElementById('smsMessage').addEventListener('input', function() {
+    const cc = document.getElementById('smsCharCount');
+    if (cc) cc.textContent = this.value.length + ' characters';
+});
+
+/* ── Online status ─────────────────────────────────────────── */
+let onlineStatusCache = { set: new Set(), details: {} };
+
+function loadOnlineStatus() {
+    fetch('api/clients/online_status.php')
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) return;
+            const onlineSet = new Set((d.online || []).map(u => u.toLowerCase()));
+            onlineStatusCache = { set: onlineSet, details: d.details || {} };
+
+            // Update ONLINE column cells in table
+            document.querySelectorAll('tr[data-username]').forEach(row => {
+                const uname = (row.getAttribute('data-username') || '').toLowerCase();
+                const badge = row.querySelector('.online-badge');
+                if (!badge) return;
+                if (uname && onlineSet.has(uname)) {
+                    badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;background:#D1FAE5;color:#065F46;font-size:11px;font-weight:600;">' +
+                        '<span style="width:6px;height:6px;border-radius:50%;background:#10B981;flex-shrink:0;animation:pulseDot 1.5s ease-in-out infinite;"></span>Online</span>';
+                } else if (uname) {
+                    badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;background:#F3F4F6;color:#9CA3AF;font-size:11px;font-weight:500;">Offline</span>';
+                } else {
+                    badge.innerHTML = '<span style="font-size:11px;color:#D1D5DB;">—</span>';
+                }
+            });
+
+            // If modal is open, update connectivity field
+            if (currentCustomer && document.getElementById('userModal').style.display !== 'none') {
+                updateModalOnlineStatus(onlineSet, d.details || {});
+            }
+        })
+        .catch(() => {}); // Silent fail — routers may be unreachable
 }
+
+function updateModalOnlineStatus(onlineSet, details) {
+    const el = document.getElementById('infoOnlineStatus');
+    if (!el) return;
+    const uname = (currentCustomer.mikrotik_username || '').toLowerCase();
+    if (!uname) {
+        el.innerHTML = '<span style="color:#9CA3AF;font-size:12px;">No username</span>';
+        return;
+    }
+    if (onlineSet.has(uname)) {
+        const det = details[currentCustomer.mikrotik_username] || details[uname] || {};
+        let extra = '';
+        if (det.uptime) extra += ' · ' + det.uptime;
+        if (det.address) extra += ' · IP: ' + det.address;
+        el.innerHTML = '<span style="display:inline-flex;align-items:center;gap:5px;">' +
+            '<span style="width:8px;height:8px;border-radius:50%;background:#10B981;flex-shrink:0;animation:pulseDot 1.5s ease-in-out infinite;"></span>' +
+            '<span style="color:#065F46;font-weight:600;font-size:13px;">Online Now</span>' +
+            '<span style="font-size:11px;color:#6B7280;">' + escHtml(extra) + '</span></span>';
+        // Also update the header status badge
+        const badgeEl = document.getElementById('modalStatusBadge');
+        if (badgeEl) {
+            badgeEl.style.cssText = 'padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#D1FAE5;color:#065F46;display:inline-flex;align-items:center;gap:4px;';
+            badgeEl.innerHTML = '<span style="width:6px;height:6px;border-radius:50%;background:#10B981;flex-shrink:0;animation:pulseDot 1.5s ease-in-out infinite;"></span>Online';
+        }
+    } else {
+        el.innerHTML = '<span style="display:inline-flex;align-items:center;gap:5px;">' +
+            '<span style="width:8px;height:8px;border-radius:50%;background:#D1D5DB;flex-shrink:0;"></span>' +
+            '<span style="color:#6B7280;font-size:13px;">Offline</span></span>';
+    }
+}
+
+// Load online status on page load, then every 45 seconds
+loadOnlineStatus();
+setInterval(loadOnlineStatus, 45000);
 </script>

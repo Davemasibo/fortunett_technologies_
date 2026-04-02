@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"^[^/]*\\\\.php$|includes|api|config|classes\")",
+      "Bash(xargs grep:*)",
+      "Bash(xargs ls:*)",
+      "Bash(find /c/xampp/htdocs/fortunett_technologies_ -maxdepth 1 -type f -name \"*.php\" -exec grep -l \"header.*Content-Type.*json\" {})",
+      "Bash(grep -E \"\\\\.\\(php|sql\\)$\")",
+      "Bash(grep -l \"SELECT\\\\|INSERT\\\\|UPDATE\\\\|DELETE\" /c/xampp/htdocs/fortunett_technologies_/api/*.php)",
+      "Bash(grep -l SELECT.*FROM.*WHERE /c/xampp/htdocs/fortunett_technologies_/api/customer/*.php)",
+      "Bash(find C:/xampp/htdocs/fortunett_technologies_ -newer C:/xampp/htdocs/fortunett_technologies_/CLAUDE.md -name *.php -o -name *.sql)"
+    ]
+  }
+}

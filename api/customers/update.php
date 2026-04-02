@@ -7,16 +7,17 @@ require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
 
 // Validate Inputs
-$id = $_POST['id'] ?? 0;
-$name = $_POST['name'] ?? '';
-$email = $_POST['email'] ?? '';
-$phone = $_POST['phone'] ?? '';
-$username = $_POST['mikrotik_username'] ?? ''; // Sync with Mikrotik Username
+$id               = $_POST['id'] ?? 0;
+$name             = $_POST['name'] ?? '';
+$email            = $_POST['email'] ?? '';
+$phone            = $_POST['phone'] ?? '';
+$username         = $_POST['mikrotik_username'] ?? '';
 $mikrotik_username = $_POST['mikrotik_username'] ?? '';
 $mikrotik_password = $_POST['mikrotik_password'] ?? '';
-$package_id = $_POST['package_id'] ?? 0;
-$address = $_POST['address'] ?? '';
-$status = $_POST['status'] ?? 'active';
+$package_id       = $_POST['package_id'] ?? 0;
+$address          = $_POST['address'] ?? '';
+$status           = $_POST['status'] ?? 'active';
+$connection_type  = $_POST['connection_type'] ?? 'pppoe';
 
 if (empty($id) || empty($name)) {
     echo json_encode(['success' => false, 'message' => 'Customer ID and Name are required']);
@@ -51,13 +52,13 @@ if (empty($id) || empty($name)) {
         // 2. Get Package Details (if changed)
         $pkgName = $oldClient['subscription_plan'];
         if ($package_id) {
-            $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND tenant_id = ?");
+            $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)");
             $stmt->execute([$package_id, $tenant_id]);
             $package = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($package) {
                 $pkgName = $package['name'];
             } else {
-                 throw new Exception("Invalid package selected or access denied");
+                throw new Exception("Invalid package selected or access denied");
             }
         }
     

@@ -18,7 +18,7 @@ if (isLoggedIn()) {
     $tSettings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
     
     $current_theme = $tSettings['app_theme'] ?? 'light';
-    $brand_color = $tSettings['brand_color'] ?? '#3B6EA5';
+    $brand_color = $tSettings['brand_color'] ?? '#0f3460';
     $brand_font = $tSettings['brand_font'] ?? '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
     // Calculate darker shade for sidebar gradient/hover
@@ -56,14 +56,15 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="css/modern-design.css" rel="stylesheet">
     <link href="css/page-layout.css" rel="stylesheet">
+    <link href="css/premium-theme.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&family=Work+Sans:wght@300;400;500;600;700&display=swap');
 
         :root {
             --primary-color: <?php echo $brand_color; ?>;
             --primary: <?php echo $brand_color; ?>;
-            --primary-dark: <?php echo $brand_color_dark ?? '#2C5282'; ?>;
-            --primary-light: <?php echo $brand_color_light ?? '#4A90E2'; ?>;
+            --primary-dark: <?php echo $brand_color_dark ?? '#000c38'; ?>;
+            --primary-light: <?php echo $brand_color_light ?? '#375c88'; ?>;
             --brand-font: '<?php echo $brand_font; ?>', sans-serif;
             --secondary-color: #764ba2;
             --success-color: #28a745;
@@ -387,14 +388,34 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
         </button>
         
         <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav ms-auto">
+            <ul class="navbar-nav ms-auto align-items-center gap-2">
+                <?php
+                // Overdue invoice alert count
+                $overdueCount = 0;
+                if (!empty($tenant_id ?? null)) {
+                    try {
+                        $oStmt = $pdo->prepare("SELECT COUNT(*) FROM platform_invoices WHERE tenant_id = ? AND status = 'overdue'");
+                        $oStmt->execute([$tenant_id]);
+                        $overdueCount = (int)$oStmt->fetchColumn();
+                    } catch (Throwable $e) {}
+                }
+                ?>
+                <?php if ($overdueCount > 0): ?>
                 <li class="nav-item">
-                    <a class="nav-link" href="profile.php">
-                        <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($_SESSION['username'] ?? $_SESSION['user']['username'] ?? 'User'); ?>
+                    <a href="billing.php" class="nav-notif" title="<?= $overdueCount ?> overdue invoice(s)">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span class="notif-count"><?= $overdueCount ?></span>
+                    </a>
+                </li>
+                <?php endif; ?>
+                <li class="nav-item">
+                    <a class="nav-link d-flex align-items-center gap-2" href="profile.php" style="padding-right:4px;">
+                        <div class="nav-user-avatar"><?= strtoupper(substr($_SESSION['username'] ?? $_SESSION['user']['username'] ?? 'U', 0, 1)) ?></div>
+                        <span style="font-size:13px;"><?php echo htmlspecialchars($_SESSION['username'] ?? $_SESSION['user']['username'] ?? 'User'); ?></span>
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="logout.php">
+                    <a class="nav-link" href="logout.php" style="opacity:.85;">
                         <i class="fas fa-sign-out-alt me-1"></i>Logout
                     </a>
                 </li>

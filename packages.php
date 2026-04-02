@@ -242,7 +242,6 @@ include 'includes/sidebar.php';
         background: white;
         border-radius: 10px;
         border: 1px solid #E5E7EB;
-        overflow: hidden;
     }
     
     .packages-table {
@@ -357,10 +356,15 @@ include 'includes/sidebar.php';
         color: #3B6EA5;
     }
     
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .packages-table { min-width: 720px; }
+
     @media (max-width: 1024px) {
-        .filters-grid {
-            grid-template-columns: 1fr;
-        }
+        .filters-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+        .packages-container { padding: 16px; }
+        #packageModal > div { max-width: 100% !important; border-radius: 10px !important; }
     }
 </style>
 
@@ -456,6 +460,7 @@ include 'includes/sidebar.php';
 
         <!-- Packages Table -->
         <div class="packages-section">
+          <div class="table-scroll">
             <table class="packages-table">
                 <thead>
                     <tr>
@@ -528,89 +533,92 @@ include 'includes/sidebar.php';
                     <?php endforeach; ?>
                 </tbody>
             </table>
+          </div><!-- end table-scroll -->
         </div>
     </div>
 </div>
 
 <!-- Add/Edit Package Modal -->
-<div id="packageModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-    <div style="background: white; width: 100%; max-width: 600px; border-radius: 12px; padding: 32px; position: relative;">
-        <button onclick="closePackageModal()" style="position: absolute; top: 20px; right: 20px; background: none; border: none; font-size: 20px; cursor: pointer; color: #6B7280;">&times;</button>
-        
-        <h2 id="pkgModalTitle" style="font-size: 20px; font-weight: 600; color: #111827; margin: 0 0 24px 0;">Create Package</h2>
-        
+<div id="packageModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+<div style="background:white;width:100%;max-width:620px;border-radius:14px;max-height:92vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;">
+    <div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+        <div>
+            <div id="pkgModalTitle" style="font-size:16px;font-weight:700;color:#111827;">Create Package</div>
+            <div style="font-size:12px;color:#9CA3AF;margin-top:2px;">Configure package details and MikroTik settings</div>
+        </div>
+        <button onclick="closePackageModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9CA3AF;line-height:1;padding:4px;">&times;</button>
+    </div>
+    <div style="overflow-y:auto;flex:1;padding:20px;">
         <form id="packageForm" onsubmit="handlePackageSubmit(event)">
             <input type="hidden" name="id" id="packageId">
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Package Name</label>
-                    <input type="text" name="name" id="pkgName" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
-                </div>
-                <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Price (KES)</label>
-                    <input type="number" name="price" id="pkgPrice" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
-                </div>
-            </div>
-            
 
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Download (Mbps)</label>
-                    <input type="number" name="download_speed" id="pkgDownload" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
+            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #F3F4F6;">Basic Info</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Package Name *</label>
+                    <input type="text" name="name" id="pkgName" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
                 </div>
-                <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Upload (Mbps)</label>
-                    <input type="number" name="upload_speed" id="pkgUpload" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
-                </div>
-                <div class="form-group">
-                     <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Data Limit</label>
-                     <input type="number" name="data_limit" id="pkgDataLimit" placeholder="0 = Unlimited" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Price (KES) *</label>
+                    <input type="number" name="price" id="pkgPrice" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
                 </div>
             </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Connection Type</label>
-                    <select name="connection_type" id="pkgType" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
-                         <option value="pppoe">PPPoE</option>
-                         <option value="hotspot">Hotspot</option>
+
+            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #F3F4F6;margin-top:4px;">Speed & Limits</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Download (Mbps) *</label>
+                    <input type="number" name="download_speed" id="pkgDownload" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                </div>
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Upload (Mbps) *</label>
+                    <input type="number" name="upload_speed" id="pkgUpload" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                </div>
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Data Limit (GB)</label>
+                    <input type="number" name="data_limit" id="pkgDataLimit" placeholder="0 = Unlimited" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                </div>
+            </div>
+
+            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #F3F4F6;margin-top:4px;">Service Config</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Connection Type</label>
+                    <select name="connection_type" id="pkgType" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                        <option value="pppoe">PPPoE</option>
+                        <option value="hotspot">Hotspot</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Validity Duration</label>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                        <input type="number" name="validity_value" id="pkgValidityValue" value="1" min="1" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;" placeholder="Value">
-                        <select name="validity_unit" id="pkgValidityUnit" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Validity</label>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                        <input type="number" name="validity_value" id="pkgValidityValue" value="1" min="1" required style="width:100%;padding:9px 8px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                        <select name="validity_unit" id="pkgValidityUnit" style="width:100%;padding:9px 6px;border:1px solid #D1D5DB;border-radius:8px;font-size:12px;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
                             <option value="minutes">Minutes</option>
-                            <option value="minute">Minute</option>
                             <option value="hours">Hours</option>
-                            <option value="hour">Hour</option>
                             <option value="days">Days</option>
-                            <option value="day">Day</option>
+                            <option value="weeks">Weeks</option>
                             <option value="months" selected>Months</option>
-                            <option value="month">Month</option>
                         </select>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Device Limit</label>
-                    <input type="number" name="device_limit" id="pkgDeviceLimit" value="1" min="1" required style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Device Limit</label>
+                    <input type="number" name="device_limit" id="pkgDeviceLimit" value="1" min="1" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
                 </div>
             </div>
 
-             <div class="form-group" style="margin-bottom: 24px;">
-                <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 8px;">Description</label>
-                <textarea name="description" id="pkgDesc" rows="2" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;"></textarea>
-            </div>
-
-            <div style="display: flex; justify-content: flex-end; gap: 12px;">
-                <button type="button" onclick="closePackageModal()" style="padding: 10px 20px; background: white; border: 1px solid #D1D5DB; border-radius: 6px; cursor: pointer;">Cancel</button>
-                <button type="submit" style="padding: 10px 24px; background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">Save Package</button>
+            <div>
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Description</label>
+                <textarea name="description" id="pkgDesc" rows="2" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'"></textarea>
             </div>
         </form>
     </div>
+    <div style="padding:14px 20px;border-top:1px solid #E5E7EB;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
+        <button type="button" onclick="closePackageModal()" style="padding:9px 18px;background:white;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;color:#374151;">Cancel</button>
+        <button type="submit" form="packageForm" style="padding:9px 22px;background:linear-gradient(135deg,var(--primary-dark,#2C5282) 0%,var(--primary-color,#3B6EA5) 100%);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Save Package</button>
+    </div>
+</div>
 </div>
 
 <script>
@@ -618,7 +626,6 @@ function openAddPackageModal() {
     document.getElementById('pkgModalTitle').textContent = 'Create Package';
     document.getElementById('packageForm').reset();
     document.getElementById('packageId').value = '';
-    // Set defaults
     document.getElementById('pkgValidityValue').value = '1';
     document.getElementById('pkgValidityUnit').value = 'months';
     document.getElementById('pkgDeviceLimit').value = '1';
@@ -634,13 +641,12 @@ function openEditPackageModal(pkg) {
     document.getElementById('pkgUpload').value = pkg.upload_speed;
     document.getElementById('pkgType').value = pkg.connection_type || pkg.type || 'pppoe';
     document.getElementById('pkgValidityValue').value = pkg.validity_value || '1';
-    document.getElementById('pkgValidityUnit').value = pkg.validity_unit || 'months';
+    // Normalize unit (remove plural/singular variant)
+    const unit = (pkg.validity_unit || 'months').replace(/s$/, '') + 's';
+    document.getElementById('pkgValidityUnit').value = ['minutes','hours','days','weeks','months'].includes(unit) ? unit : (pkg.validity_unit || 'months');
     document.getElementById('pkgDeviceLimit').value = pkg.device_limit || '1';
-    document.getElementById('pkgValidityUnit').value = pkg.validity_unit || 'months';
-    document.getElementById('pkgDeviceLimit').value = pkg.device_limit || '1';
-    // document.getElementById('pkgProfile').value = pkg.mikrotik_profile; // Removed as field doesn't exist
-    document.getElementById('pkgDesc').value = pkg.description;
-    
+    document.getElementById('pkgDataLimit').value = pkg.data_limit || '';
+    document.getElementById('pkgDesc').value = pkg.description || '';
     document.getElementById('packageModal').style.display = 'flex';
 }
 
@@ -648,55 +654,47 @@ function closePackageModal() {
     document.getElementById('packageModal').style.display = 'none';
 }
 
+// Backdrop click to close
+document.getElementById('packageModal').addEventListener('click', function(e) {
+    if (e.target === this) closePackageModal();
+});
+
 function handlePackageSubmit(e) {
     e.preventDefault();
-    const form = e.target;
-    const formData = new FormData(form);
+    const formData = new FormData(document.getElementById('packageForm'));
     const id = formData.get('id');
     const url = id ? 'api/packages/update.php' : 'api/packages/create.php';
-    
-    const btn = form.querySelector('button[type="submit"]');
-    const originalText = btn.textContent;
-    btn.textContent = 'Saving...';
-    btn.disabled = true;
-    
-    fetch(url, {
-        method: 'POST',
-        body: formData
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            alert('Success! Package saved.');
-            location.reload();
-        } else {
-            alert('Error: ' + data.message);
-        }
-    })
-    .catch(err => alert('Error connecting to server'))
-    .finally(() => {
-        btn.textContent = originalText;
-        btn.disabled = false;
-    });
-}
 
-function deletePackage(id) {
-    if (confirm('Are you sure you want to delete this package? This cannot be undone.')) {
-        const formData = new FormData();
-        formData.append('id', id);
-        
-        fetch('api/packages/delete.php', {
-            method: 'POST',
-            body: formData
-        })
+    const btn = document.querySelector('[form="packageForm"]');
+    const orig = btn.textContent;
+    btn.textContent = 'Saving…';
+    btn.disabled = true;
+
+    fetch(url, { method: 'POST', body: formData })
         .then(r => r.json())
         .then(data => {
             if (data.success) {
-                location.reload();
+                showToast('Package saved successfully.', 'success');
+                setTimeout(() => location.reload(), 900);
             } else {
-                alert('Error: ' + data.message);
+                showToast('Error: ' + (data.message || 'Unknown error'), 'error');
+                btn.textContent = orig; btn.disabled = false;
             }
-        });
+        })
+        .catch(() => { showToast('Network error. Please try again.', 'error'); btn.textContent = orig; btn.disabled = false; });
+}
+
+function deletePackage(id) {
+    if (confirm('Delete this package? This cannot be undone.')) {
+        const fd = new FormData();
+        fd.append('id', id);
+        fetch('api/packages/delete.php', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) { showToast('Package deleted.', 'success'); setTimeout(() => location.reload(), 700); }
+                else showToast('Error: ' + data.message, 'error');
+            })
+            .catch(() => showToast('Network error.', 'error'));
     }
 }
 </script>
