@@ -1,6 +1,5 @@
 <?php
 require_once __DIR__ . '/../includes/config.php';
-require_once __DIR__ . '/../includes/auth.php';
 
 // Safaricom will POST JSON callbacks here
 $raw = file_get_contents('php://input');
