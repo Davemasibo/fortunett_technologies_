@@ -421,7 +421,7 @@ INSERT IGNORE INTO `platform_settings` (setting_key, setting_value) VALUES
     ('support_email',         'support@fortunetttech.site'),
     ('support_phone',         ''),
     ('platform_logo_url',     ''),
-    ('default_trial_days',    '30'),
+    ('default_trial_days',    '14'),
     ('require_email_verify',  '1'),
     ('auto_assign_plan_slug', 'starter'),
     ('signup_enabled',        '1'),

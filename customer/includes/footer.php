@@ -1,20 +1,18 @@
     </div> <!-- End content-wrapper -->
 
-    <footer class="text-center py-4 text-muted small mt-auto border-top">
-        <div class="container">
-            <p class="mb-1">&copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars($tenant_branding['company_name'] ?? 'ISP System'); ?>. All rights reserved.</p>
-            <?php if (!empty($tenant_branding['support_number']) || !empty($tenant_branding['support_email'])): ?>
-                <p class="mb-0">
-                    <i class="fas fa-headset me-1"></i> Support: 
-                    <?php if (!empty($tenant_branding['support_number'])): ?>
-                        <span class="me-3"><i class="fas fa-phone me-1"></i><?php echo htmlspecialchars($tenant_branding['support_number']); ?></span>
-                    <?php endif; ?>
-                    <?php if (!empty($tenant_branding['support_email'])): ?>
-                        <span><i class="fas fa-envelope me-1"></i><?php echo htmlspecialchars($tenant_branding['support_email']); ?></span>
-                    <?php endif; ?>
-                </p>
+    <footer style="text-align:center;padding:18px 24px;color:#6B7280;font-size:13px;margin-top:auto;border-top:1px solid #E5E7EB;">
+        <p style="margin:0 0 4px;">&copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars($tenant_branding['company_name'] ?? 'ISP System'); ?>. All rights reserved.</p>
+        <?php if (!empty($tenant_branding['support_number']) || !empty($tenant_branding['support_email'])): ?>
+        <p style="margin:0;">
+            <i class="fas fa-headset" style="margin-right:4px;"></i> Support:
+            <?php if (!empty($tenant_branding['support_number'])): ?>
+                <span style="margin-right:12px;"><i class="fas fa-phone" style="margin-right:3px;"></i><?php echo htmlspecialchars($tenant_branding['support_number']); ?></span>
             <?php endif; ?>
-        </div>
+            <?php if (!empty($tenant_branding['support_email'])): ?>
+                <span><i class="fas fa-envelope" style="margin-right:3px;"></i><?php echo htmlspecialchars($tenant_branding['support_email']); ?></span>
+            <?php endif; ?>
+        </p>
+        <?php endif; ?>
     </footer>
     </main>
     </div> <!-- End portal-wrapper -->

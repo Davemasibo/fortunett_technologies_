@@ -172,9 +172,17 @@ class TenantManager {
         try {
             // Generate unique provisioning token
             $provisioningToken = bin2hex(random_bytes(32));
-            
-            // Calculate trial end date (30 days from now)
-            $trialEndsAt = date('Y-m-d', strtotime('+30 days'));
+
+            // Read trial days from platform settings (default 14)
+            $trialDays = 14;
+            try {
+                $ts = $this->db->query("SELECT setting_value FROM platform_settings WHERE setting_key='default_trial_days' LIMIT 1");
+                $tv = $ts ? $ts->fetchColumn() : false;
+                if ($tv !== false && is_numeric($tv)) $trialDays = max(1, (int)$tv);
+            } catch (Exception $e) {}
+
+            // Calculate trial end date
+            $trialEndsAt = date('Y-m-d', strtotime("+{$trialDays} days"));
             
             $stmt = $this->db->prepare("
                 INSERT INTO tenants (
