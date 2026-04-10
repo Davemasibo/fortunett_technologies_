@@ -5,6 +5,22 @@ require_once __DIR__ . '/includes/email_helper.php';
 $error = '';
 $success = '';
 
+// Read platform-wide settings
+function getPlatformSetting($pdo, $key, $default = '') {
+    try {
+        $s = $pdo->prepare("SELECT setting_value FROM platform_settings WHERE setting_key = ? LIMIT 1");
+        $s->execute([$key]);
+        $val = $s->fetchColumn();
+        return $val !== false ? $val : $default;
+    } catch (Exception $e) { return $default; }
+}
+
+// Block signups if disabled by super admin
+$signupEnabled = getPlatformSetting($pdo, 'signup_enabled', '1');
+if ($signupEnabled === '0' && $_SERVER['REQUEST_METHOD'] !== 'GET') {
+    $error = "New registrations are currently closed. Please contact support.";
+}
+
 // Get tenant branding based on subdomain or request
 $branding = [
     'name' => 'FortuNNet Technologies',
@@ -125,17 +141,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->prepare("UPDATE users SET tenant_id = ?, account_prefix = ? WHERE id = ?")
                         ->execute([$tenantId, $accountPrefix, $user_id]);
 
-                    // Assign default Starter subscription plan
-                    $starterPlan = $pdo->query("SELECT id FROM platform_subscription_plans WHERE slug = 'starter' LIMIT 1")->fetchColumn();
+                    // Assign default subscription plan from platform settings (fallback: starter)
+                    $defaultPlanSlug = getPlatformSetting($pdo, 'auto_assign_plan_slug', 'starter');
+                    $starterPlan = $pdo->prepare("SELECT id FROM platform_subscription_plans WHERE slug = ? LIMIT 1");
+                    $starterPlan->execute([$defaultPlanSlug]);
+                    $starterPlan = $starterPlan->fetchColumn();
+                    if (!$starterPlan) {
+                        $starterPlan = $pdo->query("SELECT id FROM platform_subscription_plans WHERE is_active=1 ORDER BY pppoe_fee_per_user DESC LIMIT 1")->fetchColumn();
+                    }
                     if ($starterPlan) {
                         $pdo->prepare("UPDATE tenants SET subscription_plan_id = ? WHERE id = ?")
                             ->execute([$starterPlan, $tenantId]);
                     }
 
-                    $tenantUrl  = "https://" . $subdomain . ".fortunetttech.site";
+                    // Use platform domain from settings, fallback to hardcoded
+                    $platformDomain = getPlatformSetting($pdo, 'platform_domain', 'fortunetttech.site');
+                    $trialDays      = max(0, (int)getPlatformSetting($pdo, 'default_trial_days', 30));
+                    $tenantUrl  = "https://" . $subdomain . "." . $platformDomain;
                     $loginLink  = $tenantUrl . "/login.php";
                     $verifyLink = $tenantUrl . "/verify.php?token=" . $token;
-                    $trialEnds  = date('d M Y', strtotime('+30 days'));
+                    $trialEnds  = $trialDays > 0 ? date('d M Y', strtotime("+{$trialDays} days")) : 'N/A';
 
                     // Welcome + verification email
                     $subject = "Welcome to $business_name — Verify Your Account";

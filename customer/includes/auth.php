@@ -43,16 +43,20 @@ function getCurrentCustomer() {
  * Redirect to login if not authenticated
  */
 function requireCustomerLogin() {
+    // Build login URL relative to the current host so it works on any domain/subdomain
+    $scheme   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $loginUrl = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . '/customer/login.php';
+
     if (!isCustomerLoggedIn()) {
         $currentUrl = urlencode($_SERVER['REQUEST_URI']);
-        header('Location: /fortunett_technologies_/customer/login.php?redirect=' . $currentUrl);
+        header('Location: ' . $loginUrl . '?redirect=' . $currentUrl);
         exit;
     }
-    
+
     // Validate session
     $customer = getCurrentCustomer();
     if (!$customer) {
-        header('Location: /fortunett_technologies_/customer/login.php?session_expired=1');
+        header('Location: ' . $loginUrl . '?session_expired=1');
         exit;
     }
     
@@ -66,14 +70,16 @@ function requireCustomerLogin() {
  */
 function customerLogout() {
     global $pdo;
-    
+
     if (isset($_SESSION['customer_token'])) {
         $auth = new CustomerAuth($pdo);
         $auth->logout($_SESSION['customer_token']);
     }
-    
+
     session_destroy();
-    header('Location: /fortunett_technologies_/customer/login.php?logged_out=1');
+    $scheme   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $loginUrl = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . '/customer/login.php';
+    header('Location: ' . $loginUrl . '?logged_out=1');
     exit;
 }
 

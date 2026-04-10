@@ -25,20 +25,41 @@ function sendEmail($to, $subject, $body) {
     $mailPassword = get_env_var('MAIL_PASSWORD');
     $mailFromName = get_env_var('MAIL_FROM_NAME', 'ISP Portal');
 
-    // If no .env, try database settings
+    // If no .env, try platform_email_config (set by super admin Settings page)
+    if (!$mailHost || !$mailUsername) {
+        try {
+            $stmt = $pdo->query("SELECT * FROM platform_email_config WHERE id = 1 AND is_active = 1 LIMIT 1");
+            $settings = $stmt ? $stmt->fetch() : null;
+            if ($settings && !empty($settings['smtp_host'])) {
+                $mailHost     = $settings['smtp_host'];
+                $mailPort     = $settings['smtp_port'] ?? 587;
+                $mailUsername = $settings['smtp_username'] ?? null;
+                $mailPassword = $settings['smtp_password'] ?? null;
+                $mailFromName = $settings['from_name'] ?? 'ISP Portal';
+                // Allow from_email override (may differ from smtp_username)
+                if (!empty($settings['from_email'])) {
+                    $mailUsername = $settings['from_email'];
+                }
+            }
+        } catch (PDOException $e) {
+            // platform_email_config table may not exist yet — fall through to mail()
+        }
+    }
+
+    // Legacy fallback: email_settings table (old installations)
     if (!$mailHost || !$mailUsername) {
         try {
             $stmt = $pdo->query("SELECT * FROM email_settings WHERE id = 1");
-            $settings = $stmt->fetch();
-            if ($settings) {
-                $mailHost = $settings['smtp_host'] ?? 'smtp.gmail.com';
-                $mailPort = $settings['smtp_port'] ?? 587;
+            $settings = $stmt ? $stmt->fetch() : null;
+            if ($settings && !empty($settings['smtp_host'])) {
+                $mailHost     = $settings['smtp_host'];
+                $mailPort     = $settings['smtp_port'] ?? 587;
                 $mailUsername = $settings['from_email'] ?? null;
                 $mailPassword = $settings['smtp_password'] ?? null;
                 $mailFromName = $settings['from_name'] ?? 'ISP Portal';
             }
         } catch (PDOException $e) {
-            // Database not configured, use fallbacks
+            // Table not present — continue to mail() fallback
         }
     }
 
