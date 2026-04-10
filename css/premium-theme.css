@@ -47,7 +47,7 @@
 
 /* ── Premium sidebar redesign ────────────────────────────────────── */
 .sidebar {
-    background: linear-gradient(180deg, #1a2332 0%, var(--primary-dark, #2C5282) 60%, var(--primary-color, #3B6EA5) 100%) !important;
+    background: linear-gradient(180deg, #0d1117 0%, #131920 55%, #182030 100%) !important;
     border-right: none !important;
     box-shadow: 4px 0 24px rgba(0,0,0,.18) !important;
 }

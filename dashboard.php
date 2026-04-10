@@ -147,26 +147,33 @@ include 'includes/sidebar.php';
         justify-content: center;
         gap: 10px;
         padding: 14px 20px;
-        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%);
-        color: white;
-        border: none;
-        border-radius: 8px;
+        background: #1c1c1b;
+        border: 1px solid rgba(255,255,255,.08);
+        box-shadow: 6px 6px 14px rgba(0,0,0,.45), -3px -3px 8px rgba(255,255,255,.04);
+        color: rgba(255,255,255,.85);
+        border-radius: 12px;
         font-size: 14px;
         font-weight: 500;
         cursor: pointer;
         transition: all 0.2s;
         text-decoration: none;
     }
-    
-    .action-btn:hover {
-        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-dark) 100%);
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(44, 82, 130, 0.3);
-        color: white;
-    }
-    
+
     .action-btn i {
         font-size: 16px;
+        color: var(--primary-light, #5b8fc9);
+    }
+
+    .action-btn:hover {
+        background: var(--primary-dark, #1e3a5f);
+        border-color: var(--primary-color, #3B6EA5);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0,0,0,.55);
+        color: #fff;
+    }
+
+    .action-btn:hover i {
+        color: #fff;
     }
     
     /* Metrics Grid */
@@ -1026,6 +1033,7 @@ function refreshDashboard() {
             if (!s.success) { console.warn('Dashboard stats:', s.message); return; }
             updateStatCards(s);
             buildCharts(s);
+            if(typeof window.__patchChartsDark==='function') window.__patchChartsDark();
             updateRouterStatus(s.router_status || []);
         })
         .catch(err => console.error('Dashboard refresh error:', err))

@@ -158,6 +158,43 @@ hr{border-color:var(--neu-border) !important;}
 .section-title{color:var(--neu-text) !important;}
 .dashboard-container{background:transparent !important;}
 
+/* Status card (used for charts + router/alert panels on dashboard) */
+.status-card{background:var(--neu-s2) !important;border:1px solid var(--neu-border) !important;
+  border-radius:14px !important;box-shadow:var(--neu-card) !important;color:var(--neu-text) !important;}
+.status-card h5,.status-card h6,.status-card .card-title{color:#fff !important;}
+.status-card p,.status-card .text-muted{color:var(--neu-muted) !important;}
+
+/* Metric icons — remove light pastel backgrounds */
+.metric-icon,.metric-icon.revenue,.metric-icon.users,.metric-icon.growth,
+.metric-icon.warning,.metric-icon.info,.metric-icon.danger{
+  background:rgba(255,255,255,.07) !important;color:rgba(255,255,255,.8) !important;
+  border-radius:12px !important;}
+
+/* Router list inside status cards */
+.router-item{border-bottom:1px solid var(--neu-border) !important;}
+.router-name{color:#fff !important;font-weight:600;}
+.router-ip,.router-uptime{color:var(--neu-muted) !important;}
+.router-status-dot,.status-indicator{filter:none !important;}
+
+/* Alert items */
+.alert-item,.alert-item.warning,.alert-item.info,.alert-item.danger{
+  background:rgba(255,255,255,.04) !important;border-left-color:inherit !important;
+  border-radius:8px !important;}
+.alert-item.warning{border-left:3px solid #f59e0b !important;background:rgba(245,158,11,.08) !important;}
+.alert-item.info{border-left:3px solid #3b82f6 !important;background:rgba(59,130,246,.08) !important;}
+.alert-item.danger{border-left:3px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;}
+.alert-item .alert-title,.alert-item strong{color:#fff !important;}
+.alert-item .alert-desc,.alert-item small{color:var(--neu-muted) !important;}
+
+/* Chart select dropdowns on dashboard */
+select.chart-select,[id$="-period"],[id$="Period"]{
+  background:var(--neu-input) !important;border:1px solid rgba(255,255,255,.1) !important;
+  color:var(--neu-text) !important;border-radius:7px !important;}
+
+/* Quick action buttons */
+.action-btn,.quick-action-btn{color:#fff !important;}
+.action-btn .action-label,.action-btn span{color:rgba(255,255,255,.9) !important;}
+
 /* ── Page-specific containers (clients, packages, payments, etc.) ─ */
 .customers-container,.clients-container,.packages-container,
 .payments-container,.mikrotik-container,.billing-container,
@@ -280,6 +317,51 @@ tbody td{border-color:var(--neu-border) !important;color:var(--neu-text) !import
 })();
 </script>
 
+<!-- Chart.js global dark defaults — applied before charts are built (Chart.js v4) -->
+<script>
+(function applyChartDarkDefaults(){
+  if(typeof Chart === 'undefined'){ return; }
+  /* Global text/border color */
+  Chart.defaults.color = 'rgba(255,255,255,0.6)';
+  /* Grid lines for all registered scale types */
+  var scaleTypes = ['linear','logarithmic','category','time','timeseries','radialLinear'];
+  scaleTypes.forEach(function(t){
+    var s = Chart.defaults.scales && Chart.defaults.scales[t];
+    if(!s) return;
+    s.grid = s.grid || {};
+    s.grid.color = 'rgba(255,255,255,0.07)';
+    s.ticks = s.ticks || {};
+    s.ticks.color = 'rgba(255,255,255,0.55)';
+  });
+  /* Legend label color */
+  if(Chart.defaults.plugins && Chart.defaults.plugins.legend){
+    Chart.defaults.plugins.legend.labels = Chart.defaults.plugins.legend.labels || {};
+    Chart.defaults.plugins.legend.labels.color = 'rgba(255,255,255,0.7)';
+  }
+  /* Also re-apply to any already-created chart instances */
+  function patchLive(){
+    if(!Chart.instances) return;
+    Object.values(Chart.instances).forEach(function(ch){
+      if(!ch || !ch.options) return;
+      var scales = ch.options.scales || {};
+      Object.values(scales).forEach(function(ax){
+        ax.grid = ax.grid || {};
+        ax.grid.color = 'rgba(255,255,255,0.07)';
+        ax.ticks = ax.ticks || {};
+        ax.ticks.color = 'rgba(255,255,255,0.55)';
+      });
+      var leg = (ch.options.plugins||{}).legend;
+      if(leg){ leg.labels = leg.labels||{}; leg.labels.color='rgba(255,255,255,0.7)'; }
+      try{ ch.update('none'); }catch(e){}
+    });
+  }
+  /* Run now (for any synchronously-built charts) and again on DOMContentLoaded */
+  patchLive();
+  document.addEventListener('DOMContentLoaded', patchLive);
+  /* Also expose so dashboard refresh can call it */
+  window.__patchChartsDark = patchLive;
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <!-- Scroll-to-top button -->

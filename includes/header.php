@@ -233,7 +233,7 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
         }
         .sidebar {
             width: var(--sidebar-width);
-            background: linear-gradient(180deg, #111827 0%, #1e3a5f 55%, var(--primary-dark, #2C5282) 100%);
+            background: linear-gradient(180deg, #0d1117 0%, #131920 55%, #182030 100%);
             position: fixed;
             left: 0;
             top: var(--navbar-height);

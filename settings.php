@@ -397,7 +397,7 @@ input:checked + .set-slider:before { transform:translateX(20px); }
                                            value="<?php echo htmlspecialchars($tSettings['brand_color'] ?? '#3B6EA5'); ?>"
                                            oninput="document.querySelector('input[name=brand_color_picker]').value=this.value">
                                 </div>
-                                <div class="set-hint">Primary color for sidebar, buttons, and accents</div>
+                                <div class="set-hint">Accent color for navbar, buttons, and active highlights — app background theme is fixed dark</div>
                             </div>
                             <div class="col-md-4">
                                 <label class="set-label">Font</label>

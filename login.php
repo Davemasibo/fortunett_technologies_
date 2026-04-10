@@ -69,7 +69,7 @@ $branding = [
     'name' => 'FortuNNet Technologies',
     'color' => '#0f3460',
     'logo' => '',
-    'background' => 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
+    'background' => 'linear-gradient(135deg, #0d1117 0%, rgba(15,52,96,0.88) 100%)'
 ];
 
 // Detect subdomain
@@ -100,8 +100,6 @@ if ($subdomain && $subdomain !== 'localhost' && !filter_var($host, FILTER_VALIDA
             
             if (!empty($settings['brand_color'])) {
                 $branding['color'] = $settings['brand_color'];
-                // Create a gradient variant
-                $branding['background'] = "linear-gradient(135deg, {$settings['brand_color']} 0%, {$settings['brand_color']}99 100%)";
             }
             if (!empty($settings['system_logo'])) {
                 $branding['logo'] = $settings['system_logo'];
@@ -143,17 +141,22 @@ if (!$tenant_id) {
     <style>
         :root {
             --brand:          <?php echo $branding['color']; ?>;
-            --brand-glow:     rgba(<?php echo "$r,$g,$b"; ?>, 0.38);
-            --brand-gradient: <?php echo $branding['background']; ?>;
+            --brand-glow:     rgba(<?php echo "$r,$g,$b"; ?>, 0.35);
+            --brand-gradient: linear-gradient(135deg, #0d1117 0%, rgba(<?php echo "$r,$g,$b"; ?>, 0.88) 100%);
         }
     </style>
 </head>
 <body class="auth-page">
     <div class="auth-container">
         <div class="auth-header">
-            <div class="auth-icon-wrap">
-                <i class="fas fa-wifi"></i>
-            </div>
+            <?php if (!empty($branding['logo'])): ?>
+                <img src="<?php echo htmlspecialchars($branding['logo']); ?>" alt="Logo"
+                     style="height:48px;margin:0 auto 14px;display:block;object-fit:contain;">
+            <?php else: ?>
+                <div class="auth-icon-wrap">
+                    <i class="fas fa-wifi"></i>
+                </div>
+            <?php endif; ?>
             <h1><?php echo htmlspecialchars($branding['name']); ?></h1>
             <p>ISP Billing &amp; Management</p>
         </div>

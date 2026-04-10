@@ -143,8 +143,8 @@
         top: 12px;
         left: 12px;
         z-index: 1050;
-        background: #fff;
-        border: 1px solid rgba(0,0,0,0.1);
+        background: rgba(255,255,255,.12);
+        border: 1px solid rgba(255,255,255,.18);
         border-radius: 6px;
         padding: 8px 10px;
         display: flex;
@@ -152,15 +152,15 @@
         justify-content: center;
         cursor: pointer;
         transition: background 0.2s ease, transform 0.15s ease;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 8px rgba(0,0,0,.4);
         font-size: 16px;
-        color: #333;
+        color: #fff;
         height: 40px;
         width: 40px;
     }
 
     #sidebarToggle:hover {
-        background: #f0f0f0;
+        background: rgba(255,255,255,.22);
         transform: scale(1.05);
     }
 
@@ -175,8 +175,8 @@
         top: var(--navbar-height);
         bottom: 0;
         width: var(--sidebar-width);
-        background: linear-gradient(180deg, var(--primary-dark) 0%, var(--primary-color) 100%);
-        box-shadow: 2px 0 8px rgba(0,0,0,0.15);
+        background: linear-gradient(180deg, #0d1117 0%, #131920 55%, #182030 100%);
+        box-shadow: 4px 0 24px rgba(0,0,0,.5);
         z-index: 999;
         transition: transform 0.3s ease, width 0.3s ease, opacity 0.3s ease;
         transform: translateX(0);
@@ -274,11 +274,11 @@
         background: transparent;
     }
     .sidebar-menu::-webkit-scrollbar-thumb {
-        background: #ddd;
+        background: rgba(255,255,255,.18);
         border-radius: 3px;
     }
     .sidebar-menu::-webkit-scrollbar-thumb:hover {
-        background: #999;
+        background: rgba(255,255,255,.32);
     }
 
     /* Content wrapper adjustments */
@@ -287,7 +287,7 @@
         width: calc(100% - var(--sidebar-width));
         padding: 30px 0;
         min-height: calc(100vh - 60px);
-        background: #f8f9fa;
+        background: #141414;
         display: flex;
         justify-content: center;
         transition: margin-left 0.3s ease, width 0.3s ease;
