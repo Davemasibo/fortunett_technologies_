@@ -31,15 +31,12 @@ function sendEmail($to, $subject, $body) {
             $stmt = $pdo->query("SELECT * FROM platform_email_config WHERE id = 1 AND is_active = 1 LIMIT 1");
             $settings = $stmt ? $stmt->fetch() : null;
             if ($settings && !empty($settings['smtp_host'])) {
-                $mailHost     = $settings['smtp_host'];
-                $mailPort     = $settings['smtp_port'] ?? 587;
-                $mailUsername = $settings['smtp_username'] ?? null;
-                $mailPassword = $settings['smtp_password'] ?? null;
-                $mailFromName = $settings['from_name'] ?? 'ISP Portal';
-                // Allow from_email override (may differ from smtp_username)
-                if (!empty($settings['from_email'])) {
-                    $mailUsername = $settings['from_email'];
-                }
+                $mailHost      = $settings['smtp_host'];
+                $mailPort      = $settings['smtp_port'] ?? 587;
+                $mailUsername  = $settings['smtp_username'] ?? null;
+                $mailPassword  = $settings['smtp_password'] ?? null;
+                $mailFromName  = $settings['from_name'] ?? 'ISP Portal';
+                $mailFromEmail = !empty($settings['from_email']) ? $settings['from_email'] : $mailUsername;
             }
         } catch (PDOException $e) {
             // platform_email_config table may not exist yet — fall through to mail()
@@ -63,6 +60,11 @@ function sendEmail($to, $subject, $body) {
         }
     }
 
+    // Ensure from address is always set
+    if (empty($mailFromEmail)) {
+        $mailFromEmail = $mailUsername;
+    }
+
     // If still no credentials, use basic mail() function
     if (!$mailHost || !$mailUsername) {
         $fromEmail = 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
@@ -81,13 +83,13 @@ function sendEmail($to, $subject, $body) {
             $mail->isSMTP();
             $mail->Host = $mailHost;
             $mail->SMTPAuth = true;
-            $mail->Username = $mailUsername;
+            $mail->Username = $mailUsername;  // SMTP auth user (the Gmail account)
             $mail->Password = $mailPassword;
             $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
             $mail->Port = $mailPort;
-            
+
             // Recipients
-            $mail->setFrom($mailUsername, $mailFromName);
+            $mail->setFrom($mailFromEmail, $mailFromName);  // display From address
             $mail->addAddress($to);
             
             // Content
