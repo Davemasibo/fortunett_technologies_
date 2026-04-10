@@ -915,18 +915,23 @@ input:checked + .set-slider:before { transform:translateX(20px); }
 </div>
 </div>
 
-<?php if ($action_result): ?>
-<div class="position-fixed top-0 end-0 p-3" style="z-index:1100">
-    <div class="toast align-items-center text-white <?php echo strpos($action_result,'error')!==false?'bg-danger':'bg-success'; ?> border-0 show" role="alert">
-        <div class="d-flex">
-            <div class="toast-body">
-                <i class="fas <?php echo strpos($action_result,'error')!==false?'fa-exclamation-circle':'fa-check-circle'; ?> me-2"></i>
-                <?php echo htmlspecialchars(explode('|',$action_result)[1] ?? ''); ?>
-            </div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-        </div>
-    </div>
+<?php if ($action_result):
+    $ar_parts  = explode('|', $action_result, 2);
+    $ar_type   = $ar_parts[0];
+    $ar_msg    = $ar_parts[1] ?? $ar_parts[0];
+    $ar_is_err = ($ar_type === 'error');
+    $ar_bg     = $ar_is_err ? '#DC2626' : '#059669';
+    $ar_icon   = $ar_is_err ? 'fa-exclamation-circle' : 'fa-check-circle';
+?>
+<div id="action-banner" style="position:fixed;top:18px;right:18px;z-index:9999;max-width:420px;
+     background:<?php echo $ar_bg; ?>;color:#fff;padding:14px 18px;border-radius:10px;
+     box-shadow:0 4px 20px rgba(0,0,0,.35);display:flex;align-items:center;gap:10px;font-size:14px;">
+    <i class="fas <?php echo $ar_icon; ?>" style="font-size:18px;flex-shrink:0;"></i>
+    <span><?php echo htmlspecialchars($ar_msg); ?></span>
+    <button onclick="document.getElementById('action-banner').remove()"
+            style="margin-left:auto;background:none;border:none;color:#fff;cursor:pointer;font-size:18px;line-height:1;">&times;</button>
 </div>
+<script>setTimeout(function(){var b=document.getElementById('action-banner');if(b)b.remove();},6000);</script>
 <?php endif; ?>
 
 <script>

@@ -1,0 +1,517 @@
+/* ================================================================
+   FORTUNETT — DARK NEUMORPHISM THEME
+   Overrides modern-design.css + premium-theme.css for a unified
+   dark neumorphic look across the entire admin portal.
+   Loaded last so all overrides take effect.
+   ================================================================ */
+
+/* ── Dark background tokens ─────────────────────────────────────── */
+:root {
+    --neu-bg:        #141414;
+    --neu-surface:   #1c1c1b;
+    --neu-surface2:  #222221;
+    --neu-border:    rgba(255,255,255,0.06);
+    --neu-shadow-d:  rgba(0,0,0,.55);
+    --neu-shadow-l:  rgba(255,255,255,0.05);
+    --neu-text:      #e2e2e0;
+    --neu-muted:     #9a9a95;
+    --neu-input-bg:  #1a1a19;
+    /* neumorphic shadows */
+    --neu-raise:     6px 6px 16px var(--neu-shadow-d), -3px -3px 10px var(--neu-shadow-l), 0 0 0 1px var(--neu-border);
+    --neu-inset:     inset 3px 3px 8px var(--neu-shadow-d), inset -2px -2px 5px var(--neu-shadow-l);
+    --neu-card:      14px 14px 28px rgba(0,0,0,.5), -7px -7px 18px rgba(255,255,255,0.035), 0 0 0 1px var(--neu-border);
+}
+
+/* ── Page & layout backgrounds ──────────────────────────────────── */
+body,
+html {
+    background: var(--neu-bg) !important;
+    color: var(--neu-text) !important;
+}
+
+.main-layout,
+.page-wrapper,
+#main-content,
+.main-content,
+.content-area,
+.content-wrapper {
+    background: var(--neu-bg) !important;
+}
+
+.main-content-wrapper {
+    background: var(--neu-bg) !important;
+    color: var(--neu-text) !important;
+}
+
+/* Remove light footer */
+.main-layout > footer {
+    background: var(--neu-surface) !important;
+    border-top: 1px solid var(--neu-border) !important;
+    color: var(--neu-muted) !important;
+}
+
+/* ── Navbar / topbar ────────────────────────────────────────────── */
+.navbar,
+.topbar,
+nav.navbar {
+    background: var(--neu-surface) !important;
+    border-bottom: 1px solid var(--neu-border) !important;
+    box-shadow: 0 2px 16px rgba(0,0,0,.4) !important;
+}
+.navbar-brand,
+.navbar .nav-link,
+.navbar-text,
+.topbar-text {
+    color: var(--neu-text) !important;
+}
+.navbar-toggler-icon { filter: invert(1); }
+
+/* ── Cards — the core neumorphic surface ────────────────────────── */
+.card,
+.metric-card,
+.stat-card-premium,
+.dashboard-card,
+.stat-card,
+.info-card,
+.chart-card,
+.activity-card,
+.payment-card,
+.table-card {
+    background: var(--neu-surface2) !important;
+    border: 1px solid var(--neu-border) !important;
+    border-radius: 16px !important;
+    box-shadow: var(--neu-card) !important;
+    color: var(--neu-text) !important;
+}
+
+.card-header,
+.card-footer {
+    background: rgba(255,255,255,.03) !important;
+    border-color: var(--neu-border) !important;
+    color: var(--neu-text) !important;
+}
+
+.card-title,
+.card-header h5,
+.card-header h6,
+.card-header .h5,
+.card-header .h6 {
+    color: var(--neu-text) !important;
+}
+
+/* Top accent strip on metric cards */
+.metric-card::after,
+.stat-card-premium::after {
+    background: linear-gradient(90deg, var(--primary-dark, #2C5282), var(--primary-light, #4A90E2)) !important;
+}
+
+/* Metric card hover lift */
+.metric-card:hover,
+.stat-card-premium:hover {
+    transform: translateY(-3px) !important;
+    box-shadow: 18px 18px 36px rgba(0,0,0,.6), -8px -8px 22px rgba(255,255,255,0.04), 0 0 0 1px var(--neu-border) !important;
+}
+
+/* Metric icon backgrounds */
+.metric-icon,
+.stat-icon {
+    background: rgba(255,255,255,.06) !important;
+    border-radius: 12px !important;
+}
+
+/* Metric values */
+.metric-value,
+.stat-value,
+.metric-card h3,
+.metric-card .display-6 {
+    color: #fff !important;
+}
+.metric-label,
+.stat-label,
+.metric-card p,
+.metric-card .text-muted {
+    color: var(--neu-muted) !important;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────── */
+.table,
+.table-responsive table {
+    color: var(--neu-text) !important;
+}
+
+.table thead th,
+.table > thead > tr > th {
+    background: rgba(255,255,255,.05) !important;
+    border-color: var(--neu-border) !important;
+    color: var(--neu-muted) !important;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.table tbody tr {
+    border-color: var(--neu-border) !important;
+    transition: background .15s;
+}
+
+.table tbody tr:hover {
+    background: rgba(255,255,255,.04) !important;
+}
+
+.table tbody td {
+    border-color: var(--neu-border) !important;
+    color: var(--neu-text) !important;
+    vertical-align: middle;
+}
+
+.table-striped > tbody > tr:nth-child(odd) {
+    background: rgba(255,255,255,.02) !important;
+}
+
+/* DataTables */
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+    color: var(--neu-muted) !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    color: var(--neu-muted) !important;
+    border-radius: 6px !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background: var(--primary-color, #3B6EA5) !important;
+    color: #fff !important;
+    border-color: transparent !important;
+}
+
+/* ── Form controls ──────────────────────────────────────────────── */
+.form-control,
+.form-select,
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="tel"],
+input[type="url"],
+input[type="date"],
+input[type="time"],
+input[type="search"],
+textarea,
+select {
+    background: var(--neu-input-bg) !important;
+    border: 1px solid rgba(255,255,255,.08) !important;
+    border-radius: 9px !important;
+    color: var(--neu-text) !important;
+    box-shadow: var(--neu-inset) !important;
+    transition: border-color .2s, box-shadow .2s !important;
+}
+
+.form-control:focus,
+.form-select:focus,
+input:focus,
+textarea:focus,
+select:focus {
+    background: var(--neu-input-bg) !important;
+    border-color: var(--primary-color, #3B6EA5) !important;
+    color: #fff !important;
+    box-shadow: var(--neu-inset), 0 0 0 3px rgba(59,110,165,.25) !important;
+    outline: none !important;
+}
+
+.form-control::placeholder,
+input::placeholder,
+textarea::placeholder {
+    color: rgba(255,255,255,.3) !important;
+}
+
+.form-label,
+label {
+    color: var(--neu-muted) !important;
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: .02em;
+}
+
+.input-group-text {
+    background: rgba(255,255,255,.06) !important;
+    border: 1px solid rgba(255,255,255,.08) !important;
+    color: var(--neu-muted) !important;
+}
+
+.form-check-input {
+    background-color: var(--neu-input-bg) !important;
+    border-color: rgba(255,255,255,.15) !important;
+}
+.form-check-input:checked {
+    background-color: var(--primary-color, #3B6EA5) !important;
+    border-color: var(--primary-color, #3B6EA5) !important;
+}
+.form-check-label { color: var(--neu-text) !important; }
+
+/* ── Buttons ─────────────────────────────────────────────────────── */
+.btn-secondary,
+.btn-outline-secondary {
+    background: rgba(255,255,255,.08) !important;
+    border: 1px solid rgba(255,255,255,.12) !important;
+    color: var(--neu-text) !important;
+}
+.btn-secondary:hover,
+.btn-outline-secondary:hover {
+    background: rgba(255,255,255,.14) !important;
+    color: #fff !important;
+}
+
+.btn-light,
+.btn-outline-light {
+    background: rgba(255,255,255,.08) !important;
+    border-color: rgba(255,255,255,.12) !important;
+    color: var(--neu-text) !important;
+}
+.btn-light:hover { background: rgba(255,255,255,.15) !important; color:#fff !important; }
+
+.btn-outline-primary {
+    border-color: var(--primary-color, #3B6EA5) !important;
+    color: var(--primary-color, #3B6EA5) !important;
+}
+.btn-outline-primary:hover {
+    background: var(--primary-color, #3B6EA5) !important;
+    color: #fff !important;
+}
+
+/* ── Modals ─────────────────────────────────────────────────────── */
+.modal-content {
+    background: var(--neu-surface2) !important;
+    border: 1px solid var(--neu-border) !important;
+    border-radius: 18px !important;
+    box-shadow: var(--neu-card) !important;
+    color: var(--neu-text) !important;
+}
+.modal-header {
+    border-bottom: 1px solid var(--neu-border) !important;
+    background: rgba(255,255,255,.03) !important;
+}
+.modal-footer {
+    border-top: 1px solid var(--neu-border) !important;
+    background: rgba(255,255,255,.03) !important;
+}
+.modal-title { color: #fff !important; }
+.btn-close { filter: invert(1) grayscale(1) !important; }
+
+/* ── Dropdowns ──────────────────────────────────────────────────── */
+.dropdown-menu {
+    background: var(--neu-surface) !important;
+    border: 1px solid var(--neu-border) !important;
+    border-radius: 12px !important;
+    box-shadow: var(--neu-card) !important;
+}
+.dropdown-item {
+    color: var(--neu-text) !important;
+    border-radius: 8px;
+    margin: 2px 6px;
+    width: calc(100% - 12px);
+}
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background: rgba(255,255,255,.08) !important;
+    color: #fff !important;
+}
+.dropdown-divider { border-color: var(--neu-border) !important; }
+
+/* ── Alerts ─────────────────────────────────────────────────────── */
+.alert-info    { background: rgba(59,130,246,.12)  !important; border-color: rgba(59,130,246,.25)  !important; color: #93c5fd !important; }
+.alert-success { background: rgba(16,185,129,.12) !important; border-color: rgba(16,185,129,.25) !important; color: #6ee7b7 !important; }
+.alert-warning { background: rgba(245,158,11,.12) !important; border-color: rgba(245,158,11,.25) !important; color: #fcd34d !important; }
+.alert-danger  { background: rgba(239,68,68,.12)   !important; border-color: rgba(239,68,68,.25)   !important; color: #fca5a5 !important; }
+
+/* ── Nav tabs ───────────────────────────────────────────────────── */
+.nav-tabs {
+    border-bottom: 1px solid var(--neu-border) !important;
+}
+.nav-tabs .nav-link {
+    color: var(--neu-muted) !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+}
+.nav-tabs .nav-link:hover {
+    color: var(--neu-text) !important;
+    background: rgba(255,255,255,.04) !important;
+}
+.nav-tabs .nav-link.active {
+    background: transparent !important;
+    color: var(--primary-color, #3B6EA5) !important;
+    border-bottom-color: var(--primary-color, #3B6EA5) !important;
+}
+
+/* Nav pills */
+.nav-pills .nav-link {
+    color: var(--neu-muted) !important;
+    border-radius: 8px !important;
+}
+.nav-pills .nav-link.active,
+.nav-pills .show > .nav-link {
+    background: var(--primary-color, #3B6EA5) !important;
+    color: #fff !important;
+}
+
+/* ── Badges ─────────────────────────────────────────────────────── */
+.badge.bg-light   { background: rgba(255,255,255,.1) !important; color: var(--neu-text) !important; }
+.badge.bg-secondary { background: rgba(255,255,255,.12) !important; color: var(--neu-text) !important; }
+
+/* ── Page headings ──────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+    color: var(--neu-text) !important;
+}
+
+.text-dark  { color: var(--neu-text)  !important; }
+.text-muted { color: var(--neu-muted) !important; }
+.text-secondary { color: var(--neu-muted) !important; }
+
+/* ── Settings page specific overrides ──────────────────────────── */
+.set-card {
+    background: var(--neu-surface2) !important;
+    border: 1px solid var(--neu-border) !important;
+    box-shadow: var(--neu-card) !important;
+    color: var(--neu-text) !important;
+}
+
+.set-section-title {
+    color: var(--neu-muted) !important;
+    border-bottom-color: var(--neu-border) !important;
+}
+
+.set-field-label { color: var(--neu-muted) !important; }
+
+.set-input,
+.set-select {
+    background: var(--neu-input-bg) !important;
+    border-color: rgba(255,255,255,.08) !important;
+    color: var(--neu-text) !important;
+    box-shadow: var(--neu-inset) !important;
+}
+
+.set-toggle .set-slider {
+    background: rgba(255,255,255,.1) !important;
+}
+
+.set-save-btn {
+    background: linear-gradient(135deg, var(--primary-dark, #2C5282) 0%, var(--primary-color, #3B6EA5) 100%) !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,.4) !important;
+}
+
+/* Gateway cards on settings page */
+.gw-card {
+    background: var(--neu-surface) !important;
+    border: 1px solid var(--neu-border) !important;
+    box-shadow: var(--neu-raise) !important;
+}
+.gw-card:hover {
+    border-color: var(--primary-color, #3B6EA5) !important;
+}
+
+/* ── Dashboard quick-stat numbers ──────────────────────────────── */
+.stat-number,
+.display-4,
+.counter {
+    color: #fff !important;
+}
+
+/* ── Breadcrumbs ────────────────────────────────────────────────── */
+.breadcrumb {
+    background: transparent !important;
+}
+.breadcrumb-item a { color: var(--primary-color, #3B6EA5) !important; }
+.breadcrumb-item.active { color: var(--neu-muted) !important; }
+.breadcrumb-item + .breadcrumb-item::before { color: var(--neu-muted) !important; }
+
+/* ── List groups ────────────────────────────────────────────────── */
+.list-group-item {
+    background: var(--neu-surface2) !important;
+    border-color: var(--neu-border) !important;
+    color: var(--neu-text) !important;
+}
+.list-group-item:hover {
+    background: rgba(255,255,255,.05) !important;
+}
+.list-group-item.active {
+    background: var(--primary-color, #3B6EA5) !important;
+    border-color: var(--primary-color, #3B6EA5) !important;
+}
+
+/* ── Progress bars ──────────────────────────────────────────────── */
+.progress {
+    background: rgba(255,255,255,.08) !important;
+    border-radius: 10px !important;
+}
+
+/* ── Pagination ─────────────────────────────────────────────────── */
+.page-link {
+    background: var(--neu-surface2) !important;
+    border-color: var(--neu-border) !important;
+    color: var(--neu-muted) !important;
+}
+.page-link:hover {
+    background: rgba(255,255,255,.08) !important;
+    color: var(--neu-text) !important;
+}
+.page-item.active .page-link {
+    background: var(--primary-color, #3B6EA5) !important;
+    border-color: var(--primary-color, #3B6EA5) !important;
+    color: #fff !important;
+}
+.page-item.disabled .page-link {
+    background: rgba(255,255,255,.03) !important;
+    color: rgba(255,255,255,.2) !important;
+}
+
+/* ── Charts area ────────────────────────────────────────────────── */
+.chart-wrapper,
+.chart-container {
+    background: transparent !important;
+}
+
+/* ── Toast (admin portal) ───────────────────────────────────────── */
+#toast-container .toast {
+    background: var(--neu-surface2) !important;
+    border: 1px solid var(--neu-border) !important;
+    color: var(--neu-text) !important;
+    box-shadow: var(--neu-card) !important;
+}
+
+/* ── Status badges (keep semantic colors) ───────────────────────── */
+.status-badge.active    { background: rgba(16,185,129,.15)  !important; color: #6ee7b7 !important; border: 1px solid rgba(16,185,129,.3)  !important; }
+.status-badge.inactive  { background: rgba(107,114,128,.15) !important; color: #9ca3af !important; border: 1px solid rgba(107,114,128,.3) !important; }
+.status-badge.suspended { background: rgba(239,68,68,.15)   !important; color: #fca5a5 !important; border: 1px solid rgba(239,68,68,.3)   !important; }
+.status-badge.expired   { background: rgba(245,158,11,.15)  !important; color: #fcd34d !important; border: 1px solid rgba(245,158,11,.3)  !important; }
+
+/* ── Horizontal rules / dividers ────────────────────────────────── */
+hr { border-color: var(--neu-border) !important; }
+
+/* ── Scrollbar ──────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--neu-bg); }
+::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,.12);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.22); }
+
+/* ── Select2 (if used) ──────────────────────────────────────────── */
+.select2-container--default .select2-selection--single,
+.select2-container--default .select2-selection--multiple {
+    background: var(--neu-input-bg) !important;
+    border: 1px solid rgba(255,255,255,.08) !important;
+    color: var(--neu-text) !important;
+}
+.select2-dropdown {
+    background: var(--neu-surface) !important;
+    border-color: var(--neu-border) !important;
+}
+.select2-container--default .select2-results__option {
+    color: var(--neu-text) !important;
+}
+.select2-container--default .select2-results__option--highlighted {
+    background: var(--primary-color, #3B6EA5) !important;
+}

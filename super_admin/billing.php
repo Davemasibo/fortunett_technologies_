@@ -66,6 +66,7 @@ $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC);
 <title>Platform Billing — FortuNett Super Admin</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+<link href="css/dark.css" rel="stylesheet">
 <style>
 :root{--sa-dark:#0f3460;--sa-mid:#16213e;--sa-accent:#e94560;--sidebar-w:240px;}
 *{box-sizing:border-box;margin:0;padding:0;}
