@@ -11,6 +11,12 @@
  */
 header('Content-Type: application/json');
 
+// Direct browser/health-check visits (no POST body from Safaricom)
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    echo json_encode(['result' => 'ok', 'message' => 'M-Pesa STK callback endpoint is live. Awaiting Safaricom POST.']);
+    exit;
+}
+
 require_once __DIR__ . '/../../includes/db_master.php';
 
 // Ensure the logs directory exists

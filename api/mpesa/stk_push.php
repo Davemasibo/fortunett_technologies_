@@ -162,11 +162,13 @@ try {
         echo json_encode([
             'success'             => true,
             'sandbox'             => $isSandbox,
+            'environment'         => $mpesa->getEnvironment(),
             'using_platform'      => $usingPlatform,
             'ResponseCode'        => '0',
             'CustomerMessage'     => $custMsg,
             'checkout_request_id' => $response->CheckoutRequestID ?? '',
             'shortcode'           => $mpesa->getShortcode(),
+            'phone_sent'          => $phone,
         ]);
 
     } else {

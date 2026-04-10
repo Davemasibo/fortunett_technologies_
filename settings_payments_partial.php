@@ -166,69 +166,70 @@ input:checked + .toggle-slider:before { transform: translateX(18px); }
 /* ── Configured gateways grid ────────────────────────────────────── */
 .gateways-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
 .gw-card {
-    background: #fff; border: 1px solid #E5E7EB; border-radius: 12px;
-    overflow: hidden; transition: box-shadow .2s;
+    background: rgb(30,30,29); border: 1px solid rgba(255,255,255,.07); border-radius: 12px;
+    overflow: hidden; transition: box-shadow .2s, border-color .2s;
+    box-shadow: 8px 8px 20px rgba(0,0,0,.4), -4px -4px 10px rgba(255,255,255,.025);
 }
-.gw-card:hover { box-shadow: 0 4px 18px rgba(0,0,0,.08); }
-.gw-card-header { padding: 14px 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #F3F4F6; }
+.gw-card:hover { box-shadow: 10px 10px 24px rgba(0,0,0,.5), -4px -4px 10px rgba(255,255,255,.03); border-color: rgba(255,255,255,.13); }
+.gw-card-header { padding: 14px 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,.06); }
 .gw-icon { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
-.gw-icon.mpesa   { background: #D1FAE5; color: #065F46; }
-.gw-icon.paybill { background: #FEF3C7; color: #92400E; }
-.gw-icon.bank    { background: #DBEAFE; color: #1E40AF; }
-.gw-icon.paypal  { background: #EDE9FE; color: #5B21B6; }
-.gw-name { font-weight: 700; font-size: 14px; color: #111827; }
-.gw-type { font-size: 11px; color: #9CA3AF; text-transform: uppercase; letter-spacing: .04em; margin-top: 1px; }
+.gw-icon.mpesa   { background: rgba(52,211,153,.15); color: #6ee7b7; }
+.gw-icon.paybill { background: rgba(251,191,36,.15);  color: #fcd34d; }
+.gw-icon.bank    { background: rgba(96,165,250,.15);  color: #93c5fd; }
+.gw-icon.paypal  { background: rgba(167,139,250,.15); color: #c4b5fd; }
+.gw-name { font-weight: 700; font-size: 14px; color: #e2e2e0; }
+.gw-type { font-size: 11px; color: rgba(255,255,255,.4); text-transform: uppercase; letter-spacing: .04em; margin-top: 1px; }
 .gw-badge { margin-left: auto; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-.gw-badge.active   { background: #D1FAE5; color: #065F46; }
-.gw-badge.inactive { background: #F3F4F6; color: #6B7280; }
+.gw-badge.active   { background: rgba(52,211,153,.15); color: #6ee7b7; border: 1px solid rgba(52,211,153,.25); }
+.gw-badge.inactive { background: rgba(156,163,175,.1); color: rgba(255,255,255,.4); border: 1px solid rgba(255,255,255,.1); }
 .gw-body { padding: 12px 16px; }
 .gw-detail { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; font-size: 12.5px; }
-.gw-detail-label { color: #9CA3AF; }
-.gw-detail-value { font-weight: 600; color: #111827; font-family: monospace; font-size: 13px; }
-.gw-feature { display: inline-flex; align-items: center; gap: 4px; background: rgba(59,110,165,.08); color: var(--primary-dark, #2C5282); font-size: 11px; padding: 3px 8px; border-radius: 20px; margin-top: 4px; }
+.gw-detail-label { color: rgba(255,255,255,.4); }
+.gw-detail-value { font-weight: 600; color: #e2e2e0; font-family: monospace; font-size: 13px; }
+.gw-feature { display: inline-flex; align-items: center; gap: 4px; background: rgba(59,110,165,.12); color: #93c5fd; font-size: 11px; padding: 3px 8px; border-radius: 20px; margin-top: 4px; }
 
 /* ── Active toggle ───────────────────────────────────────────────── */
-.gw-toggle-row { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: #F9FAFB; border-top: 1px solid #F3F4F6; }
-.gw-toggle-label { font-size: 12px; font-weight: 600; color: #374151; flex: 1; }
-.gw-toggle-sub   { font-size: 11px; color: #9CA3AF; }
+.gw-toggle-row { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: rgba(255,255,255,.03); border-top: 1px solid rgba(255,255,255,.06); }
+.gw-toggle-label { font-size: 12px; font-weight: 600; color: rgba(255,255,255,.7); flex: 1; }
+.gw-toggle-sub   { font-size: 11px; color: rgba(255,255,255,.35); }
 .live-toggle { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
 .live-toggle input { opacity: 0; width: 0; height: 0; }
-.live-slider { position: absolute; inset: 0; background: #D1D5DB; border-radius: 24px; cursor: pointer; transition: .25s; }
-.live-slider:before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .25s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.live-slider { position: absolute; inset: 0; background: rgba(255,255,255,.18); border-radius: 24px; cursor: pointer; transition: .25s; }
+.live-slider:before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: rgba(255,255,255,.9); border-radius: 50%; transition: .25s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
 input:checked + .live-slider { background: #10B981; }
 input:checked + .live-slider:before { transform: translateX(18px); }
 .live-toggle-text { font-size: 11.5px; font-weight: 700; min-width: 28px; }
-.live-toggle-text.on  { color: #059669; }
-.live-toggle-text.off { color: #9CA3AF; }
+.live-toggle-text.on  { color: #34d399; }
+.live-toggle-text.off { color: rgba(255,255,255,.35); }
 
 /* ── Gateway action buttons ──────────────────────────────────────── */
-.gw-footer { padding: 10px 14px; display: flex; gap: 7px; border-top: 1px solid #F3F4F6; }
+.gw-footer { padding: 10px 14px; display: flex; gap: 7px; border-top: 1px solid rgba(255,255,255,.06); background: rgba(255,255,255,.02); }
 .gw-btn {
     padding: 7px 13px; border-radius: 7px; font-size: 12.5px; font-weight: 500;
-    cursor: pointer; border: 1px solid #E5E7EB; background: #fff; color: #374151;
+    cursor: pointer; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.06); color: rgba(255,255,255,.7);
     display: inline-flex; align-items: center; gap: 5px; transition: all .15s;
 }
-.gw-btn:hover  { background: #F3F4F6; }
-.gw-btn.test   { color: #059669; border-color: #A7F3D0; }
-.gw-btn.test:hover { background: #ECFDF5; }
-.gw-btn.danger { color: #DC2626; border-color: #FCA5A5; }
-.gw-btn.danger:hover { background: #FEF2F2; }
+.gw-btn:hover  { background: rgba(255,255,255,.12); color: #e2e2e0; }
+.gw-btn.test   { color: #34d399; border-color: rgba(52,211,153,.3); }
+.gw-btn.test:hover { background: rgba(52,211,153,.1); }
+.gw-btn.danger { color: #f87171; border-color: rgba(248,113,113,.3); }
+.gw-btn.danger:hover { background: rgba(248,113,113,.1); }
 
 /* ── Empty state / test result ───────────────────────────────────── */
-.pg-empty { text-align: center; padding: 40px; color: #9CA3AF; }
+.pg-empty { text-align: center; padding: 40px; color: rgba(255,255,255,.4); }
 .pg-empty i { font-size: 44px; margin-bottom: 12px; opacity: .35; display: block; }
 .test-result {
     display: none; margin: 8px 0 0; padding: 9px 12px; border-radius: 7px;
     font-size: 12.5px; font-weight: 500;
 }
-.test-result.success { background: #D1FAE5; color: #065F46; border: 1px solid #A7F3D0; }
-.test-result.error   { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
+.test-result.success { background: rgba(52,211,153,.12); color: #6ee7b7; border: 1px solid rgba(52,211,153,.25); }
+.test-result.error   { background: rgba(248,113,113,.12); color: #fca5a5; border: 1px solid rgba(248,113,113,.25); }
 
 /* ── Section divider ─────────────────────────────────────────────── */
-.pg-divider { border: none; border-top: 1px solid #E5E7EB; margin: 20px 0; }
+.pg-divider { border: none; border-top: 1px solid rgba(255,255,255,.08); margin: 20px 0; }
 
 /* ── Preserve-notice ─────────────────────────────────────────────── */
-.preserve-note { font-size: 11px; color: #6B7280; margin-top: 4px; }
+.preserve-note { font-size: 11px; color: rgba(255,255,255,.4); margin-top: 4px; }
 </style>
 
 <div>
@@ -608,33 +609,33 @@ input:checked + .live-slider:before { transform: translateX(18px); }
             Platform Shared Paybill
             <span class="pg-section-sub">FortuNett's M-Pesa paybill — available to all tenants</span>
         </div>
-        <div style="background:#fff;border:1.5px solid <?= $hasMpesaApi ? '#E5E7EB' : 'var(--primary-color)' ?>;border-radius:12px;padding:20px 24px;box-shadow:0 1px 4px rgba(0,0,0,.04);">
+        <div style="background:rgb(30,30,29);border:1.5px solid <?= $hasMpesaApi ? 'rgba(255,255,255,.08)' : 'var(--primary-color)' ?>;border-radius:12px;padding:20px 24px;box-shadow:8px 8px 20px rgba(0,0,0,.4),-4px -4px 10px rgba(255,255,255,.025);">
             <?php if (!$hasMpesaApi): ?>
-            <div style="display:flex;align-items:center;gap:10px;background:rgba(59,110,165,.07);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--primary-dark,#2C5282);">
+            <div style="display:flex;align-items:center;gap:10px;background:rgba(59,110,165,.1);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#93c5fd;border:1px solid rgba(59,110,165,.2);">
                 <i class="fas fa-info-circle" style="font-size:16px;flex-shrink:0;"></i>
                 <span>You haven't configured your own M-Pesa API credentials. Customers will use the <strong>platform paybill</strong> with unique account numbers below.</span>
             </div>
             <?php endif; ?>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;">
                 <div>
-                    <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;">Platform Paybill No.</div>
-                    <div style="font-size:22px;font-weight:700;color:#111827;font-family:monospace;"><?= htmlspecialchars($platformShortcode) ?></div>
+                    <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;">Platform Paybill No.</div>
+                    <div style="font-size:22px;font-weight:700;color:#e2e2e0;font-family:monospace;"><?= htmlspecialchars($platformShortcode) ?></div>
                 </div>
                 <div>
-                    <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;">Your Account Prefix</div>
+                    <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;">Your Account Prefix</div>
                     <div style="font-size:22px;font-weight:700;color:var(--primary-color,#3B6EA5);font-family:monospace;"><?= htmlspecialchars($prefix) ?></div>
-                    <div style="font-size:11.5px;color:#6B7280;margin-top:3px;">Client #1 → <strong><?= htmlspecialchars($prefix) ?>0001</strong>, #25 → <strong><?= htmlspecialchars($prefix) ?>0025</strong></div>
+                    <div style="font-size:11.5px;color:rgba(255,255,255,.4);margin-top:3px;">Client #1 → <strong><?= htmlspecialchars($prefix) ?>0001</strong>, #25 → <strong><?= htmlspecialchars($prefix) ?>0025</strong></div>
                 </div>
                 <div>
-                    <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;">C2B Confirmation URL</div>
-                    <div style="font-size:12px;color:#374151;font-family:monospace;word-break:break-all;"><?= defined('MPESA_C2B_CONFIRMATION_URL') ? htmlspecialchars(MPESA_C2B_CONFIRMATION_URL) : 'https://fortunetttech.site/api/mpesa/c2b_confirmation.php' ?></div>
-                    <div style="font-size:11px;color:#9CA3AF;margin-top:3px;">Register in Safaricom Daraja → C2B → Confirmation URL</div>
+                    <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;">C2B Confirmation URL</div>
+                    <div style="font-size:12px;color:rgba(255,255,255,.65);font-family:monospace;word-break:break-all;"><?= defined('MPESA_C2B_CONFIRMATION_URL') ? htmlspecialchars(MPESA_C2B_CONFIRMATION_URL) : 'https://fortunetttech.site/api/mpesa/c2b_confirmation.php' ?></div>
+                    <div style="font-size:11px;color:rgba(255,255,255,.35);margin-top:3px;">Register in Safaricom Daraja → C2B → Confirmation URL</div>
                 </div>
             </div>
-            <div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;font-size:12px;color:#6B7280;display:flex;align-items:center;gap:6px;">
-                <i class="fas fa-lightbulb" style="color:#F59E0B;"></i>
-                Want your own M-Pesa STK Push? Add an <strong>M-Pesa API</strong> gateway above with your Daraja credentials.
-                Your callback URL will be: <code style="background:#F3F4F6;padding:1px 5px;border-radius:4px;font-size:11px;">https://<?= htmlspecialchars(explode('.', $_SERVER['HTTP_HOST'] ?? 'yourdomain.fortunetttech.site')[0]) ?>.fortunetttech.site/api/mpesa/callback.php</code>
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07);font-size:12px;color:rgba(255,255,255,.45);display:flex;align-items:center;gap:6px;">
+                <i class="fas fa-lightbulb" style="color:#fcd34d;"></i>
+                Want your own M-Pesa STK Push? Add an <strong style="color:#e2e2e0;">M-Pesa API</strong> gateway above with your Daraja credentials.
+                Your callback URL will be: <code style="background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-size:11px;color:#93c5fd;">https://<?= htmlspecialchars(explode('.', $_SERVER['HTTP_HOST'] ?? 'yourdomain.fortunetttech.site')[0]) ?>.fortunetttech.site/api/mpesa/callback.php</code>
             </div>
         </div>
     </div>

@@ -125,153 +125,117 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 ?>
 
 <style>
-    .main-content-wrapper { background: #F3F4F6 !important; }
+    :root { --neu-bg:#141414; --neu-surf:#1c1c1b; --neu-s2:#222221; --neu-border:rgba(255,255,255,.06); --neu-card:8px 8px 20px rgba(0,0,0,.45),-4px -4px 10px rgba(255,255,255,.03); }
+    .main-content-wrapper { background: var(--neu-bg) !important; }
     .routers-container { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
     .routers-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-    .routers-title-section h1 { fontSize: 28px; font-weight: 600; color: #111827; margin: 0 0 4px 0; }
-    .routers-subtitle { font-size: 14px; color: #6B7280; margin: 0; }
+    .routers-title-section h1 { font-size: 28px; font-weight: 600; color: #e2e2e0; margin: 0 0 4px 0; }
+    .routers-subtitle { font-size: 14px; color: rgba(255,255,255,.4); margin: 0; }
     .header-actions { display: flex; gap: 12px; }
     .sync-btn, .add-router-btn { padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; text-decoration: none; border: none; }
-    .sync-btn { background: white; border: 1px solid #D1D5DB; color: #374151; }
-    .add-router-btn { background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%); color: white; }
-    .add-router-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
-    
+    .sync-btn { background: var(--neu-s2); border: 1px solid var(--neu-border); color: rgba(255,255,255,.7); }
+    .sync-btn:hover { background: rgba(255,255,255,.08); }
+    .add-router-btn { background: linear-gradient(135deg, var(--primary-dark,#1e3a5f) 0%, var(--primary-color,#3B6EA5) 100%); color: white; }
+    .add-router-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.4); }
+
     /* Stats Cards */
     .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 24px; }
-    .stat-card { background: white; border-radius: 10px; padding: 20px; border: 1px solid #E5E7EB; }
+    .stat-card { background: var(--neu-s2); border-radius: 10px; padding: 20px; border: 1px solid var(--neu-border); box-shadow: var(--neu-card); }
     .stat-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
     .stat-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
-    .stat-icon.routers { background: #E0E7FF; color: #4338CA; }
-    .stat-icon.online { background: #D1FAE5; color: #065F46; }
-    .stat-icon.offline { background: #FEE2E2; color: #991B1B; }
-    .stat-value { font-size: 28px; font-weight: 700; color: #111827; margin-bottom: 4px; }
-    .stat-label { font-size: 12px; color: #6B7280; font-weight: 500; }
+    .stat-icon.routers { background: rgba(99,102,241,.15); color: #a5b4fc; }
+    .stat-icon.online  { background: rgba(52,211,153,.15);  color: #6ee7b7; }
+    .stat-icon.offline { background: rgba(248,113,113,.15); color: #fca5a5; }
+    .stat-value { font-size: 28px; font-weight: 700; color: #e2e2e0; margin-bottom: 4px; }
+    .stat-label { font-size: 12px; color: rgba(255,255,255,.4); font-weight: 500; }
 
     /* Filters */
-    .filters-section { background: white; border-radius: 10px; padding: 20px 24px; margin-bottom: 20px; border: 1px solid #E5E7EB; }
-    .filters-title { font-size: 16px; font-weight: 600; color: #111827; margin-bottom: 16px; }
+    .filters-section { background: var(--neu-s2); border-radius: 10px; padding: 20px 24px; margin-bottom: 20px; border: 1px solid var(--neu-border); box-shadow: var(--neu-card); }
+    .filters-title { font-size: 16px; font-weight: 600; color: #e2e2e0; margin-bottom: 16px; }
     .filters-grid { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 12px; align-items: end; }
-    .filter-input, .filter-select { padding: 8px 12px; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 14px; width: 100%; }
-    .filter-btn { padding: 8px 16px; background: white; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 14px; color: #374151; cursor: pointer; }
-    .filter-btn.primary { background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%); color: white; border: none; }
+    .filter-input, .filter-select {
+        padding: 8px 12px; border: 1px solid var(--neu-border); border-radius: 6px; font-size: 14px; width: 100%;
+        background: var(--neu-surf); color: #d4d4d2;
+        box-shadow: inset 3px 3px 7px rgba(0,0,0,.3);
+    }
+    .filter-input::placeholder { color: rgba(255,255,255,.25); }
+    .filter-select option { background: #222221; }
+    .filter-btn { padding: 8px 16px; background: var(--neu-surf); border: 1px solid var(--neu-border); border-radius: 6px; font-size: 14px; color: rgba(255,255,255,.6); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+    .filter-btn.primary { background: linear-gradient(135deg, var(--primary-dark,#1e3a5f) 0%, var(--primary-color,#3B6EA5) 100%); color: white; border: none; }
 
     /* Router Cards */
     .routers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
-    .router-card { background: white; border-radius: 10px; border: 1px solid #E5E7EB; overflow: hidden; }
-    .router-card-header { padding: 16px 20px; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; justify-content: space-between; }
+    .router-card { background: var(--neu-s2); border-radius: 10px; border: 1px solid var(--neu-border); box-shadow: var(--neu-card); overflow: hidden; }
+    .router-card-header { padding: 16px 20px; border-bottom: 1px solid var(--neu-border); display: flex; align-items: center; justify-content: space-between; }
     .router-info { display: flex; align-items: center; gap: 12px; }
-    .router-status-dot {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        display: inline-block;
-        margin-right: 8px;
-        animation: pulse 2s infinite;
-    }
-    
-    .router-status-dot.online {
-        background: #10B981;
-        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
-    }
-    
-    .router-status-dot.offline {
-        background: #EF4444;
-        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
-        animation: none;
-    }
-    
-    .router-status-dot.unknown {
-        background: #9CA3AF;
-        box-shadow: 0 0 0 3px rgba(156, 163, 175, 0.2);
-        animation: none;
-    }
-    
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
-    }
-    
-    .status-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 4px 12px;
-        border-radius: 12px;
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    
-    .status-badge.online {
-        background: #D1FAE5;
-        color: #065F46;
-    }
-    
-    .status-badge.offline {
-        background: #FEE2E2;
-        color: #991B1B;
-    }
-    
-    .status-badge.unknown {
-        background: #F3F4F6;
-        color: #6B7280;
-    }
-    .router-name { font-weight: 600; font-size: 14px; color: #111827; }
-    .router-ip { font-size: 12px; color: #6B7280; }
-    .router-status-badge { padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
-    .router-status-badge.online { background: #D1FAE5; color: #065F46; }
-    .router-status-badge.offline { background: #FEE2E2; color: #991B1B; }
-    .router-card-body { padding: 20px; }
-    .router-card-footer { padding: 12px 20px; border-top: 1px solid #E5E7EB; display: flex; align-items: center; justify-content: space-between; }
-    .footer-btn { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; text-decoration: none; display: flex; align-items: center; gap: 4px; border:none; }
-    .footer-btn.secondary { background: #F3F4F6; color: #374151; }
-    .footer-btn.primary { background: linear-gradient(135deg, #2C5282 0%, #3B6EA5 100%); color: white; }
+    .router-status-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; animation: pulse 2s infinite; }
+    .router-status-dot.online  { background: #10B981; box-shadow: 0 0 0 3px rgba(16,185,129,.2); }
+    .router-status-dot.offline { background: #EF4444; box-shadow: 0 0 0 3px rgba(239,68,68,.2); animation: none; }
+    .router-status-dot.unknown { background: #6B7280; box-shadow: 0 0 0 3px rgba(107,114,128,.2); animation: none; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
 
-    /* Router Metrics CSS */
+    .status-badge { display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; gap: 5px; }
+    .status-badge.online  { background: rgba(52,211,153,.15); color: #6ee7b7; }
+    .status-badge.offline { background: rgba(248,113,113,.15); color: #fca5a5; }
+    .status-badge.unknown { background: rgba(255,255,255,.07); color: rgba(255,255,255,.45); }
+
+    .router-name { font-weight: 600; font-size: 14px; color: #e2e2e0; }
+    .router-ip   { font-size: 12px; color: rgba(255,255,255,.4); }
+    .router-card-body { padding: 20px; }
+    .router-card-footer { padding: 12px 20px; border-top: 1px solid var(--neu-border); display: flex; align-items: center; justify-content: space-between; }
+    .footer-info { font-size: 12px; color: rgba(255,255,255,.3); }
+
+    /* Router Metrics */
     .router-metric { margin-bottom: 16px; }
     .router-metric:last-child { margin-bottom: 0; }
     .metric-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-    .metric-label { font-size: 12px; color: #6B7280; display: flex; align-items: center; gap: 6px; }
-    .metric-value { font-size: 14px; font-weight: 600; color: #111827; }
-    
-    .progress-bar { height: 6px; background: #F3F4F6; border-radius: 3px; overflow: hidden; }
+    .metric-label { font-size: 12px; color: rgba(255,255,255,.4); display: flex; align-items: center; gap: 6px; }
+    .metric-value { font-size: 14px; font-weight: 600; color: #d4d4d2; }
+    .progress-bar { height: 6px; background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden; }
     .progress-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
-    .progress-fill.good { background: linear-gradient(90deg, #10B981 0%, #059669 100%); }
+    .progress-fill.good    { background: linear-gradient(90deg, #10B981 0%, #059669 100%); }
     .progress-fill.warning { background: linear-gradient(90deg, #F59E0B 0%, #D97706 100%); }
-    .progress-fill.danger { background: linear-gradient(90deg, #EF4444 0%, #DC2626 100%); }
+    .progress-fill.danger  { background: linear-gradient(90deg, #EF4444 0%, #DC2626 100%); }
+
+    /* Footer action buttons */
+    .footer-btn { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; transition: all .2s; border: 1px solid var(--neu-border); background: rgba(255,255,255,.06); color: rgba(255,255,255,.65); }
+    .footer-btn:hover { background: rgba(255,255,255,.12); }
+    .footer-btn.danger { background: rgba(239,68,68,.12); color: #fca5a5; border-color: rgba(239,68,68,.3); }
+    .footer-btn.danger:hover { background: rgba(239,68,68,.25); }
 
     /* Wizard Modal */
-    #wizardModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
-    .wizard-content { background: white; width: 100%; max-width: 800px; border-radius: 12px; padding: 0; position: relative; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
-    .wizard-header { padding: 24px 32px; border-bottom: 1px solid #E5E7EB; }
-    .wizard-title { font-size: 20px; font-weight: 600; color: #111827; margin: 0 0 8px 0; }
-    .wizard-subtitle { font-size: 14px; color: #6B7280; margin: 0; }
-    
-    .wizard-steps { display: flex; padding: 20px 32px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB; justify-content: space-between; }
-    .step-item { display: flex; align-items: center; gap: 12px; opacity: 0.5; }
+    #wizardModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.65); z-index: 1000; align-items: center; justify-content: center; }
+    .wizard-content { background: var(--neu-s2); width: 100%; max-width: 800px; border-radius: 12px; border: 1px solid var(--neu-border); box-shadow: 0 24px 60px rgba(0,0,0,.6); padding: 0; position: relative; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
+    .wizard-header { padding: 24px 32px; border-bottom: 1px solid var(--neu-border); }
+    .wizard-title { font-size: 20px; font-weight: 600; color: #e2e2e0; margin: 0 0 8px 0; }
+    .wizard-subtitle { font-size: 14px; color: rgba(255,255,255,.4); margin: 0; }
+    .wizard-steps { display: flex; padding: 20px 32px; background: rgba(0,0,0,.2); border-bottom: 1px solid var(--neu-border); justify-content: space-between; }
+    .step-item { display: flex; align-items: center; gap: 12px; opacity: 0.4; }
     .step-item.active { opacity: 1; }
-    .step-number { width: 32px; height: 32px; border-radius: 50%; background: #E5E7EB; color: #6B7280; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; }
-    .step-item.active .step-number { background: #3B6EA5; color: white; }
-    .step-text { font-size: 14px; font-weight: 500; color: #374151; }
-    .step-line { flex: 1; height: 2px; background: #E5E7EB; margin: 0 16px; align-self: center; }
-
-    .wizard-body { padding: 32px; flex: 1; overflow-y: auto; }
-    .wizard-footer { padding: 20px 32px; border-top: 1px solid #E5E7EB; display: flex; justify-content: space-between; align-items: center; background: #F9FAFB; }
-    
+    .step-number { width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,.08); color: rgba(255,255,255,.5); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; }
+    .step-item.active .step-number { background: var(--primary-color,#3B6EA5); color: white; }
+    .step-text { font-size: 14px; font-weight: 500; color: rgba(255,255,255,.6); }
+    .step-item.active .step-text { color: #e2e2e0; }
+    .step-line { flex: 1; height: 2px; background: rgba(255,255,255,.08); margin: 0 16px; align-self: center; }
+    .wizard-body { padding: 32px; flex: 1; overflow-y: auto; color: #d4d4d2; }
+    .wizard-body label { display: block; font-weight: 500; margin-bottom: 8px; color: rgba(255,255,255,.6); font-size: 13px; }
+    .wizard-body input[type=text], .wizard-body input[type=password], .wizard-body input[type=number] {
+        width: 100%; padding: 10px; border: 1px solid var(--neu-border); border-radius: 6px;
+        background: var(--neu-surf); color: #e2e2e0; font-size: 14px;
+        box-shadow: inset 3px 3px 7px rgba(0,0,0,.3); box-sizing: border-box;
+    }
+    .wizard-body input::placeholder { color: rgba(255,255,255,.2); }
+    .wizard-body p { color: rgba(255,255,255,.5); font-size: 13px; margin-top: 4px; }
+    .wizard-footer { padding: 20px 32px; border-top: 1px solid var(--neu-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,.15); }
     .wizard-btn { padding: 10px 24px; border-radius: 8px; font-weight: 500; cursor: pointer; border: none; font-size: 14px; }
-    .wizard-btn.prev { background: white; border: 1px solid #D1D5DB; color: #374151; }
-    .wizard-btn.next { background: #3B6EA5; color: white; }
-    
-    .command-box { background: #1F2937; padding: 16px; border-radius: 8px; margin: 16px 0; position: relative; }
-    .command-text { color: #E5E7EB; font-family: monospace; font-size: 13px; word-break: break-all; line-height: 1.6; }
-    .copy-btn { position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.1); color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
-    
-    /* Footer button styles */
-    .footer-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid #D1D5DB; background: white; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
-    .footer-btn:hover { background: #F3F4F6; }
-    .footer-btn.secondary { color: #374151; }
-    .footer-btn.danger { background: #FEE2E2; color: #DC2626; border-color: #FCA5A5; }
-    .footer-btn.danger:hover { background: #DC2626; color: white; border-color: #DC2626; }
+    .wizard-btn.prev { background: rgba(255,255,255,.07); border: 1px solid var(--neu-border); color: rgba(255,255,255,.65); }
+    .wizard-btn.next { background: var(--primary-color,#3B6EA5); color: white; }
+
+    /* Command box */
+    .command-box { background: #0f0f0e; padding: 16px; border-radius: 8px; margin: 16px 0; position: relative; border: 1px solid rgba(255,255,255,.07); }
+    .command-text { color: #a5f3fc; font-family: monospace; font-size: 13px; word-break: break-all; line-height: 1.6; }
+    .copy-btn { position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,.1); color: rgba(255,255,255,.7); border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .copy-btn:hover { background: rgba(255,255,255,.2); }
 </style>
 
 <div class="main-content-wrapper">
@@ -279,7 +243,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <!-- Header -->
         <div class="routers-header">
             <div class="routers-title-section">
-                <h1>Router Management</h1>
+                <h1 style="font-size:28px; font-weight:600; color:#e2e2e0; margin:0 0 4px 0;">Router Management</h1>
                 <p class="routers-subtitle">Monitor and manage MikroTik routers, servers, and network locations</p>
             </div>
             <div class="header-actions">
@@ -460,9 +424,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <!-- Step 1: Basic Info -->
         <div class="wizard-body" id="step1">
             <div style="margin-bottom:20px;">
-                <label style="display:block; font-weight:500; margin-bottom:8px;">Mikrotik Identity *</label>
-                <input type="text" id="mikrotikName" placeholder="e.g. Router-01 Main" style="width:100%; padding:10px; border:1px solid #D1D5DB; border-radius:6px;">
-                <p style="font-size:12px; color:#6B7280; margin-top:4px;">The identity name of your Mikrotik device (System -> Identity)</p>
+                <label>Mikrotik Identity *</label>
+                <input type="text" id="mikrotikName" placeholder="e.g. Router-01 Main">
+                <p>The identity name of your Mikrotik device (System → Identity)</p>
             </div>
         </div>
 
@@ -470,36 +434,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="wizard-body" id="step2" style="display:none;">
 
             <!-- LOCALHOST TESTING INFO (shown automatically when on localhost) -->
-            <div id="localhostInfoPanel" style="display:none; margin-bottom:20px; border-radius:10px; overflow:hidden; border:1px solid #FED7AA;">
-                <div style="background:#FFF7ED; padding:14px 18px; border-bottom:1px solid #FED7AA;">
-                    <div style="display:flex; align-items:center; gap:10px; font-size:15px; font-weight:700; color:#C2410C;">
+            <div id="localhostInfoPanel" style="display:none; margin-bottom:20px; border-radius:10px; overflow:hidden; border:1px solid rgba(251,146,60,.25);">
+                <div style="background:rgba(251,146,60,.1); padding:14px 18px; border-bottom:1px solid rgba(251,146,60,.25);">
+                    <div style="display:flex; align-items:center; gap:10px; font-size:15px; font-weight:700; color:#fb923c;">
                         <i class="fas fa-laptop-code"></i>&nbsp;Localhost Detected — Testing Options
                     </div>
-                    <div style="font-size:12px; color:#92400E; margin-top:4px;">Your app is running on <strong>localhost</strong>. Your MikroTik router can't reach this from the internet. Use one of the options below to test provisioning:</div>
+                    <div style="font-size:12px; color:rgba(251,146,60,.7); margin-top:4px;">Your app is running on <strong>localhost</strong>. Your MikroTik router can't reach this from the internet. Use one of the options below to test provisioning:</div>
                 </div>
-                <div style="background:white; padding:16px 18px;">
+                <div style="background:rgba(0,0,0,.2); padding:16px 18px;">
                     <!-- Option A -->
-                    <div style="margin-bottom:12px; padding:12px; background:#F0FDF4; border-radius:8px; border-left:4px solid #10B981;">
-                        <div style="font-size:13px; font-weight:700; color:#065F46; margin-bottom:4px;"><i class="fas fa-network-wired"></i> Option A — Same Local Network (Simplest)</div>
-                        <div style="font-size:12px; color:#374151; line-height:1.7;">
+                    <div style="margin-bottom:12px; padding:12px; background:rgba(52,211,153,.08); border-radius:8px; border-left:4px solid #10B981;">
+                        <div style="font-size:13px; font-weight:700; color:#6ee7b7; margin-bottom:4px;"><i class="fas fa-network-wired"></i> Option A — Same Local Network (Simplest)</div>
+                        <div style="font-size:12px; color:rgba(255,255,255,.5); line-height:1.7;">
                             If your router and this PC are on the <strong>same WiFi/LAN</strong>, replace <code>localhost</code> in the command with your PC's local IP (e.g., <code>192.168.1.100</code>).<br>
                             <em>Find it:</em> Open Command Prompt → type <code>ipconfig</code> → look for <strong>IPv4 Address</strong>.
                         </div>
                     </div>
                     <!-- Option B -->
-                    <div style="margin-bottom:12px; padding:12px; background:#EFF6FF; border-radius:8px; border-left:4px solid #3B82F6;">
-                        <div style="font-size:13px; font-weight:700; color:#1E40AF; margin-bottom:4px;"><i class="fas fa-cloud"></i> Option B — Ngrok Tunnel (Different network)</div>
-                        <div style="font-size:12px; color:#374151; line-height:1.7;">
-                            1. Download <a href="https://ngrok.com/download" target="_blank" style="color:#3B82F6; font-weight:600;">ngrok</a> and run: <code style="background:#1F2937; color:#E5E7EB; padding:2px 6px; border-radius:4px;">ngrok http 80</code><br>
+                    <div style="margin-bottom:12px; padding:12px; background:rgba(59,130,246,.08); border-radius:8px; border-left:4px solid #3B82F6;">
+                        <div style="font-size:13px; font-weight:700; color:#93c5fd; margin-bottom:4px;"><i class="fas fa-cloud"></i> Option B — Ngrok Tunnel (Different network)</div>
+                        <div style="font-size:12px; color:rgba(255,255,255,.5); line-height:1.7;">
+                            1. Download <a href="https://ngrok.com/download" target="_blank" style="color:#60a5fa; font-weight:600;">ngrok</a> and run: <code style="background:#0f0f0e; color:#a5f3fc; padding:2px 6px; border-radius:4px;">ngrok http 80</code><br>
                             2. Copy the <code>https://xxxxx.ngrok.io</code> URL ngrok provides.<br>
                             3. Update <code>MPESA_CALLBACK_URL</code> in your <code>.env</code> file to use that URL.<br>
                             4. Reload this page — the provisioning command will update automatically.
                         </div>
                     </div>
                     <!-- Option C -->
-                    <div style="padding:12px; background:#F9FAFB; border-radius:8px; border-left:4px solid #9CA3AF;">
-                        <div style="font-size:13px; font-weight:700; color:#374151; margin-bottom:4px;"><i class="fas fa-keyboard"></i> Option C — Manual Entry (Skip provisioning)</div>
-                        <div style="font-size:12px; color:#374151;">
+                    <div style="padding:12px; background:rgba(255,255,255,.04); border-radius:8px; border-left:4px solid rgba(255,255,255,.15);">
+                        <div style="font-size:13px; font-weight:700; color:rgba(255,255,255,.6); margin-bottom:4px;"><i class="fas fa-keyboard"></i> Option C — Manual Entry (Skip provisioning)</div>
+                        <div style="font-size:12px; color:rgba(255,255,255,.4);">
                             Use the <strong>"Advanced: Manual Router Configuration"</strong> section on this page to add your router's IP, username, and password directly — no script needed.
                         </div>
                     </div>
@@ -507,12 +471,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <!-- END LOCALHOST INFO -->
 
-            <p style="margin-bottom:16px; color:#374151;">Run this command in your Mikrotik Terminal to connect:</p>
+            <p style="margin-bottom:16px; color:rgba(255,255,255,.5);">Run this command in your Mikrotik Terminal to connect:</p>
             <div class="command-box">
                 <button class="copy-btn" onclick="copyCommand()">Copy</button>
                 <div class="command-text" id="provisionCommand">Generating command...</div>
             </div>
-            <div style="display:flex; align-items:center; gap:8px; margin-top:16px; padding:12px; background:#F0FDF4; border-radius:6px; color:#166534;" id="connectionStatus">
+            <div style="display:flex; align-items:center; gap:8px; margin-top:16px; padding:12px; background:rgba(52,211,153,.08); border-radius:6px; color:#6ee7b7; border:1px solid rgba(52,211,153,.2);" id="connectionStatus">
                  <i class="fas fa-spinner fa-spin"></i> Waiting for command execution...
             </div>
         </div>
@@ -520,20 +484,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <!-- Step 3: Service Setup -->
         <div class="wizard-body" id="step3" style="display:none;">
             <div style="text-align:center; padding:20px;">
-                <div style="width:48px; height:48px; background:#D1FAE5; color:#059669; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
+                <div style="width:48px; height:48px; background:rgba(52,211,153,.15); color:#6ee7b7; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
                     <i class="fas fa-check" style="font-size:24px;"></i>
                 </div>
-                <h3 style="font-size:18px; font-weight:600; margin-bottom:8px;">Router Connected Successfully!</h3>
-                <p style="color:#6B7280; margin-bottom:24px;">You can now configure services on this router.</p>
-                
+                <h3 style="font-size:18px; font-weight:600; margin-bottom:8px; color:#e2e2e0;">Router Connected Successfully!</h3>
+                <p style="color:rgba(255,255,255,.4); margin-bottom:24px;">You can now configure services on this router.</p>
+
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; text-align:left;">
-                    <div class="service-card" onclick="selectService('pppoe', this)" style="border:1px solid #E5E7EB; padding:16px; border-radius:8px; cursor:pointer;">
-                        <div style="font-weight:600; margin-bottom:4px;">PPPoE Server</div>
-                        <p style="font-size:12px; color:#6B7280;">Deploy PPPoE server on selected interface</p>
+                    <div class="service-card" onclick="selectService('pppoe', this)" style="border:1px solid var(--neu-border); background:var(--neu-surf); padding:16px; border-radius:8px; cursor:pointer; transition:.2s;">
+                        <div style="font-weight:600; margin-bottom:4px; color:#e2e2e0;">PPPoE Server</div>
+                        <p style="font-size:12px; color:rgba(255,255,255,.35); margin:0;">Deploy PPPoE server on selected interface</p>
                     </div>
-                    <div class="service-card" onclick="selectService('hotspot', this)" style="border:1px solid #E5E7EB; padding:16px; border-radius:8px; cursor:pointer;">
-                        <div style="font-weight:600; margin-bottom:4px;">Hotspot Server</div>
-                        <p style="font-size:12px; color:#6B7280;">Deploy Hotspot server and walled garden</p>
+                    <div class="service-card" onclick="selectService('hotspot', this)" style="border:1px solid var(--neu-border); background:var(--neu-surf); padding:16px; border-radius:8px; cursor:pointer; transition:.2s;">
+                        <div style="font-weight:600; margin-bottom:4px; color:#e2e2e0;">Hotspot Server</div>
+                        <p style="font-size:12px; color:rgba(255,255,255,.35); margin:0;">Deploy Hotspot server and walled garden</p>
                     </div>
                 </div>
             </div>
@@ -642,8 +606,8 @@ function startPolling() {
             if(data.connected) {
                 clearInterval(provisioningTimer);
                 document.getElementById('connectionStatus').innerHTML = '<i class="fas fa-check-circle"></i> Connection Verified!';
-                document.getElementById('connectionStatus').style.background = '#DCFCE7';
-                document.getElementById('connectionStatus').style.color = '#166534';
+                document.getElementById('connectionStatus').style.background = 'rgba(52,211,153,.15)';
+                document.getElementById('connectionStatus').style.color = '#6ee7b7';
                 
                 // Auto advance shortly after success
                 setTimeout(() => {
@@ -657,16 +621,15 @@ function startPolling() {
 
 function selectService(service, el) {
     selectedService = service;
-    // Visually select
-    document.querySelectorAll('.service-card').forEach(c => c.style.borderColor = '#E5E7EB');
-    el.style.borderColor = '#3B6EA5';
-    el.style.backgroundColor = '#EFF6FF';
+    document.querySelectorAll('.service-card').forEach(c => { c.style.borderColor = 'rgba(255,255,255,.07)'; c.style.backgroundColor = '#1c1c1b'; });
+    el.style.borderColor = 'var(--primary-color, #3B6EA5)';
+    el.style.backgroundColor = 'rgba(59,110,165,.15)';
 }
 
 function resetSelections() {
    document.querySelectorAll('.service-card').forEach(c => {
-       c.style.borderColor = '#E5E7EB';
-       c.style.backgroundColor = 'white';
+       c.style.borderColor = 'rgba(255,255,255,.07)';
+       c.style.backgroundColor = '#1c1c1b';
    });
 }
 
@@ -696,18 +659,18 @@ function finishWizard() {
             // Show result
             document.getElementById('step3').innerHTML = `
                 <div style="text-align:center; padding:20px;">
-                    <div style="width:48px; height:48px; background:#D1FAE5; color:#059669; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
+                    <div style="width:48px; height:48px; background:rgba(52,211,153,.15); color:#6ee7b7; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
                         <i class="fas fa-check" style="font-size:24px;"></i>
                     </div>
-                    <h3 style="font-size:18px; font-weight:600; margin-bottom:8px;">Configuration Generated</h3>
-                    <p style="color:#6B7280; margin-bottom:16px;">Run this command to finalize the ${selectedService.toUpperCase()} setup:</p>
+                    <h3 style="font-size:18px; font-weight:600; margin-bottom:8px; color:#e2e2e0;">Configuration Generated</h3>
+                    <p style="color:rgba(255,255,255,.4); margin-bottom:16px;">Run this command to finalize the ${selectedService.toUpperCase()} setup:</p>
                     
                     <div class="command-box" style="text-align:left;">
                         <button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.textContent).then(()=>alert('Copied'))">Copy</button>
                         <div class="command-text">${data.command}</div>
                     </div>
                     
-                    <button onclick="location.reload()" style="margin-top:20px; padding:10px 24px; background:#3B6EA5; color:white; border:none; border-radius:6px; cursor:pointer;">Done</button>
+                    <button onclick="location.reload()" style="margin-top:20px; padding:10px 24px; background:linear-gradient(135deg, var(--primary-dark,#1e3a5f) 0%, var(--primary-color,#3B6EA5) 100%); color:white; border:none; border-radius:6px; cursor:pointer;">Done</button>
                 </div>
             `;
             btn.style.display = 'none';
@@ -746,30 +709,30 @@ window.onclick = function(event) {
 </script>
 
 <!-- Edit Router Modal -->
-<div id="editRouterModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
-    <div style="background:white; width:100%; max-width:500px; border-radius:12px; padding:24px;">
-        <h3 style="margin-top:0; margin-bottom:16px;">Edit Router</h3>
+<div id="editRouterModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.65); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:#222221; border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:24px; width:100%; max-width:500px; box-shadow:0 24px 60px rgba(0,0,0,.6);">
+        <h3 style="margin-top:0; margin-bottom:16px; color:#e2e2e0;">Edit Router</h3>
         <form id="editRouterForm" onsubmit="saveRouter(event)">
             <input type="hidden" name="id" id="edit_id">
             <div style="margin-bottom:16px;">
-                <label style="display:block; margin-bottom:8px; font-weight:500;">Name</label>
-                <input type="text" name="name" id="edit_name" required style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:6px;">
+                <label style="display:block; margin-bottom:8px; font-weight:500; color:rgba(255,255,255,.6); font-size:13px;">Name</label>
+                <input type="text" name="name" id="edit_name" required style="width:100%; padding:8px; border:1px solid rgba(255,255,255,.07); border-radius:6px; background:#1c1c1b; color:#e2e2e0; box-shadow:inset 3px 3px 7px rgba(0,0,0,.3); box-sizing:border-box;">
             </div>
             <div style="margin-bottom:16px;">
-                <label style="display:block; margin-bottom:8px; font-weight:500;">IP Address</label>
-                <input type="text" name="ip_address" id="edit_ip" required style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:6px;">
+                <label style="display:block; margin-bottom:8px; font-weight:500; color:rgba(255,255,255,.6); font-size:13px;">IP Address</label>
+                <input type="text" name="ip_address" id="edit_ip" required style="width:100%; padding:8px; border:1px solid rgba(255,255,255,.07); border-radius:6px; background:#1c1c1b; color:#e2e2e0; box-shadow:inset 3px 3px 7px rgba(0,0,0,.3); box-sizing:border-box;">
             </div>
             <div style="margin-bottom:16px;">
-                <label style="display:block; margin-bottom:8px; font-weight:500;">Username</label>
-                <input type="text" name="username" id="edit_username" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:6px;">
+                <label style="display:block; margin-bottom:8px; font-weight:500; color:rgba(255,255,255,.6); font-size:13px;">Username</label>
+                <input type="text" name="username" id="edit_username" style="width:100%; padding:8px; border:1px solid rgba(255,255,255,.07); border-radius:6px; background:#1c1c1b; color:#e2e2e0; box-shadow:inset 3px 3px 7px rgba(0,0,0,.3); box-sizing:border-box;">
             </div>
-            <div style="margin-bottom:16px;">
-                <label style="display:block; margin-bottom:8px; font-weight:500;">Password</label>
-                <input type="password" name="password" id="edit_password" placeholder="Leave blank to keep unchanged" style="width:100%; padding:8px; border:1px solid #D1D5DB; border-radius:6px;">
+            <div style="margin-bottom:20px;">
+                <label style="display:block; margin-bottom:8px; font-weight:500; color:rgba(255,255,255,.6); font-size:13px;">Password</label>
+                <input type="password" name="password" id="edit_password" placeholder="Leave blank to keep unchanged" style="width:100%; padding:8px; border:1px solid rgba(255,255,255,.07); border-radius:6px; background:#1c1c1b; color:#e2e2e0; box-shadow:inset 3px 3px 7px rgba(0,0,0,.3); box-sizing:border-box;">
             </div>
             <div style="display:flex; justify-content:flex-end; gap:8px;">
-                <button type="button" onclick="document.getElementById('editRouterModal').style.display='none'" style="padding:8px 16px; background:white; border:1px solid #D1D5DB; border-radius:6px; cursor:pointer;">Cancel</button>
-                <button type="submit" style="padding:8px 16px; background:#3B6EA5; color:white; border:none; border-radius:6px; cursor:pointer;">Save Changes</button>
+                <button type="button" onclick="document.getElementById('editRouterModal').style.display='none'" style="padding:8px 16px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.07); border-radius:6px; cursor:pointer; color:rgba(255,255,255,.6);">Cancel</button>
+                <button type="submit" style="padding:8px 16px; background:linear-gradient(135deg, var(--primary-dark,#1e3a5f) 0%, var(--primary-color,#3B6EA5) 100%); color:white; border:none; border-radius:6px; cursor:pointer;">Save Changes</button>
             </div>
         </form>
     </div>

@@ -454,4 +454,55 @@
     #scrollTopBtn { bottom: 16px; right: 16px; }
     #toast-container { bottom: 16px; right: 16px; left: 16px; }
     .toast-msg { max-width: 100%; }
+
+    /* Navbar: keep brand readable on small screens */
+    .navbar .navbar-brand { font-size: 14px !important; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .navbar-brand { margin-left: 52px !important; }
+
+    /* Main content full-width when sidebar is off-canvas */
+    .main-content-wrapper {
+        margin-left: 0 !important;
+        width: 100% !important;
+        padding: 16px 0 !important;
+    }
+    .main-content-wrapper > div {
+        padding: 0 12px !important;
+    }
+
+    /* Tables scroll on mobile */
+    .main-content-wrapper table:not(.no-scroll) {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Stat grids collapse to 2-col then 1-col */
+    .stats-row,
+    .stat-cards-row { grid-template-columns: 1fr 1fr !important; gap: 12px !important; }
+
+    /* Condensed table cells */
+    .main-content-wrapper table th,
+    .main-content-wrapper table td { padding: 10px 10px !important; font-size: 13px !important; }
+
+    /* Container padding */
+    .customers-container,
+    .packages-container,
+    .payments-container,
+    .billing-wrapper,
+    .settings-container { padding: 16px !important; }
+
+    /* Full-width modals */
+    .modal-dialog { margin: 0.5rem !important; }
+    .modal-content { border-radius: 12px !important; }
+}
+
+@media (max-width: 480px) {
+    .stats-row,
+    .stat-cards-row { grid-template-columns: 1fr !important; }
+
+    .stat-value { font-size: 24px !important; }
+
+    /* Action buttons stack */
+    .table-actions { flex-wrap: wrap; gap: 8px !important; }
+    .export-btn, .add-customer-btn { flex: 1; justify-content: center; }
 }

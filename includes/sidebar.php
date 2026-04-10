@@ -136,6 +136,9 @@
     ?>
 </aside>
 
+<!-- Mobile sidebar overlay -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
 <style>
     /* Toggle button - fixed in top-left navbar area */
     #sidebarToggle {
@@ -313,19 +316,35 @@
         width: 100%;
     }
 
+    /* Mobile overlay backdrop */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,.55);
+        z-index: 998;
+        opacity: 0;
+        transition: opacity .3s;
+    }
+    .sidebar-overlay.show {
+        display: block;
+        opacity: 1;
+    }
+
     @media (max-width: 768px) {
         .sidebar {
             transform: translateX(-100%);
+            z-index: 1000;
         }
         .sidebar.show {
             transform: translateX(0);
         }
         .main-content-wrapper {
-            margin-left: 0;
-            width: 100%;
+            margin-left: 0 !important;
+            width: 100% !important;
         }
         .main-content-wrapper > div {
-            padding: 0 16px;
+            padding: 0 12px;
         }
     }
 </style>
@@ -386,9 +405,9 @@
 
             // Mobile handling: Toggle visibility
             if (window.innerWidth <= 768) {
-                sidebar.classList.toggle('show');
-                const overlay = document.querySelector('.sidebar-overlay');
-                if (overlay) overlay.classList.toggle('show');
+                const isOpen = sidebar.classList.toggle('show');
+                const overlay = document.getElementById('sidebarOverlay');
+                if (overlay) overlay.classList.toggle('show', isOpen);
                 return;
             }
 
@@ -411,6 +430,14 @@
             const newState = currentState === 2 ? 0 : 2;
             applyState(newState, true);
         });
+        // Tap overlay to close sidebar on mobile
+        const overlay = document.getElementById('sidebarOverlay');
+        if (overlay) {
+            overlay.addEventListener('click', function() {
+                sidebar.classList.remove('show');
+                overlay.classList.remove('show');
+            });
+        }
     });
 })();
 </script>

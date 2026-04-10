@@ -848,21 +848,27 @@ function showStkWaiting(phone, data) {
     document.getElementById('mpesaFooter').style.display       = 'none';
 
     // Format display number
-    const digits  = phone.replace(/^254/, '');
+    const digits  = (phone || '').replace(/\D/g,'').replace(/^254/, '');
     const display = '+254 ' + digits.slice(0,3) + ' ' + digits.slice(3,6) + ' ' + digits.slice(6);
     document.getElementById('mpesaPhoneDisplay').textContent = display;
 
     // Callback note
     const note = document.getElementById('stkCallbackNote');
+    const env  = data.environment || 'production';
+    const sc   = data.shortcode   || '';
+    const phoneSent = data.phone_sent || phone;
+
     if (data.using_platform) {
-        note.className   = 'stk-cb-note';
-        note.innerHTML   = '<strong>✅ Using FortuNett shared paybill</strong> ' + (data.shortcode ? '(' + data.shortcode + ')' : '') +
+        note.className = 'stk-cb-note';
+        note.innerHTML = '<strong>✅ Using FortuNett shared paybill</strong> ' + (sc ? '(' + sc + ')' : '') +
             ' — payment will be auto-confirmed when you enter your PIN.';
     } else {
-        // Check if callback is properly set — guide based on environment
-        note.className   = 'stk-cb-note';
-        note.innerHTML   = '✅ STK prompt sent. Enter your M-Pesa PIN and payment will be confirmed automatically. ' +
-            'If it doesn\'t update, <a href="payments.php" style="color:#166534;font-weight:600;">verify manually in Payments</a>.';
+        note.className = 'stk-cb-note';
+        note.innerHTML = '✅ STK prompt sent to <strong>' + phoneSent + '</strong>'
+            + (sc ? ' via shortcode <strong>' + sc + '</strong>' : '')
+            + '. Enter your M-Pesa PIN on the phone.'
+            + '<br><small style="opacity:.8;">If no prompt appeared: verify the shortcode, passkey, and that the number is correct.'
+            + ' <a href="settings.php#payments" style="color:inherit;font-weight:600;">Check gateway settings →</a></small>';
     }
 }
 
