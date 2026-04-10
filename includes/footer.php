@@ -24,6 +24,9 @@
 --neu-inset:inset 3px 3px 8px rgba(0,0,0,.55),inset -2px -2px 5px rgba(255,255,255,.05);
 --neu-text:#e2e2e0;--neu-muted:#9a9a95;--neu-input:#1a1a19;}
 
+/* ── Navbar keep brand color, just fix text ─── */
+.navbar .navbar-brand,.navbar .nav-link{color:#fff !important;}
+
 /* ── Page & layout ─────────────────────────────── */
 body,html{background:var(--neu-bg) !important;color:var(--neu-text) !important;}
 .main-layout,#main-content,.content-area,.page-wrapper{background:var(--neu-bg) !important;}
@@ -155,9 +158,81 @@ hr{border-color:var(--neu-border) !important;}
 .section-title{color:var(--neu-text) !important;}
 .dashboard-container{background:transparent !important;}
 
-/* ── Client/billing pages ────────────────────────── */
-.client-card,.billing-card,.package-row,.client-row{background:var(--neu-s2) !important;border-color:var(--neu-border) !important;color:var(--neu-text) !important;}
-.client-name,.billing-amount{color:#fff !important;}
+/* ── Page-specific containers (clients, packages, payments, etc.) ─ */
+.customers-container,.clients-container,.packages-container,
+.payments-container,.mikrotik-container,.billing-container,
+.reports-container,.sms-container,.emails-container,
+.dashboard-container,.page-container,.content-section{
+  background:transparent !important;color:var(--neu-text) !important;}
+
+/* ── Table containers ─────────────────────────────────────────── */
+.table-container,.table-wrapper,.table-card,.data-table-wrap{
+  background:var(--neu-s2) !important;border:1px solid var(--neu-border) !important;
+  border-radius:14px !important;box-shadow:var(--neu-card) !important;overflow:hidden;}
+.table-header,.table-info,.table-actions{
+  background:rgba(255,255,255,.03) !important;border-color:var(--neu-border) !important;
+  color:var(--neu-text) !important;}
+.table-info p,.table-header p,.table-header span{color:var(--neu-muted) !important;}
+
+/* ── All tables (including page-specific class names) ─────────── */
+.customer-table,.packages-table,.payments-table,.clients-table,
+.routers-table,.billing-table,.reports-table,
+.table,table{color:var(--neu-text) !important;background:transparent !important;}
+.customer-table thead tr,.packages-table thead tr,.table thead tr,table thead tr,
+thead tr{background:rgba(255,255,255,.05) !important;}
+.customer-table thead th,.packages-table thead th,.table thead th,table thead th,
+thead th{background:rgba(255,255,255,.05) !important;border-color:var(--neu-border) !important;
+  color:var(--neu-muted) !important;font-size:11px !important;text-transform:uppercase;letter-spacing:.06em;}
+.customer-table tbody tr,.packages-table tbody tr,.table tbody tr,table tbody tr,
+tbody tr{background:transparent !important;border-color:var(--neu-border) !important;}
+.customer-table tbody tr:hover,.table tbody tr:hover,table tbody tr:hover,
+tbody tr:hover{background:rgba(255,255,255,.04) !important;}
+.customer-table tbody td,.packages-table tbody td,.table tbody td,table tbody td,
+tbody td{border-color:var(--neu-border) !important;color:var(--neu-text) !important;vertical-align:middle;}
+.table-striped>tbody>tr:nth-child(odd),tbody tr:nth-child(odd).striped{background:rgba(255,255,255,.02) !important;}
+
+/* ── Stat cards on clients/billing pages ─────────────────────── */
+.stat-card{background:var(--neu-s2) !important;border:1px solid var(--neu-border) !important;
+  border-radius:14px !important;box-shadow:var(--neu-card) !important;}
+.stat-card:hover{transform:translateY(-3px) !important;
+  box-shadow:18px 18px 36px rgba(0,0,0,.6),-8px -8px 22px rgba(255,255,255,.04),0 0 0 1px var(--neu-border) !important;}
+.stat-card .stat-value,.stat-card h3,.stat-card .count{color:#fff !important;}
+.stat-card .stat-label,.stat-card p,.stat-card small{color:var(--neu-muted) !important;}
+.stat-icon-box,.stat-card .icon-wrap{background:rgba(255,255,255,.07) !important;border-radius:10px !important;}
+
+/* ── Client/billing specific cards ───────────────────────────── */
+.client-card,.billing-card,.package-card-item,.router-card{
+  background:var(--neu-s2) !important;border-color:var(--neu-border) !important;}
+.client-name,.billing-amount,.router-name{color:#fff !important;}
+.client-info,.billing-info{color:var(--neu-muted) !important;}
+
+/* ── Filter bars & search ──────────────────────────────────────── */
+.filters-bar,.filter-bar,.search-bar,.filters-section{
+  background:var(--neu-s2) !important;border-color:var(--neu-border) !important;
+  border-radius:12px !important;}
+.clear-filters-btn{background:rgba(255,255,255,.07) !important;
+  border-color:var(--neu-border) !important;color:var(--neu-text) !important;}
+.clear-filters-btn:hover{background:rgba(255,255,255,.12) !important;color:#fff !important;}
+.filters-grid select,.search-input{background:var(--neu-input) !important;
+  border-color:rgba(255,255,255,.08) !important;color:var(--neu-text) !important;}
+
+/* ── DataTables controls ──────────────────────────────────────── */
+.dataTables_wrapper .dataTables_length,.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,.dataTables_wrapper .dataTables_paginate{color:var(--neu-muted) !important;}
+.dataTables_wrapper .dataTables_paginate .paginate_button{color:var(--neu-muted) !important;border-radius:6px !important;}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover{
+  background:var(--primary-color,#3B6EA5) !important;color:#fff !important;border-color:transparent !important;}
+.dataTables_wrapper select,.dataTables_wrapper input{
+  background:var(--neu-input) !important;border-color:rgba(255,255,255,.08) !important;color:var(--neu-text) !important;}
+
+/* ── Chart areas ─────────────────────────────────────────────── */
+.chart-card,.chart-container,.chart-wrapper,.chart-section{
+  background:var(--neu-s2) !important;border:1px solid var(--neu-border) !important;
+  border-radius:14px !important;box-shadow:var(--neu-card) !important;}
+.chart-card .card-header,.chart-container .header{
+  background:rgba(255,255,255,.03) !important;border-color:var(--neu-border) !important;color:var(--neu-text) !important;}
+.chart-title,.chart-card h5,.chart-card h6{color:var(--neu-text) !important;}
 
 /* ── Scrollbar ───────────────────────────────────── */
 ::-webkit-scrollbar{width:6px;height:6px;}
@@ -167,23 +242,36 @@ hr{border-color:var(--neu-border) !important;}
 </style>
 
 <script>
-/* Dark theme: fix inline style="background:..." attributes on page elements */
+/* Dark theme: patch inline style="background:..." attributes */
 (function(){
-  var lightBgs = ['#f3f4f6','#ffffff','#fff','#f8f9fa','#f1f5f9','#f9fafb','#f0f4f8','#fafafa','white'];
-  var lightClrs = ['#111827','#1e293b','#374151','#1f2937','#0f172a','#000'];
+  var lightBgs = ['#f3f4f6','#f9fafb','#ffffff','#fff','#f8f9fa','#f1f5f9','#f0f4f8','#fafafa','white','#e5e7eb','#eff0f2'];
+  var lightClrs = ['#111827','#1e293b','#374151','#1f2937','#0f172a','#000000','#333','#333333','black'];
+  var lightBordClrs = ['#e5e7eb','#d1d5db','#dee2e6'];
   document.querySelectorAll('[style]').forEach(function(el){
     var s = el.getAttribute('style') || '';
-    var low = s.toLowerCase();
+    var low = s.toLowerCase().replace(/\s/g,'');
     var changed = false;
     lightBgs.forEach(function(c){
-      if(low.includes('background:'+c) || low.includes('background: '+c) || low.includes('background-color:'+c) || low.includes('background-color: '+c)){
-        s = s.replace(new RegExp('background(?:-color)?\\s*:\\s*'+c.replace('#','#?'),'gi'),'background:#141414');
+      var lc = c.toLowerCase().replace(/\s/g,'');
+      if(low.includes('background:'+lc)||low.includes('background-color:'+lc)){
+        var re = new RegExp('(background(?:-color)?)\\s*:\\s*'+lc.replace('#','\\#').replace('(','\(').replace(')','\\)'),'gi');
+        s = s.replace(re,'$1:#1c1c1b');
         changed = true;
       }
     });
     lightClrs.forEach(function(c){
-      if(low.includes('color:'+c) || low.includes('color: '+c)){
-        s = s.replace(new RegExp('(?<!background-)color\\s*:\\s*'+c.replace('#','#?'),'gi'),'color:#e2e2e0');
+      var lc = c.toLowerCase().replace(/\s/g,'');
+      /* Only match standalone color: not background-color: */
+      if(low.includes('color:'+lc)&&!low.includes('background-color:'+lc)){
+        var re = new RegExp('(?<![a-z-])color\\s*:\\s*'+lc.replace('#','\\#'),'gi');
+        s = s.replace(re,'color:#e2e2e0');
+        changed = true;
+      }
+    });
+    lightBordClrs.forEach(function(c){
+      var lc = c.toLowerCase().replace(/\s/g,'');
+      if(low.includes('border-color:'+lc)||low.includes('border:1px solid '+lc)||low.includes('border:1.5px solid '+lc)){
+        s = s.replace(new RegExp(c,'gi'),'rgba(255,255,255,.1)');
         changed = true;
       }
     });

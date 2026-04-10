@@ -49,22 +49,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Fetch Data
-$logs = $pdo->prepare("SELECT sl.*, c.full_name FROM sms_outbox sl LEFT JOIN clients c ON sl.client_id = c.id WHERE sl.tenant_id = ? ORDER BY sl.sent_at DESC LIMIT 50");
-$logs->execute([$tenant_id]);
-$sms_logs = $logs->fetchAll(PDO::FETCH_ASSOC);
+// Fetch outbox log
+$sms_logs = [];
+try {
+    $logs = $pdo->prepare("SELECT sl.*, c.full_name FROM sms_outbox sl LEFT JOIN clients c ON sl.client_id = c.id WHERE sl.tenant_id = ? ORDER BY sl.sent_at DESC LIMIT 50");
+    $logs->execute([$tenant_id]);
+    $sms_logs = $logs->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) { /* table may not exist yet */ }
 
-// Fetch Templates (Tenant specific + Global)
-$t_stmt = $pdo->prepare("SELECT * FROM sms_templates WHERE tenant_id = ? OR is_global = 1 ORDER BY is_global DESC, template_name ASC");
-$t_stmt->execute([$tenant_id]);
-$all_templates = $t_stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// $templates = $smsHelper->getTemplates();
+// Fetch Templates
+$all_templates = [];
+try {
+    $t_stmt = $pdo->prepare("SELECT * FROM sms_templates WHERE tenant_id = ? OR is_global = 1 ORDER BY is_global DESC, template_name ASC");
+    $t_stmt->execute([$tenant_id]);
+    $all_templates = $t_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) { /* table may not exist yet */ }
 
 // Fetch Config
-$confStmt = $pdo->prepare("SELECT * FROM sms_configurations WHERE tenant_id = ?");
-$confStmt->execute([$tenant_id]);
-$config = $confStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+$config = [];
+try {
+    $confStmt = $pdo->prepare("SELECT * FROM sms_configurations WHERE tenant_id = ?");
+    $confStmt->execute([$tenant_id]);
+    $config = $confStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+} catch (Exception $e) { /* table may not exist yet */ }
 
 // Fetch Clients
 $clientsStmt = $pdo->prepare("SELECT id, full_name, phone FROM clients WHERE tenant_id = ? ORDER BY full_name ASC");

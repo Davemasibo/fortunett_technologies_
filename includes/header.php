@@ -199,7 +199,8 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
         }
         body {
             font-family: var(--brand-font);
-            background: var(--light-bg);
+            background: #141414;
+            color: #e2e2e0;
         }
         .navbar {
             background: var(--primary-color) !important;
@@ -232,13 +233,13 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
         }
         .sidebar {
             width: var(--sidebar-width);
-            background: white;
+            background: linear-gradient(180deg, #111827 0%, #1e3a5f 55%, var(--primary-dark, #2C5282) 100%);
             position: fixed;
             left: 0;
             top: var(--navbar-height);
             bottom: 0;
             overflow-y: auto;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            box-shadow: 4px 0 24px rgba(0,0,0,.3);
             z-index: 999;
             transition: width 0.3s ease, transform 0.3s ease;
         }
@@ -268,25 +269,30 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
         .sidebar-menu a {
             display: flex;
             align-items: center;
-            padding: 14px 16px;
-            color: #333;
+            padding: 12px 16px;
+            color: rgba(255,255,255,.72);
             text-decoration: none;
             transition: all 0.2s ease;
-            border-left: 4px solid transparent;
+            border-left: 3px solid transparent;
             gap: 12px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            border-radius: 0 8px 8px 0;
+            margin: 1px 8px 1px 0;
+            font-size: 13.5px;
+            font-weight: 500;
         }
 
         .sidebar-menu a:hover {
-            background: #f5f5f5;
-            border-left-color: var(--primary-color);
+            background: rgba(255,255,255,.08);
+            color: #fff;
+            border-left-color: rgba(255,255,255,.4);
         }
 
         .sidebar-menu a.active {
-            background: var(--primary-color);
-            color: white;
+            background: rgba(255,255,255,.15);
+            color: #fff;
             border-left-color: #fff;
             font-weight: 600;
         }
@@ -314,7 +320,7 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
             width: calc(100% - var(--sidebar-width));
             padding: 30px 0;
             min-height: calc(100vh - var(--navbar-height));
-            background: var(--light-bg);
+            background: #141414;
             display: flex;
             justify-content: center;
             transition: margin-left 0.3s ease, width 0.3s ease;
@@ -362,12 +368,14 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
             background: transparent;
         }
         .sidebar-menu::-webkit-scrollbar-thumb {
-            background: #ddd;
+            background: rgba(255,255,255,.15);
             border-radius: 3px;
         }
         .sidebar-menu::-webkit-scrollbar-thumb:hover {
-            background: #999;
+            background: rgba(255,255,255,.3);
         }
+        .sidebar-menu a i { color: rgba(255,255,255,.6); }
+        .sidebar-menu a:hover i, .sidebar-menu a.active i { color: #fff; }
     </style>
 </head>
 <body>

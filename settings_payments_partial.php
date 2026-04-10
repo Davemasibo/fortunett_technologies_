@@ -8,20 +8,20 @@
 <style>
 /* ── Gateway section layout ─────────────────────────────────────── */
 .pg-section-title {
-    font-size: 15px; font-weight: 700; color: #111827;
+    font-size: 15px; font-weight: 700; color: #e2e2e0;
     display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
 }
 .pg-section-title i { color: var(--primary-color); }
-.pg-section-sub { font-size: 12px; font-weight: 400; color: #6B7280; margin-left: 4px; }
+.pg-section-sub { font-size: 12px; font-weight: 400; color: #9a9a95; margin-left: 4px; }
 
 /* ── Add/Edit form card ──────────────────────────────────────────── */
 .pg-form-card {
-    background: #fff;
-    border: 1px solid #E5E7EB;
+    background: rgb(34,34,33);
+    border: 1px solid rgba(255,255,255,.06);
     border-radius: 12px;
     overflow: hidden;
     margin-bottom: 28px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.04);
+    box-shadow: 14px 14px 28px rgba(0,0,0,.5), -7px -7px 18px rgba(255,255,255,.035);
 }
 .pg-form-header {
     padding: 18px 24px;
@@ -98,32 +98,35 @@
 
 /* ── Field sections ──────────────────────────────────────────────── */
 .field-section {
-    background: #F9FAFB; border-radius: 10px; padding: 18px;
-    border: 1px solid #E5E7EB; margin-bottom: 16px; display: none;
+    background: rgb(26,26,25); border-radius: 10px; padding: 18px;
+    border: 1px solid rgba(255,255,255,.06); margin-bottom: 16px; display: none;
 }
 .field-section.active { display: block; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
 .field-row.full { grid-template-columns: 1fr; }
 .form-label-sm {
-    font-size: 11px; font-weight: 600; color: #374151;
+    font-size: 11px; font-weight: 600; color: #9a9a95;
     text-transform: uppercase; letter-spacing: .05em;
     display: block; margin-bottom: 5px;
 }
 .form-input {
     width: 100%; padding: 9px 12px;
-    border: 1.5px solid #D1D5DB; border-radius: 7px;
-    font-size: 13.5px; background: #fff; transition: border-color .15s;
+    border: 1px solid rgba(255,255,255,.08); border-radius: 7px;
+    font-size: 13.5px; background: rgb(27,27,26); color: #e2e2e0;
+    box-shadow: inset 3px 3px 8px rgba(0,0,0,.55), inset -2px -2px 5px rgba(255,255,255,.05);
+    transition: border-color .15s;
     box-sizing: border-box; font-family: inherit;
 }
-.form-input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(59,110,165,.1); }
+.form-input::placeholder { color: rgba(255,255,255,.3); }
+.form-input:focus { outline: none; border-color: var(--primary-color); box-shadow: inset 3px 3px 8px rgba(0,0,0,.55), 0 0 0 3px rgba(59,110,165,.2); color: #fff; }
 .secret-wrap { position: relative; }
 .secret-wrap .form-input { padding-right: 38px; }
 .secret-wrap .secret-toggle {
     position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-    background: none; border: none; cursor: pointer; color: #9CA3AF; font-size: 14px;
+    background: none; border: none; cursor: pointer; color: rgba(255,255,255,.4); font-size: 14px;
     padding: 2px 4px;
 }
-.secret-wrap .secret-toggle:hover { color: #374151; }
+.secret-wrap .secret-toggle:hover { color: #e2e2e0; }
 
 /* ── Auto-account toggle ─────────────────────────────────────────── */
 .toggle-row {
@@ -133,16 +136,16 @@
 }
 .toggle-switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
-.toggle-slider { position: absolute; inset: 0; background: #D1D5DB; border-radius: 22px; cursor: pointer; transition: .25s; }
+.toggle-slider { position: absolute; inset: 0; background: rgba(255,255,255,.15); border-radius: 22px; cursor: pointer; transition: .25s; }
 .toggle-slider:before {
     content: ''; position: absolute; height: 16px; width: 16px;
-    left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .25s;
+    left: 3px; bottom: 3px; background: rgba(255,255,255,.9); border-radius: 50%; transition: .25s;
 }
 input:checked + .toggle-slider { background: var(--primary-color); }
 input:checked + .toggle-slider:before { transform: translateX(18px); }
-.toggle-label { font-size: 12.5px; color: #374151; }
+.toggle-label { font-size: 12.5px; color: #e2e2e0; }
 .toggle-label strong { display: block; font-weight: 600; margin-bottom: 1px; }
-.toggle-label span { font-size: 11.5px; color: #6B7280; }
+.toggle-label span { font-size: 11.5px; color: #9a9a95; }
 
 /* ── Save / Reset buttons ────────────────────────────────────────── */
 .pg-form-actions { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
@@ -154,11 +157,11 @@ input:checked + .toggle-slider:before { transform: translateX(18px); }
 }
 .pg-save-btn:hover { opacity: .9; transform: translateY(-1px); }
 .pg-reset-btn {
-    background: none; border: 1.5px solid #E5E7EB; border-radius: 8px;
-    padding: 10px 18px; font-size: 13.5px; color: #6B7280; cursor: pointer;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 8px;
+    padding: 10px 18px; font-size: 13.5px; color: #9a9a95; cursor: pointer;
     transition: all .15s;
 }
-.pg-reset-btn:hover { background: #F3F4F6; color: #374151; }
+.pg-reset-btn:hover { background: rgba(255,255,255,.12); color: #e2e2e0; }
 
 /* ── Configured gateways grid ────────────────────────────────────── */
 .gateways-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }

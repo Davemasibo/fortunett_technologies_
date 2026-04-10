@@ -50,24 +50,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Fetch Data
-$logs = $pdo->prepare("SELECT el.*, c.full_name FROM email_outbox el LEFT JOIN clients c ON el.client_id = c.id WHERE el.tenant_id = ? ORDER BY el.sent_at DESC LIMIT 50");
-$logs->execute([$tenant_id]);
-$email_logs = $logs->fetchAll(PDO::FETCH_ASSOC);
+// Fetch outbox log
+$email_logs = [];
+try {
+    $logs = $pdo->prepare("SELECT el.*, c.full_name FROM email_outbox el LEFT JOIN clients c ON el.client_id = c.id WHERE el.tenant_id = ? ORDER BY el.sent_at DESC LIMIT 50");
+    $logs->execute([$tenant_id]);
+    $email_logs = $logs->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) { /* table may not exist yet */ }
 
-// Fetch Templates (Tenant specific + Global)
-$t_stmt = $pdo->prepare("SELECT * FROM email_templates WHERE tenant_id = ? OR is_global = 1 ORDER BY is_global DESC, template_name ASC");
-$t_stmt->execute([$tenant_id]);
-$all_templates = $t_stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// Helper to organize templates logic if needed, but simple fetch is fine
-$emailHelper = new stdClass(); // Mock if needed or remove if $emailHelper was used
-
+// Fetch Templates
+$all_templates = [];
+try {
+    $t_stmt = $pdo->prepare("SELECT * FROM email_templates WHERE tenant_id = ? OR is_global = 1 ORDER BY is_global DESC, template_name ASC");
+    $t_stmt->execute([$tenant_id]);
+    $all_templates = $t_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) { /* table may not exist yet */ }
 
 // Fetch Config
-$confStmt = $pdo->prepare("SELECT * FROM email_configurations WHERE tenant_id = ?");
-$confStmt->execute([$tenant_id]);
-$config = $confStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+$config = [];
+try {
+    $confStmt = $pdo->prepare("SELECT * FROM email_configurations WHERE tenant_id = ?");
+    $confStmt->execute([$tenant_id]);
+    $config = $confStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+} catch (Exception $e) { /* table may not exist yet */ }
 
 // Fetch Clients
 $clientsStmt = $pdo->prepare("SELECT id, full_name, email FROM clients WHERE tenant_id = ? AND email IS NOT NULL AND email != '' ORDER BY full_name ASC");
