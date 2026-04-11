@@ -39,9 +39,28 @@ if (empty($name) || empty($package_id)) {
     $t_stmt->execute([$user_id]);
     $tenant_id = $t_stmt->fetchColumn();
 
+    // Duplicate check: username must be unique per tenant
+    if (!empty($mikrotik_username)) {
+        $dupCheck = $pdo->prepare("SELECT id FROM clients WHERE tenant_id = ? AND mikrotik_username = ? LIMIT 1");
+        $dupCheck->execute([$tenant_id, $mikrotik_username]);
+        if ($dupCheck->fetch()) {
+            echo json_encode(['success' => false, 'message' => "Username \"$mikrotik_username\" is already in use. Please choose a different username."]);
+            exit;
+        }
+    }
+    // Duplicate check: phone must be unique per tenant
+    if (!empty($phone)) {
+        $dupCheck = $pdo->prepare("SELECT id FROM clients WHERE tenant_id = ? AND phone = ? LIMIT 1");
+        $dupCheck->execute([$tenant_id, $phone]);
+        if ($dupCheck->fetch()) {
+            echo json_encode(['success' => false, 'message' => "A customer with phone number \"$phone\" already exists."]);
+            exit;
+        }
+    }
+
     try {
         $pdo->beginTransaction();
-    
+
         // 1. Get Package Details (and verify tenant ownership)
         $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND tenant_id = ?");
         $stmt->execute([$package_id, $tenant_id]);
@@ -51,12 +70,15 @@ if (empty($name) || empty($package_id)) {
             throw new Exception("Invalid package selected or access denied");
         }
         
-        // Calculate Expiry
-        $expiry_date = date('Y-m-d H:i:s', strtotime("+1 month")); // Default
-        if (stripos($package['name'], 'daily') !== false) {
-            $expiry_date = date('Y-m-d H:i:s', strtotime("+1 day"));
-        } elseif (stripos($package['name'], 'weekly') !== false) {
-            $expiry_date = date('Y-m-d H:i:s', strtotime("+1 week"));
+        // Calculate Expiry — prefer form input, fallback to package validity, then 1 month
+        if (!empty($_POST['expiry_date'])) {
+            $expiry_date = date('Y-m-d H:i:s', strtotime($_POST['expiry_date']));
+        } elseif (!empty($package['validity_value']) && !empty($package['validity_unit'])) {
+            $val  = (int)$package['validity_value'];
+            $unit = $package['validity_unit']; // minutes|hours|days|weeks|months
+            $expiry_date = date('Y-m-d H:i:s', strtotime("+$val $unit"));
+        } else {
+            $expiry_date = date('Y-m-d H:i:s', strtotime('+1 month'));
         }
         
         // 2. Insert into DB

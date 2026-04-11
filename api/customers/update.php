@@ -48,6 +48,11 @@ if (empty($id) || empty($name)) {
         if (!$oldClient) {
             throw new Exception("Customer not found or access denied");
         }
+
+        // Keep existing status if not explicitly passed by the form
+        if (empty($_POST['status'])) {
+            $status = $oldClient['status'];
+        }
     
         // 2. Get Package Details (if changed)
         $pkgName = $oldClient['subscription_plan'];
@@ -112,8 +117,9 @@ if (empty($id) || empty($name)) {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($values);
     
-    // 4. Update on MikroTik
-    $router_stmt = $pdo->query("SELECT * FROM mikrotik_routers WHERE status = 'active' LIMIT 1");
+    // 4. Update on MikroTik (tenant-scoped)
+    $router_stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ? LIMIT 1");
+    $router_stmt->execute([$tenant_id]);
     $router = $router_stmt->fetch(PDO::FETCH_ASSOC);
     
     if ($router && !empty($mikrotik_username)) {

@@ -67,6 +67,11 @@
                 <i class="fas fa-sliders-h"></i> <span>Settings</span>
             </a>
         </li>
+        <li class="sidebar-profile-item">
+            <a href="profile.php" class="<?php echo isActivePage('profile.php'); ?>">
+                <i class="fas fa-user-circle"></i> <span><?php echo htmlspecialchars($_SESSION['username'] ?? 'Profile'); ?></span>
+            </a>
+        </li>
     </ul>
 
     <?php
@@ -331,6 +336,17 @@
         opacity: 1;
     }
 
+    /* Sidebar profile item — subtle separator above it */
+    .sidebar-profile-item {
+        margin-top: auto;
+        border-top: 1px solid rgba(255,255,255,.07);
+        padding-top: 4px;
+    }
+    .sidebar-profile-item a {
+        opacity: .85;
+    }
+    .sidebar-profile-item a:hover { opacity: 1; }
+
     @media (max-width: 768px) {
         .sidebar {
             transform: translateX(-100%);
@@ -346,6 +362,9 @@
         .main-content-wrapper > div {
             padding: 0 12px;
         }
+        /* Hide profile link from navbar on mobile — it lives in the sidebar */
+        .nav-user-avatar,
+        .navbar .nav-item a[href="profile.php"] { display: none !important; }
     }
 </style>
 

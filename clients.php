@@ -261,6 +261,18 @@ include 'includes/sidebar.php';
     .row-dd-divider { border-top:1px solid var(--neu-border); margin:3px 0; }
 
     #userModal > div, #clientModal > div, #customerFormModal > div { background:#222221 !important; border:1px solid var(--neu-border) !important; color:#e2e2e0 !important; }
+    /* Dark inputs inside the add/edit customer modal */
+    #customerFormModal input, #customerFormModal textarea {
+        background: #1c1c1b !important;
+        border-color: rgba(255,255,255,.1) !important;
+        color: #e2e2e0 !important;
+    }
+    #customerFormModal input::placeholder, #customerFormModal textarea::placeholder { color: rgba(255,255,255,.3) !important; }
+    #customerFormModal label[style*="color:#374151"], #customerFormModal label { color: rgba(255,255,255,.65) !important; }
+    /* Section divider borders inside modal */
+    #customerFormModal [style*="border-bottom:1px solid #F3F4F6"] { border-bottom-color: rgba(255,255,255,.07) !important; }
+    /* Modal footer */
+    #customerFormModal > div > div:last-child { background: #222221 !important; border-top-color: rgba(255,255,255,.07) !important; }
 
     .modal-tabs { display:flex; gap:0; border-bottom:1px solid var(--neu-border); background:#222221; flex-shrink:0; }
     .modal-tab-btn { padding:10px 16px; font-size:13px; font-weight:500; color:rgba(255,255,255,.45); background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; white-space:nowrap; transition:all .15s; }
@@ -485,7 +497,14 @@ include 'includes/sidebar.php';
                                 <div class="customer-avatar"><?php echo $initials; ?></div>
                                 <div>
                                     <div class="customer-name"><?php echo htmlspecialchars($customer['full_name'] ?? 'N/A'); ?></div>
-                                    <div class="customer-id"><?php echo htmlspecialchars($customer['account_number'] ?? ('#'.$customer['id'])); ?></div>
+                                    <div class="customer-id"><?php
+                                        if (!empty($customer['account_number'])) {
+                                            echo htmlspecialchars($customer['account_number']);
+                                        } else {
+                                            $pfx = strtoupper(substr($customer['mikrotik_username'] ?? $customer['full_name'] ?? 'C', 0, 1));
+                                            echo $pfx . str_pad($customer['id'], 3, '0', STR_PAD_LEFT);
+                                        }
+                                    ?></div>
                                 </div>
                             </div>
                         </td>
@@ -535,140 +554,138 @@ include 'includes/sidebar.php';
 <?php include 'includes/footer.php'; ?>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     CUSTOMER DETAIL MODAL  (4 tabs)
+     CUSTOMER DETAIL MODAL  (5 tabs)
 ════════════════════════════════════════════════════════════════ -->
-<div id="userModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
-<div style="background:white;width:100%;max-width:800px;border-radius:14px;max-height:92vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;">
+<div id="userModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:1000;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+<div style="background:#1e1e1d;width:100%;max-width:820px;border-radius:16px;max-height:92vh;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0;">
+    <div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0;background:rgba(255,255,255,.02);">
         <div style="display:flex;gap:12px;align-items:center;min-width:0;">
-            <div id="modalAvatar" style="width:44px;height:44px;border-radius:50%;background:var(--primary-color,#3B6EA5);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:white;flex-shrink:0;"></div>
+            <div id="modalAvatar" style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--primary-dark,#2C5282),var(--primary-color,#3B6EA5));display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:white;flex-shrink:0;box-shadow:0 4px 12px rgba(0,0,0,.4);"></div>
             <div style="min-width:0;">
-                <div style="font-size:16px;font-weight:700;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="modalUserName"></div>
+                <div style="font-size:16px;font-weight:700;color:#e2e2e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="modalUserName"></div>
                 <div style="display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap;">
-                    <span style="font-size:12px;font-weight:700;color:var(--primary-color,#3B6EA5);font-family:monospace;" id="modalAcctNum"></span>
+                    <span style="font-size:12px;font-weight:700;color:var(--primary-light,#93c5fd);font-family:monospace;" id="modalAcctNum"></span>
                     <span id="modalStatusBadge"></span>
                 </div>
             </div>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
-            <button onclick="openExpiryModal()" style="padding:6px 10px;background:white;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;font-weight:500;color:#374151;cursor:pointer;white-space:nowrap;">
-                <i class="fas fa-calendar-alt" style="color:var(--primary-color,#3B6EA5);"></i> Change Expiry
+            <button onclick="openExpiryModal()" style="padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;font-weight:500;color:#d4d4d2;cursor:pointer;white-space:nowrap;transition:background .15s;">
+                <i class="fas fa-calendar-alt" style="color:var(--primary-light,#93c5fd);"></i> Change Expiry
             </button>
             <div style="position:relative;">
-                <button style="padding:6px 10px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;" onclick="toggleActionsMenu()">
+                <button style="padding:6px 10px;background:linear-gradient(135deg,var(--primary-dark,#2C5282),var(--primary-color,#3B6EA5));color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;" onclick="toggleActionsMenu()">
                     Actions <i class="fas fa-chevron-down" style="font-size:10px;"></i>
                 </button>
-                <div id="actionsMenu" style="display:none;position:absolute;top:100%;right:0;width:195px;background:white;border:1px solid #E5E7EB;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);margin-top:4px;z-index:20;">
-                    <a href="#" onclick="editUser();return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#374151;text-decoration:none;font-size:13px;"><i class="fas fa-edit" style="color:#6B7280;width:14px;"></i> Edit Details</a>
-                    <a href="#" onclick="promptPayment();return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#374151;text-decoration:none;font-size:13px;"><i class="fas fa-mobile-alt" style="color:#10B981;width:14px;"></i> Payment Prompt</a>
-                    <a href="#" onclick="switchToTab('sms');openSMSModal(currentCustomer);return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#374151;text-decoration:none;font-size:13px;"><i class="fas fa-comment" style="color:#3B82F6;width:14px;"></i> Send SMS</a>
-                    <div style="border-top:1px solid #E5E7EB;margin:3px 0;"></div>
-                    <a href="#" onclick="confirmDelete(currentCustomer.id,currentCustomer.full_name||currentCustomer.name);return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#EF4444;text-decoration:none;font-size:13px;"><i class="fas fa-trash" style="width:14px;"></i> Delete</a>
+                <div id="actionsMenu" style="display:none;position:absolute;top:100%;right:0;width:195px;background:#2a2a29;border:1px solid rgba(255,255,255,.08);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.6);margin-top:4px;z-index:20;overflow:hidden;">
+                    <a href="#" onclick="editUser();return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#d4d4d2;text-decoration:none;font-size:13px;"><i class="fas fa-edit" style="color:rgba(255,255,255,.4);width:14px;"></i> Edit Details</a>
+                    <a href="#" onclick="promptPayment();return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#d4d4d2;text-decoration:none;font-size:13px;"><i class="fas fa-mobile-alt" style="color:#34d399;width:14px;"></i> Payment Prompt</a>
+                    <a href="#" onclick="switchToTab('sms');openSMSModal(currentCustomer);return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#d4d4d2;text-decoration:none;font-size:13px;"><i class="fas fa-comment" style="color:#60a5fa;width:14px;"></i> Send SMS</a>
+                    <div style="border-top:1px solid rgba(255,255,255,.06);margin:3px 0;"></div>
+                    <a href="#" onclick="confirmDelete(currentCustomer.id,currentCustomer.full_name||currentCustomer.name);return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#f87171;text-decoration:none;font-size:13px;"><i class="fas fa-trash" style="width:14px;"></i> Delete</a>
                 </div>
             </div>
-            <button onclick="closeModal()" style="padding:4px 8px;background:transparent;border:none;font-size:20px;cursor:pointer;color:#9CA3AF;line-height:1;">&times;</button>
+            <button onclick="closeModal()" style="padding:4px 8px;background:transparent;border:none;font-size:22px;cursor:pointer;color:rgba(255,255,255,.4);line-height:1;">&times;</button>
         </div>
     </div>
 
     <!-- ── PACKAGE INFO BAR ───────────────────────────────── -->
-    <div style="padding:7px 20px;background:#F9FAFB;border-bottom:1px solid #E5E7EB;font-size:12px;color:#6B7280;flex-shrink:0;" id="modalPackageInfo"></div>
+    <div style="padding:7px 20px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;color:rgba(255,255,255,.45);flex-shrink:0;" id="modalPackageInfo"></div>
 
     <!-- ── TABS ──────────────────────────────────────────── -->
-    <div class="modal-tabs" style="padding:0 20px;">
+    <div class="modal-tabs" style="padding:0 20px;background:#1e1e1d;border-bottom:1px solid rgba(255,255,255,.06);">
         <button class="modal-tab-btn active" onclick="switchToTab('general')">General</button>
         <button class="modal-tab-btn" onclick="switchToTab('reports')">Reports</button>
         <button class="modal-tab-btn" onclick="switchToTab('payments')">Payments</button>
         <button class="modal-tab-btn" onclick="switchToTab('sms')">SMS</button>
+        <button class="modal-tab-btn" onclick="switchToTab('fup')"><i class="fas fa-tachometer-alt" style="font-size:10px;margin-right:4px;"></i>FUP</button>
     </div>
 
     <!-- ── TAB CONTENT ────────────────────────────────────── -->
-    <div style="overflow-y:auto;flex:1;background:#F9FAFB;">
+    <div style="overflow-y:auto;flex:1;background:#181817;">
 
         <!-- ── GENERAL TAB ─────────────────────────────── -->
         <div class="modal-tab-panel active" id="tab-general" style="padding:16px 20px;">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
-                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Account Number</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);box-shadow:4px 4px 10px rgba(0,0,0,.3),-2px -2px 6px rgba(255,255,255,.02);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Account Number</div>
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
-                        <span style="font-weight:700;color:#111827;font-family:monospace;font-size:15px;" id="infoId"></span>
-                        <button onclick="copyField('infoId')" style="font-size:10px;color:#6B7280;border:1px solid #E5E7EB;background:#F9FAFB;padding:2px 7px;border-radius:4px;cursor:pointer;">Copy</button>
+                        <span style="font-weight:700;color:#e2e2e0;font-family:monospace;font-size:15px;" id="infoId"></span>
+                        <button onclick="copyField('infoId')" style="font-size:10px;color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);padding:2px 7px;border-radius:4px;cursor:pointer;">Copy</button>
                     </div>
                 </div>
-                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
-                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Full Name</div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);box-shadow:4px 4px 10px rgba(0,0,0,.3),-2px -2px 6px rgba(255,255,255,.02);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Full Name</div>
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
-                        <span style="font-weight:600;color:#111827;font-size:13px;" id="infoName"></span>
-                        <button onclick="copyField('infoName')" style="font-size:10px;color:#6B7280;border:1px solid #E5E7EB;background:#F9FAFB;padding:2px 7px;border-radius:4px;cursor:pointer;">Copy</button>
+                        <span style="font-weight:600;color:#e2e2e0;font-size:13px;" id="infoName"></span>
+                        <button onclick="copyField('infoName')" style="font-size:10px;color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);padding:2px 7px;border-radius:4px;cursor:pointer;">Copy</button>
                     </div>
                 </div>
-                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
-                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Username</div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);box-shadow:4px 4px 10px rgba(0,0,0,.3),-2px -2px 6px rgba(255,255,255,.02);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Username</div>
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
-                        <span style="font-weight:600;color:#111827;font-size:13px;" id="infoUsername"></span>
-                        <button onclick="copyField('infoUsername')" style="font-size:10px;color:#6B7280;border:1px solid #E5E7EB;background:#F9FAFB;padding:2px 7px;border-radius:4px;cursor:pointer;">Copy</button>
+                        <span style="font-weight:600;color:#e2e2e0;font-size:13px;font-family:monospace;" id="infoUsername"></span>
+                        <button onclick="copyField('infoUsername')" style="font-size:10px;color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);padding:2px 7px;border-radius:4px;cursor:pointer;">Copy</button>
                     </div>
                 </div>
-                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
-                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Password</div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);box-shadow:4px 4px 10px rgba(0,0,0,.3),-2px -2px 6px rgba(255,255,255,.02);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Password</div>
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
-                        <span style="font-weight:600;color:#111827;font-family:monospace;">
+                        <span style="font-weight:600;color:#e2e2e0;font-family:monospace;">
                             <span id="pwdHidden">••••••••</span>
                             <span id="pwdValue" style="display:none;font-size:13px;"></span>
                         </span>
                         <div style="display:flex;gap:4px;flex-shrink:0;">
-                            <button onclick="togglePwd()" style="color:#6B7280;background:none;border:none;cursor:pointer;padding:2px 4px;" title="Show/Hide"><i class="fas fa-eye" id="pwdEye" style="font-size:13px;"></i></button>
-                            <button onclick="copyField('pwdValue')" style="font-size:10px;color:#6B7280;border:1px solid #E5E7EB;background:#F9FAFB;padding:2px 7px;border-radius:4px;cursor:pointer;">Copy</button>
+                            <button onclick="togglePwd()" style="color:rgba(255,255,255,.4);background:none;border:none;cursor:pointer;padding:2px 4px;" title="Show/Hide"><i class="fas fa-eye" id="pwdEye" style="font-size:13px;"></i></button>
+                            <button onclick="copyField('pwdValue')" style="font-size:10px;color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);padding:2px 7px;border-radius:4px;cursor:pointer;">Copy</button>
                         </div>
                     </div>
                 </div>
-                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
-                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Package</div>
-                    <div style="font-weight:600;color:#111827;font-size:13px;" id="infoPackage"></div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);box-shadow:4px 4px 10px rgba(0,0,0,.3),-2px -2px 6px rgba(255,255,255,.02);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Package</div>
+                    <div style="font-weight:600;color:#e2e2e0;font-size:13px;" id="infoPackage"></div>
                 </div>
-                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
-                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Status</div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);box-shadow:4px 4px 10px rgba(0,0,0,.3),-2px -2px 6px rgba(255,255,255,.02);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Status</div>
                     <div id="infoStatus"></div>
                 </div>
-                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
-                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Phone Number</div>
-                    <div style="font-weight:600;color:#111827;font-size:13px;" id="infoPhone"></div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);box-shadow:4px 4px 10px rgba(0,0,0,.3),-2px -2px 6px rgba(255,255,255,.02);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Phone Number</div>
+                    <div style="font-weight:600;color:#e2e2e0;font-size:13px;" id="infoPhone"></div>
                 </div>
-                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
-                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Connection Type</div>
-                    <div style="font-weight:600;color:#111827;font-size:13px;" id="infoType"></div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);box-shadow:4px 4px 10px rgba(0,0,0,.3),-2px -2px 6px rgba(255,255,255,.02);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Connection Type</div>
+                    <div style="font-weight:600;color:#e2e2e0;font-size:13px;" id="infoType"></div>
                 </div>
-                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
-                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Connectivity</div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);box-shadow:4px 4px 10px rgba(0,0,0,.3),-2px -2px 6px rgba(255,255,255,.02);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Connectivity</div>
                     <div id="infoOnlineStatus" style="font-weight:600;font-size:13px;">
-                        <span style="color:#D1D5DB;font-size:12px;">Checking…</span>
+                        <span style="color:rgba(255,255,255,.3);font-size:12px;">Checking…</span>
                     </div>
                 </div>
-                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;">
-                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Address</div>
-                    <div style="font-weight:600;color:#111827;font-size:13px;" id="infoAddress"></div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);box-shadow:4px 4px 10px rgba(0,0,0,.3),-2px -2px 6px rgba(255,255,255,.02);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Address</div>
+                    <div style="font-weight:600;color:#e2e2e0;font-size:13px;" id="infoAddress"></div>
                 </div>
-                <div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid #E5E7EB;grid-column:span 2;">
-                    <div style="font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Expiry / Time Remaining</div>
-                    <div style="font-weight:600;color:#111827;font-size:13px;" id="infoTime"></div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);box-shadow:4px 4px 10px rgba(0,0,0,.3),-2px -2px 6px rgba(255,255,255,.02);grid-column:span 2;">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Expiry / Time Remaining</div>
+                    <div style="font-weight:600;color:#e2e2e0;font-size:13px;" id="infoTime"></div>
                 </div>
             </div>
         </div>
 
         <!-- ── REPORTS TAB ──────────────────────────────── -->
         <div class="modal-tab-panel" id="tab-reports" style="padding:16px 20px;">
-            <div id="reportsLoading" style="text-align:center;padding:30px;color:#9CA3AF;font-size:13px;">
+            <div id="reportsLoading" style="text-align:center;padding:30px;color:rgba(255,255,255,.35);font-size:13px;">
                 <i class="fas fa-spinner fa-spin"></i> Loading analytics…
             </div>
             <div id="reportsContent" style="display:none;">
-                <!-- Stat cards row 1 -->
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;" id="reportStats1"></div>
-                <!-- Stat cards row 2 -->
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;" id="reportStats2"></div>
-                <!-- Monthly payment chart -->
-                <div style="background:white;border:1px solid #E5E7EB;border-radius:8px;padding:14px;margin-bottom:12px;">
-                    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px;">Monthly Payments (Last 6 Months)</div>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;" id="reportStats1"></div>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;" id="reportStats2"></div>
+                <div style="background:#222221;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:14px;margin-bottom:12px;">
+                    <div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.55);margin-bottom:10px;">Monthly Payments (Last 6 Months)</div>
                     <div style="height:180px;"><canvas id="clientPaymentChart"></canvas></div>
                 </div>
             </div>
@@ -677,73 +694,141 @@ include 'includes/sidebar.php';
         <!-- ── PAYMENTS TAB ─────────────────────────────── -->
         <div class="modal-tab-panel" id="tab-payments" style="padding:16px 20px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                <span style="font-size:13px;font-weight:600;color:#374151;" id="paymentsTabTitle">Payments</span>
-                <button onclick="openRecordPaymentForm()" style="padding:7px 14px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+                <span style="font-size:13px;font-weight:600;color:#e2e2e0;" id="paymentsTabTitle">Payments</span>
+                <button onclick="openRecordPaymentForm()" style="padding:7px 14px;background:linear-gradient(135deg,var(--primary-dark,#2C5282),var(--primary-color,#3B6EA5));color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
                     <i class="fas fa-plus"></i> Record Payment
                 </button>
             </div>
-            <!-- Inline record payment form (hidden by default) -->
-            <div id="recordPaymentForm" style="display:none;background:white;border:1px solid #E5E7EB;border-radius:8px;padding:14px;margin-bottom:12px;">
-                <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px;">Record a Payment</div>
+            <div id="recordPaymentForm" style="display:none;background:#222221;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:14px;margin-bottom:12px;">
+                <div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.55);margin-bottom:10px;">Record a Payment</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
                     <div>
-                        <label style="display:block;font-size:11px;color:#6B7280;margin-bottom:4px;">Amount (KES) *</label>
-                        <input type="number" id="rpAmount" placeholder="e.g. 1500" style="width:100%;padding:7px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;box-sizing:border-box;">
+                        <label style="display:block;font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;">Amount (KES) *</label>
+                        <input type="number" id="rpAmount" placeholder="e.g. 1500" style="width:100%;padding:7px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:13px;box-sizing:border-box;background:#1c1c1b;color:#e2e2e0;">
                     </div>
                     <div>
-                        <label style="display:block;font-size:11px;color:#6B7280;margin-bottom:4px;">Reference / Code *</label>
-                        <input type="text" id="rpReference" placeholder="e.g. QAB123456" style="width:100%;padding:7px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;box-sizing:border-box;">
+                        <label style="display:block;font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;">Reference / Code *</label>
+                        <input type="text" id="rpReference" placeholder="e.g. QAB123456" style="width:100%;padding:7px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:13px;box-sizing:border-box;background:#1c1c1b;color:#e2e2e0;">
                     </div>
                     <div>
-                        <label style="display:block;font-size:11px;color:#6B7280;margin-bottom:4px;">Method</label>
-                        <select id="rpMethod" style="width:100%;padding:7px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;">
+                        <label style="display:block;font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;">Method</label>
+                        <select id="rpMethod" style="width:100%;padding:7px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:13px;background:#1c1c1b;color:#e2e2e0;">
                             <option value="M-Pesa">M-Pesa</option>
                             <option value="cash">Cash</option>
                             <option value="bank_transfer">Bank Transfer</option>
                         </select>
                     </div>
                     <div>
-                        <label style="display:block;font-size:11px;color:#6B7280;margin-bottom:4px;">Date</label>
-                        <input type="datetime-local" id="rpDate" style="width:100%;padding:7px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;box-sizing:border-box;">
+                        <label style="display:block;font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;">Date</label>
+                        <input type="datetime-local" id="rpDate" style="width:100%;padding:7px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:13px;box-sizing:border-box;background:#1c1c1b;color:#e2e2e0;">
                     </div>
                 </div>
                 <div style="margin-bottom:10px;">
-                    <label style="display:block;font-size:11px;color:#6B7280;margin-bottom:4px;">Notes (optional)</label>
-                    <input type="text" id="rpNotes" placeholder="Optional note" style="width:100%;padding:7px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;box-sizing:border-box;">
+                    <label style="display:block;font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;">Notes (optional)</label>
+                    <input type="text" id="rpNotes" placeholder="Optional note" style="width:100%;padding:7px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:13px;box-sizing:border-box;background:#1c1c1b;color:#e2e2e0;">
                 </div>
                 <div style="display:flex;gap:8px;">
-                    <button onclick="submitRecordPayment()" style="padding:7px 16px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">Save Payment</button>
-                    <button onclick="document.getElementById('recordPaymentForm').style.display='none'" style="padding:7px 12px;background:white;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;cursor:pointer;">Cancel</button>
+                    <button onclick="submitRecordPayment()" style="padding:7px 16px;background:linear-gradient(135deg,var(--primary-dark,#2C5282),var(--primary-color,#3B6EA5));color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">Save Payment</button>
+                    <button onclick="document.getElementById('recordPaymentForm').style.display='none'" style="padding:7px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:12px;cursor:pointer;color:#d4d4d2;">Cancel</button>
                 </div>
             </div>
-            <!-- Payments table -->
-            <div id="paymentsLoading" style="text-align:center;padding:30px;color:#9CA3AF;font-size:13px;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
-            <div id="paymentsTableWrap" style="display:none;background:white;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">
+            <div id="paymentsLoading" style="text-align:center;padding:30px;color:rgba(255,255,255,.35);font-size:13px;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
+            <div id="paymentsTableWrap" style="display:none;background:#222221;border:1px solid rgba(255,255,255,.06);border-radius:8px;overflow:hidden;">
                 <table class="modal-data-table">
-                    <thead><tr>
-                        <th>Date</th><th>Method</th><th>Amount</th><th>Phone</th><th>Ref / Code</th><th>Confirmed</th>
-                    </tr></thead>
+                    <thead><tr><th>Date</th><th>Method</th><th>Amount</th><th>Phone</th><th>Ref / Code</th><th>Confirmed</th></tr></thead>
                     <tbody id="paymentsTableBody"></tbody>
                 </table>
-                <div id="paymentsEmpty" style="display:none;padding:24px;text-align:center;color:#9CA3AF;font-size:13px;">No payments recorded yet.</div>
+                <div id="paymentsEmpty" style="display:none;padding:24px;text-align:center;color:rgba(255,255,255,.3);font-size:13px;">No payments recorded yet.</div>
             </div>
         </div>
 
         <!-- ── SMS TAB ───────────────────────────────────── -->
         <div class="modal-tab-panel" id="tab-sms" style="padding:16px 20px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                <span style="font-size:13px;font-weight:600;color:#374151;">SMS History</span>
-                <button onclick="openSMSModal(currentCustomer)" style="padding:7px 14px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+                <span style="font-size:13px;font-weight:600;color:#e2e2e0;">SMS History</span>
+                <button onclick="openSMSModal(currentCustomer)" style="padding:7px 14px;background:linear-gradient(135deg,var(--primary-dark,#2C5282),var(--primary-color,#3B6EA5));color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
                     <i class="fas fa-paper-plane"></i> Send SMS
                 </button>
             </div>
-            <div id="smsLoading" style="text-align:center;padding:30px;color:#9CA3AF;font-size:13px;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
-            <div id="smsTableWrap" style="display:none;background:white;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">
+            <div id="smsLoading" style="text-align:center;padding:30px;color:rgba(255,255,255,.35);font-size:13px;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
+            <div id="smsTableWrap" style="display:none;background:#222221;border:1px solid rgba(255,255,255,.06);border-radius:8px;overflow:hidden;">
                 <table class="modal-data-table">
                     <thead><tr><th>Date</th><th>Phone</th><th>Message</th><th>Status</th></tr></thead>
                     <tbody id="smsTableBody"></tbody>
                 </table>
-                <div id="smsEmpty" style="display:none;padding:24px;text-align:center;color:#9CA3AF;font-size:13px;">No SMS messages sent yet.</div>
+                <div id="smsEmpty" style="display:none;padding:24px;text-align:center;color:rgba(255,255,255,.3);font-size:13px;">No SMS messages sent yet.</div>
+            </div>
+        </div>
+
+        <!-- ── FUP TAB ───────────────────────────────────── -->
+        <div class="modal-tab-panel" id="tab-fup" style="padding:16px 20px;">
+            <!-- Section title -->
+            <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:7px;">
+                <i class="fas fa-tachometer-alt" style="color:#a5b4fc;"></i> Bandwidth Policy Details
+            </div>
+
+            <!-- Current State banner -->
+            <div style="background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.18);border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-check-circle" style="color:#34d399;font-size:16px;"></i>
+                <div>
+                    <div style="font-size:12px;font-weight:700;color:#34d399;">Current State: Normal</div>
+                    <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px;">No bandwidth policy is currently active for this user.</div>
+                </div>
+            </div>
+
+            <!-- Two-column grid of FUP fields -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">FUP Started</div>
+                    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.35);font-style:italic;">Not set</div>
+                </div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Why FUP Started</div>
+                    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.35);font-style:italic;">—</div>
+                </div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Window Start</div>
+                    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.35);font-style:italic;">Not set</div>
+                </div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Window End</div>
+                    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.35);font-style:italic;">Not set</div>
+                </div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Used vs Limit</div>
+                    <div style="font-size:13px;font-weight:600;color:#e2e2e0;">0 B <span style="color:rgba(255,255,255,.3);font-size:11px;font-weight:400;">of Not set</span></div>
+                </div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Current Action</div>
+                    <div style="font-size:13px;font-weight:600;color:#34d399;">No action required</div>
+                </div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Last Reconciled</div>
+                    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.35);font-style:italic;">Not reconciled</div>
+                </div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Manual Override</div>
+                    <div style="font-size:13px;font-weight:600;color:#e2e2e0;">Inherited package policy</div>
+                </div>
+            </div>
+
+            <!-- Package Policy Snapshot -->
+            <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.06);">
+                Package Policy Snapshot
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Quota</div>
+                    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.35);font-style:italic;">Not set</div>
+                </div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Enforcement Mode</div>
+                    <div style="font-size:13px;font-weight:600;color:#e2e2e0;">Inherit</div>
+                </div>
+                <div style="background:#222221;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);">
+                    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Throttle Rate</div>
+                    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.35);font-style:italic;">Not applicable</div>
+                </div>
             </div>
         </div>
 
@@ -754,17 +839,23 @@ include 'includes/sidebar.php';
 <!-- ═══════════════════════════════════════════════════════════════
      CHANGE EXPIRY MODAL
 ════════════════════════════════════════════════════════════════ -->
-<div id="expiryModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1050;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
-<div style="background:white;width:100%;max-width:500px;border-radius:14px;padding:0;box-shadow:0 20px 60px rgba(0,0,0,.25);">
-    <div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;">
-        <div style="font-size:16px;font-weight:700;color:#111827;">Change Expiry</div>
-        <button onclick="closeExpiryModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9CA3AF;">&times;</button>
+<div id="expiryModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:1050;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+<div style="background:#1e1e1d;width:100%;max-width:500px;border-radius:16px;padding:0;box-shadow:0 32px 80px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.07);overflow:hidden;">
+    <!-- Header -->
+    <div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;justify-content:space-between;align-items:center;background:#222221;">
+        <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:32px;height:32px;border-radius:8px;background:rgba(251,191,36,.12);display:flex;align-items:center;justify-content:center;">
+                <i class="fas fa-calendar-alt" style="color:#fbbf24;font-size:14px;"></i>
+            </div>
+            <div style="font-size:15px;font-weight:700;color:#e2e2e0;">Change Expiry</div>
+        </div>
+        <button onclick="closeExpiryModal()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:7px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#9ca3af;display:flex;align-items:center;justify-content:center;line-height:1;">&times;</button>
     </div>
     <div style="padding:20px;">
         <!-- Quick add buttons -->
         <div style="margin-bottom:18px;">
-            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Quick Extend</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Quick Extend</div>
+            <div style="display:flex;gap:7px;flex-wrap:wrap;">
                 <button onclick="applyQuickExpiry(60)" class="expiry-quick-btn">+1 Hour</button>
                 <button onclick="applyQuickExpiry(720)" class="expiry-quick-btn">+12 Hours</button>
                 <button onclick="applyQuickExpiry(1440)" class="expiry-quick-btn">+1 Day</button>
@@ -775,36 +866,36 @@ include 'includes/sidebar.php';
         </div>
         <!-- Set specific date -->
         <div style="margin-bottom:16px;">
-            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Set Specific Date</div>
+            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Set Specific Date</div>
             <div style="display:flex;gap:8px;">
-                <input type="datetime-local" id="expiryDateInput" style="flex:1;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;">
-                <button onclick="applySetDate()" style="padding:8px 14px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">Set</button>
+                <input type="datetime-local" id="expiryDateInput" style="flex:1;padding:8px 10px;background:#1c1c1b;border:1px solid rgba(255,255,255,.08);border-radius:7px;font-size:13px;color:#e2e2e0;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;box-sizing:border-box;">
+                <button onclick="applySetDate()" style="padding:8px 14px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Set Date</button>
             </div>
         </div>
         <!-- Change package -->
         <div style="margin-bottom:16px;">
-            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Change Package</div>
+            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Change Package</div>
             <div style="display:flex;gap:8px;">
-                <select id="expiryPackageSelect" style="flex:1;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;">
-                    <option value="">— Keep current package —</option>
+                <select id="expiryPackageSelect" style="flex:1;padding:8px 10px;background:#1c1c1b;border:1px solid rgba(255,255,255,.08);border-radius:7px;font-size:13px;color:#e2e2e0;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;">
+                    <option value="" style="background:#1c1c1b;">— Keep current package —</option>
                     <?php foreach ($packages as $pkg): ?>
-                    <option value="<?php echo $pkg['id']; ?>"><?php echo htmlspecialchars($pkg['name']); ?> — KES <?php echo number_format($pkg['price']); ?></option>
+                    <option value="<?php echo $pkg['id']; ?>" style="background:#1c1c1b;"><?php echo htmlspecialchars($pkg['name']); ?> — KES <?php echo number_format($pkg['price']); ?></option>
                     <?php endforeach; ?>
                 </select>
-                <button onclick="applyChangePackage()" style="padding:8px 14px;background:#059669;color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">Apply</button>
+                <button onclick="applyChangePackage()" style="padding:8px 14px;background:#059669;color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Apply</button>
             </div>
         </div>
         <!-- Grace period -->
-        <div style="background:#FFF9EC;border:1px solid #FDE68A;border-radius:8px;padding:12px;">
-            <div style="font-size:11px;font-weight:600;color:#92400E;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Grace Period (added on top)</div>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <input type="number" id="graceHoursInput" min="0" max="720" value="0" style="width:80px;padding:7px;border:1px solid #FCD34D;border-radius:6px;font-size:13px;text-align:center;">
-                <span style="font-size:13px;color:#92400E;">hours of grace period</span>
+        <div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:10px;padding:12px;">
+            <div style="font-size:10px;font-weight:600;color:rgba(251,191,36,.7);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Grace Period (added on top)</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <input type="number" id="graceHoursInput" min="0" max="720" value="0" style="width:80px;padding:7px;background:#1c1c1b;border:1px solid rgba(251,191,36,.25);border-radius:6px;font-size:13px;text-align:center;color:#fcd34d;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;">
+                <span style="font-size:13px;color:rgba(251,191,36,.6);">hours of grace period</span>
             </div>
         </div>
         <!-- Current expiry info -->
-        <div style="margin-top:14px;padding:10px 12px;background:#F9FAFB;border-radius:6px;font-size:12px;color:#6B7280;">
-            Current expiry: <strong id="currentExpiryDisplay" style="color:#111827;"></strong>
+        <div style="margin-top:14px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:7px;font-size:12px;color:rgba(255,255,255,.45);">
+            Current expiry: <strong id="currentExpiryDisplay" style="color:#e2e2e0;"></strong>
         </div>
     </div>
 </div>
@@ -827,7 +918,7 @@ include 'includes/sidebar.php';
             <input type="hidden" name="id" id="formId">
 
             <!-- Section: Personal Info -->
-            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #F3F4F6;">Personal Information</div>
+            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.07);">Personal Information</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
                 <div>
                     <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Full Name *</label>
@@ -848,11 +939,11 @@ include 'includes/sidebar.php';
             </div>
 
             <!-- Section: Service Details -->
-            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #F3F4F6;margin-top:6px;">Service Details</div>
+            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.07);margin-top:6px;">Service Details</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
                 <div>
                     <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Package *</label>
-                    <select name="package_id" id="formPackageId" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                    <select name="package_id" id="formPackageId" required style="width:100%;padding:9px 11px;border:1px solid rgba(255,255,255,.1);border-radius:8px;font-size:13px;background:#1c1c1b;color:#e2e2e0;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='rgba(255,255,255,.1)'">
                         <option value="">Select Package</option>
                         <?php foreach ($packages as $pkg): ?>
                         <option value="<?php echo $pkg['id']; ?>"><?php echo htmlspecialchars($pkg['name']); ?> — KES <?php echo number_format($pkg['price']); ?></option>
@@ -861,7 +952,7 @@ include 'includes/sidebar.php';
                 </div>
                 <div>
                     <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Connection Type</label>
-                    <select name="connection_type" id="formConnectionType" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                    <select name="connection_type" id="formConnectionType" style="width:100%;padding:9px 11px;border:1px solid rgba(255,255,255,.1);border-radius:8px;font-size:13px;background:#1c1c1b;color:#e2e2e0;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='rgba(255,255,255,.1)'">
                         <option value="pppoe">PPPoE</option>
                         <option value="hotspot">Hotspot</option>
                         <option value="static">Static IP</option>
@@ -875,9 +966,9 @@ include 'includes/sidebar.php';
             </div>
 
             <!-- Section: Access Credentials -->
-            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #F3F4F6;margin-top:6px;">Access Credentials</div>
-            <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:14px;margin-bottom:6px;">
-                <div style="font-size:11px;color:#6B7280;margin-bottom:12px;">Used for both Router (PPPoE/Hotspot) and Customer Portal login.</div>
+            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.07);margin-top:6px;">Access Credentials</div>
+            <div style="background:var(--neu-surf,#1c1c1b);border:1px solid var(--neu-border,rgba(255,255,255,.06));border-radius:8px;padding:14px;margin-bottom:6px;">
+                <div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:12px;">Used for both Router (PPPoE/Hotspot) and Customer Portal login. Same credentials work on both.</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                     <div>
                         <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Username *</label>
@@ -953,7 +1044,8 @@ function viewCustomer(customerJson) {
     }
 
     const fullName = currentCustomer.full_name || currentCustomer.name || 'Unknown';
-    const acctNum  = currentCustomer.account_number || ('#' + currentCustomer.id);
+    const _prefix  = ((currentCustomer.mikrotik_username || currentCustomer.username || '').charAt(0) || 'C').toUpperCase();
+    const acctNum  = currentCustomer.account_number || (_prefix + String(currentCustomer.id).padStart(3, '0'));
     const status   = (currentCustomer.status || 'inactive').toLowerCase();
 
     // Avatar initials
@@ -1040,7 +1132,7 @@ function viewCustomer(customerJson) {
 /* ── Tab switching ─────────────────────────────────────────── */
 function switchToTab(name) {
     document.querySelectorAll('.modal-tab-btn').forEach((b,i) => {
-        const tabs = ['general','reports','payments','sms'];
+        const tabs = ['general','reports','payments','sms','fup'];
         b.classList.toggle('active', tabs[i] === name);
     });
     document.querySelectorAll('.modal-tab-panel').forEach(p => p.classList.remove('active'));
@@ -1268,10 +1360,10 @@ function handleFormSubmit(e) {
     const id = formData.get('id');
     const url = id ? 'api/customers/update.php' : 'api/customers/create.php';
     
-    const btn = form.querySelector('button[type="submit"]');
-    const originalText = btn.textContent;
-    btn.textContent = 'Saving...';
-    btn.disabled = true;
+    // Button is outside the <form> (linked via form="customerForm"), so we must query the document
+    const btn = document.querySelector('button[form="customerForm"][type="submit"]') || form.querySelector('button[type="submit"]');
+    const originalText = btn ? btn.textContent : '';
+    if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
     
     fetch(url, {
         method: 'POST',
@@ -1291,8 +1383,7 @@ function handleFormSubmit(e) {
         showToast('Network error. Please try again.', 'error');
     })
     .finally(() => {
-        btn.textContent = originalText;
-        btn.disabled = false;
+        if (btn) { btn.textContent = originalText; btn.disabled = false; }
     });
 }
 

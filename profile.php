@@ -46,16 +46,39 @@ include 'includes/sidebar.php';
 ?>
 
 <style>
-.prof-wrap { padding:28px 32px; max-width:1100px; margin:0 auto; }
+/* ── Dark neumorphism tokens ── */
+:root {
+    --pneu-bg:   #141414;
+    --pneu-surf: #1c1c1b;
+    --pneu-s2:   #222221;
+    --pneu-brd:  rgba(255,255,255,.06);
+    --pneu-shd:  8px 8px 20px rgba(0,0,0,.45), -4px -4px 10px rgba(255,255,255,.03);
+}
+
+.main-content-wrapper { background: var(--pneu-bg) !important; }
+
+/* Full-width override */
+.main-content-wrapper > div.prof-wrap {
+    max-width: 100% !important; margin: 0 !important; padding: 28px 32px !important; box-sizing: border-box;
+}
+.prof-wrap { padding: 28px 32px; max-width: 100%; margin: 0; }
+
+/* Hero banner */
 .prof-hero {
     background: linear-gradient(135deg, var(--primary-dark,#2C5282) 0%, var(--primary-color,#3B6EA5) 100%);
     border-radius: 14px; padding: 28px 32px; display: flex; align-items: center; gap: 24px;
     margin-bottom: 24px; position: relative; overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
 }
 .prof-hero::before {
     content: ''; position: absolute; top: -40px; right: -40px;
     width: 180px; height: 180px; border-radius: 50%;
     background: rgba(255,255,255,.06);
+}
+.prof-hero::after {
+    content: ''; position: absolute; bottom: -30px; right: 120px;
+    width: 100px; height: 100px; border-radius: 50%;
+    background: rgba(255,255,255,.04);
 }
 .prof-avatar {
     width: 72px; height: 72px; border-radius: 50%; flex-shrink: 0;
@@ -64,6 +87,7 @@ include 'includes/sidebar.php';
     background: rgba(255,255,255,.2);
     border: 3px solid rgba(255,255,255,.4);
     letter-spacing: .02em;
+    box-shadow: 0 4px 16px rgba(0,0,0,.3);
 }
 .prof-hero-info { flex: 1; }
 .prof-hero-info h2 { font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 4px 0; }
@@ -73,53 +97,109 @@ include 'includes/sidebar.php';
     background: rgba(255,255,255,.18); color: #fff;
     font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
     padding: 3px 10px; border-radius: 20px; margin-top: 6px;
+    border: 1px solid rgba(255,255,255,.25);
 }
-.prof-stats { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 16px; margin-bottom: 24px; }
-.prof-stat { background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 18px 20px; }
-.prof-stat .val { font-size: 26px; font-weight: 700; color: #111827; }
-.prof-stat .lbl { font-size: 12px; color: #6B7280; font-weight: 500; margin-top: 2px; }
-.prof-stat .ico { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; float: right; margin-top: -2px; }
+
+/* ── Stat Cards with Neumorphic Effects ── */
+.prof-stats { display: grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap: 16px; margin-bottom: 24px; }
+.prof-stat {
+    background: var(--pneu-s2);
+    border: 1px solid var(--pneu-brd);
+    border-radius: 12px; padding: 20px;
+    box-shadow: var(--pneu-shd);
+    position: relative; overflow: hidden;
+    transition: transform .2s, box-shadow .2s;
+}
+.prof-stat:hover { transform: translateY(-2px); box-shadow: 12px 12px 28px rgba(0,0,0,.5), -4px -4px 12px rgba(255,255,255,.04); }
+.prof-stat::before {
+    content: ''; position: absolute; top: 0; right: 0;
+    width: 70px; height: 70px;
+    background: linear-gradient(135deg, rgba(255,255,255,.05) 0%, transparent 100%);
+    border-radius: 0 0 0 70px;
+}
+.prof-stat-accent {
+    width: 44px; height: 44px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; margin-bottom: 14px;
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,.3), inset -1px -1px 3px rgba(255,255,255,.06);
+}
+.prof-stat-accent.clients  { background: rgba(96,165,250,.15);  color: #93c5fd; }
+.prof-stat-accent.packages { background: rgba(52,211,153,.15);  color: #6ee7b7; }
+.prof-stat-accent.revenue  { background: rgba(251,191,36,.15);  color: #fcd34d; }
+.prof-stat-accent.gateway  { background: rgba(167,139,250,.15); color: #c4b5fd; }
+.prof-stat .val { font-size: 26px; font-weight: 700; color: #e2e2e0; margin-bottom: 4px; line-height: 1; }
+.prof-stat .lbl { font-size: 12px; color: rgba(255,255,255,.45); font-weight: 500; }
+
+/* ── Cards ── */
 .prof-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-@media (max-width: 768px) { .prof-grid { grid-template-columns: 1fr; } .prof-wrap { padding: 16px; } }
-.prof-card { background: #fff; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; }
-.prof-card-head {
-    padding: 16px 20px; border-bottom: 1px solid #F3F4F6;
-    display: flex; align-items: center; gap: 10px;
+@media (max-width: 768px) { .prof-grid { grid-template-columns: 1fr; } .prof-wrap { padding: 16px !important; } }
+.prof-card {
+    background: var(--pneu-s2);
+    border: 1px solid var(--pneu-brd);
+    border-radius: 12px; overflow: hidden;
+    box-shadow: var(--pneu-shd);
 }
-.prof-card-head h3 { font-size: 14px; font-weight: 700; color: #111827; margin: 0; }
+.prof-card-head {
+    padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,.06);
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,.02);
+}
+.prof-card-head h3 { font-size: 14px; font-weight: 700; color: #e2e2e0; margin: 0; }
 .prof-card-head i  { color: var(--primary-color,#3B6EA5); width: 16px; }
 .prof-card-body { padding: 20px; }
 .prof-field { margin-bottom: 16px; }
 .prof-field:last-child { margin-bottom: 0; }
-.prof-label { font-size: 11px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 5px; }
+.prof-label { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.4); text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 5px; }
 .prof-input {
-    width: 100%; padding: 9px 12px; border: 1px solid #D1D5DB; border-radius: 8px;
-    font-size: 14px; color: #111827; background: #fff; box-sizing: border-box;
-    transition: border-color .15s;
+    width: 100%; padding: 9px 12px;
+    border: 1px solid rgba(255,255,255,.08); border-radius: 8px;
+    font-size: 14px; color: #e2e2e0; background: var(--pneu-surf); box-sizing: border-box;
+    box-shadow: inset 3px 3px 7px rgba(0,0,0,.35), inset -2px -2px 5px rgba(255,255,255,.03);
+    transition: border-color .15s, box-shadow .15s;
 }
-.prof-input:focus { outline: none; border-color: var(--primary-color,#3B6EA5); box-shadow: 0 0 0 3px rgba(59,110,165,.1); }
-.prof-input[readonly] { background: #F9FAFB; color: #6B7280; cursor: default; }
+.prof-input:focus { outline: none; border-color: var(--primary-color,#3B6EA5); box-shadow: inset 3px 3px 7px rgba(0,0,0,.35), 0 0 0 3px rgba(59,110,165,.2); }
+.prof-input[readonly] { background: rgba(255,255,255,.03); color: rgba(255,255,255,.35); cursor: default; }
 .prof-save-btn {
     padding: 9px 22px; background: linear-gradient(135deg,var(--primary-dark,#2C5282) 0%,var(--primary-color,#3B6EA5) 100%);
     color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
-    cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: opacity .2s;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+    transition: opacity .2s, transform .15s;
+    box-shadow: 0 4px 14px rgba(0,0,0,.4);
 }
-.prof-save-btn:hover { opacity: .9; }
-.info-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid #F9FAFB; font-size: 13px; }
+.prof-save-btn:hover { opacity: .9; transform: translateY(-1px); }
+.info-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 13px; }
 .info-row:last-child { border-bottom: none; }
-.info-row .lbl { color: #6B7280; font-weight: 500; }
-.info-row .val { color: #111827; font-weight: 600; }
+.info-row .lbl { color: rgba(255,255,255,.45); font-weight: 500; }
+.info-row .val { color: #e2e2e0; font-weight: 600; }
 .status-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-.status-pill.active { background: #D1FAE5; color: #065F46; }
-.status-pill.trial  { background: #FEF3C7; color: #92400E; }
-.url-box { background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px 14px; font-family: monospace; font-size: 12px; color: var(--primary-dark,#2C5282); word-break: break-all; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.copy-btn { background: none; border: none; cursor: pointer; color: #9CA3AF; padding: 2px; transition: color .15s; flex-shrink: 0; }
+.status-pill.active    { background: rgba(52,211,153,.15);  color: #6ee7b7; border: 1px solid rgba(52,211,153,.25); }
+.status-pill.trial     { background: rgba(251,191,36,.15);  color: #fcd34d; border: 1px solid rgba(251,191,36,.25); }
+.status-pill.suspended { background: rgba(248,113,113,.15); color: #fca5a5; border: 1px solid rgba(248,113,113,.25); }
+.url-box {
+    background: var(--pneu-surf); border: 1px solid rgba(255,255,255,.08); border-radius: 8px;
+    padding: 10px 14px; font-family: monospace; font-size: 12px; color: #93c5fd;
+    word-break: break-all; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,.3);
+}
+.copy-btn { background: none; border: none; cursor: pointer; color: rgba(255,255,255,.4); padding: 2px; transition: color .15s; flex-shrink: 0; }
 .copy-btn:hover { color: var(--primary-color,#3B6EA5); }
-.danger-zone { margin-top: 20px; padding: 16px; background: #FFF5F5; border: 1px solid #FEE2E2; border-radius: 8px; }
-.danger-zone p { font-size: 12px; color: #6B7280; margin: 0 0 10px 0; }
+.danger-zone { margin-top: 20px; padding: 16px; background: rgba(248,113,113,.07); border: 1px solid rgba(248,113,113,.2); border-radius: 8px; }
+.danger-zone p { font-size: 12px; color: rgba(255,255,255,.45); margin: 0 0 10px 0; }
+/* Quick links */
+.prof-quick-link {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    background: var(--pneu-surf); border: 1px solid var(--pneu-brd); border-radius: 8px;
+    text-decoration: none; color: #d4d4d2; font-size: 13px; font-weight: 500;
+    transition: background .15s, border-color .15s;
+}
+.prof-quick-link:hover { background: rgba(255,255,255,.07); border-color: var(--primary-color,#3B6EA5); color: #e2e2e0; }
+/* Feedback messages */
+#profileMsg[style*="background:#D1FAE5"] { background: rgba(52,211,153,.15) !important; color: #6ee7b7 !important; border-color: rgba(52,211,153,.3) !important; }
+#profileMsg[style*="background:#FEE2E2"], #pwdMsg[style*="background:#FEE2E2"] { background: rgba(248,113,113,.15) !important; color: #fca5a5 !important; border-color: rgba(248,113,113,.3) !important; }
+#pwdMsg[style*="background:#D1FAE5"] { background: rgba(52,211,153,.15) !important; color: #6ee7b7 !important; border-color: rgba(52,211,153,.3) !important; }
 </style>
 
-<div class="main-content-wrapper" style="background:#F3F4F6;">
+<div class="main-content-wrapper">
 <div class="prof-wrap">
 
     <!-- Hero -->
@@ -139,22 +219,22 @@ include 'includes/sidebar.php';
     <!-- Quick Stats -->
     <div class="prof-stats">
         <div class="prof-stat">
-            <div class="ico" style="background:#DBEAFE;color:#1E40AF;"><i class="fas fa-users"></i></div>
+            <div class="prof-stat-accent clients"><i class="fas fa-users"></i></div>
             <div class="val"><?php echo number_format($totalClients); ?></div>
             <div class="lbl">Total Clients</div>
         </div>
         <div class="prof-stat">
-            <div class="ico" style="background:#D1FAE5;color:#065F46;"><i class="fas fa-box"></i></div>
+            <div class="prof-stat-accent packages"><i class="fas fa-box"></i></div>
             <div class="val"><?php echo $totalPackages; ?></div>
             <div class="lbl">Active Packages</div>
         </div>
         <div class="prof-stat">
-            <div class="ico" style="background:#FEF3C7;color:#92400E;"><i class="fas fa-chart-line"></i></div>
+            <div class="prof-stat-accent revenue"><i class="fas fa-chart-line"></i></div>
             <div class="val">KSh <?php echo number_format($monthlyRevenue, 0); ?></div>
             <div class="lbl">Revenue This Month</div>
         </div>
         <div class="prof-stat">
-            <div class="ico" style="background:#E0E7FF;color:#4338CA;"><i class="fas fa-credit-card"></i></div>
+            <div class="prof-stat-accent gateway"><i class="fas fa-credit-card"></i></div>
             <div class="val"><?php echo $activeGateways; ?></div>
             <div class="lbl">Active Payment Methods</div>
         </div>
@@ -271,13 +351,13 @@ include 'includes/sidebar.php';
                 <div class="prof-card-head">
                     <i class="fas fa-palette"></i>
                     <h3>Branding</h3>
-                    <a href="settings.php" style="margin-left:auto;font-size:12px;color:var(--primary-color,#3B6EA5);text-decoration:none;font-weight:600;">Edit in Settings →</a>
+                    <a href="settings.php" style="margin-left:auto;font-size:12px;color:var(--primary-light,#93c5fd);text-decoration:none;font-weight:600;opacity:.8;">Edit in Settings →</a>
                 </div>
                 <div class="prof-card-body">
                     <div class="info-row">
                         <span class="lbl">Brand Color</span>
                         <span class="val" style="display:flex;align-items:center;gap:8px;">
-                            <span style="width:18px;height:18px;border-radius:4px;background:<?php echo htmlspecialchars($brandColor); ?>;border:1px solid #E5E7EB;display:inline-block;"></span>
+                            <span style="width:18px;height:18px;border-radius:4px;background:<?php echo htmlspecialchars($brandColor); ?>;border:1px solid rgba(255,255,255,.15);display:inline-block;"></span>
                             <?php echo htmlspecialchars($brandColor); ?>
                         </span>
                     </div>
@@ -303,17 +383,18 @@ include 'includes/sidebar.php';
                     <h3>Quick Links</h3>
                 </div>
                 <div class="prof-card-body" style="display:flex;flex-direction:column;gap:8px;">
-                    <a href="settings.php" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;text-decoration:none;color:#111827;font-size:13px;font-weight:500;transition:background .15s;" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background='#F9FAFB'">
+                    <a href="settings.php" class="prof-quick-link">
                         <i class="fas fa-cog" style="color:var(--primary-color,#3B6EA5);width:14px;"></i> System Settings
                     </a>
-                    <a href="settings.php#payments" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;text-decoration:none;color:#111827;font-size:13px;font-weight:500;transition:background .15s;" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background='#F9FAFB'">
-                        <i class="fas fa-mobile-alt" style="color:#059669;width:14px;"></i> Payment Gateways
+                    <a href="settings.php#payments" class="prof-quick-link">
+                        <i class="fas fa-mobile-alt" style="color:#34d399;width:14px;"></i> Payment Gateways
                     </a>
-                    <a href="mikrotik.php" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;text-decoration:none;color:#111827;font-size:13px;font-weight:500;transition:background .15s;" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background='#F9FAFB'">
-                        <i class="fas fa-network-wired" style="color:#4338CA;width:14px;"></i> MikroTik Routers
+                    <a href="mikrotik.php" class="prof-quick-link">
+                        <i class="fas fa-network-wired" style="color:#a5b4fc;width:14px;"></i> MikroTik Routers
                     </a>
-                    <a href="<?php echo htmlspecialchars($portalUrl . '/customer/login.php'); ?>" target="_blank" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;text-decoration:none;color:#111827;font-size:13px;font-weight:500;transition:background .15s;" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background='#F9FAFB'">
-                        <i class="fas fa-external-link-alt" style="color:#D97706;width:14px;"></i> Customer Portal <i class="fas fa-external-link-alt" style="font-size:10px;margin-left:auto;color:#9CA3AF;"></i>
+                    <a href="<?php echo htmlspecialchars($portalUrl . '/customer/login.php'); ?>" target="_blank" class="prof-quick-link">
+                        <i class="fas fa-external-link-alt" style="color:#fcd34d;width:14px;"></i> Customer Portal
+                        <i class="fas fa-external-link-alt" style="font-size:10px;margin-left:auto;color:rgba(255,255,255,.3);"></i>
                     </a>
                 </div>
             </div>
@@ -328,9 +409,15 @@ function showMsg(elId, msg, type) {
     const el = document.getElementById(elId);
     el.textContent = msg;
     el.style.display = 'block';
-    el.style.background = type === 'success' ? '#D1FAE5' : '#FEE2E2';
-    el.style.color       = type === 'success' ? '#065F46' : '#991B1B';
-    el.style.border      = '1px solid ' + (type === 'success' ? '#6EE7B7' : '#FCA5A5');
+    if (type === 'success') {
+        el.style.background = 'rgba(52,211,153,.15)';
+        el.style.color       = '#6ee7b7';
+        el.style.border      = '1px solid rgba(52,211,153,.3)';
+    } else {
+        el.style.background = 'rgba(248,113,113,.15)';
+        el.style.color       = '#fca5a5';
+        el.style.border      = '1px solid rgba(248,113,113,.3)';
+    }
     setTimeout(() => { el.style.display = 'none'; }, 4000);
 }
 

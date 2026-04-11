@@ -37,13 +37,21 @@ if (empty($name) || empty($price)) {
     $t_stmt->execute([$user_id]);
     $tenant_id = $t_stmt->fetchColumn();
 
+// Duplicate check: same name + connection_type for this tenant
+$dupCheck = $pdo->prepare("SELECT id FROM packages WHERE tenant_id = ? AND name = ? AND connection_type = ? LIMIT 1");
+$dupCheck->execute([$tenant_id, $name, $connection_type]);
+if ($dupCheck->fetch()) {
+    echo json_encode(['success' => false, 'message' => "A $connection_type package named \"$name\" already exists."]);
+    exit;
+}
+
 try {
     $pdo->beginTransaction();
 
-    $stmt = $pdo->prepare("INSERT INTO packages (tenant_id, name, price, description, mikrotik_profile, rate_limit, connection_type, download_speed, upload_speed, data_limit, type, validity_value, validity_unit, device_limit, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')");
+    $stmt = $pdo->prepare("INSERT INTO packages (tenant_id, name, price, description, rate_limit, connection_type, download_speed, upload_speed, data_limit, type, validity_value, validity_unit, device_limit, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')");
     $stmt->execute([
         $tenant_id,
-        $name, $price, $description, $mikrotik_profile, $rate_limit, $connection_type,
+        $name, $price, $description, $rate_limit, $connection_type,
         $download_speed, $upload_speed, $data_limit, $connection_type,
         isset($_POST['validity_value']) && $_POST['validity_value'] !== '' ? (int)$_POST['validity_value'] : 30,
         $_POST['validity_unit'] ?? 'days',

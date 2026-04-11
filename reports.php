@@ -46,7 +46,11 @@ include 'includes/sidebar.php';
     :root { --neu-bg:#141414; --neu-surf:#1c1c1b; --neu-s2:#222221; --neu-border:rgba(255,255,255,.06); --neu-card:8px 8px 20px rgba(0,0,0,.45),-4px -4px 10px rgba(255,255,255,.03); }
 
     .main-content-wrapper { background: var(--neu-bg) !important; }
-    .reports-container { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+    /* Override sidebar max-width constraint — fill full content area */
+    .main-content-wrapper > div.reports-container {
+        max-width: 100% !important; margin: 0 !important; padding: 24px 32px !important; box-sizing: border-box;
+    }
+    .reports-container { padding: 24px 32px; max-width: 100%; margin: 0; }
 
     /* Page header text */
     .reports-container h1, .reports-container [style*="color:#111827"] { color: #e2e2e0 !important; }

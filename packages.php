@@ -90,7 +90,11 @@ include 'includes/sidebar.php';
 
 <style>
     .main-content-wrapper { background: #141414 !important; }
-    .packages-container { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+    /* Override sidebar max-width constraint — fill full content area */
+    .main-content-wrapper > div.packages-container {
+        max-width: 100% !important; margin: 0 !important; padding: 24px 32px !important; box-sizing: border-box;
+    }
+    .packages-container { padding: 24px 32px; max-width: 100%; margin: 0; }
     .packages-title { font-size: 28px; font-weight: 600; color: #e2e2e0; margin: 0 0 4px 0; }
     .packages-subtitle { font-size: 14px; color: #9a9a95; margin: 0 0 24px 0; }
 
