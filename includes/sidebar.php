@@ -113,7 +113,7 @@
                     if ($expiryDate) {
                         $diff = (new DateTime())->diff(new DateTime($expiryDate));
                         $daysLeft = max(0, (int)$diff->days * ($diff->invert ? -1 : 1));
-                        $total = ($tInfo['status'] === 'trial') ? 30 : 30;
+                        $total = ($tInfo['status'] === 'trial') ? 14 : 30;
                         $pct   = max(0, min(100, round(($daysLeft / $total) * 100)));
                         $barClass = $pct < 20 ? 'danger' : ($pct < 40 ? 'warning' : '');
                     }
@@ -352,9 +352,18 @@
     }
     .sidebar-profile-item a:hover { opacity: 1; }
 
+    /* Logout item — red tint, below profile */
+    .sidebar-logout-item a {
+        opacity: .8;
+    }
+    .sidebar-logout-item a:hover {
+        background: rgba(255,80,80,.1) !important;
+        color: rgba(255,120,120,1) !important;
+        border-left-color: rgba(255,80,80,.5) !important;
+        opacity: 1;
+    }
+
     @media (max-width: 768px) {
-        /* Profile is accessible from the navbar on mobile — hide sidebar duplicate */
-        .sidebar-profile-item { display: none !important; }
         .sidebar {
             transform: translateX(-100%);
             z-index: 1000;
@@ -369,7 +378,6 @@
         .main-content-wrapper > div {
             padding: 0 12px;
         }
-        /* Profile link stays in navbar on mobile (sidebar one is hidden) */
     }
 </style>
 

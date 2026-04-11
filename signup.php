@@ -156,7 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     // Use platform domain from settings, fallback to hardcoded
                     $platformDomain = getPlatformSetting($pdo, 'platform_domain', 'fortunetttech.site');
-                    $trialDays      = max(0, (int)getPlatformSetting($pdo, 'default_trial_days', 30));
+                    $trialDays      = max(0, (int)getPlatformSetting($pdo, 'default_trial_days', 14));
                     $tenantUrl  = "https://" . $subdomain . "." . $platformDomain;
                     $loginLink  = $tenantUrl . "/login.php";
                     $verifyLink = $tenantUrl . "/verify.php?token=" . $token;
@@ -185,7 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <span style="font-weight:600;">{$username}</span>
       </div>
       <div style="margin-bottom:12px;"><span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;">Plan</span><br>
-        <span style="font-weight:600;">Starter (30-day free trial)</span>
+        <span style="font-weight:600;">Starter (14-day free trial)</span>
       </div>
       <div><span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;">Trial Ends</span><br>
         <span style="font-weight:600;">{$trialEnds}</span>
@@ -202,7 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
     <p style="font-size:13px;color:#6b7280;margin:0;">
       <strong>Getting started:</strong> After verifying, add your MikroTik router under <em>Routers</em>,
-      create service packages, then start adding customers. Your first 30 days are free — no credit card needed.
+      create service packages, then start adding customers. Your first 14 days are free — no credit card needed.
     </p>
   </div>
   <div style="background:#f8fafc;padding:16px 36px;text-align:center;font-size:12px;color:#94a3b8;border-top:1px solid #e2e8f0;">

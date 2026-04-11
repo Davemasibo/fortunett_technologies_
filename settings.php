@@ -110,9 +110,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $action_result = 'success|Gateway updated successfully';
                 }
             } else {
-                $pdo->prepare("INSERT INTO payment_gateways (tenant_id,gateway_type,gateway_name,credentials,is_active) VALUES (?,?,?,?,1)")
-                    ->execute([$tenant_id, $gateway_type, $gateway_name, json_encode($credentials)]);
-                $action_result = 'success|New payment gateway added successfully';
+                // Block duplicate gateway types for the same tenant
+                $dupGw = $pdo->prepare("SELECT id FROM payment_gateways WHERE tenant_id=? AND gateway_type=? LIMIT 1");
+                $dupGw->execute([$tenant_id, $gateway_type]);
+                if ($dupGw->fetchColumn()) {
+                    $action_result = 'error|A ' . $gateway_type . ' gateway already exists. Edit the existing one instead.';
+                } else {
+                    $pdo->prepare("INSERT INTO payment_gateways (tenant_id,gateway_type,gateway_name,credentials,is_active) VALUES (?,?,?,?,1)")
+                        ->execute([$tenant_id, $gateway_type, $gateway_name, json_encode($credentials)]);
+                    $action_result = 'success|New payment gateway added successfully';
+                }
             }
         } catch (Exception $e) {
             $action_result = 'error|' . $e->getMessage();
@@ -264,6 +271,13 @@ try {
 if (!defined('MPESA_SHORTCODE')) {
     require_once __DIR__ . '/config/mpesa.php';
 }
+// Override with DB-stored platform shortcode if super admin has configured it
+$platformShortcodeDB = null;
+try {
+    $ps = $pdo->query("SELECT shortcode FROM platform_mpesa_config WHERE id=1 LIMIT 1");
+    $psRow = $ps ? $ps->fetchColumn() : false;
+    if ($psRow && trim($psRow) !== '') $platformShortcodeDB = trim($psRow);
+} catch (Throwable $e) {}
 
 include 'includes/header.php';
 include 'includes/sidebar.php';

@@ -600,7 +600,8 @@ input:checked + .live-slider:before { transform: translateX(18px); }
     foreach ($gateways as $gw) {
         if ($gw['gateway_type'] === 'mpesa_api' && $gw['is_active']) { $hasMpesaApi = true; break; }
     }
-    $platformShortcode = defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : '—';
+    // Use DB-stored shortcode first (set by super admin), fall back to config constant
+    $platformShortcode = $platformShortcodeDB ?? (defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : '—');
     $prefix = $accountPrefix ?? '?';
     ?>
     <div style="margin-top:28px;">
