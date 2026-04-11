@@ -23,14 +23,14 @@ $rate_limit = $_POST['rate_limit'] ?? ($upload_speed . 'M/' . $download_speed . 
 $connection_type = $_POST['connection_type'] ?? 'pppoe';
 
 if (empty($name) || empty($price)) {
-    echo json_encode(['success' => false, 'message' => 'Name and Price are required']);
+    ob_clean(); echo json_encode(['success' => false, 'message' => 'Name and Price are required']);
     exit;
 }
 
     // Get tenant_id
     if (session_status() === PHP_SESSION_NONE) session_start();
     if (!isset($_SESSION['user_id'])) {
-        echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+        ob_clean(); echo json_encode(['success' => false, 'message' => 'Unauthorized']);
         exit;
     }
     $user_id = $_SESSION['user_id'];
@@ -42,7 +42,7 @@ if (empty($name) || empty($price)) {
 $dupCheck = $pdo->prepare("SELECT id FROM packages WHERE tenant_id = ? AND name = ? AND connection_type = ? LIMIT 1");
 $dupCheck->execute([$tenant_id, $name, $connection_type]);
 if ($dupCheck->fetch()) {
-    echo json_encode(['success' => false, 'message' => "A $connection_type package named \"$name\" already exists."]);
+    ob_clean(); echo json_encode(['success' => false, 'message' => "A $connection_type package named \"$name\" already exists."]);
     exit;
 }
 
@@ -101,7 +101,7 @@ try {
                 
                 $api->disconnect();
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             // Log error, but don't fail DB insert
              error_log("Router profile sync failed for router ID " . $router['id'] . ": " . $e->getMessage());
         }
@@ -111,8 +111,8 @@ try {
     ob_clean();
     echo json_encode(['success' => true, 'message' => 'Package created successfully']);
 
-} catch (Exception $e) {
-    if ($pdo->inTransaction()) { try { $pdo->rollBack(); } catch (Exception $re) {} }
+} catch (Throwable $e) {
+    try { if ($pdo->inTransaction()) $pdo->rollBack(); } catch (Throwable $re) {}
     ob_clean();
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }

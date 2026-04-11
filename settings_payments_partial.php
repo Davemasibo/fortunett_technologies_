@@ -251,16 +251,6 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                 <input type="hidden" name="action" value="save_gateway">
                 <input type="hidden" name="gateway_id" id="gateway_id">
 
-                <!-- Gateway Name -->
-                <div class="field-row full" style="margin-bottom: 18px;">
-                    <div>
-                        <label class="form-label-sm">Gateway Display Name <span style="color:#EF4444">*</span></label>
-                        <input type="text" name="gateway_name" id="gateway_name"
-                               placeholder="e.g. Main M-Pesa, KCB Paybill…"
-                               class="form-input" required>
-                    </div>
-                </div>
-
                 <!-- Type Selector -->
                 <input type="hidden" name="gateway_type" id="gateway_type" required>
                 <div class="type-selector-wrap">
@@ -290,6 +280,16 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                             <div class="type-name">PayPal</div>
                             <div class="type-desc">Online payments</div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Gateway Display Name — shown after type is chosen -->
+                <div id="gatewayNameWrap" class="field-row full" style="display:none;margin-bottom:18px;">
+                    <div>
+                        <label class="form-label-sm">Gateway Display Name <span style="color:#EF4444">*</span></label>
+                        <input type="text" name="gateway_name" id="gateway_name"
+                               placeholder="e.g. Main M-Pesa, KCB Paybill…"
+                               class="form-input">
                     </div>
                 </div>
 
@@ -650,6 +650,23 @@ function selectType(type, card) {
     document.getElementById('gateway_type').value = type;
     const sec = document.getElementById('fields_' + type);
     if (sec) sec.classList.add('active');
+    // Show display name field after type is selected
+    const nameWrap = document.getElementById('gatewayNameWrap');
+    if (nameWrap) {
+        nameWrap.style.display = 'block';
+        const nameInput = document.getElementById('gateway_name');
+        if (nameInput && !nameInput.value) {
+            // Auto-suggest a name based on type
+            const suggestions = {
+                'mpesa_api':       'M-Pesa STK Push',
+                'paybill_no_api':  'M-Pesa Paybill',
+                'bank_account':    'Bank Transfer',
+                'paypal':          'PayPal'
+            };
+            nameInput.placeholder = suggestions[type] || 'e.g. Main Payment Gateway';
+        }
+        nameWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
 }
 
 /* ── Sandbox/production env warning ─────────────────────────── */
@@ -693,6 +710,9 @@ function resetGatewayForm() {
     document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
     document.querySelectorAll('.field-section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('.preserve-note').forEach(n => n.style.display = 'none');
+    // Hide display name field until type is selected
+    const nameWrap = document.getElementById('gatewayNameWrap');
+    if (nameWrap) nameWrap.style.display = 'none';
 }
 
 /* ── Populate edit form ─────────────────────────────────────── */

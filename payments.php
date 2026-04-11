@@ -94,12 +94,12 @@ include 'includes/sidebar.php';
 ?>
 
 <style>
-    .main-content-wrapper { background: #141414 !important; }
+    .main-content-wrapper { background: #141414 !important; justify-content: flex-start !important; }
     /* Override sidebar max-width constraint — fill full content area */
     .main-content-wrapper > div.payments-container {
-        max-width: 100% !important; margin: 0 !important; padding: 24px 32px !important; box-sizing: border-box;
+        max-width: 100% !important; margin: 0 !important; padding: 24px 32px !important; box-sizing: border-box !important;
     }
-    .payments-container { padding: 24px 32px; max-width: 100%; margin: 0; }
+    .payments-container { width: 100%; box-sizing: border-box; }
     .payments-title { font-size: 28px; font-weight: 600; color: #e2e2e0; margin: 0 0 4px 0; }
     .payments-subtitle { font-size: 14px; color: #9a9a95; margin: 0 0 24px 0; }
 
@@ -165,10 +165,45 @@ include 'includes/sidebar.php';
     .action-icon { width: 28px; height: 28px; border-radius: 6px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.05); color: #9a9a95; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; transition: all .18s; }
     .action-icon:hover { background: var(--primary-color,#3B6EA5); border-color: transparent; color: #fff; }
 
-    /* Modal dark overrides */
-    #paymentModal > div, #viewModal > div { background: #222221 !important; border: 1px solid rgba(255,255,255,.07) !important; box-shadow: 0 24px 64px rgba(0,0,0,.7) !important; }
-    #paymentModal label, #viewModal label { color: rgba(255,255,255,.6) !important; }
-    #paymentModal [style*="background:#F3F4F6"], #paymentModal [style*="background: #F3F4F6"] { background: rgba(255,255,255,.06) !important; }
+    /* Payment modal shared input style */
+    .pay-input {
+        width:100%;padding:10px 12px;border:1px solid rgba(255,255,255,.08);border-radius:8px;
+        font-size:14px;background:#1a1a19;color:#e2e2e0;box-sizing:border-box;
+        box-shadow:inset 3px 3px 7px rgba(0,0,0,.35),inset -1px -1px 3px rgba(255,255,255,.03);
+        transition:border-color .2s;font-family:inherit;
+    }
+    .pay-input:focus { outline:none;border-color:var(--primary-color,#3B6EA5);box-shadow:inset 3px 3px 7px rgba(0,0,0,.35),0 0 0 3px rgba(59,110,165,.18); }
+    .pay-input::placeholder { color:rgba(255,255,255,.25); }
+    .pay-input option { background:#1a1a19;color:#e2e2e0; }
+    .pay-method-label {
+        display:flex;align-items:center;gap:8px;cursor:pointer;
+        padding:10px 14px;border:1px solid rgba(255,255,255,.1);border-radius:8px;
+        flex:1;justify-content:center;background:rgba(255,255,255,.04);
+        font-size:14px;font-weight:500;color:rgba(255,255,255,.6);transition:all .2s;
+    }
+    .pay-method-label.pay-method-active {
+        border:2px solid var(--primary-color,#3B6EA5);background:rgba(59,110,165,.15);
+        color:var(--primary-light,#93c5fd);font-weight:600;
+    }
+    .pay-submit-btn {
+        width:100%;padding:13px;
+        background:linear-gradient(135deg,var(--primary-dark,#2C5282) 0%,var(--primary-color,#3B6EA5) 100%);
+        color:white;border:none;border-radius:8px;cursor:pointer;
+        font-weight:700;font-size:15px;letter-spacing:.02em;transition:opacity .2s,transform .15s;
+    }
+    .pay-submit-btn:hover { opacity:.9;transform:translateY(-1px); }
+    /* viewModal dark content styles */
+    .vm-grid { display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px; }
+    .vm-label { font-size:11px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px; }
+    .vm-value { font-size:15px;font-weight:600;color:#e2e2e0; }
+    .vm-sub { font-size:13px;color:rgba(255,255,255,.4); }
+    .vm-detail-box { background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:16px;margin-bottom:20px; }
+    .vm-row { display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:13px; }
+    .vm-row:last-child { margin-bottom:0; }
+    .vm-row-label { color:rgba(255,255,255,.4); }
+    .vm-row-val { font-weight:600;color:#e2e2e0;font-family:monospace; }
+    /* Sandbox warning banner */
+    #sandboxBanner { display:none;margin-bottom:14px;padding:11px 14px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;font-size:13px;color:#fcd34d; }
 
     .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .transactions-table { min-width: 700px; }
@@ -361,26 +396,26 @@ include 'includes/sidebar.php';
 </div>
 
 <!-- Payment Modal -->
-<div id="paymentModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1050;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
-    <div style="background:#fff;width:100%;max-width:620px;max-height:90vh;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden;">
+<div id="paymentModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:1050;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+    <div style="background:#1e1e1d;border:1px solid rgba(255,255,255,.08);width:100%;max-width:620px;max-height:90vh;border-radius:16px;box-shadow:0 32px 80px rgba(0,0,0,.8);display:flex;flex-direction:column;overflow:hidden;">
 
         <!-- Modal Header -->
-        <div style="padding:20px 24px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <div style="padding:20px 24px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
             <div>
-                <h2 style="font-size:18px;font-weight:700;color:#111827;margin:0 0 2px 0;">Payment Entry</h2>
-                <p style="font-size:13px;color:#6B7280;margin:0;">Initiate or record a customer payment</p>
+                <h2 style="font-size:18px;font-weight:700;color:#e2e2e0;margin:0 0 2px 0;">Payment Entry</h2>
+                <p style="font-size:13px;color:rgba(255,255,255,.4);margin:0;">Initiate or record a customer payment</p>
             </div>
-            <button onclick="closePaymentModal()" style="width:32px;height:32px;border-radius:50%;border:none;background:#F3F4F6;color:#6B7280;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&times;</button>
+            <button onclick="closePaymentModal()" style="width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&times;</button>
         </div>
 
         <!-- Tab Navigation -->
-        <div style="display:flex;border-bottom:1px solid #E5E7EB;flex-shrink:0;">
+        <div style="display:flex;border-bottom:1px solid rgba(255,255,255,.07);flex-shrink:0;background:rgba(255,255,255,.02);">
             <button id="tabBtnNew" class="tab-button active" onclick="showPaymentTab('newPaymentTab')"
-                style="flex:1;padding:12px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:var(--primary-color,#3B6EA5);border-bottom:2px solid var(--primary-color,#3B6EA5);transition:all .2s;">
+                style="flex:1;padding:12px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:var(--primary-light,#93c5fd);border-bottom:2px solid var(--primary-light,#93c5fd);transition:all .2s;">
                 <i class="fas fa-bolt" style="margin-right:6px;"></i>New Payment
             </button>
             <button id="tabBtnPast" class="tab-button" onclick="showPaymentTab('recordPastTab')"
-                style="flex:1;padding:12px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:500;color:#6B7280;border-bottom:2px solid transparent;transition:all .2s;">
+                style="flex:1;padding:12px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:500;color:rgba(255,255,255,.4);border-bottom:2px solid transparent;transition:all .2s;">
                 <i class="fas fa-history" style="margin-right:6px;"></i>Record Past Transaction
             </button>
         </div>
@@ -390,14 +425,13 @@ include 'includes/sidebar.php';
 
             <!-- Tab 1: New Payment (STK Push / Manual Cash) -->
             <div id="newPaymentTab" class="tab-content">
+                <div id="sandboxBanner"><i class="fas fa-flask" style="margin-right:7px;"></i><strong>Sandbox Mode Active</strong> — STK pushes are accepted by Safaricom but no real prompt appears on any phone. Go to <strong>Settings → Payments</strong> and set your M-Pesa gateway to <strong>Production</strong>.</div>
                 <form id="newPaymentForm" onsubmit="handlePaymentSubmit(event)">
                     <!-- Section: Customer -->
-                    <div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #F3F4F6;">
-                        <p style="font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px 0;">Customer</p>
-                        <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Select Customer</label>
-                        <select name="client_id" id="payClient" required
-                            style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;color:#111827;background:#fff;outline:none;transition:border-color .2s;"
-                            onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'"
+                    <div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.06);">
+                        <p style="font-size:11px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px 0;">Customer</p>
+                        <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Select Customer</label>
+                        <select name="client_id" id="payClient" required class="pay-input"
                             onchange="updatePhone(this)">
                             <option value="">Select a customer...</option>
                             <?php foreach ($clients as $c): ?>
@@ -408,34 +442,29 @@ include 'includes/sidebar.php';
                         </select>
                     </div>
                     <!-- Section: Payment Details -->
-                    <div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #F3F4F6;">
-                        <p style="font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px 0;">Payment Details</p>
+                    <div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.06);">
+                        <p style="font-size:11px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px 0;">Payment Details</p>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
                             <div>
-                                <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Phone (M-Pesa)</label>
-                                <input type="text" name="phone" id="payPhone" required placeholder="2547XXXXXXXX"
-                                    style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box;"
-                                    onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                                <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Phone (M-Pesa)</label>
+                                <input type="text" name="phone" id="payPhone" required placeholder="2547XXXXXXXX" class="pay-input">
                             </div>
                             <div>
-                                <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Amount (KES)</label>
-                                <input type="number" name="amount" id="payAmount" required placeholder="0.00" min="1" step="0.01"
-                                    style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box;"
-                                    onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                                <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Amount (KES)</label>
+                                <input type="number" name="amount" id="payAmount" required placeholder="0.00" min="1" step="0.01" class="pay-input">
                             </div>
                         </div>
-                        <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:8px;">Payment Method</label>
+                        <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:8px;">Payment Method</label>
                         <div style="display:flex;gap:10px;">
-                            <label id="radioMpesa" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--primary-color,#3B6EA5);border-radius:8px;flex:1;justify-content:center;background:#EBF4FF;font-size:14px;font-weight:600;color:var(--primary-color,#3B6EA5);">
+                            <label id="radioMpesa" class="pay-method-label pay-method-active">
                                 <input type="radio" name="method" value="mpesa" checked onchange="highlightMethodRadio()"> <i class="fas fa-mobile-alt"></i> M-Pesa STK
                             </label>
-                            <label id="radioCash" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;flex:1;justify-content:center;background:#fff;font-size:14px;font-weight:500;color:#374151;">
+                            <label id="radioCash" class="pay-method-label">
                                 <input type="radio" name="method" value="cash" onchange="highlightMethodRadio()"> <i class="fas fa-money-bill"></i> Manual Cash
                             </label>
                         </div>
                     </div>
-                    <button type="submit" id="newPayBtn"
-                        style="width:100%;padding:13px;background:linear-gradient(135deg,var(--primary-dark,#2C5282) 0%,var(--primary-color,#3B6EA5) 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:15px;letter-spacing:.02em;">
+                    <button type="submit" id="newPayBtn" class="pay-submit-btn">
                         <i class="fas fa-paper-plane" style="margin-right:8px;"></i>Process Payment
                     </button>
                 </form>
@@ -446,14 +475,12 @@ include 'includes/sidebar.php';
                 <form id="recordPastForm" onsubmit="handleRecordPastSubmit(event)">
 
                     <!-- Section: Transaction Details -->
-                    <div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #F3F4F6;">
-                        <p style="font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px 0;">Transaction Details</p>
+                    <div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.06);">
+                        <p style="font-size:11px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px 0;">Transaction Details</p>
 
                         <div style="margin-bottom:14px;">
-                            <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Customer <span style="color:#EF4444;">*</span></label>
-                            <select name="client_id" id="recordClient" required
-                                style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;background:#fff;"
-                                onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                            <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Customer <span style="color:#f87171;">*</span></label>
+                            <select name="client_id" id="recordClient" required class="pay-input">
                                 <option value="">Select a customer...</option>
                                 <?php foreach ($clients as $c): ?>
                                 <option value="<?php echo $c['id']; ?>">
@@ -465,16 +492,12 @@ include 'includes/sidebar.php';
 
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
                             <div>
-                                <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Amount (KES) <span style="color:#EF4444;">*</span></label>
-                                <input type="number" name="amount" required placeholder="0.00" min="1" step="0.01"
-                                    style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box;"
-                                    onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                                <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Amount (KES) <span style="color:#f87171;">*</span></label>
+                                <input type="number" name="amount" required placeholder="0.00" min="1" step="0.01" class="pay-input">
                             </div>
                             <div>
-                                <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Payment Method <span style="color:#EF4444;">*</span></label>
-                                <select name="method" required
-                                    style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;background:#fff;box-sizing:border-box;"
-                                    onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                                <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Payment Method <span style="color:#f87171;">*</span></label>
+                                <select name="method" required class="pay-input">
                                     <option value="">Select...</option>
                                     <option value="M-Pesa">M-Pesa</option>
                                     <option value="Cash">Cash</option>
@@ -485,47 +508,39 @@ include 'includes/sidebar.php';
                         </div>
 
                         <div>
-                            <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Reference / Confirmation Code <span style="color:#EF4444;">*</span></label>
+                            <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Reference / Confirmation Code <span style="color:#f87171;">*</span></label>
                             <input type="text" name="reference_code" required
                                 placeholder="e.g. QJK3X7A1P2 — M-Pesa code, bank ref, receipt #"
-                                style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;font-family:monospace;letter-spacing:.04em;text-transform:uppercase;box-sizing:border-box;"
-                                onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'"
+                                class="pay-input" style="font-family:monospace;letter-spacing:.04em;"
                                 oninput="this.value=this.value.toUpperCase()">
                         </div>
                     </div>
 
                     <!-- Section: Date & Verification -->
-                    <div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #F3F4F6;">
-                        <p style="font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px 0;">Date &amp; Verification</p>
+                    <div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.06);">
+                        <p style="font-size:11px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px 0;">Date &amp; Verification</p>
 
                         <div style="margin-bottom:14px;">
-                            <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Date &amp; Time of Payment <span style="color:#EF4444;">*</span></label>
-                            <input type="datetime-local" name="transaction_date" required
-                                value="<?php echo date('Y-m-d\TH:i'); ?>"
-                                style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box;"
-                                onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                            <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Date &amp; Time of Payment <span style="color:#f87171;">*</span></label>
+                            <input type="datetime-local" name="transaction_date" required value="<?php echo date('Y-m-d\TH:i'); ?>" class="pay-input">
                         </div>
 
                         <div style="margin-bottom:14px;">
-                            <label style="display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px;">Notes (optional)</label>
-                            <input type="text" name="notes"
-                                placeholder="e.g. Customer called to confirm payment"
-                                style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box;"
-                                onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                            <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Notes (optional)</label>
+                            <input type="text" name="notes" placeholder="e.g. Customer called to confirm payment" class="pay-input">
                         </div>
 
-                        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:14px 16px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;">
+                        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:14px 16px;background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.2);border-radius:8px;">
                             <input type="checkbox" name="is_verified" value="1" checked
-                                style="width:16px;height:16px;accent-color:#059669;flex-shrink:0;margin-top:1px;">
+                                style="width:16px;height:16px;accent-color:#34d399;flex-shrink:0;margin-top:1px;">
                             <div>
-                                <div style="font-size:13px;font-weight:600;color:#065F46;">Mark as Verified / Confirmed</div>
-                                <div style="font-size:12px;color:#6B7280;margin-top:2px;">Records as "Confirmed" — use only when you have verified the payment reference is genuine.</div>
+                                <div style="font-size:13px;font-weight:600;color:#6ee7b7;">Mark as Verified / Confirmed</div>
+                                <div style="font-size:12px;color:rgba(255,255,255,.4);margin-top:2px;">Records as "Confirmed" — use only when you have verified the payment reference is genuine.</div>
                             </div>
                         </label>
                     </div>
 
-                    <button type="submit" id="recordPastBtn"
-                        style="width:100%;padding:13px;background:linear-gradient(135deg,var(--primary-dark,#2C5282) 0%,var(--primary-color,#3B6EA5) 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:15px;letter-spacing:.02em;">
+                    <button type="submit" id="recordPastBtn" class="pay-submit-btn">
                         <i class="fas fa-save" style="margin-right:8px;"></i>Record Transaction
                     </button>
                 </form>
@@ -536,15 +551,13 @@ include 'includes/sidebar.php';
 </div>
 
 <!-- View Modal -->
-<div id="viewModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
-    <div style="background: white; width: 100%; max-width: 500px; border-radius: 12px; padding: 32px; position: relative;">
-        <button onclick="closeViewModal()" style="position: absolute; top: 20px; right: 20px; background: none; border: none; font-size: 20px; cursor: pointer; color: #6B7280;">&times;</button>
-        <h2 style="font-size: 20px; font-weight: 600; color: #111827; margin: 0 0 24px 0;">Transaction Details</h2>
-        <div id="viewModalContent">
-            <!-- Content will be loaded here by JS -->
-        </div>
-        <div style="margin-top: 24px; text-align: right;">
-            <button onclick="printCurrentReceipt()" style="padding: 10px 20px; background: #3B82F6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Print Receipt</button>
+<div id="viewModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:1000;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+    <div style="background:#1e1e1d;border:1px solid rgba(255,255,255,.08);width:100%;max-width:500px;border-radius:16px;padding:32px;position:relative;box-shadow:0 32px 80px rgba(0,0,0,.8);">
+        <button onclick="closeViewModal()" style="position:absolute;top:20px;right:20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:50%;width:32px;height:32px;font-size:18px;cursor:pointer;color:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;">&times;</button>
+        <h2 style="font-size:20px;font-weight:600;color:#e2e2e0;margin:0 0 24px 0;">Transaction Details</h2>
+        <div id="viewModalContent"></div>
+        <div style="margin-top:24px;text-align:right;">
+            <button onclick="printCurrentReceipt()" style="padding:10px 20px;background:linear-gradient(135deg,var(--primary-dark,#2C5282),var(--primary-color,#3B6EA5));color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;">Print Receipt</button>
         </div>
     </div>
 </div>
@@ -565,11 +578,11 @@ function showPaymentTab(tabId) {
     document.querySelectorAll('#paymentModal .tab-content').forEach(t => t.style.display = 'none');
     document.getElementById(tabId).style.display = 'block';
 
-    const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#3B6EA5';
+    const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary-light').trim() || '#93c5fd';
     ['tabBtnNew','tabBtnPast'].forEach(id => {
         const btn = document.getElementById(id);
         if (!btn) return;
-        btn.style.color = '#6B7280';
+        btn.style.color = 'rgba(255,255,255,.4)';
         btn.style.borderBottom = '2px solid transparent';
         btn.style.fontWeight = '500';
     });
@@ -584,28 +597,15 @@ function showPaymentTab(tabId) {
 
 function highlightMethodRadio() {
     const mpesa = document.querySelector('input[name="method"][value="mpesa"]');
-    const cash  = document.querySelector('input[name="method"][value="cash"]');
     const lMpesa = document.getElementById('radioMpesa');
     const lCash  = document.getElementById('radioCash');
-    const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#3B6EA5';
+    if (!lMpesa || !lCash) return;
     if (mpesa && mpesa.checked) {
-        lMpesa.style.border = '2px solid ' + primary;
-        lMpesa.style.background = '#EBF4FF';
-        lMpesa.style.color = primary;
-        lMpesa.style.fontWeight = '600';
-        lCash.style.border = '1px solid #D1D5DB';
-        lCash.style.background = '#fff';
-        lCash.style.color = '#374151';
-        lCash.style.fontWeight = '500';
+        lMpesa.classList.add('pay-method-active');
+        lCash.classList.remove('pay-method-active');
     } else {
-        lCash.style.border = '2px solid ' + primary;
-        lCash.style.background = '#EBF4FF';
-        lCash.style.color = primary;
-        lCash.style.fontWeight = '600';
-        lMpesa.style.border = '1px solid #D1D5DB';
-        lMpesa.style.background = '#fff';
-        lMpesa.style.color = '#374151';
-        lMpesa.style.fontWeight = '500';
+        lCash.classList.add('pay-method-active');
+        lMpesa.classList.remove('pay-method-active');
     }
 }
 
@@ -645,12 +645,21 @@ function handlePaymentSubmit(e) {
         if (data.success) {
             if (method === 'cash') {
                 showFnToast('Cash payment recorded successfully', 'success');
+                closePaymentModal();
+                setTimeout(() => location.reload(), 1800);
+            } else if (data.sandbox) {
+                // Sandbox — show inline warning, don't close modal
+                const banner = document.getElementById('sandboxBanner');
+                if (banner) banner.style.display = 'block';
+                showFnToast('⚠️ SANDBOX: No phone prompt sent. Switch to Production in Settings → Payments.', 'warning');
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
             } else {
                 const msg = data.CustomerMessage || 'STK Push sent — check your phone.';
                 showFnToast(msg, 'success');
+                closePaymentModal();
+                setTimeout(() => location.reload(), 1800);
             }
-            closePaymentModal();
-            setTimeout(() => location.reload(), 1800);
         } else {
             const errMsg = data.message || data.errorMessage || 'Unknown error';
             showFnToast(errMsg, 'error');
@@ -697,14 +706,14 @@ function handleRecordPastSubmit(e) {
 function showFnToast(message, type) {
     const existing = document.getElementById('fnToast');
     if (existing) existing.remove();
-    const bg = type === 'success' ? '#059669' : '#DC2626';
-    const icon = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
+    const bg = type === 'success' ? 'rgba(16,185,129,.9)' : type === 'warning' ? 'rgba(217,119,6,.9)' : 'rgba(239,68,68,.9)';
+    const icon = type === 'success' ? 'fa-check-circle' : type === 'warning' ? 'fa-exclamation-triangle' : 'fa-exclamation-circle';
     const toast = document.createElement('div');
     toast.id = 'fnToast';
-    toast.style.cssText = `position:fixed;top:20px;right:20px;z-index:9999;background:${bg};color:white;padding:14px 20px;border-radius:10px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,0.2);max-width:360px;`;
-    toast.innerHTML = `<i class="fas ${icon}"></i><span>${message}</span>`;
+    toast.style.cssText = `position:fixed;top:20px;right:20px;z-index:9999;background:${bg};backdrop-filter:blur(8px);color:white;padding:14px 20px;border-radius:10px;font-size:13px;font-weight:600;display:flex;align-items:flex-start;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);max-width:420px;line-height:1.4;`;
+    toast.innerHTML = `<i class="fas ${icon}" style="flex-shrink:0;margin-top:1px;"></i><span>${message}</span>`;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 4000);
+    setTimeout(() => toast.remove(), type === 'warning' ? 8000 : 4000);
 }
 
 let currentViewTx = null;
@@ -729,36 +738,28 @@ function openViewModal(tx) {
     const statusClass = status === 'completed' ? 'color: #059669; background: #D1FAE5;' : 
                         (status === 'failed' ? 'color: #DC2626; background: #FEE2E2;' : 'color: #D97706; background: #FEF3C7;');
     
+    const statusCls = status === 'completed'
+        ? 'background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.25);'
+        : status === 'failed'
+        ? 'background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.25);'
+        : 'background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.25);';
     content.innerHTML = `
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+        <div class="vm-grid">
             <div>
-                <label style="display: block; font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; margin-bottom: 4px;">Customer</label>
-                <div style="font-size: 15px; font-weight: 600; color: #111827;">${tx.full_name || 'Unknown'}</div>
-                <div style="font-size: 13px; color: #6B7280;">${tx.phone || 'N/A'}</div>
+                <div class="vm-label">Customer</div>
+                <div class="vm-value">${tx.full_name || 'Unknown'}</div>
+                <div class="vm-sub">${tx.phone || 'N/A'}</div>
             </div>
             <div>
-                <label style="display: block; font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; margin-bottom: 4px;">Amount</label>
-                <div style="font-size: 24px; font-weight: 700; color: #111827;">KSh ${parseFloat(tx.amount).toLocaleString()}</div>
+                <div class="vm-label">Amount</div>
+                <div class="vm-value" style="font-size:22px;">KSh ${parseFloat(tx.amount).toLocaleString()}</div>
             </div>
         </div>
-        
-        <div style="background: #F3F4F6; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span style="font-size: 13px; color: #6B7280;">Transaction ID</span>
-                <span style="font-size: 13px; font-weight: 600; font-family: monospace;">${tx.mpesa_receipt_number || tx.transaction_id || 'N/A'}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span style="font-size: 13px; color: #6B7280;">Date</span>
-                <span style="font-size: 13px; font-weight: 600;">${new Date(tx.created_at || tx.payment_date).toLocaleString()}</span>
-            </div>
-             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span style="font-size: 13px; color: #6B7280;">Method</span>
-                <span style="font-size: 13px; font-weight: 600;">${method}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 13px; color: #6B7280;">Status</span>
-                <span style="padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; ${statusClass}">${status.toUpperCase()}</span>
-            </div>
+        <div class="vm-detail-box">
+            <div class="vm-row"><span class="vm-row-label">Transaction ID</span><span class="vm-row-val">${tx.mpesa_receipt_number || tx.transaction_id || 'N/A'}</span></div>
+            <div class="vm-row"><span class="vm-row-label">Date</span><span class="vm-row-val" style="font-family:inherit;">${new Date(tx.created_at || tx.payment_date).toLocaleString()}</span></div>
+            <div class="vm-row"><span class="vm-row-label">Method</span><span class="vm-row-val" style="font-family:inherit;">${method}</span></div>
+            <div class="vm-row"><span class="vm-row-label">Status</span><span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;${statusCls}">${status.toUpperCase()}</span></div>
         </div>
     `;
     

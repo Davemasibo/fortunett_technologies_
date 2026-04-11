@@ -23,14 +23,14 @@ $connection_type = $_POST['connection_type'] ?? 'pppoe';
 $speed_display = $download_speed . "Mbps / " . $upload_speed . "Mbps";
 
 if (empty($id) || empty($name)) {
-    echo json_encode(['success' => false, 'message' => 'ID and Name are required']);
+    ob_clean(); echo json_encode(['success' => false, 'message' => 'ID and Name are required']);
     exit;
 }
 
 // Security: Check Tenant
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user_id'])) {
-    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    ob_clean(); echo json_encode(['success' => false, 'message' => 'Unauthorized']);
     exit;
 }
 $user_id = $_SESSION['user_id'];
@@ -42,7 +42,7 @@ $tenant_id = $t_stmt->fetchColumn();
 $check = $pdo->prepare("SELECT id FROM packages WHERE id = ? AND tenant_id = ?");
 $check->execute([$id, $tenant_id]);
 if (!$check->fetch()) {
-    echo json_encode(['success' => false, 'message' => 'Package not found or access denied']);
+    ob_clean(); echo json_encode(['success' => false, 'message' => 'Package not found or access denied']);
     exit;
 }
 
@@ -70,8 +70,8 @@ try {
     ob_clean();
     echo json_encode(['success' => true, 'message' => 'Package updated successfully']);
 
-} catch (Exception $e) {
-    if ($pdo->inTransaction()) { try { $pdo->rollBack(); } catch (Exception $re) {} }
+} catch (Throwable $e) {
+    try { if ($pdo->inTransaction()) $pdo->rollBack(); } catch (Throwable $re) {}
     ob_clean();
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }

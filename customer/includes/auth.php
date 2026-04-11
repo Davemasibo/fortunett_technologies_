@@ -43,9 +43,15 @@ function getCurrentCustomer() {
  * Redirect to login if not authenticated
  */
 function requireCustomerLogin() {
-    // Build login URL relative to the current host so it works on any domain/subdomain
-    $scheme   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $loginUrl = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . '/customer/login.php';
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    // Auto-detect app base path (works on both localhost/subdir and VPS root installs)
+    $scriptFile = str_replace('\\', '/', realpath($_SERVER['SCRIPT_FILENAME'] ?? ''));
+    $docRoot    = str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT'] ?? ''));
+    $scriptRel  = str_replace($docRoot, '', $scriptFile);          // e.g. /fortunett_technologies_/customer/dashboard.php
+    $basePath   = dirname(dirname($scriptRel));                    // e.g. /fortunett_technologies_
+    $basePath   = ($basePath === '/' || $basePath === '.') ? '' : $basePath;
+    $loginUrl   = $scheme . '://' . $host . $basePath . '/customer/login.php';
 
     if (!isCustomerLoggedIn()) {
         $currentUrl = urlencode($_SERVER['REQUEST_URI']);

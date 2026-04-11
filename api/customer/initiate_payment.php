@@ -3,12 +3,15 @@
  * Customer Payment Initiation API
  * Initiates M-Pesa STK Push for customer payments
  */
+ob_start();
+error_reporting(0);
+ini_set('display_errors', 0);
 header('Content-Type: application/json');
-require_once '../../includes/config.php';
+require_once '../../includes/db_master.php';
 require_once '../../classes/MpesaAPI.php';
 require_once '../../classes/CustomerAuth.php';
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) session_start();
 
 // Check authentication
 if (!isset($_SESSION['customer_token'])) {
@@ -59,12 +62,13 @@ try {
     if (isset($response->ResponseCode) && $response->ResponseCode == '0') {
         // Save payment record
         $stmt = $pdo->prepare("
-            INSERT INTO payments 
-            (client_id, amount, payment_method, payment_date, transaction_id, status, notes) 
-            VALUES (?, ?, 'mpesa', NOW(), ?, 'pending', ?)
+            INSERT INTO payments
+            (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, notes)
+            VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending', ?)
         ");
         $stmt->execute([
             $customer['id'],
+            $customer['tenant_id'],
             $amount,
             $response->CheckoutRequestID,
             'Package: ' . $package['name']
@@ -85,17 +89,20 @@ try {
         // Log activity
         $auth->logActivity($customer['id'], 'payment', 'Initiated M-Pesa payment of ' . $amount);
         
+        ob_clean();
         echo json_encode([
             'success' => true,
-            'message' => 'Payment request sent',
+            'message' => 'STK Push sent — check your phone for the M-Pesa prompt.',
             'checkout_request_id' => $response->CheckoutRequestID,
             'payment_id' => $paymentId
         ]);
     } else {
         $errorMessage = $response->errorMessage ?? $response->ResponseDescription ?? 'Payment initiation failed';
+        ob_clean();
         echo json_encode(['success' => false, 'message' => $errorMessage]);
     }
-    
-} catch (Exception $e) {
+
+} catch (Throwable $e) {
+    ob_clean();
     echo json_encode(['success' => false, 'message' => 'Server error: ' . $e->getMessage()]);
 }
