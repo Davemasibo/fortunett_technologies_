@@ -28,7 +28,7 @@ body.auth-page {
   justify-content: center;
   padding: 24px 16px;
   position: relative;
-  overflow: hidden;
+  overflow-y: auto;   /* was hidden — allow scrolling on short viewports */
 }
 
 /* Ambient brand glow at top */
@@ -57,7 +57,7 @@ body.auth-page::before {
     0 0 0 1px rgba(255, 255, 255, 0.043);
   width: 100%;
   max-width: 420px;
-  overflow: hidden;
+  /* No overflow:hidden — let body control scroll; clipping cut off content on mobile */
   animation: authSlideUp 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -318,6 +318,14 @@ body.auth-page::before {
 
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 480px) {
-  .auth-header { padding: 28px 20px; }
-  .auth-body   { padding: 24px 20px; }
+  body.auth-page {
+    align-items: flex-start;   /* card starts at top — scrollable instead of centred */
+    padding: 16px 12px 32px;
+  }
+  .auth-container {
+    border-radius: 16px;
+    margin: auto;  /* still horizontally centered */
+  }
+  .auth-header { padding: 24px 18px; }
+  .auth-body   { padding: 20px 18px; }
 }

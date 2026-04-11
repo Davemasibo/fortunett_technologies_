@@ -335,19 +335,26 @@ include 'includes/sidebar.php';
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
     z-index: 1050;
-    align-items: center; justify-content: center;
-    padding: 16px; box-sizing: border-box;
+    overflow-y: auto;           /* overlay scrolls when modal is tall */
+    -webkit-overflow-scrolling: touch;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 16px 24px;
+    box-sizing: border-box;
 }
 .pkg-modal {
     background: #1e1e1d;
     border: 1px solid rgba(255,255,255,.09);
     border-radius: 18px;
     width: 100%; max-width: 660px;
-    max-height: 94vh;
+    /* No max-height — overlay scrolls instead, so nothing gets clipped */
     display: flex; flex-direction: column;
     box-shadow: 0 40px 100px rgba(0,0,0,.85),
                 inset 0 1px 0 rgba(255,255,255,.07);
     overflow: hidden;
+    /* Keep modal body scrollable but don't let the whole modal overflow */
+    max-height: calc(100vh - 80px);
+    margin: auto 0;             /* vertically center when there's room */
 }
 .pkg-modal-head {
     padding: 20px 24px 16px;
@@ -464,8 +471,17 @@ include 'includes/sidebar.php';
 .pkg-btn-save:disabled { opacity: .6; transform: none; cursor: not-allowed; }
 
 @media(max-width:600px) {
+    .pkg-overlay { padding: 16px 10px 32px; align-items: flex-start; }
+    .pkg-modal {
+        max-height: none;   /* let overlay scroll — no clipping on mobile */
+        border-radius: 14px;
+        margin: 0 auto;
+    }
+    .pkg-modal-body { padding: 18px 16px; }
+    .pkg-modal-head, .pkg-modal-foot { padding-left: 16px; padding-right: 16px; }
     .pkg-col-2, .pkg-col-3 { grid-template-columns: 1fr !important; }
     .validity-pair { grid-template-columns: 80px 1fr; }
+    .conn-pills { flex-direction: row; }
 }
 </style>
 

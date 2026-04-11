@@ -396,8 +396,8 @@ include 'includes/sidebar.php';
 </div>
 
 <!-- Payment Modal -->
-<div id="paymentModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:1050;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
-    <div style="background:#1e1e1d;border:1px solid rgba(255,255,255,.08);width:100%;max-width:620px;max-height:90vh;border-radius:16px;box-shadow:0 32px 80px rgba(0,0,0,.8);display:flex;flex-direction:column;overflow:hidden;">
+<div id="paymentModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:1050;overflow-y:auto;-webkit-overflow-scrolling:touch;align-items:flex-start;justify-content:center;padding:40px 16px 24px;box-sizing:border-box;">
+    <div style="background:#1e1e1d;border:1px solid rgba(255,255,255,.08);width:100%;max-width:620px;max-height:calc(100vh - 80px);border-radius:16px;box-shadow:0 32px 80px rgba(0,0,0,.8);display:flex;flex-direction:column;overflow:hidden;margin:auto 0;">
 
         <!-- Modal Header -->
         <div style="padding:20px 24px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
