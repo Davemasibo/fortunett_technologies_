@@ -260,6 +260,11 @@ try {
     $hasPlatformSMS   = (bool)($r && $r->fetchColumn());
 } catch (Exception $e) {}
 
+// Load platform M-Pesa constants so Platform Paybill No. is visible in payments tab
+if (!defined('MPESA_SHORTCODE')) {
+    require_once __DIR__ . '/config/mpesa.php';
+}
+
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
@@ -269,86 +274,206 @@ include 'includes/sidebar.php';
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h2 class="mb-1 text-dark fw-bold">Settings</h2>
-        <p class="text-muted mb-0">Manage system configuration for <?php echo htmlspecialchars($tenant['company_name']); ?></p>
+        <h2 class="settings-page-title">Settings</h2>
+        <p class="settings-page-sub">Manage system configuration for <?php echo htmlspecialchars($tenant['company_name']); ?></p>
     </div>
 </div>
 
 <style>
+/* ════════════════════════════════════════════════════════════════
+   Settings — Dark Neumorphic Theme
+═══════════════════════════════════════════════════════════════ */
+
+/* ── Outer wrapper ──────────────────────────────────────────── */
+.main-content-wrapper > div.container-fluid {
+    max-width: 100% !important;
+    padding: 24px 32px !important;
+    box-sizing: border-box;
+}
+.settings-card {
+    background: #1c1c1b;
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 14px;
+    box-shadow: 8px 8px 20px rgba(0,0,0,.45),-4px -4px 10px rgba(255,255,255,.03);
+    overflow: hidden;
+}
+.settings-card-header {
+    background: #222221;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+    padding: 4px 20px 0;
+}
+.settings-card-body { padding: 24px; }
+
+/* ── Page title ────────────────────────────────────────────── */
+.settings-page-title   { font-size:22px;font-weight:700;color:#e2e2e0;margin-bottom:2px; }
+.settings-page-sub     { font-size:13px;color:rgba(255,255,255,.4);margin-bottom:20px; }
+
 /* ── Tab nav ────────────────────────────────────────────────── */
-.nav-tabs .nav-link { color:#6B7280;font-weight:500;border:none;border-bottom:2px solid transparent;padding:11px 15px;font-size:13.5px; }
-.nav-tabs .nav-link:hover { color:var(--primary-color);border-color:transparent;background:rgba(0,0,0,.02); }
-.nav-tabs .nav-link.active { color:var(--primary-color);border-bottom:2px solid var(--primary-color);background:transparent;font-weight:600; }
-.nav-tabs { border-bottom:1px solid #E5E7EB; }
-.nav-tabs .nav-link i { margin-right:6px; }
+.nav-tabs { border-bottom: 1px solid rgba(255,255,255,.08) !important; }
+.nav-tabs .nav-link {
+    color: rgba(255,255,255,.5);
+    font-weight: 500;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    padding: 12px 16px;
+    font-size: 13px;
+    border-radius: 0 !important;
+    background: transparent !important;
+    transition: color .15s, border-color .15s;
+}
+.nav-tabs .nav-link:hover  { color: rgba(255,255,255,.8); }
+.nav-tabs .nav-link.active {
+    color: var(--primary-light, #5b8fc9) !important;
+    border-bottom: 2px solid var(--primary-color, #3B6EA5) !important;
+    font-weight: 600;
+}
+.nav-tabs .nav-link i { margin-right: 6px; }
 
 /* ── Section headers ─────────────────────────────────────────── */
-.set-section { margin-bottom:28px; }
+.set-section { margin-bottom: 28px; }
 .set-section-title {
-    font-size:13px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;
-    display:flex;align-items:center;gap:8px;padding-bottom:10px;
-    border-bottom:2px solid #F3F4F6;margin-bottom:18px;
+    font-size: 11px; font-weight: 700; color: rgba(255,255,255,.45);
+    text-transform: uppercase; letter-spacing: .07em;
+    display: flex; align-items: center; gap: 8px;
+    padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.07);
+    margin-bottom: 18px;
 }
-.set-section-title i { color:var(--primary-color,#3B6EA5);font-size:14px; }
+.set-section-title i { color: var(--primary-color, #3B6EA5); font-size: 14px; }
 
-/* ── Info banner ─────────────────────────────────────────────── */
+/* ── Info banners ─────────────────────────────────────────────── */
 .set-info-banner {
     display:flex;align-items:flex-start;gap:12px;
-    background:rgba(59,110,165,.06);border:1px solid rgba(59,110,165,.15);
-    border-radius:10px;padding:14px 16px;margin-bottom:22px;font-size:13px;color:#374151;
+    background:rgba(59,110,165,.1);border:1px solid rgba(59,110,165,.25);
+    border-radius:10px;padding:14px 16px;margin-bottom:22px;
+    font-size:13px;color:rgba(255,255,255,.75);
 }
-.set-info-banner i { color:var(--primary-color,#3B6EA5);font-size:16px;flex-shrink:0;margin-top:1px; }
-.set-info-banner.warn { background:#FEF3C7;border-color:#FCD34D;color:#92400E; }
-.set-info-banner.warn i { color:#D97706; }
-.set-info-banner.success { background:#D1FAE5;border-color:#A7F3D0;color:#065F46; }
-.set-info-banner.success i { color:#059669; }
+.set-info-banner i { color:var(--primary-light,#5b8fc9);font-size:16px;flex-shrink:0;margin-top:1px; }
+.set-info-banner strong { color:#e2e2e0; }
+.set-info-banner.warn {
+    background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.25);
+    color:rgba(255,220,100,.85);
+}
+.set-info-banner.warn i { color:#fcd34d; }
+.set-info-banner.success {
+    background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.25);
+    color:rgba(110,231,183,.85);
+}
+.set-info-banner.success i { color:#34d399; }
 
 /* ── Form controls ───────────────────────────────────────────── */
-.set-label { font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px; }
-.set-hint  { font-size:11.5px;color:#9CA3AF;margin-top:4px; }
+.set-label { font-size:12px;font-weight:600;color:rgba(255,255,255,.6);display:block;margin-bottom:5px; }
+.set-hint  { font-size:11.5px;color:rgba(255,255,255,.3);margin-top:4px; }
 .set-input {
-    width:100%;padding:9px 13px;border:1.5px solid #D1D5DB;border-radius:8px;
-    font-size:13.5px;color:#111827;background:#fff;box-sizing:border-box;
-    transition:border-color .15s;font-family:inherit;
+    width:100%;padding:9px 13px;
+    border:1px solid rgba(255,255,255,.08);border-radius:8px;
+    font-size:13px;color:#e2e2e0;
+    background:#1a1a19;
+    box-shadow:inset 3px 3px 7px rgba(0,0,0,.35),inset -2px -2px 5px rgba(255,255,255,.03);
+    box-sizing:border-box;transition:border-color .15s;font-family:inherit;
 }
-.set-input:focus { outline:none;border-color:var(--primary-color);box-shadow:0 0 0 3px rgba(59,110,165,.1); }
-.set-input[readonly] { background:#F9FAFB;color:#6B7280; }
-.set-select { appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236B7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center; }
+.set-input:focus {
+    outline:none;
+    border-color:var(--primary-color,#3B6EA5);
+    box-shadow:inset 3px 3px 7px rgba(0,0,0,.35),0 0 0 2px rgba(59,110,165,.2);
+}
+.set-input[readonly] { background:#161615;color:rgba(255,255,255,.35);cursor:default; }
+.set-input option  { background:#1a1a19;color:#e2e2e0; }
+.set-select {
+    appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 12px center;
+}
 
 /* ── Secret wrap ─────────────────────────────────────────────── */
 .sec-wrap { position:relative; }
 .sec-wrap .set-input { padding-right:40px; }
-.sec-toggle { position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9CA3AF;padding:3px; }
-.sec-toggle:hover { color:#374151; }
+.sec-toggle {
+    position:absolute;right:10px;top:50%;transform:translateY(-50%);
+    background:none;border:none;cursor:pointer;color:rgba(255,255,255,.35);padding:3px;
+}
+.sec-toggle:hover { color:rgba(255,255,255,.7); }
 
 /* ── Switch row ─────────────────────────────────────────────── */
-.sw-row { display:flex;align-items:center;gap:14px;padding:13px 16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;margin-bottom:14px; }
-.sw-info strong { font-size:13.5px;font-weight:600;color:#111827;display:block; }
-.sw-info span   { font-size:12px;color:#6B7280; }
+.sw-row {
+    display:flex;align-items:center;gap:14px;
+    padding:13px 16px;
+    background:rgba(255,255,255,.03);
+    border:1px solid rgba(255,255,255,.06);
+    border-radius:10px;margin-bottom:14px;
+}
 .sw-info { flex:1; }
+.sw-info strong { font-size:13px;font-weight:600;color:#e2e2e0;display:block; }
+.sw-info span   { font-size:12px;color:rgba(255,255,255,.4); }
 .set-switch { position:relative;width:44px;height:24px;flex-shrink:0; }
 .set-switch input { opacity:0;width:0;height:0; }
-.set-slider { position:absolute;inset:0;background:#D1D5DB;border-radius:24px;cursor:pointer;transition:.25s; }
-.set-slider:before { content:'';position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.25s;box-shadow:0 1px 3px rgba(0,0,0,.2); }
+.set-slider {
+    position:absolute;inset:0;background:rgba(255,255,255,.12);
+    border-radius:24px;cursor:pointer;transition:.25s;
+}
+.set-slider:before {
+    content:'';position:absolute;height:18px;width:18px;
+    left:3px;bottom:3px;background:#888;border-radius:50%;
+    transition:.25s;box-shadow:0 1px 3px rgba(0,0,0,.4);
+}
 input:checked + .set-slider { background:var(--primary-color,#3B6EA5); }
-input:checked + .set-slider:before { transform:translateX(20px); }
+input:checked + .set-slider:before { transform:translateX(20px);background:#fff; }
 
 /* ── Save button ─────────────────────────────────────────────── */
 .set-save-btn {
     background:linear-gradient(135deg,var(--primary-dark,#2C5282) 0%,var(--primary-color,#3B6EA5) 100%);
-    color:#fff;border:none;border-radius:8px;padding:11px 26px;font-size:13.5px;font-weight:600;
+    color:#fff;border:none;border-radius:8px;padding:11px 26px;font-size:13px;font-weight:600;
     cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:opacity .2s,transform .15s;
 }
 .set-save-btn:hover { opacity:.9;transform:translateY(-1px); }
 
+/* ── Stat mini-cards (PPPoE/Hotspot quick stats) ─────────────── */
+.set-stat-card {
+    border-radius:10px;padding:14px 20px;text-align:center;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.04);
+}
+.set-stat-card .num  { font-size:24px;font-weight:700;color:#e2e2e0; }
+.set-stat-card .lbl  { font-size:11px;color:rgba(255,255,255,.4);font-weight:500;margin-top:2px; }
+.set-stat-card.blue  { background:rgba(96,165,250,.1);border-color:rgba(96,165,250,.2); }
+.set-stat-card.blue .num  { color:#93c5fd; }
+.set-stat-card.green { background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.2); }
+.set-stat-card.green .num { color:#6ee7b7; }
+.set-stat-card.amber { background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.2); }
+.set-stat-card.amber .num { color:#fcd34d; }
+
 /* ── Danger zone ─────────────────────────────────────────────── */
-.danger-card { background:#FFF5F5;border:1.5px solid #FEE2E2;border-radius:10px;padding:18px 20px; }
-.danger-card h6 { font-size:13px;font-weight:700;color:#991B1B;margin:0 0 6px; }
-.danger-card p  { font-size:12.5px;color:#6B7280;margin:0 0 14px; }
+.danger-card {
+    background:rgba(239,68,68,.07);
+    border:1.5px solid rgba(239,68,68,.2);
+    border-radius:10px;padding:18px 20px;
+}
+.danger-card h6 { font-size:13px;font-weight:700;color:#fca5a5;margin:0 0 6px; }
+.danger-card p  { font-size:12.5px;color:rgba(255,255,255,.45);margin:0 0 14px; }
+
+/* ── Email hint box ──────────────────────────────────────────── */
+.smtp-hint-box {
+    padding:12px 14px;
+    background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.07);
+    border-radius:8px;
+    font-size:12px;color:rgba(255,255,255,.45);
+    margin-top:16px;
+}
+.smtp-hint-box strong { color:rgba(255,255,255,.65); }
+
+/* ── Upload zone ─────────────────────────────────────────────── */
+.upload-zone {
+    background:rgba(255,255,255,.03);
+    border:1.5px dashed rgba(255,255,255,.12);
+    border-radius:10px;padding:24px;text-align:center;
+}
+.upload-zone i { color:rgba(255,255,255,.2);font-size:24px;display:block;margin-bottom:8px; }
+.upload-zone span { font-size:13px;color:rgba(255,255,255,.45); }
+.upload-zone label { color:var(--primary-light,#5b8fc9);cursor:pointer;font-weight:600; }
 </style>
 
-<div class="card border-0 shadow-sm">
-    <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0">
+<div class="settings-card">
+    <div class="settings-card-header">
         <ul class="nav nav-tabs card-header-tabs" id="settingsTabs" role="tablist">
             <li class="nav-item"><button class="nav-link" id="general-tab" data-bs-toggle="tab" data-bs-target="#general"><i class="fas fa-cog"></i>General</button></li>
             <li class="nav-item"><button class="nav-link" id="payments-tab" data-bs-toggle="tab" data-bs-target="#payments"><i class="fas fa-money-bill-wave"></i>Payments</button></li>
@@ -360,7 +485,7 @@ input:checked + .set-slider:before { transform:translateX(20px); }
         </ul>
     </div>
 
-    <div class="card-body p-4">
+    <div class="settings-card-body">
         <div class="tab-content" id="settingsTabsContent">
 
             <!-- ════════════════════════════════════════════════════
@@ -377,14 +502,15 @@ input:checked + .set-slider:before { transform:translateX(20px); }
                             <!-- Logo -->
                             <div class="col-12">
                                 <label class="set-label">System Logo</label>
-                                <div class="border rounded-3 p-4 text-center" style="border-style:dashed!important;background:#FAFAFA;">
+                                <div class="upload-zone">
                                     <?php if(!empty($tSettings['system_logo'])): ?>
-                                        <img src="<?php echo htmlspecialchars($tSettings['system_logo']); ?>" style="max-height:50px;" class="mb-3"><br>
+                                        <img src="<?php echo htmlspecialchars($tSettings['system_logo']); ?>" style="max-height:50px;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto;"><br>
+                                    <?php else: ?>
+                                        <i class="fas fa-cloud-upload-alt"></i>
                                     <?php endif; ?>
-                                    <i class="fas fa-cloud-upload-alt" style="font-size:24px;color:#D1D5DB;display:block;margin-bottom:8px;"></i>
-                                    <span class="text-muted" style="font-size:13px;">Drag & drop or <label for="logo_upload" class="fw-bold cursor-pointer" style="color:var(--primary-color,#3B6EA5);">Browse</label></span>
+                                    <span>Drag &amp; drop or <label for="logo_upload">Browse</label></span>
                                     <input type="file" name="system_logo" id="logo_upload" class="d-none" accept="image/*">
-                                    <div style="font-size:11px;color:#9CA3AF;margin-top:6px;">PNG, JPG or SVG — recommended 200×60px</div>
+                                    <div style="font-size:11px;color:rgba(255,255,255,.25);margin-top:6px;">PNG, JPG or SVG — recommended 200×60px</div>
                                 </div>
                             </div>
                             <div class="col-md-4">
@@ -503,15 +629,15 @@ input:checked + .set-slider:before { transform:translateX(20px); }
                                 <p>Remove subscribers who have been expired/inactive for more than 90 days. This cannot be undone.</p>
                                 <form method="POST" onsubmit="return confirm('Remove all inactive PPPoE customers? This cannot be undone.');">
                                     <input type="hidden" name="action" value="clear_pppoe">
-                                    <button type="submit" class="btn btn-outline-danger btn-sm fw-semibold">
+                                    <button type="submit" class="btn btn-sm fw-semibold" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.35);color:#fca5a5;border-radius:7px;">
                                         <i class="fas fa-trash me-2"></i>Clear Inactive PPPoE Customers
                                     </button>
                                 </form>
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <div class="danger-card" style="background:#FFF7ED;border-color:#FED7AA;">
-                                <h6 style="color:#9A3412;"><i class="fas fa-sync me-2"></i>Sync All Routers</h6>
+                            <div class="danger-card" style="background:rgba(251,191,36,.07);border-color:rgba(251,191,36,.25);">
+                                <h6 style="color:#fcd34d;"><i class="fas fa-sync me-2"></i>Sync All Routers</h6>
                                 <p>Force-sync all PPPoE profiles and user accounts from your MikroTik routers.</p>
                                 <a href="mikrotik.php" class="btn btn-outline-warning btn-sm fw-semibold">
                                     <i class="fas fa-network-wired me-2"></i>Go to MikroTik Manager
@@ -534,24 +660,9 @@ input:checked + .set-slider:before { transform:translateX(20px); }
                     } catch(Exception $e) { $pppoe_total = 0; $pppoe_active = 0; }
                     ?>
                     <div class="row g-3">
-                        <div class="col-auto">
-                            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:14px 20px;text-align:center;">
-                                <div style="font-size:24px;font-weight:700;color:#1E40AF;"><?php echo number_format($pppoe_total); ?></div>
-                                <div style="font-size:11px;color:#6B7280;font-weight:500;">Total PPPoE</div>
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:14px 20px;text-align:center;">
-                                <div style="font-size:24px;font-weight:700;color:#15803D;"><?php echo number_format($pppoe_active); ?></div>
-                                <div style="font-size:11px;color:#6B7280;font-weight:500;">Active</div>
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <div style="background:#FEF9C3;border:1px solid #FDE047;border-radius:10px;padding:14px 20px;text-align:center;">
-                                <div style="font-size:24px;font-weight:700;color:#854D0E;"><?php echo number_format($pppoe_total - $pppoe_active); ?></div>
-                                <div style="font-size:11px;color:#6B7280;font-weight:500;">Inactive</div>
-                            </div>
-                        </div>
+                        <div class="col-auto"><div class="set-stat-card blue"><div class="num"><?php echo number_format($pppoe_total); ?></div><div class="lbl">Total PPPoE</div></div></div>
+                        <div class="col-auto"><div class="set-stat-card green"><div class="num"><?php echo number_format($pppoe_active); ?></div><div class="lbl">Active</div></div></div>
+                        <div class="col-auto"><div class="set-stat-card amber"><div class="num"><?php echo number_format($pppoe_total - $pppoe_active); ?></div><div class="lbl">Inactive</div></div></div>
                     </div>
                 </div>
             </div>
@@ -577,16 +688,16 @@ input:checked + .set-slider:before { transform:translateX(20px); }
                                 <p>Remove hotspot users who haven't logged in for more than 90 days. This cannot be undone.</p>
                                 <form method="POST" onsubmit="return confirm('Remove all inactive hotspot users? This cannot be undone.');">
                                     <input type="hidden" name="action" value="clear_hotspot">
-                                    <button type="submit" class="btn btn-outline-danger btn-sm fw-semibold">
+                                    <button type="submit" class="btn btn-sm fw-semibold" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.35);color:#fca5a5;border-radius:7px;">
                                         <i class="fas fa-trash me-2"></i>Clear Inactive Hotspot Users
                                     </button>
                                 </form>
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:18px 20px;">
-                                <h6 style="color:#0C4A6E;font-size:13px;font-weight:700;margin:0 0 6px;"><i class="fas fa-ticket-alt me-2"></i>Voucher Management</h6>
-                                <p style="font-size:12.5px;color:#6B7280;margin:0 0 12px;">Generate and manage hotspot vouchers for prepaid customers.</p>
+                            <div style="background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.2);border-radius:10px;padding:18px 20px;">
+                                <h6 style="color:#93c5fd;font-size:13px;font-weight:700;margin:0 0 6px;"><i class="fas fa-ticket-alt me-2"></i>Voucher Management</h6>
+                                <p style="font-size:12.5px;color:rgba(255,255,255,.45);margin:0 0 12px;">Generate and manage hotspot vouchers for prepaid customers.</p>
                                 <a href="clients.php?type=hotspot" class="btn btn-sm fw-semibold" style="background:var(--primary-color,#3B6EA5);color:#fff;border:none;">
                                     <i class="fas fa-ticket-alt me-2"></i>Manage Hotspot Users
                                 </a>
@@ -608,24 +719,9 @@ input:checked + .set-slider:before { transform:translateX(20px); }
                     } catch(Exception $e) { $hs_total = 0; $hs_active = 0; }
                     ?>
                     <div class="row g-3">
-                        <div class="col-auto">
-                            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:14px 20px;text-align:center;">
-                                <div style="font-size:24px;font-weight:700;color:#1E40AF;"><?php echo number_format($hs_total); ?></div>
-                                <div style="font-size:11px;color:#6B7280;font-weight:500;">Total Hotspot</div>
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:14px 20px;text-align:center;">
-                                <div style="font-size:24px;font-weight:700;color:#15803D;"><?php echo number_format($hs_active); ?></div>
-                                <div style="font-size:11px;color:#6B7280;font-weight:500;">Active</div>
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <div style="background:#FEF9C3;border:1px solid #FDE047;border-radius:10px;padding:14px 20px;text-align:center;">
-                                <div style="font-size:24px;font-weight:700;color:#854D0E;"><?php echo number_format($hs_total - $hs_active); ?></div>
-                                <div style="font-size:11px;color:#6B7280;font-weight:500;">Expired</div>
-                            </div>
-                        </div>
+                        <div class="col-auto"><div class="set-stat-card blue"><div class="num"><?php echo number_format($hs_total); ?></div><div class="lbl">Total Hotspot</div></div></div>
+                        <div class="col-auto"><div class="set-stat-card green"><div class="num"><?php echo number_format($hs_active); ?></div><div class="lbl">Active</div></div></div>
+                        <div class="col-auto"><div class="set-stat-card amber"><div class="num"><?php echo number_format($hs_total - $hs_active); ?></div><div class="lbl">Expired</div></div></div>
                     </div>
                 </div>
             </div>
@@ -718,19 +814,19 @@ input:checked + .set-slider:before { transform:translateX(20px); }
                     <div style="display:flex;align-items:center;gap:12px;">
                         <button type="submit" class="set-save-btn"><i class="fas fa-save"></i> Save Email Settings</button>
                         <?php if(!empty($emailCfg)): ?>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="testEmail()">
+                        <button type="button" class="btn btn-sm" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7);border-radius:7px;" onclick="testEmail()">
                             <i class="fas fa-paper-plane me-1"></i> Send Test Email
                         </button>
                         <span id="emailTestResult" style="font-size:12.5px;display:none;"></span>
                         <?php endif; ?>
                     </div>
 
-                    <div style="margin-top:20px;padding:14px 16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;font-size:12px;color:#6B7280;">
-                        <strong style="color:#374151;">Popular SMTP providers:</strong>
-                        Gmail: smtp.gmail.com:587 (use App Password, not account password) &nbsp;·&nbsp;
+                    <div class="smtp-hint-box">
+                        <strong>Popular SMTP providers:</strong>
+                        Gmail: smtp.gmail.com:587 (use App Password) &nbsp;·&nbsp;
                         Zoho: smtp.zoho.com:587 &nbsp;·&nbsp;
                         Outlook: smtp-mail.outlook.com:587 &nbsp;·&nbsp;
-                        Custom hosting: mail.yourdomain.com:587
+                        Custom: mail.yourdomain.com:587
                     </div>
                 </form>
             </div>
@@ -804,15 +900,15 @@ input:checked + .set-slider:before { transform:translateX(20px); }
                     <div style="display:flex;align-items:center;gap:12px;">
                         <button type="submit" class="set-save-btn"><i class="fas fa-save"></i> Save SMS Settings</button>
                         <?php if(!empty($smsCfg)): ?>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="testSMS()">
+                        <button type="button" class="btn btn-sm" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7);border-radius:7px;" onclick="testSMS()">
                             <i class="fas fa-sms me-1"></i> Send Test SMS
                         </button>
                         <span id="smsTestResult" style="font-size:12.5px;display:none;"></span>
                         <?php endif; ?>
                     </div>
 
-                    <div style="margin-top:20px;padding:14px 16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;font-size:12px;color:#6B7280;">
-                        <strong style="color:#374151;">Getting API credentials:</strong>
+                    <div class="smtp-hint-box">
+                        <strong>Getting API credentials:</strong>
                         Register at <strong>talksasa.com</strong> → Dashboard → API Keys. Sender IDs may require approval (1–3 business days).
                     </div>
                 </form>
@@ -909,8 +1005,8 @@ input:checked + .set-slider:before { transform:translateX(20px); }
             </div>
 
         </div><!-- /tab-content -->
-    </div><!-- /card-body -->
-</div><!-- /card -->
+    </div><!-- /settings-card-body -->
+</div><!-- /settings-card -->
 
 </div>
 </div>
@@ -981,10 +1077,10 @@ function testEmail() {
         .then(r => r.json())
         .then(d => {
             res.style.display = 'inline';
-            res.style.color = d.success ? '#059669' : '#DC2626';
+            res.style.color = d.success ? '#34d399' : '#f87171';
             res.textContent = d.message;
         })
-        .catch(() => { res.style.display='inline'; res.style.color='#DC2626'; res.textContent='Connection error'; })
+        .catch(() => { res.style.display='inline'; res.style.color='#f87171'; res.textContent='Connection error'; })
         .finally(() => { btn.disabled=false; btn.innerHTML='<i class="fas fa-paper-plane me-1"></i> Send Test Email'; });
 }
 
@@ -998,10 +1094,10 @@ function testSMS() {
         .then(r => r.json())
         .then(d => {
             res.style.display = 'inline';
-            res.style.color = d.success ? '#059669' : '#DC2626';
+            res.style.color = d.success ? '#34d399' : '#f87171';
             res.textContent = d.message;
         })
-        .catch(() => { res.style.display='inline'; res.style.color='#DC2626'; res.textContent='Connection error'; })
+        .catch(() => { res.style.display='inline'; res.style.color='#f87171'; res.textContent='Connection error'; })
         .finally(() => { btn.disabled=false; btn.innerHTML='<i class="fas fa-sms me-1"></i> Send Test SMS'; });
 }
 

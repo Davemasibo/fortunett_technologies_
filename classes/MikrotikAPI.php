@@ -23,39 +23,67 @@ class MikrotikAPI {
     /**
      * Connect to MikroTik router
      */
+    /**
+     * Test if host is reachable before attempting full API connection.
+     * Returns true/false without throwing.
+     */
+    public function isReachable(int $timeoutSec = 3): bool {
+        $fp = @fsockopen($this->host, $this->port, $errno, $errstr, $timeoutSec);
+        if ($fp) { fclose($fp); return true; }
+        return false;
+    }
+
     public function connect() {
         if ($this->connected) {
             return true;
         }
-        
-        $this->socket = @fsockopen($this->host, $this->port, $errno, $errstr, 10);
-        
+
+        // Short connect timeout — prevents hanging on unreachable routers
+        $this->socket = @fsockopen($this->host, $this->port, $errno, $errstr, 5);
+
         if (!$this->socket) {
-            throw new Exception("Cannot connect to {$this->host}:{$this->port} - $errstr ($errno)");
+            throw new Exception("Cannot connect to {$this->host}:{$this->port} — $errstr ($errno)");
         }
-        
-        stream_set_timeout($this->socket, 10);
-        
-        // Login
-        $this->write('/login');
+
+        stream_set_timeout($this->socket, 5);
+
+        // ── RouterOS API Login ───────────────────────────────────────
+        // Step 1: Initial /login (RouterOS v6.43+ accepts plain-text;
+        //         older firmware (RB951 ≤ v6.42) returns a challenge word)
+        $this->write('/login', false, []);
         $response = $this->read();
-        
+
         if (isset($response[0]['!trap'])) {
             throw new Exception("Login failed: " . ($response[0]['message'] ?? 'Unknown error'));
         }
-        
-        // Send credentials
-        $this->write('/login', false, [
-            '=name=' . $this->username,
-            '=password=' . $this->password
-        ]);
-        
+
+        // Check for legacy MD5-challenge response (RouterOS < 6.43)
+        $challenge = null;
+        foreach ($response as $item) {
+            if (isset($item['ret'])) { $challenge = $item['ret']; break; }
+        }
+
+        if ($challenge !== null) {
+            // Legacy auth: MD5(challenge + password)
+            $hash = '00' . md5(chr(0) . $this->password . pack('H*', $challenge));
+            $this->write('/login', false, [
+                '=name='     . $this->username,
+                '=response=' . $hash,
+            ]);
+        } else {
+            // Modern plain-text auth (RouterOS 6.43+)
+            $this->write('/login', false, [
+                '=name='     . $this->username,
+                '=password=' . $this->password,
+            ]);
+        }
+
         $response = $this->read();
-        
+
         if (isset($response[0]['!trap'])) {
             throw new Exception("Authentication failed: " . ($response[0]['message'] ?? 'Invalid credentials'));
         }
-        
+
         $this->connected = true;
         return true;
     }
@@ -351,20 +379,105 @@ class MikrotikAPI {
     }
     
     /**
-     * Get active PPPoE sessions
+     * Get active PPPoE sessions (raw array)
      */
-    public function getActiveSessions() {
+    public function getActiveSessions(): array {
         $response = $this->comm('/ppp/active/print');
         $sessions = [];
-        
         foreach ($response as $item) {
             if (isset($item['!re'])) {
                 unset($item['!re']);
                 $sessions[] = $item;
             }
         }
-        
         return $sessions;
+    }
+
+    /**
+     * Get map of username → session info for fast online-status lookups.
+     * Returns [ 'username' => ['uptime'=>'...','address'=>'...'], ... ]
+     */
+    public function getActiveSessionsMap(): array {
+        $map = [];
+        foreach ($this->getActiveSessions() as $s) {
+            $name = $s['name'] ?? ($s['user'] ?? null);
+            if ($name) {
+                $map[strtolower($name)] = [
+                    'uptime'  => $s['uptime']          ?? '',
+                    'address' => $s['address']         ?? '',
+                    'rx_byte' => $s['bytes-in']        ?? '0',
+                    'tx_byte' => $s['bytes-out']       ?? '0',
+                    'caller'  => $s['caller-id']       ?? '',
+                ];
+            }
+        }
+        return $map;
+    }
+
+    /**
+     * Get active Hotspot sessions map (username → session info)
+     */
+    public function getActiveHotspotSessionsMap(): array {
+        $response = $this->comm('/ip/hotspot/active/print');
+        $map = [];
+        foreach ($response as $item) {
+            if (isset($item['!re'])) {
+                unset($item['!re']);
+                $name = $item['user'] ?? null;
+                if ($name) {
+                    $map[strtolower($name)] = [
+                        'uptime'  => $item['uptime']    ?? '',
+                        'address' => $item['address']   ?? '',
+                        'rx_byte' => $item['bytes-in']  ?? '0',
+                        'tx_byte' => $item['bytes-out'] ?? '0',
+                    ];
+                }
+            }
+        }
+        return $map;
+    }
+
+    /**
+     * Enable a PPPoE secret (re-enable a disabled user)
+     */
+    public function enablePPPoEUser(string $username): bool {
+        $users = $this->getPPPoEUsers();
+        foreach ($users as $u) {
+            if ($u['name'] === $username) {
+                $r = $this->comm('/ppp/secret/enable', ['=.id=' . $u['.id']]);
+                return !isset($r[0]['!trap']);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Disable a PPPoE secret (block without deleting)
+     */
+    public function disablePPPoEUser(string $username): bool {
+        $users = $this->getPPPoEUsers();
+        foreach ($users as $u) {
+            if ($u['name'] === $username) {
+                $r = $this->comm('/ppp/secret/disable', ['=.id=' . $u['.id']]);
+                return !isset($r[0]['!trap']);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Kick active PPPoE session for a user (forces reconnect)
+     */
+    public function kickPPPoESession(string $username): bool {
+        $sessions = $this->getActiveSessions();
+        foreach ($sessions as $s) {
+            $name = $s['name'] ?? ($s['user'] ?? '');
+            if ($name === $username && isset($s['.id'])) {
+                $r = $this->comm('/ppp/active/remove', ['=.id=' . $s['.id']]);
+                return !isset($r[0]['!trap']);
+            }
+        }
+        return false;
     }
     
     /**

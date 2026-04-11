@@ -329,6 +329,9 @@ include 'includes/sidebar.php';
     #recordPaymentForm { background: var(--neu-surf) !important; border-color: var(--neu-border) !important; }
     /* Payment / SMS table wraps inside modal */
     #paymentsTableWrap, #smsTableWrap { background: var(--neu-surf) !important; border-color: var(--neu-border) !important; }
+    /* ── Online status indicator ── */
+    .online-dot { display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;margin-right:4px;vertical-align:middle;box-shadow:0 0 6px #10b981;animation:pulseDot 2s infinite; }
+    .tr-online .customer-name::before { content:''; display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;margin-right:5px;vertical-align:middle;box-shadow:0 0 5px #10b981; }
 
     @media (max-width:1024px) { .filters-grid { grid-template-columns:1fr 1fr; } }
     @media (max-width:768px)  { .customers-container { padding:16px; } .table-header { flex-direction:column; gap:12px; align-items:flex-start; } .table-actions { width:100%; } .export-btn,.add-customer-btn { flex:1; justify-content:center; } }
@@ -438,6 +441,10 @@ include 'includes/sidebar.php';
                     <i class="fas fa-users"></i> Showing <?php echo count($customers); ?> customers
                 </div>
                 <div class="table-actions">
+                    <button class="export-btn" id="syncRouterBtn" onclick="syncOnlineStatus()" title="Fetch live session data from MikroTik">
+                        <i class="fas fa-satellite-dish" id="syncIcon"></i>
+                        <span id="syncLabel">Sync Router</span>
+                    </button>
                     <button class="export-btn" onclick="exportCSV()">
                         <i class="fas fa-download"></i>
                         Export CSV
@@ -854,7 +861,7 @@ include 'includes/sidebar.php';
     <div style="padding:20px;">
         <!-- Quick add buttons -->
         <div style="margin-bottom:18px;">
-            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Quick Extend</div>
+            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Quick Extend</div>
             <div style="display:flex;gap:7px;flex-wrap:wrap;">
                 <button onclick="applyQuickExpiry(60)" class="expiry-quick-btn">+1 Hour</button>
                 <button onclick="applyQuickExpiry(720)" class="expiry-quick-btn">+12 Hours</button>
@@ -866,7 +873,7 @@ include 'includes/sidebar.php';
         </div>
         <!-- Set specific date -->
         <div style="margin-bottom:16px;">
-            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Set Specific Date</div>
+            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Set Specific Date</div>
             <div style="display:flex;gap:8px;">
                 <input type="datetime-local" id="expiryDateInput" style="flex:1;padding:8px 10px;background:#1c1c1b;border:1px solid rgba(255,255,255,.08);border-radius:7px;font-size:13px;color:#e2e2e0;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;box-sizing:border-box;">
                 <button onclick="applySetDate()" style="padding:8px 14px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Set Date</button>
@@ -874,7 +881,7 @@ include 'includes/sidebar.php';
         </div>
         <!-- Change package -->
         <div style="margin-bottom:16px;">
-            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Change Package</div>
+            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Change Package</div>
             <div style="display:flex;gap:8px;">
                 <select id="expiryPackageSelect" style="flex:1;padding:8px 10px;background:#1c1c1b;border:1px solid rgba(255,255,255,.08);border-radius:7px;font-size:13px;color:#e2e2e0;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;">
                     <option value="" style="background:#1c1c1b;">— Keep current package —</option>
@@ -887,14 +894,14 @@ include 'includes/sidebar.php';
         </div>
         <!-- Grace period -->
         <div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:10px;padding:12px;">
-            <div style="font-size:10px;font-weight:600;color:rgba(251,191,36,.7);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Grace Period (added on top)</div>
+            <div style="font-size:10px;font-weight:600;color:rgba(251,191,36,.9);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Grace Period (added on top)</div>
             <div style="display:flex;align-items:center;gap:10px;">
                 <input type="number" id="graceHoursInput" min="0" max="720" value="0" style="width:80px;padding:7px;background:#1c1c1b;border:1px solid rgba(251,191,36,.25);border-radius:6px;font-size:13px;text-align:center;color:#fcd34d;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;">
-                <span style="font-size:13px;color:rgba(251,191,36,.6);">hours of grace period</span>
+                <span style="font-size:13px;color:rgba(251,191,36,.85);">hours of grace period</span>
             </div>
         </div>
         <!-- Current expiry info -->
-        <div style="margin-top:14px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:7px;font-size:12px;color:rgba(255,255,255,.45);">
+        <div style="margin-top:14px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:7px;font-size:12px;color:rgba(255,255,255,.6);">
             Current expiry: <strong id="currentExpiryDisplay" style="color:#e2e2e0;"></strong>
         </div>
     </div>
@@ -1142,6 +1149,43 @@ function switchToTab(name) {
     if (name === 'reports'  && currentCustomer) loadReports(currentCustomer.id);
     if (name === 'payments' && currentCustomer) loadPayments(currentCustomer.id);
     if (name === 'sms'      && currentCustomer) loadSMSHistory(currentCustomer.id);
+}
+
+/* ── Sync online status from MikroTik ─────────────────────── */
+function syncOnlineStatus() {
+    const btn   = document.getElementById('syncRouterBtn');
+    const icon  = document.getElementById('syncIcon');
+    const label = document.getElementById('syncLabel');
+    if (!btn) return;
+    btn.disabled = true;
+    icon.className  = 'fas fa-spinner fa-spin';
+    label.textContent = 'Syncing…';
+
+    fetch('api/clients/online_status.php')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const online = (data.online || []).map(u => u.toLowerCase());
+                // Mark rows
+                document.querySelectorAll('tr[data-username]').forEach(tr => {
+                    const uname = (tr.getAttribute('data-username') || '').toLowerCase();
+                    if (online.includes(uname)) {
+                        tr.classList.add('tr-online');
+                    } else {
+                        tr.classList.remove('tr-online');
+                    }
+                });
+                showToast(`Router synced — ${online.length} session${online.length !== 1 ? 's' : ''} online`, 'success');
+            } else {
+                showToast('Sync failed: ' + (data.message || 'Router unreachable'), 'error');
+            }
+        })
+        .catch(() => showToast('Could not reach router — check connectivity', 'error'))
+        .finally(() => {
+            btn.disabled   = false;
+            icon.className = 'fas fa-satellite-dish';
+            label.textContent = 'Sync Router';
+        });
 }
 
 /* ── Modal open/close ──────────────────────────────────────── */

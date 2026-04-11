@@ -2,8 +2,9 @@
  /**
  * API Endpoint: Update Package
  */
-error_reporting(E_ALL);
-ini_set('display_errors', 0); // Prevent HTML error output
+ob_start();
+error_reporting(0);
+ini_set('display_errors', 0);
 header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
@@ -27,7 +28,7 @@ if (empty($id) || empty($name)) {
 }
 
 // Security: Check Tenant
-session_start();
+if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user_id'])) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
     exit;
@@ -66,9 +67,11 @@ try {
     // TODO: Implement profile update on router if needed.
     
     $pdo->commit();
+    ob_clean();
     echo json_encode(['success' => true, 'message' => 'Package updated successfully']);
 
 } catch (Exception $e) {
-    if ($pdo->inTransaction()) $pdo->rollBack();
+    if ($pdo->inTransaction()) { try { $pdo->rollBack(); } catch (Exception $re) {} }
+    ob_clean();
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }

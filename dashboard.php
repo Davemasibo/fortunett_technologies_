@@ -93,47 +93,17 @@ include 'includes/sidebar.php';
     }
     
     .breadcrumb {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 13px;
-        color: #6B7280;
-        margin-bottom: 8px;
+        display:flex;align-items:center;gap:8px;font-size:12px;
+        color:rgba(255,255,255,.4);margin-bottom:8px;
     }
-    
-    .breadcrumb a {
-        color: #3B6EA5;
-        text-decoration: none;
-    }
-    
-    .breadcrumb a:hover {
-        text-decoration: underline;
-    }
-    
-    .dashboard-title {
-        font-size: 28px;
-        font-weight: 600;
-        color: #111827;
-        margin: 0 0 4px 0;
-    }
-    
-    .dashboard-subtitle {
-        font-size: 14px;
-        color: #6B7280;
-        margin: 0;
-    }
-    
+    .breadcrumb a { color:var(--primary-light,#5b8fc9);text-decoration:none; }
+    .breadcrumb a:hover { text-decoration:underline; }
+    .dashboard-title    { font-size:26px;font-weight:700;color:#e2e2e0;margin:0 0 4px; }
+    .dashboard-subtitle { font-size:13.5px;color:rgba(255,255,255,.45);margin:0; }
+
     /* Quick Actions */
-    .quick-actions {
-        margin-bottom: 32px;
-    }
-    
-    .section-title {
-        font-size: 16px;
-        font-weight: 600;
-        color: #111827;
-        margin-bottom: 16px;
-    }
+    .quick-actions { margin-bottom:32px; }
+    .section-title { font-size:15px;font-weight:600;color:#e2e2e0;margin-bottom:16px; }
     
     .actions-grid {
         display: grid;
@@ -187,171 +157,125 @@ include 'includes/sidebar.php';
         gap: 20px;
     }
     
+    /* ── Metric / Revenue / Customer cards ─────────────────────── */
     .metric-card {
-        background: white;
-        border-radius: 10px;
+        background: #1c1c1b;
+        border-radius: 12px;
         padding: 20px;
-        border: 1px solid #E5E7EB;
-        transition: all 0.2s;
+        border: 1px solid rgba(255,255,255,.06);
+        box-shadow: 8px 8px 20px rgba(0,0,0,.45), -4px -4px 10px rgba(255,255,255,.03);
+        transition: transform .2s, box-shadow .2s;
     }
-    
     .metric-card:hover {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
         transform: translateY(-2px);
+        box-shadow: 10px 10px 28px rgba(0,0,0,.55), -4px -4px 12px rgba(255,255,255,.04);
     }
-    
     .metric-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         margin-bottom: 12px;
     }
-    
     .metric-label {
         font-size: 13px;
-        color: #6B7280;
+        color: rgba(255,255,255,.5);
         font-weight: 500;
     }
-    
     .metric-icon {
-        width: 36px;
-        height: 36px;
-        border-radius: 8px;
+        width: 38px;
+        height: 38px;
+        border-radius: 9px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 18px;
+        font-size: 17px;
     }
-    
     .metric-icon.revenue {
-        background: #DBEAFE;
-        color: #1E40AF;
+        background: rgba(96,165,250,.15);
+        color: #93c5fd;
     }
-    
     .metric-icon.users {
-        background: #E0E7FF;
-        color: #4338CA;
+        background: rgba(129,140,248,.15);
+        color: #a5b4fc;
     }
-    
     .metric-icon.growth {
-        background: #D1FAE5;
-        color: #065F46;
+        background: rgba(52,211,153,.15);
+        color: #6ee7b7;
     }
-    
     .metric-icon.warning {
-        background: #FEF3C7;
-        color: #92400E;
+        background: rgba(251,191,36,.15);
+        color: #fcd34d;
     }
-    
     .metric-value {
-        font-size: 28px;
+        font-size: 26px;
         font-weight: 700;
-        color: #111827;
+        color: #e2e2e0;
         margin-bottom: 4px;
     }
-    
-    .metric-change {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 12px;
-        font-weight: 500;
-    }
-    
-    .metric-change.positive {
-        color: #059669;
-    }
-    
-    .metric-change.negative {
-        color: #DC2626;
-    }
-    
-    .metric-period {
-        color: #9CA3AF;
-        font-size: 12px;
-    }
-    
-    /* Router Status & System Alerts */
+    .metric-change { display:flex;align-items:center;gap:4px;font-size:12px;font-weight:500; }
+    .metric-change.positive { color: #34d399; }
+    .metric-change.negative { color: #f87171; }
+    .metric-period { color: rgba(255,255,255,.35); font-size: 12px; }
+
+    /* ── Section titles ─────────────────────────────────────────── */
+    .section-title { font-size:15px;font-weight:600;color:#e2e2e0;margin-bottom:16px; }
+
+    /* ── Router Status & System Alerts ─────────────────────────── */
     .two-column-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 20px;
         margin-bottom: 32px;
     }
-    
     @media (max-width: 1024px) {
-        .two-column-grid {
-            grid-template-columns: 1fr;
-        }
+        .two-column-grid { grid-template-columns: 1fr; }
     }
-    
     .status-card {
-        background: white;
-        border-radius: 10px;
+        background: #1c1c1b;
+        border-radius: 12px;
         padding: 24px;
-        border: 1px solid #E5E7EB;
+        border: 1px solid rgba(255,255,255,.06);
+        box-shadow: 8px 8px 20px rgba(0,0,0,.45), -4px -4px 10px rgba(255,255,255,.03);
     }
-    
     .card-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         margin-bottom: 20px;
     }
-    
-    .card-title {
-        font-size: 16px;
-        font-weight: 600;
-        color: #111827;
+    .card-title { font-size:16px;font-weight:600;color:#e2e2e0; }
+    .card-subtitle { font-size:12px;color:rgba(255,255,255,.4);margin:4px 0 0 0; }
+    .dash-period-select {
+        padding:5px 10px;border-radius:6px;font-size:13px;
+        background:#1a1a19;color:rgba(255,255,255,.7);
+        border:1px solid rgba(255,255,255,.1);
+        outline:none;cursor:pointer;
     }
-    
+    .dash-period-select:focus { border-color:rgba(255,255,255,.25); }
+    .dash-inner-table { width:100%;border-collapse:collapse; }
+    .dash-inner-table thead { border-bottom:1px solid rgba(255,255,255,.08); }
+    .dash-inner-table th {
+        padding:8px 0;text-align:left;font-size:11px;font-weight:600;
+        color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.5px;
+    }
+    .dash-inner-table td { padding:8px 0;font-size:13px;color:rgba(255,255,255,.75); }
+
     .router-item {
         display: flex;
         align-items: center;
         justify-content: space-between;
         padding: 14px 0;
-        border-bottom: 1px solid #F3F4F6;
+        border-bottom: 1px solid rgba(255,255,255,.06);
     }
-    
-    .router-item:last-child {
-        border-bottom: none;
-    }
-    
-    .router-info {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    
-    .router-status-dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: #10B981;
-    }
-    
-    .router-name {
-        font-weight: 500;
-        color: #111827;
-        font-size: 14px;
-    }
-    
-    .router-ip {
-        font-size: 12px;
-        color: #6B7280;
-    }
-    
-    .router-clients {
-        font-size: 13px;
-        color: #6B7280;
-    }
-    
-    .router-clients strong {
-        color: #111827;
-        font-weight: 600;
-    }
-    
-    /* System Alerts */
+    .router-item:last-child { border-bottom: none; }
+    .router-info { display:flex;align-items:center;gap:12px; }
+    .router-status-dot { width:10px;height:10px;border-radius:50%;background:#10B981; }
+    .router-name { font-weight:500;color:#e2e2e0;font-size:14px; }
+    .router-ip   { font-size:12px;color:rgba(255,255,255,.4); }
+    .router-clients { font-size:13px;color:rgba(255,255,255,.45); }
+    .router-clients strong { color:#e2e2e0;font-weight:600; }
+
+    /* ── System Alerts ──────────────────────────────────────────── */
     .alert-item {
         padding: 14px;
         border-radius: 8px;
@@ -361,64 +285,27 @@ include 'includes/sidebar.php';
         gap: 12px;
         border-left: 4px solid;
     }
-    
-    .alert-item:last-child {
-        margin-bottom: 0;
-    }
-    
+    .alert-item:last-child { margin-bottom:0; }
     .alert-item.warning {
-        background: #FFFBEB;
-        border-color: #F59E0B;
+        background: rgba(251,191,36,.08);
+        border-color: rgba(251,191,36,.5);
     }
-    
     .alert-item.info {
-        background: #EFF6FF;
-        border-color: #3B82F6;
+        background: rgba(96,165,250,.08);
+        border-color: rgba(96,165,250,.5);
     }
-    
     .alert-icon {
-        width: 20px;
-        height: 20px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        font-size: 12px;
+        width:20px;height:20px;border-radius:50%;
+        display:flex;align-items:center;justify-content:center;
+        flex-shrink:0;font-size:12px;
     }
-    
-    .alert-item.warning .alert-icon {
-        background: #FEF3C7;
-        color: #F59E0B;
-    }
-    
-    .alert-item.info .alert-icon {
-        background: #DBEAFE;
-        color: #3B82F6;
-    }
-    
-    .alert-content {
-        flex: 1;
-    }
-    
-    .alert-title {
-        font-weight: 600;
-        font-size: 13px;
-        color: #111827;
-        margin-bottom: 4px;
-    }
-    
-    .alert-message {
-        font-size: 12px;
-        color: #6B7280;
-        line-height: 1.5;
-    }
-    
-    .alert-time {
-        font-size: 11px;
-        color: #9CA3AF;
-        margin-top: 4px;
-    }
+    .alert-item.warning .alert-icon { background:rgba(251,191,36,.15);color:#fcd34d; }
+    .alert-item.info    .alert-icon { background:rgba(96,165,250,.15); color:#93c5fd; }
+
+    .alert-content { flex:1; }
+    .alert-title   { font-weight:600;font-size:13px;color:#e2e2e0;margin-bottom:4px; }
+    .alert-message { font-size:12px;color:rgba(255,255,255,.5);line-height:1.5; }
+    .alert-time    { font-size:11px;color:rgba(255,255,255,.3);margin-top:4px; }
 
     /* Dashboard Chart Rows - Responsive */
     .dashboard-chart-row {
@@ -469,7 +356,7 @@ include 'includes/sidebar.php';
             gap: 10px;
         }
 
-        .card-header select {
+        .card-header select, .dash-period-select {
             width: 100%;
         }
 
@@ -691,7 +578,7 @@ include 'includes/sidebar.php';
 
         <!-- Analytics Charts Section -->
         <div style="margin-top: 32px;">
-            <h2 style="font-size: 20px; font-weight: 600; color: #111827; margin-bottom: 20px;">Analytics & Insights</h2>
+            <h2 class="section-title" style="font-size: 20px; font-weight: 600; margin-bottom: 20px;">Analytics & Insights</h2>
             
             <!-- Row 1: Payments & Active Users -->
             <div class="dashboard-chart-row">
@@ -700,9 +587,9 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">Payments</h3>
-                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">Payments and expenses trend</p>
+                            <p class="card-subtitle">Payments and expenses trend</p>
                         </div>
-                        <select style="padding: 6px 12px; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 13px;">
+                        <select class="dash-period-select">
                             <option>This year</option>
                             <option>This month</option>
                             <option>This week</option>
@@ -718,9 +605,9 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">Monthly Revenue</h3>
-                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;" id="activeUsersSubtitle">Last 6 months revenue trend</p>
+                            <p class="card-subtitle" id="activeUsersSubtitle">Last 6 months revenue trend</p>
                         </div>
-                        <select style="padding: 6px 12px; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 13px;">
+                        <select class="dash-period-select">
                             <option>This week</option>
                             <option>This month</option>
                         </select>
@@ -738,7 +625,7 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">Customer retention rate (6 months)</h3>
-                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">How many customers are returning and how many are churning?</p>
+                            <p class="card-subtitle">How many customers are returning and how many are churning?</p>
                         </div>
                     </div>
                     <div style="padding: 20px; height: 250px;">
@@ -751,7 +638,7 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">Data Usage</h3>
-                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">Data usage trend for PPPoE and Hotspot users</p>
+                            <p class="card-subtitle">Data usage trend for PPPoE and Hotspot users</p>
                         </div>
                     </div>
                     <div style="padding: 20px; height: 250px;">
@@ -767,7 +654,7 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">Package Utilization</h3>
-                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">Distribution of packages in use</p>
+                            <p class="card-subtitle">Distribution of packages in use</p>
                         </div>
                     </div>
                     <div style="padding: 20px; height: 300px; display: flex; align-items: center; justify-content: center;">
@@ -780,7 +667,7 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">Revenue Forecast (3 months)</h3>
-                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">How much revenue will you expect to generate in the next 3 months?</p>
+                            <p class="card-subtitle">How much revenue will you expect to generate in the next 3 months?</p>
                         </div>
                     </div>
                     <div style="padding: 20px; height: 300px;">
@@ -796,9 +683,9 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">Sent SMS</h3>
-                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">SMS sent from the system</p>
+                            <p class="card-subtitle">SMS sent from the system</p>
                         </div>
-                        <select style="padding: 6px 12px; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 13px;">
+                        <select class="dash-period-select">
                             <option>This week</option>
                             <option>This month</option>
                         </select>
@@ -813,9 +700,9 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">Network Data Usage</h3>
-                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">Total Download: 8579 GB, Total Upload: 6.77 GB this week</p>
+                            <p class="card-subtitle">Total Download &amp; Upload this week</p>
                         </div>
-                        <select style="padding: 6px 12px; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 13px;">
+                        <select class="dash-period-select">
                             <option>This week</option>
                             <option>This month</option>
                         </select>
@@ -833,9 +720,9 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">User Registrations</h3>
-                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">User registrations trend</p>
+                            <p class="card-subtitle">User registrations trend</p>
                         </div>
-                        <select style="padding: 6px 12px; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 13px;">
+                        <select class="dash-period-select">
                             <option>This week</option>
                             <option>This month</option>
                         </select>
@@ -850,21 +737,21 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">Most Active Users</h3>
-                            <p style="font-size: 12px; color: #6B7280; margin: 4px 0 0 0;">The most active users in the last 30 days</p>
+                            <p class="card-subtitle">The most active users in the last 30 days</p>
                         </div>
                     </div>
                     <div style="padding: 20px;">
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <thead style="border-bottom: 1px solid #E5E7EB;">
+                        <table class="dash-inner-table">
+                            <thead>
                                 <tr>
-                                    <th style="padding: 8px 0; text-align: left; font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase;">Username</th>
-                                    <th style="padding: 8px 0; text-align: right; font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase;">Data Used</th>
-                                    <th style="padding: 8px 0; text-align: right; font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase;">Phone</th>
+                                    <th>Username</th>
+                                    <th style="text-align:right;">Data Used</th>
+                                    <th style="text-align:right;">Phone</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td colspan="3" class="text-center p-4 text-muted">No usage data data available.</td>
+                                    <td colspan="3" class="text-center p-4" style="color:rgba(255,255,255,.35);">No usage data available.</td>
                                 </tr>
                             </tbody>
                         </table>

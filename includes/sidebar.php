@@ -348,6 +348,8 @@
     .sidebar-profile-item a:hover { opacity: 1; }
 
     @media (max-width: 768px) {
+        /* Profile is accessible from the navbar on mobile — hide sidebar duplicate */
+        .sidebar-profile-item { display: none !important; }
         .sidebar {
             transform: translateX(-100%);
             z-index: 1000;
@@ -362,9 +364,7 @@
         .main-content-wrapper > div {
             padding: 0 12px;
         }
-        /* Hide profile link from navbar on mobile — it lives in the sidebar */
-        .nav-user-avatar,
-        .navbar .nav-item a[href="profile.php"] { display: none !important; }
+        /* Profile link stays in navbar on mobile (sidebar one is hidden) */
     }
 </style>
 
