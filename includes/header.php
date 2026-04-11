@@ -391,12 +391,8 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
             <?php echo htmlspecialchars($tSettings['company_name'] ?? $tenant['company_name'] ?? $profile['business_name'] ?? 'ISP Management'); ?>
         </a>
         
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        
         <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav ms-auto align-items-center gap-2">
+            <ul class="navbar-nav ms-auto align-items-center gap-2 d-none d-lg-flex">
                 <?php
                 // Overdue invoice alert count
                 $overdueCount = 0;

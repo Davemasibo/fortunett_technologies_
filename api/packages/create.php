@@ -4,6 +4,15 @@
  */
 ob_start();
 ini_set('display_errors', 0);
+// Catch fatal errors (missing files, parse errors) and return valid JSON
+register_shutdown_function(function() {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        ob_clean();
+        if (!headers_sent()) header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Server error: ' . $err['message']]);
+    }
+});
 header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';

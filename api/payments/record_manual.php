@@ -23,7 +23,16 @@ if (!$tenant_id) {
 $client_id        = (int)($_POST['client_id'] ?? 0);
 $reference_code   = trim($_POST['reference_code'] ?? '');
 $amount           = (float)($_POST['amount'] ?? 0);
-$method           = trim($_POST['method'] ?? 'M-Pesa');
+$rawMethod        = strtolower(trim($_POST['method'] ?? 'cash'));
+// Normalize to DB-safe values (avoids ENUM truncation errors)
+$methodMap = [
+    'm-pesa' => 'mpesa', 'mpesa' => 'mpesa', 'safaricom' => 'mpesa',
+    'cash' => 'cash',
+    'bank_transfer' => 'bank_transfer', 'bank transfer' => 'bank_transfer', 'bank' => 'bank_transfer',
+    'card' => 'card', 'credit card' => 'card', 'debit card' => 'card',
+    'cheque' => 'bank_transfer', 'check' => 'bank_transfer',
+];
+$method           = $methodMap[$rawMethod] ?? 'cash';
 $transaction_date = trim($_POST['transaction_date'] ?? date('Y-m-d H:i:s'));
 $is_verified      = (int)($_POST['is_verified'] ?? 1);
 $notes            = trim($_POST['notes'] ?? '');

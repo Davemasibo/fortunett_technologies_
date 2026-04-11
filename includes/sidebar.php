@@ -72,6 +72,11 @@
                 <i class="fas fa-user-circle"></i> <span><?php echo htmlspecialchars($_SESSION['username'] ?? 'Profile'); ?></span>
             </a>
         </li>
+        <li class="sidebar-logout-item">
+            <a href="logout.php" style="color:rgba(255,100,100,.85);">
+                <i class="fas fa-sign-out-alt"></i> <span>Logout</span>
+            </a>
+        </li>
     </ul>
 
     <?php
