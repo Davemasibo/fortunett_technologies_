@@ -56,16 +56,27 @@ if (!$check->fetch()) {
 try {
     $pdo->beginTransaction();
 
-    // Update DB
-    $stmt = $pdo->prepare("UPDATE packages SET name = ?, price = ?, description = ?, rate_limit = ?, connection_type = ?, download_speed = ?, upload_speed = ?, data_limit = ?, type = ?, validity_value = ?, validity_unit = ?, device_limit = ? WHERE id = ?");
-    $stmt->execute([
-        $name, $price, $description, $rate_limit, $connection_type,
-        $download_speed, $upload_speed, $data_limit, $connection_type,
-        isset($_POST['validity_value']) && $_POST['validity_value'] !== '' ? (int)$_POST['validity_value'] : 30,
-        $_POST['validity_unit'] ?? 'days',
-        isset($_POST['device_limit']) && $_POST['device_limit'] !== '' ? (int)$_POST['device_limit'] : 1,
-        $id
-    ]);
+    // Detect available columns so we don't fail on old DB schemas
+    $colRows  = $pdo->query("SHOW COLUMNS FROM packages")->fetchAll(PDO::FETCH_COLUMN);
+    $colCache = array_flip($colRows);
+
+    // Build SET clause dynamically
+    $setCols = ['name=?','price=?','description=?','download_speed=?','upload_speed=?','data_limit=?','type=?'];
+    $setVals = [
+        $name, $price, $description,
+        $download_speed, $upload_speed, $data_limit,
+        $connection_type,
+    ];
+
+    if (isset($colCache['rate_limit']))      { $setCols[] = 'rate_limit=?';      $setVals[] = $rate_limit; }
+    if (isset($colCache['connection_type'])) { $setCols[] = 'connection_type=?'; $setVals[] = $connection_type; }
+    if (isset($colCache['validity_value']))  { $setCols[] = 'validity_value=?';  $setVals[] = isset($_POST['validity_value']) && $_POST['validity_value'] !== '' ? (int)$_POST['validity_value'] : 30; }
+    if (isset($colCache['validity_unit']))   { $setCols[] = 'validity_unit=?';   $setVals[] = $_POST['validity_unit'] ?? 'days'; }
+    if (isset($colCache['device_limit']))    { $setCols[] = 'device_limit=?';    $setVals[] = isset($_POST['device_limit']) && $_POST['device_limit'] !== '' ? (int)$_POST['device_limit'] : 1; }
+
+    $setVals[] = $id;
+    $stmt = $pdo->prepare("UPDATE packages SET " . implode(',', $setCols) . " WHERE id = ?");
+    $stmt->execute($setVals);
     
     // Sync to Router (Optional: Update profile limits)
     // As per current API capability, we might not update existing profiles easily without ID.

@@ -150,14 +150,6 @@ include 'includes/sidebar.php';
     .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .packages-table { min-width: 720px; }
 
-    /* Modal dark overrides */
-    #packageModal > div { background: #222221 !important; border: 1px solid rgba(255,255,255,.07) !important; box-shadow: 0 24px 64px rgba(0,0,0,.7) !important; }
-    #packageModal > div > div:first-child { border-bottom-color: rgba(255,255,255,.07) !important; }
-    #packageModal > div > div:last-child  { border-top-color: rgba(255,255,255,.07) !important; background: rgba(255,255,255,.02) !important; }
-    #pkgModalTitle { color: #e2e2e0 !important; }
-    #packageModal label { color: rgba(255,255,255,.6) !important; }
-    #packageModal [style*="border-bottom"] { border-bottom-color: rgba(255,255,255,.08) !important; color: #9a9a95 !important; }
-
     @media (max-width: 1024px) { .filters-grid { grid-template-columns: 1fr; } }
     @media (max-width: 640px) {
         .packages-container { padding: 16px; }
@@ -335,63 +327,221 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
+<!-- Package Modal CSS -->
+<style>
+.pkg-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 1050;
+    align-items: center; justify-content: center;
+    padding: 16px; box-sizing: border-box;
+}
+.pkg-modal {
+    background: #1e1e1d;
+    border: 1px solid rgba(255,255,255,.09);
+    border-radius: 18px;
+    width: 100%; max-width: 660px;
+    max-height: 94vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 40px 100px rgba(0,0,0,.85),
+                inset 0 1px 0 rgba(255,255,255,.07);
+    overflow: hidden;
+}
+.pkg-modal-head {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+    display: flex; align-items: flex-start; justify-content: space-between;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,.04) 0%, transparent 100%);
+}
+.pkg-modal-title { font-size: 17px; font-weight: 700; color: #f0f0ee; margin-bottom: 3px; }
+.pkg-modal-sub   { font-size: 12px; color: rgba(255,255,255,.35); }
+.pkg-close-btn {
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 8px; width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: rgba(255,255,255,.5); font-size: 16px;
+    transition: all .15s; flex-shrink: 0;
+}
+.pkg-close-btn:hover { background: rgba(255,255,255,.14); color: #fff; }
+.pkg-modal-body { overflow-y: auto; flex: 1; padding: 24px; }
+.pkg-modal-body::-webkit-scrollbar { width: 5px; }
+.pkg-modal-body::-webkit-scrollbar-track { background: transparent; }
+.pkg-modal-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 3px; }
+.pkg-modal-foot {
+    padding: 14px 24px;
+    border-top: 1px solid rgba(255,255,255,.07);
+    display: flex; justify-content: flex-end; gap: 10px;
+    flex-shrink: 0; background: rgba(255,255,255,.015);
+}
+
+/* Section labels */
+.pkg-section {
+    font-size: 10.5px; font-weight: 700; color: rgba(255,255,255,.3);
+    text-transform: uppercase; letter-spacing: .08em;
+    margin: 0 0 14px; padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+    display: flex; align-items: center; gap: 7px;
+}
+.pkg-section i { color: var(--primary-color, #3B6EA5); font-size: 11px; }
+
+/* Field grid helpers */
+.pkg-row   { display: grid; gap: 14px; margin-bottom: 18px; }
+.pkg-col-2 { grid-template-columns: 1fr 1fr; }
+.pkg-col-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+/* Dark inputs */
+.pkg-label {
+    display: block; font-size: 11.5px; font-weight: 600;
+    color: rgba(255,255,255,.45); margin-bottom: 6px;
+    text-transform: uppercase; letter-spacing: .04em;
+}
+.pkg-input, .pkg-select, .pkg-textarea {
+    width: 100%; padding: 10px 12px;
+    background: rgb(27,27,26);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 9px; color: #e2e2e0; font-size: 13.5px;
+    box-shadow: inset 3px 3px 8px rgba(0,0,0,.45), inset -2px -2px 5px rgba(255,255,255,.04);
+    transition: border-color .15s, box-shadow .15s;
+    box-sizing: border-box; font-family: inherit;
+    -webkit-appearance: none; appearance: none;
+}
+.pkg-select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(255,255,255,.35)'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+.pkg-textarea { resize: vertical; min-height: 68px; }
+.pkg-input::placeholder, .pkg-textarea::placeholder { color: rgba(255,255,255,.2); }
+.pkg-input:focus, .pkg-select:focus, .pkg-textarea:focus {
+    outline: none;
+    border-color: var(--primary-color, #3B6EA5);
+    box-shadow: inset 3px 3px 8px rgba(0,0,0,.45), 0 0 0 3px rgba(59,110,165,.2);
+}
+.pkg-input-hint { font-size: 11px; color: rgba(255,255,255,.25); margin-top: 4px; }
+
+/* Rate limit preview badge */
+.rate-preview {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(59,110,165,.12); border: 1px solid rgba(59,110,165,.2);
+    border-radius: 6px; padding: 4px 10px; font-size: 12px;
+    color: #93c5fd; font-family: monospace; margin-top: 6px;
+}
+
+/* Validity pair */
+.validity-pair { display: grid; grid-template-columns: 90px 1fr; gap: 8px; }
+
+/* Connection type toggle pills */
+.conn-pills { display: flex; gap: 8px; }
+.conn-pill {
+    flex: 1; padding: 9px 8px; border-radius: 9px; text-align: center;
+    border: 1.5px solid rgba(255,255,255,.08); background: rgba(255,255,255,.04);
+    cursor: pointer; transition: all .18s; font-size: 13px; font-weight: 600;
+    color: rgba(255,255,255,.45);
+}
+.conn-pill.active {
+    border-color: var(--primary-color, #3B6EA5);
+    background: rgba(59,110,165,.18); color: #e2e2e0;
+    box-shadow: 0 0 0 3px rgba(59,110,165,.15);
+}
+.conn-pill i { margin-right: 5px; font-size: 12px; }
+
+/* Footer buttons */
+.pkg-btn-cancel {
+    padding: 10px 20px; background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1); border-radius: 9px;
+    font-size: 13.5px; color: rgba(255,255,255,.6); cursor: pointer;
+    transition: all .15s;
+}
+.pkg-btn-cancel:hover { background: rgba(255,255,255,.12); color: #e2e2e0; }
+.pkg-btn-save {
+    padding: 10px 26px;
+    background: linear-gradient(135deg, var(--primary-dark,#2C5282) 0%, var(--primary-color,#3B6EA5) 100%);
+    color: #fff; border: none; border-radius: 9px;
+    font-size: 13.5px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(59,110,165,.35);
+    transition: all .18s; display: flex; align-items: center; gap: 7px;
+}
+.pkg-btn-save:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(59,110,165,.45); }
+.pkg-btn-save:disabled { opacity: .6; transform: none; cursor: not-allowed; }
+
+@media(max-width:600px) {
+    .pkg-col-2, .pkg-col-3 { grid-template-columns: 1fr !important; }
+    .validity-pair { grid-template-columns: 80px 1fr; }
+}
+</style>
+
 <!-- Add/Edit Package Modal -->
-<div id="packageModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
-<div style="background:white;width:100%;max-width:620px;border-radius:14px;max-height:92vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;">
-    <div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+<div id="packageModal" class="pkg-overlay">
+<div class="pkg-modal">
+    <div class="pkg-modal-head">
         <div>
-            <div id="pkgModalTitle" style="font-size:16px;font-weight:700;color:#111827;">Create Package</div>
-            <div style="font-size:12px;color:#9CA3AF;margin-top:2px;">Configure package details and MikroTik settings</div>
+            <div class="pkg-modal-title" id="pkgModalTitle">Create Package</div>
+            <div class="pkg-modal-sub">Configure service package &amp; MikroTik profile</div>
         </div>
-        <button onclick="closePackageModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9CA3AF;line-height:1;padding:4px;">&times;</button>
+        <button class="pkg-close-btn" onclick="closePackageModal()"><i class="fas fa-times"></i></button>
     </div>
-    <div style="overflow-y:auto;flex:1;padding:20px;">
+
+    <div class="pkg-modal-body">
         <form id="packageForm" onsubmit="handlePackageSubmit(event)">
             <input type="hidden" name="id" id="packageId">
+            <input type="hidden" name="connection_type" id="pkgConnType" value="pppoe">
 
-            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #F3F4F6;">Basic Info</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+            <!-- Basic Info -->
+            <div class="pkg-section"><i class="fas fa-tag"></i> Basic Info</div>
+            <div class="pkg-row pkg-col-2">
                 <div>
-                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Package Name *</label>
-                    <input type="text" name="name" id="pkgName" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                    <label class="pkg-label">Package Name <span style="color:#f87171;">*</span></label>
+                    <input type="text" name="name" id="pkgName" class="pkg-input" required placeholder="e.g. Home 10Mbps">
                 </div>
                 <div>
-                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Price (KES) *</label>
-                    <input type="number" name="price" id="pkgPrice" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                    <label class="pkg-label">Price (KES) <span style="color:#f87171;">*</span></label>
+                    <input type="number" name="price" id="pkgPrice" class="pkg-input" required placeholder="e.g. 2500" min="0" step="0.01">
                 </div>
             </div>
 
-            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #F3F4F6;margin-top:4px;">Speed & Limits</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
+            <!-- Connection Type -->
+            <div class="pkg-section" style="margin-top:4px;"><i class="fas fa-plug"></i> Connection Type</div>
+            <div class="pkg-row" style="grid-template-columns:1fr;margin-bottom:18px;">
                 <div>
-                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Download (Mbps) *</label>
-                    <input type="number" name="download_speed" id="pkgDownload" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
-                </div>
-                <div>
-                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Upload (Mbps) *</label>
-                    <input type="number" name="upload_speed" id="pkgUpload" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
-                </div>
-                <div>
-                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Data Limit (GB)</label>
-                    <input type="number" name="data_limit" id="pkgDataLimit" placeholder="0 = Unlimited" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                    <div class="conn-pills">
+                        <div class="conn-pill active" id="pill-pppoe" onclick="setConnType('pppoe')">
+                            <i class="fas fa-network-wired"></i> PPPoE
+                        </div>
+                        <div class="conn-pill" id="pill-hotspot" onclick="setConnType('hotspot')">
+                            <i class="fas fa-wifi"></i> Hotspot
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #F3F4F6;margin-top:4px;">Service Config</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
+            <!-- Speed & Data -->
+            <div class="pkg-section"><i class="fas fa-tachometer-alt"></i> Speed &amp; Data</div>
+            <div class="pkg-row pkg-col-3">
                 <div>
-                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Connection Type</label>
-                    <select name="connection_type" id="pkgType" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
-                        <option value="pppoe">PPPoE</option>
-                        <option value="hotspot">Hotspot</option>
-                    </select>
+                    <label class="pkg-label">Download (Mbps) <span style="color:#f87171;">*</span></label>
+                    <input type="number" name="download_speed" id="pkgDownload" class="pkg-input" required placeholder="10" min="0" oninput="updateRatePreview()">
                 </div>
                 <div>
-                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Validity</label>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                        <input type="number" name="validity_value" id="pkgValidityValue" value="1" min="1" required style="width:100%;padding:9px 8px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
-                        <select name="validity_unit" id="pkgValidityUnit" style="width:100%;padding:9px 6px;border:1px solid #D1D5DB;border-radius:8px;font-size:12px;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
-                            <option value="minutes">Minutes</option>
+                    <label class="pkg-label">Upload (Mbps) <span style="color:#f87171;">*</span></label>
+                    <input type="number" name="upload_speed" id="pkgUpload" class="pkg-input" required placeholder="5" min="0" oninput="updateRatePreview()">
+                </div>
+                <div>
+                    <label class="pkg-label">Data Cap (GB)</label>
+                    <input type="number" name="data_limit" id="pkgDataLimit" class="pkg-input" placeholder="0 = Unlimited" min="0">
+                    <div class="pkg-input-hint">0 or blank = Unlimited</div>
+                </div>
+            </div>
+            <div id="ratePreviewWrap" style="margin-top:-8px;margin-bottom:18px;">
+                <span class="rate-preview"><i class="fas fa-exchange-alt"></i> MikroTik rate: <strong id="ratePreviewVal">—</strong></span>
+            </div>
+
+            <!-- Validity & Limits -->
+            <div class="pkg-section"><i class="fas fa-clock"></i> Validity &amp; Limits</div>
+            <div class="pkg-row pkg-col-2">
+                <div>
+                    <label class="pkg-label">Validity Period</label>
+                    <div class="validity-pair">
+                        <input type="number" name="validity_value" id="pkgValidityValue" class="pkg-input" value="1" min="1" required placeholder="1">
+                        <select name="validity_unit" id="pkgValidityUnit" class="pkg-select">
                             <option value="hours">Hours</option>
                             <option value="days">Days</option>
                             <option value="weeks">Weeks</option>
@@ -400,25 +550,47 @@ include 'includes/sidebar.php';
                     </div>
                 </div>
                 <div>
-                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Device Limit</label>
-                    <input type="number" name="device_limit" id="pkgDeviceLimit" value="1" min="1" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                    <label class="pkg-label">Device Limit</label>
+                    <input type="number" name="device_limit" id="pkgDeviceLimit" class="pkg-input" value="1" min="1" required placeholder="1">
+                    <div class="pkg-input-hint">Max simultaneous connections</div>
                 </div>
             </div>
 
-            <div>
-                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Description</label>
-                <textarea name="description" id="pkgDesc" rows="2" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'"></textarea>
+            <!-- Description -->
+            <div class="pkg-section" style="margin-top:4px;"><i class="fas fa-align-left"></i> Description</div>
+            <div class="pkg-row" style="grid-template-columns:1fr;">
+                <div>
+                    <textarea name="description" id="pkgDesc" class="pkg-textarea" placeholder="Optional — shown to customers on their portal"></textarea>
+                </div>
             </div>
         </form>
     </div>
-    <div style="padding:14px 20px;border-top:1px solid #E5E7EB;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
-        <button type="button" onclick="closePackageModal()" style="padding:9px 18px;background:white;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;color:#374151;">Cancel</button>
-        <button type="submit" form="packageForm" style="padding:9px 22px;background:linear-gradient(135deg,var(--primary-dark,#2C5282) 0%,var(--primary-color,#3B6EA5) 100%);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Save Package</button>
+
+    <div class="pkg-modal-foot">
+        <button type="button" class="pkg-btn-cancel" onclick="closePackageModal()">Cancel</button>
+        <button type="submit" form="packageForm" class="pkg-btn-save" id="pkgSaveBtn">
+            <i class="fas fa-save"></i> Save Package
+        </button>
     </div>
 </div>
 </div>
 
 <script>
+/* ── Connection type pills ── */
+function setConnType(type) {
+    document.getElementById('pkgConnType').value = type;
+    document.getElementById('pill-pppoe').classList.toggle('active', type === 'pppoe');
+    document.getElementById('pill-hotspot').classList.toggle('active', type === 'hotspot');
+}
+
+/* ── Rate limit preview ── */
+function updateRatePreview() {
+    const dl = parseInt(document.getElementById('pkgDownload').value) || 0;
+    const ul = parseInt(document.getElementById('pkgUpload').value) || 0;
+    document.getElementById('ratePreviewVal').textContent = dl || ul ? ul + 'M/' + dl + 'M' : '—';
+}
+
+/* ── Open / close ── */
 function openAddPackageModal() {
     document.getElementById('pkgModalTitle').textContent = 'Create Package';
     document.getElementById('packageForm').reset();
@@ -426,24 +598,26 @@ function openAddPackageModal() {
     document.getElementById('pkgValidityValue').value = '1';
     document.getElementById('pkgValidityUnit').value = 'months';
     document.getElementById('pkgDeviceLimit').value = '1';
+    setConnType('pppoe');
+    updateRatePreview();
     document.getElementById('packageModal').style.display = 'flex';
 }
 
 function openEditPackageModal(pkg) {
     document.getElementById('pkgModalTitle').textContent = 'Edit Package';
     document.getElementById('packageId').value = pkg.id;
-    document.getElementById('pkgName').value = pkg.name;
-    document.getElementById('pkgPrice').value = pkg.price;
-    document.getElementById('pkgDownload').value = pkg.download_speed;
-    document.getElementById('pkgUpload').value = pkg.upload_speed;
-    document.getElementById('pkgType').value = pkg.connection_type || pkg.type || 'pppoe';
-    document.getElementById('pkgValidityValue').value = pkg.validity_value || '1';
-    // Normalize unit (remove plural/singular variant)
-    const unit = (pkg.validity_unit || 'months').replace(/s$/, '') + 's';
-    document.getElementById('pkgValidityUnit').value = ['minutes','hours','days','weeks','months'].includes(unit) ? unit : (pkg.validity_unit || 'months');
-    document.getElementById('pkgDeviceLimit').value = pkg.device_limit || '1';
+    document.getElementById('pkgName').value = pkg.name || '';
+    document.getElementById('pkgPrice').value = pkg.price || '';
+    document.getElementById('pkgDownload').value = pkg.download_speed || '';
+    document.getElementById('pkgUpload').value = pkg.upload_speed || '';
     document.getElementById('pkgDataLimit').value = pkg.data_limit || '';
     document.getElementById('pkgDesc').value = pkg.description || '';
+    document.getElementById('pkgDeviceLimit').value = pkg.device_limit || '1';
+    document.getElementById('pkgValidityValue').value = pkg.validity_value || '1';
+    const unit = (pkg.validity_unit || 'months').replace(/s$/, '') + 's';
+    document.getElementById('pkgValidityUnit').value = ['hours','days','weeks','months'].includes(unit) ? unit : (pkg.validity_unit || 'months');
+    setConnType(pkg.connection_type || pkg.type || 'pppoe');
+    updateRatePreview();
     document.getElementById('packageModal').style.display = 'flex';
 }
 
@@ -451,20 +625,19 @@ function closePackageModal() {
     document.getElementById('packageModal').style.display = 'none';
 }
 
-// Backdrop click to close
 document.getElementById('packageModal').addEventListener('click', function(e) {
     if (e.target === this) closePackageModal();
 });
 
+/* ── Submit ── */
 function handlePackageSubmit(e) {
     e.preventDefault();
     const formData = new FormData(document.getElementById('packageForm'));
     const id = formData.get('id');
     const url = id ? 'api/packages/update.php' : 'api/packages/create.php';
-
-    const btn = document.querySelector('[form="packageForm"]');
-    const orig = btn.textContent;
-    btn.textContent = 'Saving…';
+    const btn = document.getElementById('pkgSaveBtn');
+    const origHTML = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
     btn.disabled = true;
 
     fetch(url, { method: 'POST', body: formData })
@@ -475,12 +648,13 @@ function handlePackageSubmit(e) {
                 setTimeout(() => location.reload(), 900);
             } else {
                 showToast('Error: ' + (data.message || 'Unknown error'), 'error');
-                btn.textContent = orig; btn.disabled = false;
+                btn.innerHTML = origHTML; btn.disabled = false;
             }
         })
-        .catch(() => { showToast('Network error. Please try again.', 'error'); btn.textContent = orig; btn.disabled = false; });
+        .catch(() => { showToast('Network error. Please try again.', 'error'); btn.innerHTML = origHTML; btn.disabled = false; });
 }
 
+/* ── Delete ── */
 function deletePackage(id) {
     if (confirm('Delete this package? This cannot be undone.')) {
         const fd = new FormData();
