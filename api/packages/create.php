@@ -46,26 +46,42 @@ if (empty($name) || empty($price)) {
     $t_stmt->execute([$user_id]);
     $tenant_id = $t_stmt->fetchColumn();
 
-// Duplicate check: same name + connection_type for this tenant
-$dupCheck = $pdo->prepare("SELECT id FROM packages WHERE tenant_id = ? AND name = ? AND connection_type = ? LIMIT 1");
-$dupCheck->execute([$tenant_id, $name, $connection_type]);
-if ($dupCheck->fetch()) {
-    ob_clean(); echo json_encode(['success' => false, 'message' => "A $connection_type package named \"$name\" already exists."]);
-    exit;
-}
-
 try {
     $pdo->beginTransaction();
 
-    $stmt = $pdo->prepare("INSERT INTO packages (tenant_id, name, price, description, rate_limit, connection_type, download_speed, upload_speed, data_limit, type, validity_value, validity_unit, device_limit, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')");
-    $stmt->execute([
-        $tenant_id,
-        $name, $price, $description, $rate_limit, $connection_type,
-        $download_speed, $upload_speed, $data_limit, $connection_type,
-        isset($_POST['validity_value']) && $_POST['validity_value'] !== '' ? (int)$_POST['validity_value'] : 30,
-        $_POST['validity_unit'] ?? 'days',
-        isset($_POST['device_limit']) && $_POST['device_limit'] !== '' ? (int)$_POST['device_limit'] : 1
-    ]);
+    // Duplicate check — wrapped in try so missing columns don't crash outside the transaction
+    try {
+        $dupCheck = $pdo->prepare("SELECT id FROM packages WHERE tenant_id = ? AND name = ? AND connection_type = ? LIMIT 1");
+        $dupCheck->execute([$tenant_id, $name, $connection_type]);
+        if ($dupCheck->fetch()) {
+            $pdo->rollBack();
+            ob_clean(); echo json_encode(['success' => false, 'message' => "A $connection_type package named \"$name\" already exists."]);
+            exit;
+        }
+    } catch (Throwable $dupErr) {
+        // connection_type column may not exist yet — skip dup check, proceed with insert
+    }
+
+    // Build column list dynamically — skip columns that don't exist on this DB
+    $cols = ['tenant_id','name','price','description','download_speed','upload_speed','data_limit','type','status'];
+    $vals = [$tenant_id, $name, $price, $description, $download_speed, $upload_speed, $data_limit, $connection_type, 'active'];
+
+    // Probe for optional columns once
+    static $colCache = null;
+    if ($colCache === null) {
+        $colRows = $pdo->query("SHOW COLUMNS FROM packages")->fetchAll(PDO::FETCH_COLUMN);
+        $colCache = array_flip($colRows);
+    }
+    if (isset($colCache['rate_limit']))      { $cols[] = 'rate_limit';      $vals[] = $rate_limit; }
+    if (isset($colCache['connection_type'])) { $cols[] = 'connection_type'; $vals[] = $connection_type; }
+    if (isset($colCache['validity_value']))  { $cols[] = 'validity_value';  $vals[] = isset($_POST['validity_value']) && $_POST['validity_value'] !== '' ? (int)$_POST['validity_value'] : 30; }
+    if (isset($colCache['validity_unit']))   { $cols[] = 'validity_unit';   $vals[] = $_POST['validity_unit'] ?? 'days'; }
+    if (isset($colCache['device_limit']))    { $cols[] = 'device_limit';    $vals[] = isset($_POST['device_limit']) && $_POST['device_limit'] !== '' ? (int)$_POST['device_limit'] : 1; }
+
+    $placeholders = implode(',', array_fill(0, count($cols), '?'));
+    $colList      = implode(',', $cols);
+    $stmt = $pdo->prepare("INSERT INTO packages ($colList) VALUES ($placeholders)");
+    $stmt->execute($vals);
     $package_id = $pdo->lastInsertId();
     
     // 2. Create Profile on all active Routers for this tenant

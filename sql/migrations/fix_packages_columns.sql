@@ -1,34 +1,50 @@
 -- ============================================================
--- Migration: Fix missing columns for VPS production databases
--- Run this once on any server set up from an older schema
--- Safe to run multiple times (uses ADD COLUMN IF NOT EXISTS)
+-- Migration: Fix missing columns for production databases
+-- MySQL 5.7 compatible (no ADD COLUMN IF NOT EXISTS)
+-- Run once: mysql -u root -p dbname < this_file.sql
 -- ============================================================
 
--- 1. packages table: add missing columns
-ALTER TABLE packages
-    ADD COLUMN IF NOT EXISTS tenant_id       INT DEFAULT NULL AFTER id,
-    ADD COLUMN IF NOT EXISTS rate_limit      VARCHAR(50) DEFAULT NULL,
-    ADD COLUMN IF NOT EXISTS connection_type VARCHAR(20) DEFAULT 'pppoe',
-    ADD COLUMN IF NOT EXISTS validity_value  INT DEFAULT 30,
-    ADD COLUMN IF NOT EXISTS validity_unit   VARCHAR(20) DEFAULT 'days',
-    ADD COLUMN IF NOT EXISTS device_limit    INT DEFAULT 1;
+DROP PROCEDURE IF EXISTS SafeAddCol;
+DELIMITER //
+CREATE PROCEDURE SafeAddCol(IN tbl VARCHAR(64), IN col VARCHAR(64), IN col_def TEXT)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME   = tbl
+          AND COLUMN_NAME  = col
+    ) THEN
+        SET @_sql = CONCAT('ALTER TABLE `', tbl, '` ADD COLUMN `', col, '` ', col_def);
+        PREPARE _s FROM @_sql;
+        EXECUTE _s;
+        DEALLOCATE PREPARE _s;
+    END IF;
+END //
+DELIMITER ;
 
--- Back-fill connection_type from type column where it's empty
-UPDATE packages SET connection_type = type WHERE connection_type IS NULL OR connection_type = '';
+-- 1. packages table: missing columns
+CALL SafeAddCol('packages', 'tenant_id',       'INT DEFAULT NULL');
+CALL SafeAddCol('packages', 'rate_limit',      'VARCHAR(50) DEFAULT NULL');
+CALL SafeAddCol('packages', 'connection_type', 'VARCHAR(20) DEFAULT ''pppoe''');
+CALL SafeAddCol('packages', 'validity_value',  'INT DEFAULT 30');
+CALL SafeAddCol('packages', 'validity_unit',   'VARCHAR(20) DEFAULT ''days''');
+CALL SafeAddCol('packages', 'device_limit',    'INT DEFAULT 1');
 
--- Add index on tenant_id
-ALTER TABLE packages ADD INDEX IF NOT EXISTS idx_pkg_tenant (tenant_id);
+-- Back-fill connection_type from type column
+UPDATE packages SET connection_type = type WHERE (connection_type IS NULL OR connection_type = '') AND type IS NOT NULL;
 
--- 2. tenants table: ensure admin_user_id column exists
-ALTER TABLE tenants
-    ADD COLUMN IF NOT EXISTS admin_user_id INT DEFAULT NULL;
+-- 2. tenants table: admin_user_id
+CALL SafeAddCol('tenants', 'admin_user_id', 'INT DEFAULT NULL');
 
--- 3. payments table: widen payment_method from ENUM to VARCHAR
---    so manual entries like 'M-Pesa', 'bank_transfer' etc. don't truncate
+-- 3. clients table: tenant_id
+CALL SafeAddCol('clients', 'tenant_id', 'INT DEFAULT NULL');
+
+-- 4. payments table: tenant_id
+CALL SafeAddCol('payments', 'tenant_id', 'INT DEFAULT NULL');
+
+-- 5. Widen payment_method from ENUM to VARCHAR so manual entries don't truncate
 ALTER TABLE payments MODIFY COLUMN payment_method VARCHAR(50) DEFAULT 'cash';
 
--- 4. clients table: ensure tenant_id exists
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS tenant_id INT DEFAULT NULL;
+DROP PROCEDURE IF EXISTS SafeAddCol;
 
--- 5. payments table: ensure tenant_id exists
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS tenant_id INT DEFAULT NULL;
+SELECT 'Migration complete' AS status;
