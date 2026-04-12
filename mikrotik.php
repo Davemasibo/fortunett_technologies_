@@ -275,41 +275,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         </div>
 
-        <!-- Manual Router Configuration (Moved from Settings) -->
-        <details class="mb-4">
-            <summary class="btn btn-outline-secondary mb-3"><i class="fas fa-plus-circle me-2"></i>Advanced: Manual Router Configuration</summary>
-            <div class="card border-0 bg-light mt-3">
-                <div class="card-body p-4">
-                    <h6 class="fw-bold mb-3">Add Router Manually</h6>
-                    <form method="POST">
-                        <input type="hidden" name="action" value="add_router">
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">Router Name</label>
-                                <input type="text" name="router_name" placeholder="e.g., Main HQ Router" class="form-control" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">IP Address</label>
-                                <input type="text" name="router_ip" placeholder="e.g., 192.168.88.1" class="form-control" required>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label fw-semibold">API Port</label>
-                                <input type="number" name="router_port" value="8728" class="form-control">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label fw-semibold">Username</label>
-                                <input type="text" name="router_username" placeholder="admin" class="form-control" required>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label fw-semibold">Password</label>
-                                <input type="password" name="router_password" class="form-control">
-                            </div>
-                        </div>
-                        <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Add Router</button>
-                    </form>
+        <!-- Manual Router Configuration -->
+        <div id="manualRouterCard" style="background:var(--neu-s2);border:1px solid var(--neu-border);border-radius:12px;box-shadow:var(--neu-card);margin-bottom:20px;overflow:hidden;">
+            <!-- Card header — clickable toggle -->
+            <div onclick="toggleManualCard()" style="padding:16px 22px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0);transition:border-color .2s;" id="manualCardHeader">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="width:34px;height:34px;border-radius:8px;background:rgba(99,102,241,.15);display:flex;align-items:center;justify-content:center;">
+                        <i class="fas fa-plug" style="color:#a5b4fc;font-size:14px;"></i>
+                    </div>
+                    <div>
+                        <div style="font-size:14px;font-weight:600;color:#e2e2e0;">Manual Router Setup</div>
+                        <div style="font-size:12px;color:rgba(255,255,255,.35);margin-top:1px;">Add a router directly via IP address without the provisioning wizard</div>
+                    </div>
                 </div>
+                <i class="fas fa-chevron-down" id="manualCardChevron" style="color:rgba(255,255,255,.35);font-size:13px;transition:transform .25s;"></i>
             </div>
-        </details>
+            <!-- Collapsible body -->
+            <div id="manualCardBody" style="display:none;padding:24px 22px;">
+                <form method="POST" id="manualRouterForm" onsubmit="return submitManualRouter(event)">
+                    <input type="hidden" name="action" value="add_router">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                        <div>
+                            <label style="display:block;font-size:12px;font-weight:500;color:rgba(255,255,255,.5);margin-bottom:6px;">Router Name *</label>
+                            <input type="text" name="router_name" placeholder="e.g. Main HQ Router" required
+                                style="width:100%;padding:9px 12px;border:1px solid var(--neu-border);border-radius:7px;background:var(--neu-surf);color:#e2e2e0;font-size:13px;box-shadow:inset 3px 3px 7px rgba(0,0,0,.3);outline:none;box-sizing:border-box;"
+                                onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='var(--neu-border)'">
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:12px;font-weight:500;color:rgba(255,255,255,.5);margin-bottom:6px;">IP Address *</label>
+                            <input type="text" name="router_ip" placeholder="e.g. 192.168.88.1" required
+                                style="width:100%;padding:9px 12px;border:1px solid var(--neu-border);border-radius:7px;background:var(--neu-surf);color:#e2e2e0;font-size:13px;box-shadow:inset 3px 3px 7px rgba(0,0,0,.3);outline:none;box-sizing:border-box;"
+                                onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='var(--neu-border)'">
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:12px;font-weight:500;color:rgba(255,255,255,.5);margin-bottom:6px;">Username *</label>
+                            <input type="text" name="router_username" placeholder="admin" required
+                                style="width:100%;padding:9px 12px;border:1px solid var(--neu-border);border-radius:7px;background:var(--neu-surf);color:#e2e2e0;font-size:13px;box-shadow:inset 3px 3px 7px rgba(0,0,0,.3);outline:none;box-sizing:border-box;"
+                                onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='var(--neu-border)'">
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:12px;font-weight:500;color:rgba(255,255,255,.5);margin-bottom:6px;">Password</label>
+                            <input type="password" name="router_password" placeholder="RouterOS API password"
+                                style="width:100%;padding:9px 12px;border:1px solid var(--neu-border);border-radius:7px;background:var(--neu-surf);color:#e2e2e0;font-size:13px;box-shadow:inset 3px 3px 7px rgba(0,0,0,.3);outline:none;box-sizing:border-box;"
+                                onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='var(--neu-border)'">
+                        </div>
+                    </div>
+                    <div style="margin-bottom:20px;">
+                        <label style="display:block;font-size:12px;font-weight:500;color:rgba(255,255,255,.5);margin-bottom:6px;">API Port</label>
+                        <input type="number" name="router_port" value="8728" min="1" max="65535"
+                            style="width:130px;padding:9px 12px;border:1px solid var(--neu-border);border-radius:7px;background:var(--neu-surf);color:#e2e2e0;font-size:13px;box-shadow:inset 3px 3px 7px rgba(0,0,0,.3);outline:none;"
+                            onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='var(--neu-border)'">
+                        <span style="font-size:11px;color:rgba(255,255,255,.3);margin-left:8px;">Default: 8728 (MikroTik RouterOS API)</span>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:center;">
+                        <button type="submit" id="manualRouterSaveBtn"
+                            style="padding:9px 22px;background:linear-gradient(135deg,var(--primary-dark,#1e3a5f) 0%,var(--primary-color,#3B6EA5) 100%);color:white;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:7px;">
+                            <i class="fas fa-save"></i> Add Router
+                        </button>
+                        <button type="button" onclick="toggleManualCard()"
+                            style="padding:9px 16px;background:rgba(255,255,255,.06);border:1px solid var(--neu-border);border-radius:7px;font-size:13px;cursor:pointer;color:rgba(255,255,255,.5);">
+                            Cancel
+                        </button>
+                        <span style="font-size:12px;color:rgba(255,255,255,.25);">Make sure the RouterOS API is enabled on your device (IP → Services → API).</span>
+                    </div>
+                </form>
+            </div>
+        </div>
 
         <!-- Filters -->
         <div class="filters-section">
@@ -399,34 +430,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <!-- Add Router Wizard Modal -->
 <div id="wizardModal">
     <div class="wizard-content">
-        <div class="wizard-header">
-            <h2 class="wizard-title">Add Mikrotik Device</h2>
-            <p class="wizard-subtitle">Connect your router to enable automated provisioning and management.</p>
+        <div class="wizard-header" style="position:relative;">
+            <div style="display:flex;align-items:center;gap:14px;">
+                <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,var(--primary-dark,#1e3a5f),var(--primary-color,#3B6EA5));display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,.4);">
+                    <i class="fas fa-router" style="color:white;font-size:18px;"></i>
+                </div>
+                <div>
+                    <h2 class="wizard-title">Add MikroTik Device</h2>
+                    <p class="wizard-subtitle">Connect your router to enable automated provisioning and management.</p>
+                </div>
+            </div>
+            <button onclick="closeWizard()" style="position:absolute;top:0;right:0;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);border-radius:8px;width:32px;height:32px;font-size:18px;cursor:pointer;color:rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;line-height:1;transition:background .15s;" onmouseover="this.style.background='rgba(255,255,255,.15)'" onmouseout="this.style.background='rgba(255,255,255,.07)'">&times;</button>
         </div>
-        
+
+        <!-- Step indicators -->
         <div class="wizard-steps">
             <div class="step-item active" id="step1-indicator">
-                <div class="step-number">1</div>
+                <div class="step-number"><i class="fas fa-plug" style="font-size:12px;"></i></div>
                 <div class="step-text">Connection</div>
             </div>
             <div class="step-line"></div>
             <div class="step-item" id="step2-indicator">
-                <div class="step-number">2</div>
-                <div class="step-text">Device Details</div>
+                <div class="step-number"><i class="fas fa-terminal" style="font-size:11px;"></i></div>
+                <div class="step-text">Provisioning</div>
             </div>
             <div class="step-line"></div>
             <div class="step-item" id="step3-indicator">
-                <div class="step-number">3</div>
-                <div class="step-text">Service Setup</div>
+                <div class="step-number"><i class="fas fa-check" style="font-size:12px;"></i></div>
+                <div class="step-text">Done</div>
             </div>
         </div>
         
-        <!-- Step 1: Basic Info -->
+        <!-- Step 1: Connection Method -->
         <div class="wizard-body" id="step1">
-            <div style="margin-bottom:20px;">
-                <label>Mikrotik Identity *</label>
+            <!-- Method selector pills -->
+            <div style="display:flex;gap:10px;margin-bottom:24px;">
+                <div id="methodProvision" onclick="selectMethod('provision')" style="flex:1;padding:14px 16px;border:2px solid var(--primary-color,#3B6EA5);background:rgba(59,110,165,.12);border-radius:9px;cursor:pointer;transition:.2s;">
+                    <div style="display:flex;align-items:center;gap:9px;margin-bottom:5px;">
+                        <i class="fas fa-magic" style="color:var(--primary-light,#93c5fd);font-size:15px;"></i>
+                        <span style="font-size:13px;font-weight:600;color:#e2e2e0;">Auto Provisioning</span>
+                        <span style="font-size:10px;padding:1px 6px;background:rgba(52,211,153,.2);color:#6ee7b7;border-radius:4px;font-weight:600;">RECOMMENDED</span>
+                    </div>
+                    <p style="font-size:11px;color:rgba(255,255,255,.4);margin:0;line-height:1.5;">Run a script on your router to register it automatically.</p>
+                </div>
+                <div id="methodDirect" onclick="selectMethod('direct')" style="flex:1;padding:14px 16px;border:1px solid var(--neu-border);background:rgba(255,255,255,.03);border-radius:9px;cursor:pointer;transition:.2s;">
+                    <div style="display:flex;align-items:center;gap:9px;margin-bottom:5px;">
+                        <i class="fas fa-network-wired" style="color:rgba(255,255,255,.5);font-size:15px;"></i>
+                        <span style="font-size:13px;font-weight:600;color:#e2e2e0;">Direct Connect</span>
+                    </div>
+                    <p style="font-size:11px;color:rgba(255,255,255,.4);margin:0;line-height:1.5;">Enter the router's IP address and credentials directly.</p>
+                </div>
+            </div>
+
+            <!-- Auto provisioning fields -->
+            <div id="provisionFields">
+                <label>Router Identity *</label>
                 <input type="text" id="mikrotikName" placeholder="e.g. Router-01 Main">
-                <p>The identity name of your Mikrotik device (System → Identity)</p>
+                <p>Found in your router: System → Identity. This name appears in the dashboard.</p>
+            </div>
+
+            <!-- Direct connect fields (hidden by default) -->
+            <div id="directFields" style="display:none;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                    <div>
+                        <label>Router Name *</label>
+                        <input type="text" id="directName" placeholder="e.g. Main HQ Router">
+                    </div>
+                    <div>
+                        <label>IP Address *</label>
+                        <input type="text" id="directIP" placeholder="e.g. 192.168.88.1">
+                    </div>
+                    <div>
+                        <label>Username *</label>
+                        <input type="text" id="directUser" placeholder="admin">
+                    </div>
+                    <div>
+                        <label>Password</label>
+                        <input type="password" id="directPass" placeholder="RouterOS API password">
+                    </div>
+                </div>
+                <div>
+                    <label>API Port</label>
+                    <input type="number" id="directPort" value="8728" style="width:120px;">
+                    <p>Default 8728 — must be enabled in IP → Services → API on the router.</p>
+                </div>
             </div>
         </div>
 
@@ -504,9 +591,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
 
         <div class="wizard-footer">
-            <button class="wizard-btn prev" id="prevBtn" onclick="prevStep()" style="display:none;">Back</button>
+            <button class="wizard-btn prev" id="prevBtn" onclick="prevStep()" style="display:none;"><i class="fas fa-arrow-left" style="font-size:11px;margin-right:6px;"></i>Back</button>
             <div style="flex:1;"></div>
-            <button class="wizard-btn next" id="nextBtn" onclick="nextStep()">Next Step <i class="fas fa-arrow-right"></i></button>
+            <button class="wizard-btn next" id="nextBtn" onclick="nextStep()">Get Provisioning Script <i class="fas fa-arrow-right" style="font-size:11px;margin-left:6px;"></i></button>
         </div>
     </div>
 </div>
@@ -517,13 +604,75 @@ let currentStep = 1;
 const ngrokUrl = "<?php echo $ngrok_url; ?>";
 let provisioningTimer = null;
 let selectedService = null;
+let wizardMethod = 'provision'; // 'provision' | 'direct'
 
 function openWizard() {
     document.getElementById('wizardModal').style.display = 'flex';
     currentStep = 1;
     selectedService = null;
+    wizardMethod = 'provision';
+    selectMethod('provision');
     updateWizard();
     resetSelections();
+}
+
+function closeWizard() {
+    document.getElementById('wizardModal').style.display = 'none';
+    if (provisioningTimer) clearInterval(provisioningTimer);
+}
+
+function selectMethod(method) {
+    wizardMethod = method;
+    const pCard = document.getElementById('methodProvision');
+    const dCard = document.getElementById('methodDirect');
+    const pFields = document.getElementById('provisionFields');
+    const dFields = document.getElementById('directFields');
+    if (method === 'provision') {
+        pCard.style.border = '2px solid var(--primary-color,#3B6EA5)';
+        pCard.style.background = 'rgba(59,110,165,.12)';
+        pCard.querySelector('i').style.color = 'var(--primary-light,#93c5fd)';
+        dCard.style.border = '1px solid var(--neu-border,rgba(255,255,255,.06))';
+        dCard.style.background = 'rgba(255,255,255,.03)';
+        dCard.querySelector('i').style.color = 'rgba(255,255,255,.5)';
+        pFields.style.display = 'block';
+        dFields.style.display = 'none';
+    } else {
+        dCard.style.border = '2px solid var(--primary-color,#3B6EA5)';
+        dCard.style.background = 'rgba(59,110,165,.12)';
+        dCard.querySelector('i').style.color = 'var(--primary-light,#93c5fd)';
+        pCard.style.border = '1px solid var(--neu-border,rgba(255,255,255,.06))';
+        pCard.style.background = 'rgba(255,255,255,.03)';
+        pCard.querySelector('i').style.color = 'rgba(255,255,255,.5)';
+        dFields.style.display = 'block';
+        pFields.style.display = 'none';
+    }
+    // Update the footer button label
+    const nBtn = document.getElementById('nextBtn');
+    if (nBtn && currentStep === 1) {
+        nBtn.innerHTML = method === 'direct'
+            ? 'Connect Router <i class="fas fa-plug" style="font-size:11px;margin-left:6px;"></i>'
+            : 'Get Provisioning Script <i class="fas fa-arrow-right" style="font-size:11px;margin-left:6px;"></i>';
+    }
+}
+
+/* Manual router card toggle */
+function toggleManualCard() {
+    const body    = document.getElementById('manualCardBody');
+    const chevron = document.getElementById('manualCardChevron');
+    const header  = document.getElementById('manualCardHeader');
+    const open = body.style.display === 'none';
+    body.style.display = open ? 'block' : 'none';
+    chevron.style.transform = open ? 'rotate(180deg)' : '';
+    header.style.borderBottomColor = open ? 'var(--neu-border,rgba(255,255,255,.06))' : 'rgba(255,255,255,0)';
+}
+
+function submitManualRouter(e) {
+    e.preventDefault();
+    const btn = document.getElementById('manualRouterSaveBtn');
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding…';
+    btn.disabled = true;
+    e.target.submit();
+    return false;
 }
 
 function updateWizard() {
@@ -541,17 +690,16 @@ function updateWizard() {
     // Buttons
     if (currentStep === 1) {
         document.getElementById('prevBtn').style.display = 'none';
-        document.getElementById('nextBtn').textContent = 'Next: Get Command';
+        document.getElementById('nextBtn').innerHTML = wizardMethod === 'direct'
+            ? 'Connect Router <i class="fas fa-plug" style="font-size:11px;"></i>'
+            : 'Get Provisioning Script <i class="fas fa-arrow-right" style="font-size:11px;"></i>';
         document.getElementById('nextBtn').onclick = nextStep;
         document.getElementById('nextBtn').disabled = false;
     } else if (currentStep === 2) {
         document.getElementById('prevBtn').style.display = 'block';
-        document.getElementById('nextBtn').textContent = 'Waiting for Connection...';
-        document.getElementById('nextBtn').disabled = true; // Disable manual next until verified
-        
-        // Start polling
+        document.getElementById('nextBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Waiting for Connection…';
+        document.getElementById('nextBtn').disabled = true;
         startPolling();
-        
     } else if (currentStep === 3) {
         document.getElementById('prevBtn').style.display = 'none';
         document.getElementById('nextBtn').textContent = 'Finish';
@@ -565,34 +713,74 @@ function updateWizard() {
 
 function nextStep() {
     if (currentStep === 1) {
-        const name = document.getElementById('mikrotikName').value;
-        if (!name) return alert('Please enter a name');
-        
-        // === PROVISIONING COMMAND GENERATION ===
-        // This automatically detects the current server URL from the browser
-        // LOCALHOST: Will show http://localhost/fortunett_technologies_/api/routers/provision.php
-        // VPS PRODUCTION: Will show http://72.61.147.86/fortunett_technologies_/api/routers/provision.php
-        // NO MANUAL CHANGES NEEDED - it adapts automatically!
-        
-        const token = "<?php echo $tenant['provisioning_token'] ?? ''; ?>";
-        let host = window.location.host;        // Auto-detects: localhost OR 72.61.147.86
-        let protocol = window.location.protocol; // Auto-detects: http OR https
-        
+        if (wizardMethod === 'direct') {
+            // Direct connect — save router immediately via AJAX
+            const name = document.getElementById('directName').value.trim();
+            const ip   = document.getElementById('directIP').value.trim();
+            const user = document.getElementById('directUser').value.trim();
+            const pass = document.getElementById('directPass').value;
+            const port = document.getElementById('directPort').value || 8728;
+            if (!name || !ip || !user) {
+                showWizardError('Router Name, IP Address and Username are required.'); return;
+            }
+            const btn = document.getElementById('nextBtn');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting…';
+            btn.disabled = true;
+
+            const fd = new FormData();
+            fd.append('action', 'add_router');
+            fd.append('router_name', name);
+            fd.append('router_ip', ip);
+            fd.append('router_username', user);
+            fd.append('router_password', pass);
+            fd.append('router_port', port);
+
+            fetch(window.location.href, { method: 'POST', body: fd })
+                .then(r => r.text())
+                .then(() => {
+                    // Page will reload — just show success and reload
+                    closeWizard();
+                    location.reload();
+                })
+                .catch(() => {
+                    showWizardError('Failed to save router. Please try again.');
+                    btn.innerHTML = 'Next: Connect <i class="fas fa-arrow-right"></i>';
+                    btn.disabled = false;
+                });
+            return;
+        }
+
+        // Auto provisioning flow
+        const name = document.getElementById('mikrotikName').value.trim();
+        if (!name) { showWizardError('Please enter the router identity name.'); return; }
+
+        const token    = "<?php echo $tenant['provisioning_token'] ?? ''; ?>";
+        const host     = window.location.host;
+        const protocol = window.location.protocol;
         const endpoint = `${protocol}//${host}/fortunett_technologies_/api/routers/provision.php`;
-        
-        let cmd = `/tool fetch url="${endpoint}?token=${token}&identity=${encodeURIComponent(name)}&format=rsc" dst-path=provision.rsc; :delay 5s; /import provision.rsc;`;
-        
-        // Check if host is localhost and warn user + show the info panel
+        const cmd      = `/tool fetch url="${endpoint}?token=${token}&identity=${encodeURIComponent(name)}&format=rsc" dst-path=provision.rsc; :delay 5s; /import provision.rsc;`;
+
         if (host.includes('localhost') || host.includes('127.0.0.1')) {
             const infoPanel = document.getElementById('localhostInfoPanel');
             if (infoPanel) infoPanel.style.display = 'block';
         }
-
         document.getElementById('provisionCommand').textContent = cmd;
-        
         currentStep = 2;
         updateWizard();
     }
+}
+
+function showWizardError(msg) {
+    let el = document.getElementById('wizardErrorMsg');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'wizardErrorMsg';
+        el.style.cssText = 'margin-top:14px;padding:10px 14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:7px;color:#fca5a5;font-size:13px;';
+        document.getElementById('step1').appendChild(el);
+    }
+    el.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + msg;
+    el.style.display = 'block';
+    setTimeout(() => { if (el) el.style.display = 'none'; }, 4000);
 }
 
 function startPolling() {
@@ -697,13 +885,32 @@ function prevStep() {
 
 function copyCommand() {
     const text = document.getElementById('provisionCommand').textContent;
-    navigator.clipboard.writeText(text).then(() => alert('Copied!'));
+    navigator.clipboard.writeText(text).then(() => {
+        showRouterToast('Command copied to clipboard!', 'success');
+    }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        showRouterToast('Copied!', 'success');
+    });
+}
+
+function showRouterToast(msg, type) {
+    // Reuse global showToast if available, else simple alert
+    if (typeof showToast === 'function') { showToast(msg, type); return; }
+    const toast = document.createElement('div');
+    toast.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:9999;padding:11px 18px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.4);color:white;background:${type==='success'?'#059669':'#dc2626'};`;
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2500);
 }
 
 window.onclick = function(event) {
     if (event.target == document.getElementById('wizardModal')) {
-        document.getElementById('wizardModal').style.display = "none";
-        if(provisioningTimer) clearInterval(provisioningTimer);
+        closeWizard();
     }
 }
 </script>

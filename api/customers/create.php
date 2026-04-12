@@ -71,10 +71,16 @@ try {
     $pdo->beginTransaction();
 
     // 1. Get Package Details
-    $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND tenant_id = ?");
+    $stmt = $pdo->prepare("SELECT *, COALESCE(type, connection_type, 'pppoe') AS pkg_type FROM packages WHERE id = ? AND tenant_id = ?");
     $stmt->execute([$package_id, $tenant_id]);
     $package = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$package) throw new Exception("Invalid package selected or access denied");
+    // Validate package type matches customer connection type
+    $pkgType  = strtolower($package['pkg_type'] ?? 'pppoe');
+    $custType = strtolower($connection_type);
+    if ($custType !== 'static' && $pkgType !== $custType) {
+        throw new Exception("Package type mismatch: cannot assign a " . strtoupper($pkgType) . " package to a " . strtoupper($custType) . " customer.");
+    }
 
     // 2. Calculate Expiry
     if (!empty($_POST['expiry_date'])) {

@@ -41,15 +41,28 @@ try {
     $tenant_id = $current_tenant_id;
 
     if ($client_id > 0) {
-        $stmt = $pdo->prepare("SELECT tenant_id FROM clients WHERE id = ? AND tenant_id = ?");
+        $stmt = $pdo->prepare("SELECT tenant_id, account_number FROM clients WHERE id = ? AND tenant_id = ?");
         $stmt->execute([$client_id, $current_tenant_id]);
-        if (!$stmt->fetchColumn()) {
+        $clientRow = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$clientRow) {
             echo json_encode(['success' => false, 'message' => 'Invalid customer or access denied']);
             exit;
         }
         if ($account_ref === 'Payment') {
-            $account_ref = 'PAY-' . $client_id . '-' . time();
+            // M-Pesa AccountReference max = 12 characters
+            // Use the stored account_number (e.g. "E001") which is short and meaningful,
+            // falling back to a trimmed reference if account_number is not yet set.
+            $acctNo = $clientRow['account_number'] ?? '';
+            $account_ref = !empty($acctNo)
+                ? substr($acctNo, 0, 12)
+                : ('C' . str_pad($client_id, 4, '0', STR_PAD_LEFT));
+        } else {
+            // Truncate any caller-supplied reference to 12 chars (Safaricom hard limit)
+            $account_ref = substr($account_ref, 0, 12);
         }
+    } else {
+        // No client — truncate to 12 chars
+        $account_ref = substr($account_ref, 0, 12);
     }
 
     // Check whether this tenant has their own active M-Pesa API gateway
@@ -90,6 +103,15 @@ try {
         }
     }
 
+    // Guard: no usable credentials at all
+    if (!$mpesa->hasValidCredentials()) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'M-Pesa credentials not configured. Go to Settings → Payments and add your Consumer Key, Consumer Secret, Passkey, and Shortcode.'
+        ]);
+        exit;
+    }
+
     $isSandbox = $mpesa->getEnvironment() !== 'production';
     $response = $mpesa->stkPush($phone, $amount, $account_ref);
 
@@ -97,7 +119,7 @@ try {
     if ($response === null) {
         echo json_encode([
             'success' => false,
-            'message' => 'M-Pesa API returned no response. Verify your Consumer Key/Secret in Settings → Payments.'
+            'message' => 'M-Pesa API returned no response. Check: (1) your Consumer Key/Secret are correct, (2) the environment (sandbox/production) matches your credentials, (3) the server has internet access.'
         ]);
         exit;
     }
@@ -179,11 +201,27 @@ try {
             ?? null;
 
         if (!$msg) {
-            // Try to decode a nested error body
             $msg = 'M-Pesa request failed (Code: ' . ($responseCode ?? 'unknown') . '). Check your credentials in Settings → Payments.';
         }
 
-        echo json_encode(['success' => false, 'message' => $msg]);
+        // Annotate common Safaricom error codes with actionable hints
+        $hints = [
+            '400.002.02'   => ' — Invalid Consumer Key or Consumer Secret.',
+            '404.001.04'   => ' — Shortcode not found or not registered.',
+            '400.002.05'   => ' — Account Reference exceeds 12 characters.',
+            '500.001.1001' => ' — Invalid passkey for this shortcode/environment.',
+            '1032'         => ' — Request cancelled by user.',
+            '1037'         => ' — STK Push request timed out (no response from phone).',
+        ];
+        $hint = $hints[(string)$responseCode] ?? '';
+
+        echo json_encode([
+            'success'       => false,
+            'message'       => $msg . $hint,
+            'response_code' => $responseCode,
+            'environment'   => $mpesa->getEnvironment(),
+            'account_ref'   => $account_ref,
+        ]);
     }
 
 } catch (Throwable $e) {

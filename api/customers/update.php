@@ -60,11 +60,17 @@ if (empty($id) || empty($name)) {
         // 2. Get Package Details (if changed)
         $pkgName = $oldClient['subscription_plan'];
         if ($package_id) {
-            $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)");
+            $stmt = $pdo->prepare("SELECT *, COALESCE(type, connection_type, 'pppoe') AS pkg_type FROM packages WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)");
             $stmt->execute([$package_id, $tenant_id]);
             $package = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($package) {
                 $pkgName = $package['name'];
+                // Validate package type matches customer connection type
+                $pkgType = strtolower($package['pkg_type'] ?? 'pppoe');
+                $custType = strtolower($connection_type);
+                if ($custType !== 'static' && $pkgType !== $custType) {
+                    throw new Exception("Package type mismatch: cannot assign a " . strtoupper($pkgType) . " package to a " . strtoupper($custType) . " customer.");
+                }
             } else {
                 throw new Exception("Invalid package selected or access denied");
             }

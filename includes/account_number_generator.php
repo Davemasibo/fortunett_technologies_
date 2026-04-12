@@ -21,31 +21,24 @@ class AccountNumberGenerator {
      */
     public function generateAccountNumber($tenantId) {
         try {
-            // Start transaction for thread safety
-            $this->db->beginTransaction();
-            
-            // Get the prefix for this tenant
+            // NOTE: No PDO transaction here — getNextSequence() uses LOCK TABLES which
+            // implicitly commits any open InnoDB transaction and then acquires a table lock.
+            // Mixing beginTransaction() + LOCK TABLES causes PDO::commit() to throw
+            // "There is no active transaction", silently swallowing the account number.
+            // The LOCK TABLES / UNLOCK TABLES pattern in getNextSequence() is sufficient
+            // for thread-safe sequential generation.
+
             $prefix = $this->getPrefix($tenantId);
-            
             if (!$prefix) {
-                $this->db->rollBack();
                 throw new Exception("Unable to determine account number prefix for tenant");
             }
-            
-            // Get next sequence number
-            $nextNumber = $this->getNextSequence($tenantId, $prefix);
-            
-            // Format the account number (prefix + zero-padded number)
+
+            $nextNumber    = $this->getNextSequence($tenantId, $prefix);
             $accountNumber = strtoupper($prefix) . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
-            
-            $this->db->commit();
-            
+
             return $accountNumber;
-            
+
         } catch (Exception $e) {
-            if ($this->db->inTransaction()) {
-                $this->db->rollBack();
-            }
             error_log("Account number generation error: " . $e->getMessage());
             throw $e;
         }

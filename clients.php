@@ -150,7 +150,7 @@ try {
 
 // Get Packages for Dropdown
 try {
-    $stmt = $db->prepare("SELECT id, name, price FROM packages WHERE tenant_id = ? ORDER BY price ASC");
+    $stmt = $db->prepare("SELECT id, name, price, COALESCE(type, connection_type, 'pppoe') AS type FROM packages WHERE tenant_id = ? ORDER BY price ASC");
     $stmt->execute([$tenant_id]);
     $packages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
@@ -582,6 +582,9 @@ include 'includes/sidebar.php';
             <button onclick="openExpiryModal()" style="padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;font-weight:500;color:#d4d4d2;cursor:pointer;white-space:nowrap;transition:background .15s;">
                 <i class="fas fa-calendar-alt" style="color:var(--primary-light,#93c5fd);"></i> Change Expiry
             </button>
+            <button id="pauseSubBtn" onclick="pauseSubscription()" title="Pause subscription" style="padding:6px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;font-weight:500;color:#d4d4d2;cursor:pointer;white-space:nowrap;transition:background .15s;">
+                <i class="fas fa-pause" style="color:#fbbf24;"></i> Pause
+            </button>
             <div style="position:relative;">
                 <button style="padding:6px 10px;background:linear-gradient(135deg,var(--primary-dark,#2C5282),var(--primary-color,#3B6EA5));color:white;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;" onclick="toggleActionsMenu()">
                     Actions <i class="fas fa-chevron-down" style="font-size:10px;"></i>
@@ -886,7 +889,7 @@ include 'includes/sidebar.php';
                 <select id="expiryPackageSelect" style="flex:1;padding:8px 10px;background:#1c1c1b;border:1px solid rgba(255,255,255,.08);border-radius:7px;font-size:13px;color:#e2e2e0;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;">
                     <option value="" style="background:#1c1c1b;">— Keep current package —</option>
                     <?php foreach ($packages as $pkg): ?>
-                    <option value="<?php echo $pkg['id']; ?>" style="background:#1c1c1b;"><?php echo htmlspecialchars($pkg['name']); ?> — KES <?php echo number_format($pkg['price']); ?></option>
+                    <option value="<?php echo $pkg['id']; ?>" data-type="<?php echo htmlspecialchars($pkg['type']); ?>" style="background:#1c1c1b;"><?php echo htmlspecialchars($pkg['name']); ?> — KES <?php echo number_format($pkg['price']); ?></option>
                     <?php endforeach; ?>
                 </select>
                 <button onclick="applyChangePackage()" style="padding:8px 14px;background:#059669;color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Apply</button>
@@ -953,7 +956,7 @@ include 'includes/sidebar.php';
                     <select name="package_id" id="formPackageId" required style="width:100%;padding:9px 11px;border:1px solid rgba(255,255,255,.1);border-radius:8px;font-size:13px;background:#1c1c1b;color:#e2e2e0;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='rgba(255,255,255,.1)'">
                         <option value="">Select Package</option>
                         <?php foreach ($packages as $pkg): ?>
-                        <option value="<?php echo $pkg['id']; ?>"><?php echo htmlspecialchars($pkg['name']); ?> — KES <?php echo number_format($pkg['price']); ?></option>
+                        <option value="<?php echo $pkg['id']; ?>" data-type="<?php echo htmlspecialchars($pkg['type']); ?>"><?php echo htmlspecialchars($pkg['name']); ?> — KES <?php echo number_format($pkg['price']); ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -1133,6 +1136,7 @@ function viewCustomer(customerJson) {
         }
     }
 
+    updatePauseBtn(status);
     document.getElementById('userModal').style.display = 'flex';
 }
 
@@ -1213,6 +1217,8 @@ function openExpiryModal() {
     if (!currentCustomer) return;
     const expEl = document.getElementById('currentExpiryDisplay');
     if (expEl) expEl.textContent = currentCustomer.expiry_date ? formatDate(currentCustomer.expiry_date) : 'Not set';
+    filterExpiryPackagesByType(currentCustomer.connection_type || 'pppoe');
+    updatePauseBtn(currentCustomer.status);
     document.getElementById('expiryModal').style.display = 'flex';
 }
 
@@ -1366,6 +1372,7 @@ function openAddModal() {
     document.getElementById('formModalTitle').textContent = 'Add New Customer';
     document.getElementById('customerForm').reset();
     document.getElementById('formId').value = '';
+    filterPackagesByType('pppoe');
     document.getElementById('customerFormModal').style.display = 'flex';
 }
 
@@ -1379,6 +1386,7 @@ function openEditModal(customer) {
     document.getElementById('formEmail').value = customer.email;
     document.getElementById('formAddress').value = customer.address || customer.location;
     
+    filterPackagesByType(customer.connection_type || 'pppoe');
     document.getElementById('formPackageId').value = customer.package_id;
     document.getElementById('formConnectionType').value = customer.connection_type || 'pppoe';
     document.getElementById('formMikrotikUsername').value = customer.mikrotik_username || '';
@@ -1741,6 +1749,84 @@ function fmtShortDate(ds) {
 function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function ucFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
+/* ── Package type filtering ────────────────────────────────── */
+function filterPackagesByType(connType) {
+    const ct = (connType || 'pppoe').toLowerCase();
+    // Form modal package select
+    document.querySelectorAll('#formPackageId option[data-type]').forEach(opt => {
+        const t = (opt.getAttribute('data-type') || 'pppoe').toLowerCase();
+        opt.hidden = (ct !== 'static' && t !== ct);
+    });
+    // If current value is now hidden, reset
+    const formSel = document.getElementById('formPackageId');
+    if (formSel) {
+        const selOpt = formSel.options[formSel.selectedIndex];
+        if (selOpt && selOpt.hidden) formSel.value = '';
+    }
+}
+
+function filterExpiryPackagesByType(connType) {
+    const ct = (connType || 'pppoe').toLowerCase();
+    document.querySelectorAll('#expiryPackageSelect option[data-type]').forEach(opt => {
+        const t = (opt.getAttribute('data-type') || 'pppoe').toLowerCase();
+        opt.hidden = (ct !== 'static' && t !== ct);
+    });
+}
+
+/* ── Pause / Resume Subscription ──────────────────────────── */
+function pauseSubscription() {
+    if (!currentCustomer) return;
+    const status = (currentCustomer.status || '').toLowerCase();
+    const isPaused = status === 'suspended';
+    const action = isPaused ? 'resume' : 'pause';
+    const label  = isPaused ? 'Resume this subscription?' : 'Pause this subscription?\n\nThis will suspend the customer\'s service without changing their expiry date.';
+    if (!confirm(label)) return;
+
+    const fd = new FormData();
+    fd.append('client_id', currentCustomer.id);
+    fd.append('action', action);
+
+    fetch('api/clients/pause_subscription.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                currentCustomer.status = d.new_status;
+                showToast(d.message, 'success');
+                updatePauseBtn(d.new_status);
+                // Refresh status badges inline
+                const newStatus = d.new_status.toLowerCase();
+                const badgeStyles = {
+                    active:    'background:#D1FAE5; color:#065F46;',
+                    inactive:  'background:#F3F4F6; color:#6B7280;',
+                    suspended: 'background:#FEF3C7; color:#92400E;',
+                    expired:   'background:#FEE2E2; color:#991B1B;'
+                };
+                const badgeEl = document.getElementById('modalStatusBadge');
+                if (badgeEl) {
+                    badgeEl.style.cssText = 'padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; ' + (badgeStyles[newStatus] || badgeStyles.inactive);
+                    badgeEl.textContent = newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+                }
+                const sc = { active:'#D1FAE5|#065F46', inactive:'#F3F4F6|#6B7280', suspended:'#FEF3C7|#92400E', expired:'#FEE2E2|#991B1B' };
+                const [bg, fg] = (sc[newStatus] || sc.inactive).split('|');
+                const statusGrid = document.getElementById('infoStatus');
+                if (statusGrid) statusGrid.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;background:${bg};color:${fg};"><span style="width:6px;height:6px;border-radius:50%;background:${fg};"></span>${newStatus.charAt(0).toUpperCase()+newStatus.slice(1)}</span>`;
+            } else {
+                showToast('Error: ' + d.message, 'error');
+            }
+        })
+        .catch(() => showToast('Network error.', 'error'));
+}
+
+function updatePauseBtn(status) {
+    const btn = document.getElementById('pauseSubBtn');
+    if (!btn) return;
+    const isPaused = (status || '').toLowerCase() === 'suspended';
+    btn.innerHTML = isPaused
+        ? '<i class="fas fa-play" style="color:#34d399;"></i> Resume'
+        : '<i class="fas fa-pause" style="color:#fbbf24;"></i> Pause';
+    btn.title = isPaused ? 'Resume subscription' : 'Pause subscription';
+}
+
 function calculateTimeLeft(expiryDate) {
     if (!expiryDate) return 'N/A';
     const diff = new Date(expiryDate) - new Date();
@@ -1773,6 +1859,11 @@ document.getElementById('customerFormModal').addEventListener('click', function(
 // Close SMS modal on backdrop click
 document.getElementById('smsModal').addEventListener('click', function(e) {
     if (e.target === this) closeSMSModal();
+});
+
+/* ── Filter packages when connection type changes ──────────── */
+document.getElementById('formConnectionType').addEventListener('change', function() {
+    filterPackagesByType(this.value);
 });
 
 /* ── SMS char counter ──────────────────────────────────────── */
