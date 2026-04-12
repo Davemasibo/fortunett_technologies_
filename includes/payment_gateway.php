@@ -71,11 +71,22 @@ class PaymentGatewayManager {
      * @return array|null Decrypted credentials array
      */
     private function decryptCredentials($encryptedData) {
+        if (!is_string($encryptedData) || $encryptedData === '') {
+            return [];
+        }
+
+        // Plain JSON fast-path: credentials saved directly (settings form) — no encryption
+        $plain = json_decode($encryptedData, true);
+        if ($plain !== null) {
+            return $plain;
+        }
+
+        // Encrypted path: credentials saved via API endpoint
         try {
             $data = base64_decode($encryptedData);
             $iv = substr($data, 0, 16);
             $encrypted = substr($data, 16);
-            
+
             $decrypted = openssl_decrypt(
                 $encrypted,
                 'AES-256-CBC',
@@ -83,11 +94,11 @@ class PaymentGatewayManager {
                 0,
                 $iv
             );
-            
-            return json_decode($decrypted, true);
+
+            return json_decode($decrypted, true) ?? [];
         } catch (Exception $e) {
             error_log("Decryption error: " . $e->getMessage());
-            return null;
+            return [];
         }
     }
     

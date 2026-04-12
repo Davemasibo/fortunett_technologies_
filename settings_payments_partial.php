@@ -603,6 +603,8 @@ input:checked + .live-slider:before { transform: translateX(18px); }
     // Use DB-stored shortcode first (set by super admin), fall back to config constant
     $platformShortcode = $platformShortcodeDB ?? (defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : '—');
     $prefix = $accountPrefix ?? '?';
+    $pStats  = $platformPayStats ?? ['platform_total' => 0, 'direct_total' => 0, 'platform_count' => 0, 'this_month' => 0];
+    $disburseTarget = $tenantBound ?? [];
     ?>
     <div style="margin-top:28px;">
         <div class="pg-section-title">
@@ -614,10 +616,12 @@ input:checked + .live-slider:before { transform: translateX(18px); }
             <?php if (!$hasMpesaApi): ?>
             <div style="display:flex;align-items:center;gap:10px;background:rgba(59,110,165,.1);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#93c5fd;border:1px solid rgba(59,110,165,.2);">
                 <i class="fas fa-info-circle" style="font-size:16px;flex-shrink:0;"></i>
-                <span>You haven't configured your own M-Pesa API credentials. Customers will use the <strong>platform paybill</strong> with unique account numbers below.</span>
+                <span>You haven't configured your own M-Pesa API credentials. Customers pay via the <strong>platform paybill</strong> using the account numbers below. FortuNett collects and disburses to your account.</span>
             </div>
             <?php endif; ?>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;">
+
+            <!-- Paybill info row -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:20px;">
                 <div>
                     <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;">Platform Paybill No.</div>
                     <div style="font-size:22px;font-weight:700;color:#e2e2e0;font-family:monospace;"><?= htmlspecialchars($platformShortcode) ?></div>
@@ -633,10 +637,69 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                     <div style="font-size:11px;color:rgba(255,255,255,.35);margin-top:3px;">Register in Safaricom Daraja → C2B → Confirmation URL</div>
                 </div>
             </div>
+
+            <!-- Platform collections stats -->
+            <?php if ((float)($pStats['platform_total'] ?? 0) > 0 || (float)($pStats['direct_total'] ?? 0) > 0): ?>
+            <div style="border-top:1px solid rgba(255,255,255,.07);padding-top:18px;margin-bottom:18px;">
+                <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px;">
+                    <i class="fas fa-chart-bar" style="margin-right:5px;"></i>Payment Collections
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;">
+                    <div style="background:rgba(255,255,255,.04);border-radius:8px;padding:12px 14px;border:1px solid rgba(255,255,255,.06);">
+                        <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Via Platform Paybill</div>
+                        <div style="font-size:18px;font-weight:700;color:#fbbf24;font-family:monospace;">KES <?= number_format((float)($pStats['platform_total'] ?? 0), 2) ?></div>
+                        <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:2px;"><?= (int)($pStats['platform_count'] ?? 0) ?> transactions (all-time)</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,.04);border-radius:8px;padding:12px 14px;border:1px solid rgba(255,255,255,.06);">
+                        <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">This Month (Platform)</div>
+                        <div style="font-size:18px;font-weight:700;color:#34d399;font-family:monospace;">KES <?= number_format((float)($pStats['this_month'] ?? 0), 2) ?></div>
+                        <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:2px;">Current month total</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,.04);border-radius:8px;padding:12px 14px;border:1px solid rgba(255,255,255,.06);">
+                        <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Via Your Own M-Pesa</div>
+                        <div style="font-size:18px;font-weight:700;color:#93c5fd;font-family:monospace;">KES <?= number_format((float)($pStats['direct_total'] ?? 0), 2) ?></div>
+                        <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:2px;">Collected directly to your shortcode</div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Disbursement info -->
+            <div style="border-top:1px solid rgba(255,255,255,.07);padding-top:16px;">
+                <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">
+                    <i class="fas fa-exchange-alt" style="margin-right:5px;"></i>Disbursement
+                </div>
+                <?php if (!empty($disburseTarget)): ?>
+                <div style="display:flex;align-items:flex-start;gap:12px;background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.2);border-radius:8px;padding:12px 14px;margin-bottom:10px;font-size:13px;color:#d1fae5;">
+                    <i class="fas fa-check-circle" style="color:#34d399;margin-top:2px;flex-shrink:0;"></i>
+                    <div>
+                        <strong>Disbursement target:</strong>
+                        <?php if ($disburseTarget['type'] === 'bank_account'): ?>
+                            <?= htmlspecialchars($disburseTarget['name']) ?> —
+                            <?= htmlspecialchars($disburseTarget['creds']['bank_name'] ?? '') ?>
+                            · Account <code style="background:rgba(255,255,255,.1);padding:1px 5px;border-radius:3px;"><?= htmlspecialchars($disburseTarget['creds']['account_number'] ?? '') ?></code>
+                        <?php elseif ($disburseTarget['type'] === 'paybill_no_api'): ?>
+                            <?= htmlspecialchars($disburseTarget['name']) ?> — Paybill
+                            <code style="background:rgba(255,255,255,.1);padding:1px 5px;border-radius:3px;"><?= htmlspecialchars($disburseTarget['creds']['paybill_number'] ?? '') ?></code>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php else: ?>
+                <div style="background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:12px 14px;font-size:13px;color:#fde68a;margin-bottom:10px;">
+                    <i class="fas fa-exclamation-triangle" style="margin-right:6px;color:#fbbf24;"></i>
+                    No disbursement account set. Add a <strong>Bank Account</strong> or <strong>Paybill</strong> gateway above so FortuNett knows where to send platform-collected funds.
+                </div>
+                <?php endif; ?>
+                <div style="font-size:12px;color:rgba(255,255,255,.38);display:flex;align-items:flex-start;gap:7px;">
+                    <i class="fas fa-info-circle" style="color:#6b7280;margin-top:2px;flex-shrink:0;"></i>
+                    <span>Platform-collected funds are disbursed weekly to your registered account. To request early disbursement or check status, contact <a href="mailto:support@fortunetttech.site" style="color:var(--primary-color,#3B6EA5);">support@fortunetttech.site</a>.</span>
+                </div>
+            </div>
+
             <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07);font-size:12px;color:rgba(255,255,255,.45);display:flex;align-items:center;gap:6px;">
                 <i class="fas fa-lightbulb" style="color:#fcd34d;"></i>
-                Want your own M-Pesa STK Push? Add an <strong style="color:#e2e2e0;">M-Pesa API</strong> gateway above with your Daraja credentials.
-                Your callback URL will be: <code style="background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-size:11px;color:#93c5fd;">https://<?= htmlspecialchars(explode('.', $_SERVER['HTTP_HOST'] ?? 'yourdomain.fortunetttech.site')[0]) ?>.fortunetttech.site/api/mpesa/callback.php</code>
+                Want direct M-Pesa STK Push to your own shortcode? Add an <strong style="color:#e2e2e0;">M-Pesa API</strong> gateway above.
+                Your callback URL: <code style="background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-size:11px;color:#93c5fd;">https://<?= htmlspecialchars(explode('.', $_SERVER['HTTP_HOST'] ?? 'yourdomain.fortunetttech.site')[0]) ?>.fortunetttech.site/api/mpesa/callback.php</code>
             </div>
         </div>
     </div>

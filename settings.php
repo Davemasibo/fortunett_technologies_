@@ -279,6 +279,33 @@ try {
     if ($psRow && trim($psRow) !== '') $platformShortcodeDB = trim($psRow);
 } catch (Throwable $e) {}
 
+// Platform payment stats for the disbursement panel
+$platformPayStats = ['platform_total' => 0, 'direct_total' => 0, 'platform_count' => 0, 'direct_count' => 0, 'this_month' => 0];
+try {
+    $pps = $pdo->prepare("
+        SELECT
+            SUM(CASE WHEN collection_type = 'platform' THEN amount ELSE 0 END) AS platform_total,
+            SUM(CASE WHEN collection_type = 'direct'   THEN amount ELSE 0 END) AS direct_total,
+            SUM(CASE WHEN collection_type = 'platform' THEN 1 ELSE 0 END) AS platform_count,
+            SUM(CASE WHEN collection_type = 'direct'   THEN 1 ELSE 0 END) AS direct_count,
+            SUM(CASE WHEN collection_type = 'platform' AND MONTH(payment_date) = MONTH(CURDATE()) AND YEAR(payment_date) = YEAR(CURDATE()) THEN amount ELSE 0 END) AS this_month
+        FROM payments
+        WHERE tenant_id = ? AND status = 'completed'
+    ");
+    $pps->execute([$tenant_id]);
+    $platformPayStats = array_merge($platformPayStats, $pps->fetch(PDO::FETCH_ASSOC) ?: []);
+} catch (Throwable $e) {}
+
+// Tenant's bound bank/paybill for disbursement display
+$tenantBound = [];
+foreach ($gateways as $gw) {
+    if (in_array($gw['gateway_type'], ['bank_account', 'paybill_no_api']) && $gw['is_active']) {
+        $creds = is_array($gw['credentials']) ? $gw['credentials'] : (json_decode($gw['credentials'], true) ?? []);
+        $tenantBound = ['type' => $gw['gateway_type'], 'name' => $gw['gateway_name'], 'creds' => $creds];
+        break;
+    }
+}
+
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
@@ -1130,6 +1157,8 @@ function resetGatewayForm() {
     document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
     document.querySelectorAll('.field-section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('.preserve-note').forEach(n => n.style.display = 'none');
+    const nameWrap = document.getElementById('gatewayNameWrap');
+    if (nameWrap) nameWrap.style.display = 'none';
 }
 </script>
 
