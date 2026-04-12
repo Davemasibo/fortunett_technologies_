@@ -976,3 +976,92 @@ footer {
     border-top-color: var(--neu-border) !important;
     color: var(--neu-muted) !important;
 }
+
+/* ================================================================
+   EXTENDED DARK OVERRIDES — action icons, alerts, badges, M-Pesa
+   ================================================================ */
+
+/* Action icon backgrounds — dark tinted */
+.action-icon.payment  { background: rgba(16,185,129,.15) !important; color: #6ee7b7 !important; }
+.action-icon.packages { background: rgba(59,130,246,.15) !important; color: #93c5fd !important; }
+.action-icon.account  { background: rgba(245,158,11,.15) !important; color: #fcd34d !important; }
+.action-icon.history  { background: rgba(139,92,246,.15) !important; color: #c4b5fd !important; }
+.action-card:hover .action-icon { box-shadow: 0 4px 12px rgba(59,110,165,.3) !important; }
+
+/* Alert boxes */
+.alert-success { background:rgba(16,185,129,.1) !important; color:#6ee7b7 !important; border-left-color:#10b981 !important; }
+.alert-error   { background:rgba(239,68,68,.1)   !important; color:#fca5a5 !important; border-left-color:#ef4444 !important; }
+.alert-warning { background:rgba(245,158,11,.1)  !important; color:#fcd34d !important; border-left-color:#f59e0b !important; }
+.alert-info    { background:rgba(59,130,246,.1)  !important; color:#93c5fd !important; border-left-color:#3b82f6 !important; }
+
+/* Status badges */
+.badge.active     { background:rgba(16,185,129,.18) !important; color:#6ee7b7 !important; }
+.badge.inactive   { background:rgba(107,114,128,.18)!important; color:#9ca3af !important; }
+.badge.pending    { background:rgba(245,158,11,.18) !important; color:#fcd34d !important; }
+.badge.expired    { background:rgba(239,68,68,.18)  !important; color:#fca5a5 !important; }
+.badge.completed  { background:rgba(16,185,129,.18) !important; color:#6ee7b7 !important; }
+.badge.failed     { background:rgba(239,68,68,.18)  !important; color:#fca5a5 !important; }
+.badge.suspended  { background:rgba(239,68,68,.18)  !important; color:#fca5a5 !important; }
+
+/* M-Pesa section */
+.mpesa-logo { background:rgba(22,163,74,.1) !important; border-color:rgba(34,197,94,.25) !important; color:#6ee7b7 !important; }
+.mpesa-logo i { color:#34d399 !important; }
+
+/* Welcome banner — keep gradient but make it more neumorphic */
+.welcome-section {
+    box-shadow: 14px 14px 28px rgba(0,0,0,.55), -4px -4px 14px rgba(255,255,255,.03) !important;
+}
+
+/* Section headings */
+.actions-section h2,
+.package-section .section-header h2 { color: #e2e2e0 !important; }
+.actions-section h2 i,
+.section-header h2 i { color: var(--primary-light, #4A90E2) !important; }
+
+/* Package card features on dark */
+.package-features { background: rgba(255,255,255,.02) !important; }
+
+/* Empty state */
+.empty-state {
+    background: var(--neu-s2) !important;
+    border: 1px solid var(--neu-border) !important;
+    border-radius: 14px;
+    padding: 40px 24px;
+    text-align: center;
+}
+.empty-state i { color: var(--neu-muted) !important; font-size: 40px; margin-bottom: 12px; }
+.empty-state h3 { color: var(--neu-text) !important; }
+.empty-state p  { color: var(--neu-muted) !important; }
+
+/* Skeleton — dark */
+.skeleton { background: linear-gradient(90deg,#1e1e1d 25%,#2a2a28 50%,#1e1e1d 75%) !important; background-size:600px 100% !important; }
+
+/* Link colours on dark */
+a { color: var(--primary-light, #4A90E2); }
+a:hover { color: #fff; }
+
+/* Topbar right: give current page title */
+.topbar-left .page-title { color: #e2e2e0 !important; }
+
+/* Payment history amount colors */
+.amount-positive { color: #6ee7b7 !important; }
+.amount-negative { color: #fca5a5 !important; }
+
+/* Devices/account page specific */
+.device-card, .info-card {
+    background: var(--neu-s2) !important;
+    border: 1px solid var(--neu-border) !important;
+    box-shadow: var(--neu-card) !important;
+    border-radius: 12px;
+}
+.device-card h3, .info-card h3 { color: #fff !important; }
+.device-card p, .info-card p   { color: var(--neu-muted) !important; }
+
+/* Strong and bold text on dark bg */
+strong { color: #e2e2e0; }
+
+/* Small muted text */
+small, .text-muted, .muted { color: var(--neu-muted) !important; }
+
+/* Neumorphic dividers */
+hr { border-color: var(--neu-border) !important; }

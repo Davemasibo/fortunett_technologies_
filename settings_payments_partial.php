@@ -452,13 +452,59 @@ input:checked + .live-slider:before { transform: translateX(18px); }
         <span class="pg-section-sub">Shown to customers on the payment page</span>
     </div>
 
-    <?php if (empty($gateways)): ?>
+    <?php
+    // Show Platform Shared Paybill as a default read-only gateway when no tenant M-Pesa API is configured
+    $hasPlatformShortcode = !empty($platformShortcodeDB) || defined('MPESA_SHORTCODE');
+    $platformPaybillNum = $platformShortcodeDB ?? (defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : null);
+    if (!$hasMpesaApi && $hasPlatformShortcode):
+    ?>
+    <div class="gateways-grid" style="margin-bottom:16px;">
+        <div class="gw-card" style="border-color:var(--primary-color,#3B6EA5);box-shadow:0 0 0 2px rgba(59,110,165,.18);">
+            <div class="gw-card-header">
+                <div class="gw-icon mpesa" style="position:relative;">
+                    <i class="fas fa-mobile-alt"></i>
+                </div>
+                <div style="flex:1;min-width:0;">
+                    <div class="gw-name">Platform M-Pesa Paybill</div>
+                    <div class="gw-type">Shared STK Push via FortuNett</div>
+                    <div style="display:inline-flex;align-items:center;gap:4px;background:rgba(59,110,165,.15);color:var(--primary-color,#3B6EA5);font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;margin-top:4px;letter-spacing:.03em;">
+                        <i class="fas fa-shield-alt" style="font-size:9px;"></i> FortuNett Managed &mdash; DEFAULT
+                    </div>
+                </div>
+                <span class="gw-badge active">● Active</span>
+            </div>
+            <div class="gw-body">
+                <div class="gw-detail">
+                    <span class="gw-detail-label">Paybill No.</span>
+                    <span class="gw-detail-value"><?= htmlspecialchars($platformPaybillNum) ?></span>
+                </div>
+                <div class="gw-detail">
+                    <span class="gw-detail-label">Your Account Prefix</span>
+                    <span class="gw-detail-value" style="color:var(--primary-color,#3B6EA5);font-family:monospace;"><?= htmlspecialchars($accountPrefix ?? '?') ?></span>
+                </div>
+                <div class="gw-detail">
+                    <span class="gw-detail-label">Mode</span>
+                    <span class="gw-detail-value" style="color:#10b981;">Customers pay &rarr; FortuNett collects &rarr; Weekly disbursement to you</span>
+                </div>
+            </div>
+            <div class="gw-toggle-row" style="background:rgba(59,110,165,.06);border-top:1px solid rgba(59,110,165,.15);">
+                <div>
+                    <div class="gw-toggle-label" style="color:#93c5fd;">Platform-managed gateway</div>
+                    <div class="gw-toggle-sub">Add your own M-Pesa API above to collect directly to your shortcode</div>
+                </div>
+                <span style="font-size:11px;color:rgba(255,255,255,.3);padding:4px 10px;background:rgba(255,255,255,.05);border-radius:20px;">Read-only</span>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <?php if (empty($gateways) && !(!$hasMpesaApi && $hasPlatformShortcode)): ?>
     <div class="pg-empty">
         <i class="fas fa-credit-card"></i>
         <p style="font-size:14px;font-weight:600;color:#374151;margin-bottom:4px;">No payment gateways yet</p>
         <p style="font-size:13px;">Add a gateway above to start accepting payments.</p>
     </div>
-    <?php else: ?>
+    <?php elseif (!empty($gateways)): ?>
     <div class="gateways-grid">
         <?php foreach ($gateways as $g):
             $creds = is_array($g['credentials']) ? $g['credentials'] : (json_decode($g['credentials'], true) ?? []);

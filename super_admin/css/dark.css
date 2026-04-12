@@ -183,3 +183,176 @@ h1, h2, h3, h4, h5, h6 { color: var(--neu-text) !important; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.22); }
 
 hr { border-color: var(--neu-border) !important; }
+
+/* ================================================================
+   SUPER ADMIN CUSTOM OVERRIDES — badges, buttons, layout, sidebar
+   ================================================================ */
+
+/* Body + main layout */
+body { background: var(--neu-bg) !important; color: var(--neu-text) !important; }
+.content { background: var(--neu-bg) !important; }
+.main    { background: var(--neu-bg) !important; }
+
+/* Topbar */
+.topbar { background: var(--neu-surf) !important; border-bottom: 1px solid var(--neu-border) !important; box-shadow: 0 2px 20px rgba(0,0,0,.5) !important; }
+.topbar h1 { color: #fff !important; font-size: 18px; }
+.topbar .user-info { color: var(--neu-muted) !important; }
+.topbar .user-info .avatar { background: rgba(255,255,255,.12) !important; border: 1.5px solid rgba(255,255,255,.15) !important; }
+
+/* Sidebar dark neumorphic — keep dark blue gradient, add neumorphic shadow */
+.sidebar {
+    background: linear-gradient(180deg, #111827 0%, #16213e 55%, #0f3460 100%) !important;
+    box-shadow: 4px 0 24px rgba(0,0,0,.5) !important;
+    border-right: 1px solid rgba(255,255,255,.06) !important;
+}
+.sidebar-brand { border-bottom: 1px solid rgba(255,255,255,.08) !important; }
+.sidebar-brand h2 { color: #fff !important; }
+.sidebar-brand p  { color: rgba(255,255,255,.5) !important; }
+.sidebar-brand .badge-sa {
+    background: linear-gradient(135deg, #e94560 0%, #c0305a 100%) !important;
+    box-shadow: 0 2px 10px rgba(233,69,96,.35) !important;
+}
+.sidebar-menu a { color: rgba(255,255,255,.72) !important; }
+.sidebar-menu a:hover { background: rgba(255,255,255,.08) !important; color: #fff !important; border-left-color: rgba(255,255,255,.3) !important; }
+.sidebar-menu a.active { background: rgba(255,255,255,.13) !important; color: #fff !important; border-left-color: #e94560 !important; }
+.sidebar-footer { color: rgba(255,255,255,.45) !important; border-top: 1px solid rgba(255,255,255,.08) !important; }
+
+/* Stat cards */
+.stat-card, .stats-grid .stat-card {
+    background: var(--neu-s2) !important;
+    border: 1px solid var(--neu-border) !important;
+    box-shadow: var(--neu-card) !important;
+    border-left: none !important;
+    border-radius: 14px !important;
+}
+.stat-card:hover {
+    transform: translateY(-3px) !important;
+    box-shadow: 18px 18px 36px rgba(0,0,0,.6), -8px -8px 22px rgba(255,255,255,.04), 0 0 0 1px var(--neu-border) !important;
+}
+.stat-card .label { color: var(--neu-muted) !important; }
+.stat-card .value { color: #fff !important; }
+.stat-card .sub   { color: var(--neu-muted) !important; }
+.stat-card .sub a { color: var(--neu-muted) !important; }
+
+/* Stat card icon wraps */
+.stat-card .icon-wrap {
+    background: rgba(255,255,255,.07) !important;
+    color: rgba(255,255,255,.7) !important;
+    border-radius: 12px !important;
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,.3), inset -1px -1px 4px rgba(255,255,255,.07) !important;
+}
+
+/* Custom card styles */
+.card, .card-head { background: var(--neu-s2) !important; border: 1px solid var(--neu-border) !important; }
+.card-head { border-bottom: 1px solid var(--neu-border) !important; background: rgba(255,255,255,.02) !important; }
+.card-head h3 { color: #fff !important; }
+.card-head a  { color: #3B6EA5 !important; text-decoration: none; }
+.card-head a:hover { color: #93c5fd !important; }
+
+/* Tables */
+th { background: rgba(255,255,255,.04) !important; color: var(--neu-muted) !important; border-bottom: 1px solid var(--neu-border) !important; }
+td { color: var(--neu-text) !important; border-bottom: 1px solid rgba(255,255,255,.04) !important; }
+tr:last-child td { border-bottom: none !important; }
+tr:hover td { background: rgba(255,255,255,.035) !important; }
+
+/* Custom status badges (non-Bootstrap) */
+.badge-active    { background: rgba(16,185,129,.18) !important; color: #6ee7b7 !important; border: none !important; }
+.badge-trial     { background: rgba(245,158,11,.18) !important; color: #fcd34d !important; border: none !important; }
+.badge-suspended { background: rgba(239,68,68,.18)  !important; color: #fca5a5 !important; border: none !important; }
+.badge-expired   { background: rgba(107,114,128,.18)!important; color: #9ca3af !important; border: none !important; }
+.badge-paid      { background: rgba(16,185,129,.18) !important; color: #6ee7b7 !important; border: none !important; }
+.badge-pending   { background: rgba(245,158,11,.18) !important; color: #fcd34d !important; border: none !important; }
+.badge-overdue   { background: rgba(239,68,68,.18)  !important; color: #fca5a5 !important; border: none !important; }
+.badge-cancelled { background: rgba(107,114,128,.18)!important; color: #9ca3af !important; border: none !important; }
+
+/* Custom action buttons */
+.btn-sm { border-radius: 7px !important; font-size: 12px !important; font-weight: 600 !important; transition: all .18s !important; }
+.btn-suspend  { background: rgba(239,68,68,.15)   !important; color: #fca5a5 !important; border: 1px solid rgba(239,68,68,.25) !important; }
+.btn-suspend:hover  { background: rgba(239,68,68,.28) !important; color: #fff !important; }
+.btn-activate { background: rgba(16,185,129,.15) !important; color: #6ee7b7 !important; border: 1px solid rgba(16,185,129,.25) !important; }
+.btn-activate:hover { background: rgba(16,185,129,.28) !important; color: #fff !important; }
+.btn-view     { background: rgba(255,255,255,.07) !important; color: var(--neu-muted) !important; border: 1px solid var(--neu-border) !important; }
+.btn-view:hover     { background: rgba(255,255,255,.13) !important; color: var(--neu-text) !important; }
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 { color: var(--neu-text) !important; }
+strong { color: #e2e2e0; }
+small, .text-muted { color: var(--neu-muted) !important; }
+
+/* Links in tables */
+table a { color: #3B6EA5 !important; text-decoration: none !important; }
+table a:hover { color: #93c5fd !important; }
+
+/* Charts area */
+canvas { filter: brightness(0.92); }
+
+/* Revenue trend — card inside charts */
+.two-col .card { overflow: hidden; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--neu-bg); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.24); }
+
+/* Select element */
+select option { background: var(--neu-s2); color: var(--neu-text); }
+
+/* Tenants page specific */
+.filters-bar {
+    background: var(--neu-s2) !important;
+    border: 1px solid var(--neu-border) !important;
+    box-shadow: var(--neu-card) !important;
+}
+.filters-bar input, .filters-bar select {
+    background: var(--neu-input) !important;
+    border-color: rgba(255,255,255,.1) !important;
+    color: var(--neu-text) !important;
+}
+.btn-filter {
+    background: linear-gradient(135deg, #16213e 0%, #0f3460 100%) !important;
+    color: #fff !important;
+    border: 1px solid rgba(255,255,255,.12) !important;
+}
+.btn-filter:hover { opacity: .88 !important; }
+.detail-panel {
+    background: var(--neu-s2) !important;
+    border: 1px solid var(--neu-border) !important;
+    box-shadow: var(--neu-card) !important;
+}
+.detail-item label { color: var(--neu-muted) !important; }
+.detail-item span  { color: var(--neu-text)  !important; }
+.back-link { color: #93c5fd !important; }
+.back-link:hover { color: #fff !important; }
+.empty-row td { color: var(--neu-muted) !important; }
+.btn-danger { background: linear-gradient(135deg,#b91c1c,#ef4444) !important; color:#fff !important; border:none !important; }
+
+/* Invoice / billing page */
+.invoice-card, .billing-card {
+    background: var(--neu-s2) !important;
+    border: 1px solid var(--neu-border) !important;
+    box-shadow: var(--neu-card) !important;
+}
+
+/* Plans page */
+.plan-card {
+    background: var(--neu-s2) !important;
+    border-color: var(--neu-border) !important;
+    box-shadow: var(--neu-card) !important;
+}
+.plan-card h3, .plan-card .price { color: #fff !important; }
+
+/* M-Pesa admin page */
+.mpesa-config-card {
+    background: var(--neu-s2) !important;
+    border-color: var(--neu-border) !important;
+}
+
+/* Misc overrides that light styles define */
+[style*="background:#fff"], [style*="background: #fff"] { background: var(--neu-s2) !important; }
+[style*="color:#1e293b"], [style*="color: #1e293b"]     { color: var(--neu-text) !important; }
+[style*="color:#94a3b8"], [style*="color: #94a3b8"]     { color: var(--neu-muted) !important; }
+
+/* Super admin stat number animation on load */
+@keyframes countUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.stat-card .value { animation: countUp .5s cubic-bezier(.22,1,.36,1) both; }
