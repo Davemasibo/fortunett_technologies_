@@ -125,6 +125,18 @@ try {
     $isSandbox = $mpesa->getEnvironment() !== 'production';
     $response = $mpesa->stkPush($phone, $amount, $account_ref);
 
+    // Log every STK push attempt (success or failure) for debugging
+    $logDir = __DIR__ . '/../../logs';
+    if (!is_dir($logDir)) @mkdir($logDir, 0755, true);
+    @file_put_contents(
+        $logDir . '/stk_push_all.log',
+        date('Y-m-d H:i:s') . " tenant={$tenant_id} env=" . $mpesa->getEnvironment()
+            . " sc=" . $mpesa->getShortcode() . " phone={$phone} amount={$amount}"
+            . " platform=" . ($usingPlatform ? 'yes' : 'no')
+            . " response=" . json_encode($response) . "\n",
+        FILE_APPEND | LOCK_EX
+    );
+
     // Guard: null response means curl/network failure or empty body
     if ($response === null) {
         echo json_encode([

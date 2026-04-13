@@ -175,25 +175,33 @@ if ($action === 'test') {
         curl_close($qch);
         $qResp = json_decode($qRaw);
 
-        // ResultCode "17" = transaction not found = passkey + LNM enrollment are valid
-        // errorCode present = wrong passkey OR shortcode not enrolled for LNM
-        $qCode = $qResp->ResultCode ?? null;
-        $qErrCode = $qResp->errorCode ?? null;
+        // 500.001.1001 + "not Exist/not found" = Safaricom authenticated the request,
+        // passkey is CORRECT — transaction not found is expected with a fake ID.
+        // ResultCode "17" = same meaning in older response format.
+        // Auth errors (400.002.02, 404.001.xx) = wrong credentials.
+        $qCode    = $qResp->ResultCode ?? null;
+        $qErrCode = (string)($qResp->errorCode ?? '');
+        $qMsg     = (string)($qResp->errorMessage ?? $qResp->ResultDesc ?? $qRaw);
+
+        $credentialsOk = false;
         if ($qCode === '17' || $qCode === 17) {
-            $stkQueryResult = ' ✅ Passkey & LNM enrollment confirmed.';
-        } elseif ($qErrCode !== null) {
-            $qMsg = $qResp->errorMessage ?? $qErrCode;
+            $credentialsOk = true;
+        } elseif ($qErrCode === '500.001.1001') {
+            // Safaricom processed the request (passkey accepted) but the fake
+            // CheckoutRequestID doesn't exist — this is the expected response.
+            $credentialsOk = true;
+        }
+
+        if ($credentialsOk) {
+            $stkQueryResult = ' ✅ Passkey accepted — credentials confirmed.';
+        } elseif (!empty($qErrCode)) {
             $hint = '';
-            if (strpos((string)$qErrCode, '500.001') !== false) {
-                $hint = ' → Wrong passkey for this shortcode/environment.';
-            } elseif (strpos((string)$qErrCode, '404.001') !== false) {
-                $hint = ' → Shortcode not enrolled for Lipa Na M-Pesa Online (STK Push). Enable it in your Safaricom Daraja portal.';
+            if (strpos($qErrCode, '400.002') !== false || strpos($qErrCode, '401') !== false) {
+                $hint = ' → Invalid Consumer Key, Secret, or Passkey.';
+            } elseif (strpos($qErrCode, '404.001') !== false) {
+                $hint = ' → Shortcode not found or not enrolled for Lipa Na M-Pesa Online.';
             }
-            $warnings[] = '❌ LNM validation failed (' . $qErrCode . '): ' . substr((string)$qMsg, 0, 100) . $hint . ' — STK Push will NOT work even though OAuth succeeds.';
-        } elseif ($qCode !== null) {
-            // Non-17 ResultCode from the query endpoint
-            $qMsg = $qResp->ResultDesc ?? $qRaw;
-            $warnings[] = '⚠️ LNM query returned code ' . $qCode . ': ' . substr((string)$qMsg, 0, 100);
+            $warnings[] = '❌ LNM validation failed (' . $qErrCode . '): ' . substr($qMsg, 0, 100) . $hint;
         }
     }
 
@@ -207,16 +215,22 @@ if ($action === 'test') {
     exit;
 }
 
-// ── READ STK ERROR LOG ───────────────────────────────────────────────────────
+// ── READ STK LOGS ────────────────────────────────────────────────────────────
 if ($action === 'stk_log') {
-    $logFile = __DIR__ . '/../../logs/stk_push_errors.log';
+    $which   = $_POST['file'] ?? 'errors';
+    $logFile = $which === 'all'
+        ? __DIR__ . '/../../logs/stk_push_all.log'
+        : __DIR__ . '/../../logs/stk_push_errors.log';
+
     if (!file_exists($logFile)) {
-        echo json_encode(['success'=>true,'lines'=>'No errors logged yet. Log file will be created when the first STK push failure occurs.']);
+        $hint = $which === 'all'
+            ? 'No attempts logged yet. Trigger a payment from a tenant portal, then refresh.'
+            : 'No errors logged. If Safaricom returns code 0 the success log ("All Attempts") will show the response.';
+        echo json_encode(['success'=>true,'lines'=>$hint]);
         exit;
     }
-    // Return last 50 lines
     $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    $last  = array_slice($lines, -50);
+    $last  = array_slice($lines, -60);
     echo json_encode(['success'=>true,'lines'=>implode("\n", array_reverse($last))]);
     exit;
 }

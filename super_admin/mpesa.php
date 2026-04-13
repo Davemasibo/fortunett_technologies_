@@ -144,6 +144,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 
         <div id="toastMsg" class="toast-msg"></div>
 
+        <?php
+        // Detect known-bad passkey: sandbox test passkey used in production
+        $sandboxPasskey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919';
+        $isLiveEnv = in_array($cfg['environment'] ?? 'sandbox', ['production', 'live'], true);
+        $hasSandboxPasskeyInProd = $isLiveEnv && !empty($cfg['passkey']) && $cfg['passkey'] === $sandboxPasskey;
+        $hasMissingPasskey = $isLiveEnv && empty($cfg['passkey']);
+        ?>
+        <?php if ($hasSandboxPasskeyInProd): ?>
+        <div style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:12px;align-items:flex-start;">
+            <i class="fas fa-exclamation-triangle" style="color:#fca5a5;margin-top:2px;flex-shrink:0;"></i>
+            <div style="font-size:13px;color:#fca5a5;line-height:1.6;">
+                <strong>Wrong passkey detected!</strong> The saved passkey is the Safaricom sandbox test passkey — it does not work with production shortcodes. STK Push requests will fail with error 500.001.1001.<br>
+                <strong>Fix:</strong> Log into <a href="https://developer.safaricom.co.ke/MyApps" target="_blank" style="color:#93c5fd;">developer.safaricom.co.ke</a> → select your app → go to <strong>Lipa Na M-Pesa Online</strong> → copy the <strong>Online Passkey</strong> and paste it below.
+            </div>
+        </div>
+        <?php elseif ($hasMissingPasskey): ?>
+        <div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:12px;align-items:flex-start;">
+            <i class="fas fa-exclamation-triangle" style="color:#fcd34d;margin-top:2px;flex-shrink:0;"></i>
+            <div style="font-size:13px;color:#fcd34d;line-height:1.6;">
+                <strong>Passkey not saved.</strong> Environment is set to Production but no passkey is stored. STK Push will fail.<br>
+                <strong>Fix:</strong> Get the Online Passkey from <a href="https://developer.safaricom.co.ke/MyApps" target="_blank" style="color:#93c5fd;">Safaricom Daraja</a> → Your App → Lipa Na M-Pesa Online.
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- Info box -->
         <div class="info-box" style="margin-bottom:24px;">
             <strong>How this works:</strong> When a tenant has <em>no M-Pesa paybill configured</em>, STK Push payments are automatically routed through FortuNett's platform Safaricom account (shortcode below). The money lands in FortuNett's account and is settled to the tenant in batches. Payments collected this way are tagged <code>collection_type = 'platform'</code> in the payments table — visible in the Settlements panel below.
@@ -179,7 +204,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                                 autocomplete="new-password">
                         </div>
                         <div class="form-field full">
-                            <label>Passkey (LipaNaMpesa Online Passkey)
+                            <label>Passkey (Lipa Na M-Pesa Online Passkey)
                                 <?php if (!empty($cfg['passkey'])): ?>
                                 <span style="font-size:10px;background:rgba(16,185,129,.18);color:#6ee7b7;padding:1px 7px;border-radius:10px;font-weight:600;margin-left:6px;">✓ Saved</span>
                                 <?php else: ?>
@@ -189,6 +214,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                             <input type="password" name="passkey" id="fPasskey"
                                 placeholder="<?php echo !empty($cfg['passkey']) ? '••••••••' . substr($cfg['passkey'], -4) . ' (leave blank to keep)' : 'Enter Lipa Na Mpesa Passkey'; ?>"
                                 autocomplete="new-password">
+                            <span class="hint" style="color:#fcd34d;">
+                                ⚠ The passkey is <strong>shortcode-specific and environment-specific</strong>.
+                                Find yours in the <a href="https://developer.safaricom.co.ke/MyApps" target="_blank" style="color:#93c5fd;">Safaricom Daraja portal</a>
+                                → Your App → <strong>Lipa Na M-Pesa Online</strong> → copy the <strong>Online Passkey</strong>.
+                                The sandbox passkey (<code>bfb279f9…</code>) will NOT work in production.
+                            </span>
                         </div>
                     </div>
 
@@ -271,24 +302,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
         <div class="card">
             <div class="card-head">
                 <h3><i class="fas fa-stethoscope" style="color:#a78bfa;"></i> STK Push Diagnostics</h3>
-                <button class="btn-test" onclick="loadStkLog()"><i class="fas fa-sync" id="stkLogRefreshIcon" style="margin-right:6px;"></i>Refresh Log</button>
+                <button class="btn-test" onclick="loadStkLog()"><i class="fas fa-sync" id="stkLogRefreshIcon" style="margin-right:6px;"></i>Refresh</button>
             </div>
             <div class="card-body">
-                <p style="font-size:12px;color:var(--neu-muted);margin-bottom:14px;">
-                    Recent STK Push failures from tenant portals using platform credentials are logged below.
-                    If a push is failing, the Safaricom error code and description will appear here immediately after an attempt.
+                <p style="font-size:12px;color:var(--neu-muted);margin-bottom:10px;">
+                    Every STK Push attempt (success or failure) is logged below with the full Safaricom response.
+                    Trigger a payment from any tenant portal, then refresh this panel to see exactly what Safaricom returned.
                 </p>
-                <div id="stkLogContent" style="font-size:12px;font-family:monospace;background:#111;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:14px;max-height:200px;overflow-y:auto;color:#6ee7b7;white-space:pre-wrap;word-break:break-all;">
-                    Loading…
+                <div style="display:flex;gap:8px;margin-bottom:10px;">
+                    <button class="btn-test" onclick="loadStkAllLog()" style="font-size:12px;padding:6px 14px;">All Attempts</button>
+                    <button class="btn-test" onclick="loadStkLog()" style="font-size:12px;padding:6px 14px;background:rgba(239,68,68,.2);">Errors Only</button>
                 </div>
-                <?php
-                $stkLogPath = __DIR__ . '/../logs/stk_push_errors.log';
-                $stkLogExists = file_exists($stkLogPath);
-                ?>
-                <p style="font-size:11px;color:var(--neu-muted);margin-top:8px;">
-                    Log file: <code><?php echo htmlspecialchars($stkLogPath); ?></code>
-                    <?php echo $stkLogExists ? '' : ' <span style="color:#fca5a5;">(not created yet — no errors logged)</span>'; ?>
-                </p>
+                <div id="stkLogContent" style="font-size:11px;font-family:monospace;background:#0d0d0d;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:14px;max-height:260px;overflow-y:auto;color:#6ee7b7;white-space:pre-wrap;word-break:break-all;">
+                    Click "All Attempts" above, then trigger a test payment from a tenant portal.
+                </div>
             </div>
         </div>
 
@@ -385,23 +412,20 @@ function testCredentials() {
         });
 }
 
-function loadStkLog() {
-    const icon = document.getElementById('stkLogRefreshIcon');
-    icon.classList.add('fa-spin');
+function loadStkLog(file) {
     const el = document.getElementById('stkLogContent');
-
+    el.textContent = 'Loading…';
     const fd = new FormData();
     fd.append('action', 'stk_log');
+    fd.append('file', file || 'errors');
     fetch('../api/super_admin/mpesa_config.php', { method: 'POST', body: fd })
         .then(r => r.json())
-        .then(d => {
-            icon.classList.remove('fa-spin');
-            el.textContent = d.lines || 'No log entries.';
-        })
-        .catch(() => {
-            icon.classList.remove('fa-spin');
-            el.textContent = 'Could not load log.';
-        });
+        .then(d => { el.textContent = d.lines || 'No entries yet.'; })
+        .catch(() => { el.textContent = 'Could not load log.'; });
+}
+
+function loadStkAllLog() {
+    loadStkLog('all');
 }
 
 function loadSettlements() {
