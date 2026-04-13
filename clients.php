@@ -218,7 +218,7 @@ include 'includes/sidebar.php';
     .add-customer-btn { background:linear-gradient(135deg,var(--primary-dark) 0%,var(--primary-color) 100%); border:none; color:white; }
     .add-customer-btn:hover { opacity:.9; transform:translateY(-1px); color:white; }
 
-    .customer-table { width:100%; border-collapse:collapse; }
+    .customer-table { width:100%; min-width:820px; border-collapse:collapse; }
     .customer-table thead { background:rgba(255,255,255,.04); border-bottom:1px solid var(--neu-border); }
     .customer-table th { padding:12px 16px; text-align:left; font-size:12px; font-weight:600; color:rgba(255,255,255,.4); text-transform:uppercase; letter-spacing:.05em; }
     .customer-table td { padding:16px; border-bottom:1px solid rgba(255,255,255,.04); font-size:14px; color:#d4d4d2; }
@@ -286,7 +286,7 @@ include 'includes/sidebar.php';
     .report-stat-value { font-size:20px; font-weight:700; color:#e2e2e0; }
     .report-stat-sub { font-size:11px; color:rgba(255,255,255,.4); margin-top:2px; }
 
-    .modal-data-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .modal-data-table { width:100%; min-width:520px; border-collapse:collapse; font-size:12px; }
     .modal-data-table th { padding:8px 10px; text-align:left; font-size:10px; font-weight:600; color:rgba(255,255,255,.35); text-transform:uppercase; letter-spacing:.4px; border-bottom:1px solid var(--neu-border); }
     .modal-data-table td { padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.04); color:rgba(255,255,255,.65); }
     .modal-data-table tr:last-child td { border-bottom:none; }
@@ -299,8 +299,8 @@ include 'includes/sidebar.php';
     .pill.sent      { background:rgba(96,165,250,.15);  color:#93c5fd; }
     .pill.delivered { background:rgba(52,211,153,.15);  color:#6ee7b7; }
 
-    .expiry-quick-btn { padding:6px 12px; font-size:12px; font-weight:500; color:var(--primary-color,#3B6EA5); background:rgba(59,110,165,.12); border:1px solid var(--primary-color,#3B6EA5); border-radius:6px; cursor:pointer; transition:all .15s; }
-    .expiry-quick-btn:hover { background:var(--primary-color,#3B6EA5); color:white; }
+    .expiry-quick-btn { padding:6px 12px; font-size:12px; font-weight:600; color:#93c5fd; background:rgba(59,110,165,.18); border:1px solid rgba(147,197,253,.3); border-radius:6px; cursor:pointer; transition:all .15s; }
+    .expiry-quick-btn:hover { background:var(--primary-color,#3B6EA5); color:#fff; border-color:var(--primary-color,#3B6EA5); }
 
     @keyframes pulseDot { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.5; transform:scale(1.3); } }
 
@@ -456,6 +456,7 @@ include 'includes/sidebar.php';
                 </div>
             </div>
 
+            <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
             <table class="customer-table">
                 <thead>
                     <tr>
@@ -554,6 +555,7 @@ include 'includes/sidebar.php';
                     <?php endforeach; ?>
                 </tbody>
             </table>
+            </div><!-- /overflow-x:auto -->
         </div>
     </div>
 </div>
@@ -744,10 +746,12 @@ include 'includes/sidebar.php';
             </div>
             <div id="paymentsLoading" style="text-align:center;padding:30px;color:rgba(255,255,255,.35);font-size:13px;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
             <div id="paymentsTableWrap" style="display:none;background:#222221;border:1px solid rgba(255,255,255,.06);border-radius:8px;overflow:hidden;">
+                <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
                 <table class="modal-data-table">
                     <thead><tr><th>Date</th><th>Method</th><th>Amount</th><th>Phone</th><th>Ref / Code</th><th>Confirmed</th></tr></thead>
                     <tbody id="paymentsTableBody"></tbody>
                 </table>
+                </div>
                 <div id="paymentsEmpty" style="display:none;padding:24px;text-align:center;color:rgba(255,255,255,.3);font-size:13px;">No payments recorded yet.</div>
             </div>
         </div>
@@ -762,10 +766,12 @@ include 'includes/sidebar.php';
             </div>
             <div id="smsLoading" style="text-align:center;padding:30px;color:rgba(255,255,255,.35);font-size:13px;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
             <div id="smsTableWrap" style="display:none;background:#222221;border:1px solid rgba(255,255,255,.06);border-radius:8px;overflow:hidden;">
+                <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
                 <table class="modal-data-table">
                     <thead><tr><th>Date</th><th>Phone</th><th>Message</th><th>Status</th></tr></thead>
                     <tbody id="smsTableBody"></tbody>
                 </table>
+                </div>
                 <div id="smsEmpty" style="display:none;padding:24px;text-align:center;color:rgba(255,255,255,.3);font-size:13px;">No SMS messages sent yet.</div>
             </div>
         </div>
@@ -864,7 +870,7 @@ include 'includes/sidebar.php';
     <div style="padding:20px;">
         <!-- Quick add buttons -->
         <div style="margin-bottom:18px;">
-            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Quick Extend</div>
+            <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Quick Extend</div>
             <div style="display:flex;gap:7px;flex-wrap:wrap;">
                 <button onclick="applyQuickExpiry(60)" class="expiry-quick-btn">+1 Hour</button>
                 <button onclick="applyQuickExpiry(720)" class="expiry-quick-btn">+12 Hours</button>
@@ -876,15 +882,15 @@ include 'includes/sidebar.php';
         </div>
         <!-- Set specific date -->
         <div style="margin-bottom:16px;">
-            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Set Specific Date</div>
+            <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Set Specific Date</div>
             <div style="display:flex;gap:8px;">
-                <input type="datetime-local" id="expiryDateInput" style="flex:1;padding:8px 10px;background:#1c1c1b;border:1px solid rgba(255,255,255,.08);border-radius:7px;font-size:13px;color:#e2e2e0;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;box-sizing:border-box;">
+                <input type="datetime-local" id="expiryDateInput" style="flex:1;padding:8px 10px;background:#1c1c1b;border:1px solid rgba(255,255,255,.15);border-radius:7px;font-size:13px;color:#e2e2e0;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;box-sizing:border-box;color-scheme:dark;">
                 <button onclick="applySetDate()" style="padding:8px 14px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Set Date</button>
             </div>
         </div>
         <!-- Change package -->
         <div style="margin-bottom:16px;">
-            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Change Package</div>
+            <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Change Package</div>
             <div style="display:flex;gap:8px;">
                 <select id="expiryPackageSelect" style="flex:1;padding:8px 10px;background:#1c1c1b;border:1px solid rgba(255,255,255,.08);border-radius:7px;font-size:13px;color:#e2e2e0;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;">
                     <option value="" style="background:#1c1c1b;">— Keep current package —</option>
@@ -897,15 +903,15 @@ include 'includes/sidebar.php';
         </div>
         <!-- Grace period -->
         <div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:10px;padding:12px;">
-            <div style="font-size:10px;font-weight:600;color:rgba(251,191,36,.9);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Grace Period (added on top)</div>
+            <div style="font-size:10px;font-weight:700;color:#fcd34d;text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Grace Period (added on top)</div>
             <div style="display:flex;align-items:center;gap:10px;">
                 <input type="number" id="graceHoursInput" min="0" max="720" value="0" style="width:80px;padding:7px;background:#1c1c1b;border:1px solid rgba(251,191,36,.25);border-radius:6px;font-size:13px;text-align:center;color:#fcd34d;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;">
-                <span style="font-size:13px;color:rgba(251,191,36,.85);">hours of grace period</span>
+                <span style="font-size:13px;font-weight:500;color:#fcd34d;">hours of grace period</span>
             </div>
         </div>
         <!-- Current expiry info -->
-        <div style="margin-top:14px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:7px;font-size:12px;color:rgba(255,255,255,.6);">
-            Current expiry: <strong id="currentExpiryDisplay" style="color:#e2e2e0;"></strong>
+        <div style="margin-top:14px;padding:10px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;font-size:12px;color:rgba(255,255,255,.75);">
+            Current expiry: <strong id="currentExpiryDisplay" style="color:#e2e2e0;font-size:13px;"></strong>
         </div>
     </div>
 </div>

@@ -559,8 +559,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                     <div class="icon-wrap" style="background:#f0fdf4;color:#16a34a;"><i class="fas fa-list-check"></i></div>
                     <h3>All Platform Settings (Reference)</h3>
                 </div>
-                <div class="card-body" style="padding:0;">
-                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <div class="card-body" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+                    <table style="width:100%;min-width:500px;border-collapse:collapse;font-size:13px;">
                         <thead>
                             <tr>
                                 <th style="padding:10px 16px;background:#f8fafc;font-size:11px;font-weight:700;text-transform:uppercase;color:#94a3b8;text-align:left;border-bottom:1px solid #f1f5f9;">Key</th>

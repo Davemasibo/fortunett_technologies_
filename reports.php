@@ -405,7 +405,8 @@ function buildReportHTML(a, payments, clientName) {
             <div style="padding:12px 16px;border-bottom:1px solid #E5E7EB;font-size:12px;font-weight:700;color:#374151;">
                 Recent Payments (Last 20)
             </div>
-            <table style="width:100%;border-collapse:collapse;">
+            <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+            <table style="width:100%;min-width:500px;border-collapse:collapse;">
                 <thead>
                     <tr style="background:#F9FAFB;">
                         <th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:600;color:#9CA3AF;text-transform:uppercase;border-bottom:1px solid #E5E7EB;">Date</th>
@@ -417,6 +418,7 @@ function buildReportHTML(a, payments, clientName) {
                 </thead>
                 <tbody>${payRows}</tbody>
             </table>
+            </div>
         </div>
 
         <!-- Footer -->
