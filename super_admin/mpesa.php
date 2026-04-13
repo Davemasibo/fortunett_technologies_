@@ -319,6 +319,54 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
             </div>
         </div>
 
+        <!-- Callback Diagnostics Card -->
+        <div class="card">
+            <div class="card-head">
+                <h3><i class="fas fa-satellite-dish" style="color:#34d399;"></i> Callback Diagnostics</h3>
+                <button class="btn-test" onclick="loadCallbackLog()"><i class="fas fa-sync" id="cbLogRefreshIcon" style="margin-right:6px;"></i>Refresh</button>
+            </div>
+            <div class="card-body">
+                <?php
+                // Show the callback URL that will actually be used
+                $savedCb = $cfg['callback_url'] ?? '';
+                $constCb = 'https://fortunetttech.site/api/mpesa/callback.php';
+                $effectiveCb = !empty($savedCb) && !preg_match('/https?:\/\/(localhost|127\.)/i', $savedCb)
+                    ? $savedCb
+                    : $constCb;
+                $isLocalCb = preg_match('/https?:\/\/(localhost|127\.)/i', $savedCb);
+                ?>
+                <div style="margin-bottom:16px;">
+                    <div style="font-size:12px;color:var(--neu-muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Effective callback URL sent to Safaricom</div>
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <code style="font-size:12px;background:#0d0d0d;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:6px 12px;color:#6ee7b7;word-break:break-all;flex:1;">
+                            <?php echo htmlspecialchars($effectiveCb); ?>
+                        </code>
+                        <button class="btn-test" onclick="checkCallbackUrl('<?php echo htmlspecialchars($effectiveCb); ?>')" style="font-size:12px;padding:6px 14px;white-space:nowrap;">
+                            <i class="fas fa-plug" style="margin-right:5px;"></i>Test Reachability
+                        </button>
+                    </div>
+                    <?php if ($isLocalCb && !empty($savedCb)): ?>
+                    <div style="margin-top:6px;font-size:12px;color:#fca5a5;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i>Saved URL is localhost — Safaricom cannot reach it. Falling back to <code style="color:#fcd34d;"><?php echo htmlspecialchars($constCb); ?></code></div>
+                    <?php elseif (empty($savedCb)): ?>
+                    <div style="margin-top:6px;font-size:12px;color:#94a3b8;"><i class="fas fa-info-circle" style="margin-right:4px;"></i>No callback URL saved in DB — using the fallback constant above. For tenant-specific STK pushes, the tenant's own subdomain URL is used instead.</div>
+                    <?php endif; ?>
+                    <div id="cbReachResult" style="margin-top:8px;font-size:13px;font-weight:600;display:none;"></div>
+                </div>
+
+                <div style="font-size:12px;color:var(--neu-muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">
+                    Recent callbacks from Safaricom
+                    <span id="cbLogTotal" style="font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px;"></span>
+                </div>
+                <div id="cbLogContent" style="font-size:11px;font-family:monospace;background:#0d0d0d;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:14px;max-height:280px;overflow-y:auto;color:#a5f3fc;white-space:pre-wrap;word-break:break-all;">
+                    Click Refresh to load the callback log.
+                </div>
+                <div style="margin-top:10px;font-size:12px;color:var(--neu-muted);line-height:1.6;">
+                    <strong style="color:#e2e2e0;">Not seeing any callbacks?</strong> Safaricom must be able to reach the URL above over HTTPS with a valid SSL certificate.
+                    Common causes: server firewall blocking port 443, expired SSL cert, or Safaricom's callback IP not whitelisted.
+                </div>
+            </div>
+        </div>
+
         <!-- Pending Settlements Card -->
         <div class="card">
             <div class="card-head">
@@ -467,6 +515,41 @@ function loadSettlements() {
         });
 }
 
+function loadCallbackLog() {
+    const el = document.getElementById('cbLogContent');
+    const icon = document.getElementById('cbLogRefreshIcon');
+    el.textContent = 'Loading…';
+    icon.classList.add('fa-spin');
+    const fd = new FormData();
+    fd.append('action', 'callback_log');
+    fetch('../api/super_admin/mpesa_config.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            icon.classList.remove('fa-spin');
+            el.textContent = d.lines || 'No callbacks received yet.';
+            const tot = document.getElementById('cbLogTotal');
+            if (d.total) tot.textContent = '(' + d.total + ' total entries)';
+        })
+        .catch(() => { icon.classList.remove('fa-spin'); el.textContent = 'Could not load callback log.'; });
+}
+
+function checkCallbackUrl(url) {
+    const el = document.getElementById('cbReachResult');
+    el.style.display = 'block';
+    el.style.color = '#fcd34d';
+    el.textContent = 'Testing reachability…';
+    const fd = new FormData();
+    fd.append('action', 'check_callback');
+    fd.append('url', url);
+    fetch('../api/super_admin/mpesa_config.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            el.style.color = d.success ? '#6ee7b7' : '#fca5a5';
+            el.textContent = d.message;
+        })
+        .catch(() => { el.style.color = '#fca5a5'; el.textContent = 'Network error during check.'; });
+}
+
 function escH(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -474,6 +557,7 @@ function escH(s) {
 // Load on page load
 loadSettlements();
 loadStkLog();
+loadCallbackLog();
 </script>
 </body>
 </html>

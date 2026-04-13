@@ -38,6 +38,7 @@ class MpesaAPI {
 
     // Callback URL — set in constructor based on tenant credentials or auto-detected
     private $callback_url;
+    private $resolved_callback_url = '';
 
     private function loadTenantCredentials() {
         try {
@@ -74,16 +75,23 @@ class MpesaAPI {
     /** Build the callback URL, using tenant override → global config → auto-detect */
     private function resolveCallbackUrl(): string {
         if (!empty($this->callback_url) && !$this->isLocalUrl($this->callback_url)) {
+            $this->resolved_callback_url = $this->callback_url;
             return $this->callback_url;
         }
         if (defined('MPESA_CALLBACK_URL') && !empty(MPESA_CALLBACK_URL) && !$this->isLocalUrl(MPESA_CALLBACK_URL)) {
+            $this->resolved_callback_url = MPESA_CALLBACK_URL;
             return MPESA_CALLBACK_URL;
         }
         // Auto-detect from current server host
         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
         $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        return $scheme . '://' . $host . '/api/mpesa/callback.php';
+        $url = $scheme . '://' . $host . '/api/mpesa/callback.php';
+        $this->resolved_callback_url = $url;
+        return $url;
     }
+
+    /** Return the callback URL that was sent to Safaricom in the last stkPush call */
+    public function getLastCallbackUrl(): string { return $this->resolved_callback_url; }
 
     /** Returns true if the URL points to localhost/127.x (Safaricom cannot reach it) */
     private function isLocalUrl(string $url): bool {

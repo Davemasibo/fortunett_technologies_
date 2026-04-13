@@ -1057,5 +1057,10 @@ function confirmDeleteRouter(routerId, routerName) {
     }
 }
 
+// Auto-open add router wizard when navigated from quick actions
+if (new URLSearchParams(window.location.search).get('open_modal') === '1') {
+    openWizard();
+}
+
 </script>
 <?php include 'includes/footer.php'; ?>

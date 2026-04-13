@@ -11,6 +11,22 @@
  */
 header('Content-Type: application/json');
 
+// ── Log EVERY request immediately (before DB, before anything else) ───────────
+// This must be the very first I/O so we capture even requests that die later.
+$logDir = __DIR__ . '/../../logs';
+if (!is_dir($logDir)) { @mkdir($logDir, 0755, true); }
+$content = file_get_contents('php://input');
+@file_put_contents(
+    $logDir . '/mpesa_callbacks.log',
+    date('Y-m-d H:i:s')
+        . ' METHOD=' . ($_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN')
+        . ' HOST='   . ($_SERVER['HTTP_HOST'] ?? '')
+        . ' IP='     . ($_SERVER['REMOTE_ADDR'] ?? '')
+        . ' -- '     . ($content ?: '(empty body)')
+        . "\n",
+    FILE_APPEND | LOCK_EX
+);
+
 // Direct browser/health-check visits (no POST body from Safaricom)
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['result' => 'ok', 'message' => 'M-Pesa STK callback endpoint is live. Awaiting Safaricom POST.']);
@@ -18,15 +34,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 require_once __DIR__ . '/../../includes/db_master.php';
-
-// Ensure the logs directory exists
-$logDir = __DIR__ . '/../../logs';
-if (!is_dir($logDir)) {
-    mkdir($logDir, 0755, true);
-}
-
-$content = file_get_contents('php://input');
-file_put_contents($logDir . '/mpesa_callbacks.log', date('Y-m-d H:i:s') . " HOST=" . ($_SERVER['HTTP_HOST'] ?? '') . " -- " . $content . "\n", FILE_APPEND | LOCK_EX);
 
 $data = json_decode($content);
 if (!$data || !isset($data->Body->stkCallback)) {

@@ -777,6 +777,11 @@ function closeViewModal() {
 document.getElementById('paymentModal').addEventListener('click', function(e) { if (e.target === this) closePaymentModal(); });
 document.getElementById('viewModal').addEventListener('click', function(e) { if (e.target === this) closeViewModal(); });
 
+// Auto-open payment modal when navigated from quick actions
+if (new URLSearchParams(window.location.search).get('open_modal') === '1') {
+    openPaymentModal();
+}
+
 function printCurrentReceipt() {
     if (currentViewTx) printReceipt(currentViewTx);
 }

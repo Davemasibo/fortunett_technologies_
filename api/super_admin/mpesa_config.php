@@ -235,4 +235,53 @@ if ($action === 'stk_log') {
     exit;
 }
 
+// ── READ CALLBACK LOGS ───────────────────────────────────────────────────────
+if ($action === 'callback_log') {
+    $logFile = __DIR__ . '/../../logs/mpesa_callbacks.log';
+    if (!file_exists($logFile)) {
+        echo json_encode(['success'=>true,'lines'=>"No callbacks received yet.\n\nThis means Safaricom has not called back your server.\nCheck the callback URL shown above — it must be a public HTTPS URL reachable from the internet."]);
+        exit;
+    }
+    $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    $last  = array_slice($lines, -80);
+    echo json_encode(['success'=>true,'lines'=>implode("\n", array_reverse($last)), 'total'=>count($lines)]);
+    exit;
+}
+
+// ── CHECK CALLBACK URL REACHABILITY ─────────────────────────────────────────
+if ($action === 'check_callback') {
+    $url = trim($_POST['url'] ?? '');
+    if (empty($url)) {
+        echo json_encode(['success'=>false,'message'=>'No URL provided']);
+        exit;
+    }
+    // Do a GET request — callback.php responds with a JSON health-check for non-POST
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL            => $url,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS      => 3,
+    ]);
+    $raw  = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err  = curl_error($ch);
+    curl_close($ch);
+
+    if ($err) {
+        echo json_encode(['success'=>false,'message'=>"Connection failed: $err — URL is not publicly reachable."]);
+        exit;
+    }
+    $json = json_decode($raw, true);
+    if ($code === 200 && isset($json['result'])) {
+        echo json_encode(['success'=>true,'message'=>"✅ URL reachable (HTTP $code). Response: " . ($json['message'] ?? $raw)]);
+    } else {
+        echo json_encode(['success'=>false,'message'=>"⚠️ URL returned HTTP $code. Response: " . substr($raw, 0, 200)]);
+    }
+    exit;
+}
+
 echo json_encode(['success'=>false,'message'=>'Unknown action']);

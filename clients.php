@@ -1989,4 +1989,9 @@ function updateModalOnlineStatus(onlineSet, details) {
 // Load online status on page load, then every 45 seconds
 loadOnlineStatus();
 setInterval(loadOnlineStatus, 45000);
+
+// Auto-open add customer modal when navigated from quick actions
+if (new URLSearchParams(window.location.search).get('open_modal') === '1') {
+    openAddModal();
+}
 </script>

@@ -95,6 +95,16 @@ try {
             );
             $platCreds = $plStmt ? $plStmt->fetch(PDO::FETCH_ASSOC) : null;
             if ($platCreds && !empty($platCreds['consumer_key'])) {
+                // If no callback_url is saved in the DB, derive one from the current
+                // request host (e.g. https://tenant1.fortunetttech.site/api/mpesa/callback.php).
+                // This is always reachable because the tenant is already using that domain.
+                // This is better than falling back to the MPESA_CALLBACK_URL constant which
+                // points to the bare root domain and may not be reachable by Safaricom.
+                if (empty($platCreds['callback_url'])) {
+                    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                    $host   = explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0];
+                    $platCreds['callback_url'] = $scheme . '://' . $host . '/api/mpesa/callback.php';
+                }
                 $mpesa->loadFromArray($platCreds);
                 $usingPlatform = true;
             }
@@ -133,6 +143,7 @@ try {
         date('Y-m-d H:i:s') . " tenant={$tenant_id} env=" . $mpesa->getEnvironment()
             . " sc=" . $mpesa->getShortcode() . " phone={$phone} amount={$amount}"
             . " platform=" . ($usingPlatform ? 'yes' : 'no')
+            . " callback=" . $mpesa->getLastCallbackUrl()
             . " response=" . json_encode($response) . "\n",
         FILE_APPEND | LOCK_EX
     );

@@ -684,6 +684,11 @@ function deletePackage(id) {
             .catch(() => showToast('Network error.', 'error'));
     }
 }
+
+// Auto-open create package modal when navigated from quick actions
+if (new URLSearchParams(window.location.search).get('open_modal') === '1') {
+    openAddPackageModal();
+}
 </script>
 
 <?php include 'includes/footer.php'; ?>

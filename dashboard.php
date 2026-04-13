@@ -409,19 +409,19 @@ include 'includes/sidebar.php';
         <div class="quick-actions">
             <h2 class="section-title">Quick Actions</h2>
             <div class="actions-grid">
-                <a href="clients.php?action=add" class="action-btn">
+                <a href="clients.php?open_modal=1" class="action-btn">
                     <i class="fas fa-user-plus"></i>
                     <span>Add Customer</span>
                 </a>
-                <a href="packages.php?action=add" class="action-btn">
+                <a href="packages.php?open_modal=1" class="action-btn">
                     <i class="fas fa-box"></i>
                     <span>Create Package</span>
                 </a>
-                <a href="payments.php" class="action-btn">
+                <a href="payments.php?open_modal=1" class="action-btn">
                     <i class="fas fa-money-bill-wave"></i>
                     <span>Process Payment</span>
                 </a>
-                <a href="mikrotik.php" class="action-btn">
+                <a href="mikrotik.php?open_modal=1" class="action-btn">
                     <i class="fas fa-cog"></i>
                     <span>Router Config</span>
                 </a>
