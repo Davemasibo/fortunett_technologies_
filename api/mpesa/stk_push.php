@@ -103,11 +103,21 @@ try {
         }
     }
 
+    // Guard: if tenant has no own credentials AND platform credentials weren't loaded,
+    // do NOT silently fall through to the sandbox config.php credentials — give a clear error.
+    if (!$hasTenantCreds && !$usingPlatform) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'M-Pesa is not yet configured for this account. Either add your own API credentials in Settings → Payments, or ask your FortuNett admin to configure the platform M-Pesa account.'
+        ]);
+        exit;
+    }
+
     // Guard: no usable credentials at all
     if (!$mpesa->hasValidCredentials()) {
         echo json_encode([
             'success' => false,
-            'message' => 'M-Pesa credentials not configured. Go to Settings → Payments and add your Consumer Key, Consumer Secret, Passkey, and Shortcode.'
+            'message' => 'M-Pesa credentials are incomplete (missing passkey or shortcode). Go to Settings → Payments and complete your gateway setup.'
         ]);
         exit;
     }
@@ -207,20 +217,32 @@ try {
         // Annotate common Safaricom error codes with actionable hints
         $hints = [
             '400.002.02'   => ' — Invalid Consumer Key or Consumer Secret.',
-            '404.001.04'   => ' — Shortcode not found or not registered.',
+            '404.001.04'   => ' — Shortcode not found or not registered for LNM Online.',
             '400.002.05'   => ' — Account Reference exceeds 12 characters.',
-            '500.001.1001' => ' — Invalid passkey for this shortcode/environment.',
+            '500.001.1001' => ' — Wrong passkey for this shortcode/environment. Make sure you are using the production passkey, not the sandbox one.',
+            '404.001.02'   => ' — Shortcode not enrolled for Lipa Na Mpesa Online (STK Push). Contact Safaricom to enable it.',
             '1032'         => ' — Request cancelled by user.',
             '1037'         => ' — STK Push request timed out (no response from phone).',
         ];
         $hint = $hints[(string)$responseCode] ?? '';
 
+        // Log the failure for super admin visibility
+        $logDir = __DIR__ . '/../../logs';
+        if (!is_dir($logDir)) @mkdir($logDir, 0755, true);
+        @file_put_contents(
+            $logDir . '/stk_push_errors.log',
+            date('Y-m-d H:i:s') . " tenant={$tenant_id} env=" . $mpesa->getEnvironment()
+                . " code={$responseCode} msg=" . $msg . " phone={$phone} ref={$account_ref}\n",
+            FILE_APPEND | LOCK_EX
+        );
+
         echo json_encode([
-            'success'       => false,
-            'message'       => $msg . $hint,
-            'response_code' => $responseCode,
-            'environment'   => $mpesa->getEnvironment(),
-            'account_ref'   => $account_ref,
+            'success'         => false,
+            'message'         => $msg . $hint,
+            'response_code'   => $responseCode,
+            'environment'     => $mpesa->getEnvironment(),
+            'account_ref'     => $account_ref,
+            'using_platform'  => $usingPlatform,
         ]);
     }
 

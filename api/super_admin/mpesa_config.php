@@ -88,11 +88,29 @@ if ($action === 'test') {
         exit;
     }
 
+    $warnings = [];
+
+    // Check for missing STK-critical fields
+    if (empty($row['passkey'])) {
+        $warnings[] = '⚠️ Passkey is NOT saved — STK Push will fail even if token succeeds.';
+    }
+    if (empty($row['shortcode'])) {
+        $warnings[] = '⚠️ Shortcode is not set.';
+    }
+
+    // Warn if callback URL looks like localhost (Safaricom cannot reach it)
+    $cbUrl = $row['callback_url'] ?? '';
+    if (!empty($cbUrl) && preg_match('/https?:\/\/(localhost|127\.\d+\.\d+)/i', $cbUrl)) {
+        $warnings[] = '⚠️ Callback URL points to localhost — Safaricom cannot reach it. Update to your public HTTPS URL.';
+    }
+
     $env = strtolower($row['environment'] ?? 'sandbox');
     $isProduction = in_array($env, ['production', 'live'], true);
     $baseUrl = $isProduction ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke';
-    $url     = $baseUrl . '/oauth/v1/generate?grant_type=client_credentials';
-    $auth    = base64_encode($row['consumer_key'] . ':' . $row['consumer_secret']);
+
+    // Step 1: OAuth token test
+    $url  = $baseUrl . '/oauth/v1/generate?grant_type=client_credentials';
+    $auth = base64_encode($row['consumer_key'] . ':' . $row['consumer_secret']);
 
     $ch = curl_init();
     curl_setopt_array($ch, [
@@ -114,14 +132,7 @@ if ($action === 'test') {
     }
 
     $resp = json_decode($raw);
-    if ($resp && !empty($resp->access_token)) {
-        $shortcode = !empty($row['shortcode']) ? ' | Shortcode: ' . $row['shortcode'] : '';
-        echo json_encode([
-            'success' => true,
-            'message' => '✅ Connected! Access token obtained from Safaricom ' . ($isProduction ? 'Production' : 'Sandbox') . '.' . $shortcode
-        ]);
-    } else {
-        // Surface the actual Safaricom error
+    if (!$resp || empty($resp->access_token)) {
         $sfError = $resp->errorMessage ?? $resp->error_description ?? $resp->error ?? null;
         $detail  = $sfError ? $sfError : ('HTTP ' . $httpCode . ' — ' . substr($raw, 0, 200));
         echo json_encode([
@@ -129,7 +140,74 @@ if ($action === 'test') {
             'message' => '❌ Safaricom rejected the credentials: ' . $detail .
                          ' | Environment: ' . ($isProduction ? 'Production' : 'Sandbox')
         ]);
+        exit;
     }
+
+    $token = $resp->access_token;
+    $shortcodeLabel = !empty($row['shortcode']) ? ' | Shortcode: ' . $row['shortcode'] : '';
+
+    // Step 2: STK push query with a dummy ID to validate passkey + shortcode
+    // A valid passkey/shortcode returns "The transaction BillRefNumber is invalid" (error),
+    // not a credentials error — which proves the LNM configuration is correct.
+    $stkQueryResult = '';
+    if (!empty($row['passkey']) && !empty($row['shortcode'])) {
+        $timestamp = date('YmdHis');
+        $password  = base64_encode($row['shortcode'] . $row['passkey'] . $timestamp);
+        $queryUrl  = $baseUrl . '/mpesa/stkpushquery/v1/query';
+        $qBody     = json_encode([
+            'BusinessShortCode' => $row['shortcode'],
+            'Password'          => $password,
+            'Timestamp'         => $timestamp,
+            'CheckoutRequestID' => 'ws_CO_test_' . time(),
+        ]);
+        $qch = curl_init();
+        curl_setopt_array($qch, [
+            CURLOPT_URL            => $queryUrl,
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Authorization: Bearer ' . $token],
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $qBody,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_CONNECTTIMEOUT => 15,
+            CURLOPT_TIMEOUT        => 30,
+        ]);
+        $qRaw = curl_exec($qch);
+        curl_close($qch);
+        $qResp = json_decode($qRaw);
+
+        // "17" = transaction not found (correct credentials, just no such transaction)
+        // "1032" = cancelled
+        // "500.001.1001" or similar = bad passkey/shortcode
+        $qCode = $qResp->ResultCode ?? $qResp->errorCode ?? null;
+        if ($qCode === '17' || $qCode === 17 || ($qResp->ResultDesc ?? '') !== '') {
+            $stkQueryResult = ' ✅ Passkey & shortcode validated (LNM query accepted).';
+        } elseif ($qCode !== null) {
+            $qMsg = $qResp->ResultDesc ?? $qResp->errorMessage ?? $qRaw;
+            $warnings[] = '⚠️ Passkey/shortcode query returned: ' . $qCode . ' — ' . substr((string)$qMsg, 0, 120) . '. STK Push may fail.';
+        }
+    }
+
+    $warnText = !empty($warnings) ? ' | WARNINGS: ' . implode(' ', $warnings) : '';
+    $envLabel = $isProduction ? 'Production' : 'Sandbox';
+
+    echo json_encode([
+        'success' => true,
+        'message' => '✅ OAuth token OK (' . $envLabel . ')' . $shortcodeLabel . $stkQueryResult . $warnText
+    ]);
+    exit;
+}
+
+// ── READ STK ERROR LOG ───────────────────────────────────────────────────────
+if ($action === 'stk_log') {
+    $logFile = __DIR__ . '/../../logs/stk_push_errors.log';
+    if (!file_exists($logFile)) {
+        echo json_encode(['success'=>true,'lines'=>'No errors logged yet. Log file will be created when the first STK push failure occurs.']);
+        exit;
+    }
+    // Return last 50 lines
+    $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    $last  = array_slice($lines, -50);
+    echo json_encode(['success'=>true,'lines'=>implode("\n", array_reverse($last))]);
     exit;
 }
 

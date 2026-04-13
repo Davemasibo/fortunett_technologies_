@@ -72,16 +72,21 @@ class MpesaAPI {
 
     /** Build the callback URL, using tenant override → global config → auto-detect */
     private function resolveCallbackUrl(): string {
-        if (!empty($this->callback_url)) {
+        if (!empty($this->callback_url) && !$this->isLocalUrl($this->callback_url)) {
             return $this->callback_url;
         }
-        if (defined('MPESA_CALLBACK_URL') && !empty(MPESA_CALLBACK_URL)) {
+        if (defined('MPESA_CALLBACK_URL') && !empty(MPESA_CALLBACK_URL) && !$this->isLocalUrl(MPESA_CALLBACK_URL)) {
             return MPESA_CALLBACK_URL;
         }
         // Auto-detect from current server host
         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
         $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
         return $scheme . '://' . $host . '/api/mpesa/callback.php';
+    }
+
+    /** Returns true if the URL points to localhost/127.x (Safaricom cannot reach it) */
+    private function isLocalUrl(string $url): bool {
+        return (bool) preg_match('/https?:\/\/(localhost|127\.\d+\.\d+\.\d+|::1)/i', $url);
     }
 
     /** Normalize environment string — 'live' and 'production' both mean production */
@@ -111,11 +116,15 @@ class MpesaAPI {
      * Call this AFTER construction to switch to a different credential set.
      */
     public function loadFromArray(array $creds): void {
-        $this->consumer_key    = $creds['consumer_key']    ?? $this->consumer_key;
-        $this->consumer_secret = $creds['consumer_secret'] ?? $this->consumer_secret;
-        $this->passkey         = $creds['passkey']         ?? $this->passkey;
-        $this->shortcode       = $creds['shortcode']       ?? $this->shortcode;
-        $this->env = $this->normalizeEnv($creds['environment'] ?? ($creds['env'] ?? $this->env));
+        // Only override if the incoming value is non-empty (don't blank out existing credentials)
+        if (!empty($creds['consumer_key']))    $this->consumer_key    = $creds['consumer_key'];
+        if (!empty($creds['consumer_secret'])) $this->consumer_secret = $creds['consumer_secret'];
+        if (!empty($creds['passkey']))         $this->passkey         = $creds['passkey'];
+        if (!empty($creds['shortcode']))       $this->shortcode       = $creds['shortcode'];
+        $envRaw = $creds['environment'] ?? ($creds['env'] ?? null);
+        if ($envRaw !== null) {
+            $this->env = $this->normalizeEnv($envRaw);
+        }
         if (!empty($creds['callback_url'])) {
             $this->callback_url = rtrim($creds['callback_url'], '/');
         }

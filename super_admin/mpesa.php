@@ -215,7 +215,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                             <input type="text" name="callback_url" id="fCallbackUrl"
                                 value="<?php echo htmlspecialchars($cfg['callback_url'] ?? $autoCallback); ?>"
                                 placeholder="<?php echo htmlspecialchars($autoCallback); ?>">
-                            <span class="hint">Auto-detected: <code><?php echo htmlspecialchars($autoCallback); ?></code></span>
+                            <?php
+                            $savedCb = $cfg['callback_url'] ?? '';
+                            $cbIsLocal = !empty($savedCb) && preg_match('/https?:\/\/(localhost|127\.)/i', $savedCb);
+                            ?>
+                            <?php if ($cbIsLocal): ?>
+                            <span class="hint" style="color:#fca5a5;font-weight:600;">
+                                ⚠️ Saved URL is localhost — Safaricom cannot reach it. Update to your public HTTPS domain (e.g. <code>https://fortunetttech.site/api/mpesa/callback.php</code>).
+                            </span>
+                            <?php else: ?>
+                            <span class="hint">Must be a public HTTPS URL. Auto-detected: <code><?php echo htmlspecialchars($autoCallback); ?></code></span>
+                            <?php endif; ?>
                         </div>
                         <div class="form-field">
                             <label>C2B Validation URL</label>
@@ -244,6 +254,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                         </span>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        <!-- STK Push Diagnostics Card -->
+        <div class="card">
+            <div class="card-head">
+                <h3><i class="fas fa-stethoscope" style="color:#a78bfa;"></i> STK Push Diagnostics</h3>
+                <button class="btn-test" onclick="loadStkLog()"><i class="fas fa-sync" id="stkLogRefreshIcon" style="margin-right:6px;"></i>Refresh Log</button>
+            </div>
+            <div class="card-body">
+                <p style="font-size:12px;color:var(--neu-muted);margin-bottom:14px;">
+                    Recent STK Push failures from tenant portals using platform credentials are logged below.
+                    If a push is failing, the Safaricom error code and description will appear here immediately after an attempt.
+                </p>
+                <div id="stkLogContent" style="font-size:12px;font-family:monospace;background:#111;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:14px;max-height:200px;overflow-y:auto;color:#6ee7b7;white-space:pre-wrap;word-break:break-all;">
+                    Loading…
+                </div>
+                <?php
+                $stkLogPath = __DIR__ . '/../logs/stk_push_errors.log';
+                $stkLogExists = file_exists($stkLogPath);
+                ?>
+                <p style="font-size:11px;color:var(--neu-muted);margin-top:8px;">
+                    Log file: <code><?php echo htmlspecialchars($stkLogPath); ?></code>
+                    <?php echo $stkLogExists ? '' : ' <span style="color:#fca5a5;">(not created yet — no errors logged)</span>'; ?>
+                </p>
             </div>
         </div>
 
@@ -321,12 +356,42 @@ function saveConfig(e) {
 function testCredentials() {
     const fd = new FormData();
     fd.append('action', 'test');
-    showToast('Testing connection to Safaricom API...', 'success');
+    const btn = event.currentTarget;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Testing…';
+    showToast('Testing connection to Safaricom API…', 'success');
 
     fetch('../api/super_admin/mpesa_config.php', { method: 'POST', body: fd })
         .then(r => r.json())
-        .then(d => showToast(d.message, d.success ? 'success' : 'error'))
-        .catch(() => showToast('Network error during test.', 'error'));
+        .then(d => {
+            showToast(d.message, d.success ? 'success' : 'error');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-vial" style="margin-right:6px;"></i>Test Connection';
+        })
+        .catch(() => {
+            showToast('Network error during test.', 'error');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-vial" style="margin-right:6px;"></i>Test Connection';
+        });
+}
+
+function loadStkLog() {
+    const icon = document.getElementById('stkLogRefreshIcon');
+    icon.classList.add('fa-spin');
+    const el = document.getElementById('stkLogContent');
+
+    const fd = new FormData();
+    fd.append('action', 'stk_log');
+    fetch('../api/super_admin/mpesa_config.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            icon.classList.remove('fa-spin');
+            el.textContent = d.lines || 'No log entries.';
+        })
+        .catch(() => {
+            icon.classList.remove('fa-spin');
+            el.textContent = 'Could not load log.';
+        });
 }
 
 function loadSettlements() {
@@ -372,8 +437,9 @@ function escH(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// Load settlements on page load
+// Load on page load
 loadSettlements();
+loadStkLog();
 </script>
 </body>
 </html>

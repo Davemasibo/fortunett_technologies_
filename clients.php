@@ -1348,8 +1348,12 @@ function promptPayment() {
     fetch('api/mpesa/stk_push.php', { method: 'POST', body: formData })
         .then(r => r.json())
         .then(data => {
-            if (data.Success || data.success) {
-                showToast('STK Push sent! Customer should see a prompt on their phone.', 'success');
+            if (data.success) {
+                if (data.sandbox) {
+                    showToast('SANDBOX: STK request accepted but no real phone prompt is sent. Switch to Production in Settings → Payments.', 'warning');
+                } else {
+                    showToast('STK Push sent! Customer should see a prompt on their phone.', 'success');
+                }
             } else {
                 showToast('STK Push failed: ' + (data.message || data.errorMessage || 'Unknown error'), 'error');
             }
