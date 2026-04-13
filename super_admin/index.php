@@ -72,7 +72,7 @@ $statusColor = ['active'=>'#22c55e','trial'=>'#f59e0b','suspended'=>'#ef4444','e
 <title>Super Admin Dashboard — FortuNett Technologies</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-<link href="css/dark.css" rel="stylesheet">
+<link href="css/dark.css?v=2" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
 <style>
 :root{--sa-dark:#0f3460;--sa-mid:#16213e;--sa-accent:#e94560;--sidebar-w:240px;
@@ -180,28 +180,28 @@ table a:hover{color:#93c5fd;}
         <!-- Stats -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="icon-wrap" style="background:#eff6ff;color:#2563eb;"><i class="fas fa-building"></i></div>
+                <div class="icon-wrap" style="background:rgba(99,102,241,.18);color:#a5b4fc;"><i class="fas fa-building"></i></div>
                 <div class="label">Total Tenants</div>
                 <div class="value"><?= number_format($totalTenants) ?></div>
                 <div class="sub"><?= $activeTenants ?> active / trial</div>
             </div>
             <div class="stat-card">
-                <div class="icon-wrap" style="background:#f0fdf4;color:#16a34a;"><i class="fas fa-dollar-sign"></i></div>
+                <div class="icon-wrap" style="background:rgba(16,185,129,.18);color:#6ee7b7;"><i class="fas fa-dollar-sign"></i></div>
                 <div class="label">MRR (this month)</div>
                 <div class="value">KSH <?= number_format($mrr, 0) ?></div>
                 <div class="sub">Billed across all tenants</div>
             </div>
             <div class="stat-card">
-                <div class="icon-wrap" style="background:#fefce8;color:#d97706;"><i class="fas fa-check-circle"></i></div>
+                <div class="icon-wrap" style="background:rgba(245,158,11,.18);color:#fcd34d;"><i class="fas fa-check-circle"></i></div>
                 <div class="label">Collected</div>
                 <div class="value">KSH <?= number_format($collected, 0) ?></div>
                 <div class="sub"><?= $mrr > 0 ? round($collected/$mrr*100) : 0 ?>% of MRR</div>
             </div>
             <div class="stat-card">
-                <div class="icon-wrap" style="background:#fef2f2;color:#dc2626;"><i class="fas fa-exclamation-triangle"></i></div>
+                <div class="icon-wrap" style="background:rgba(239,68,68,.18);color:#fca5a5;"><i class="fas fa-exclamation-triangle"></i></div>
                 <div class="label">Overdue Invoices</div>
                 <div class="value"><?= $overdueCount ?></div>
-                <div class="sub"><a href="billing.php?status=overdue" style="color:#dc2626;font-size:12px;">View all &rarr;</a></div>
+                <div class="sub"><a href="billing.php?status=overdue">View all &rarr;</a></div>
             </div>
         </div>
 

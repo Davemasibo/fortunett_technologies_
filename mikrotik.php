@@ -236,6 +236,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .command-text { color: #a5f3fc; font-family: monospace; font-size: 13px; word-break: break-all; line-height: 1.6; }
     .copy-btn { position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,.1); color: rgba(255,255,255,.7); border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
     .copy-btn:hover { background: rgba(255,255,255,.2); }
+
+    /* ── Responsive ──────────────────────────────── */
+    @media (max-width: 900px) {
+        .routers-container { padding: 16px 16px; }
+        .routers-grid { grid-template-columns: 1fr; }
+        .filters-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 640px) {
+        .routers-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+        .routers-title-section h1 { font-size: 20px; }
+        .header-actions { width: 100%; }
+        .header-actions .sync-btn,
+        .header-actions .add-router-btn { flex: 1; justify-content: center; padding: 10px 12px; font-size: 13px; }
+        .stats-row { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .stat-value { font-size: 22px; }
+        .filters-grid { grid-template-columns: 1fr; }
+        .filters-grid > div { display: flex; gap: 8px; }
+        .filters-grid > div .filter-btn { flex: 1; }
+        .router-card-header { flex-wrap: wrap; gap: 8px; }
+        .wizard-content { max-width: 100%; margin: 0 8px; }
+        .wizard-header { padding: 16px 18px; }
+        .wizard-steps { padding: 12px 16px; overflow-x: auto; gap: 4px; }
+        .step-line { min-width: 20px; margin: 0 6px; }
+        .step-text { font-size: 11px; }
+        .wizard-body { padding: 18px 16px; }
+        .wizard-footer { padding: 14px 16px; flex-wrap: wrap; gap: 8px; }
+        .wizard-btn { flex: 1; text-align: center; }
+        #manualCardBody { padding: 16px 14px; }
+    }
+    @media (max-width: 420px) {
+        .stats-row { grid-template-columns: 1fr 1fr; }
+        .routers-container { padding: 12px 10px; }
+    }
 </style>
 
 <div class="main-content-wrapper">

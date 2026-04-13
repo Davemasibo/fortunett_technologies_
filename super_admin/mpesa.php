@@ -43,57 +43,59 @@ $autoC2bConfirmation = $baseUrl . '/api/mpesa/c2b_confirmation.php';
 <title>Platform M-Pesa Config — FortuNett Super Admin</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-<link href="css/dark.css" rel="stylesheet">
+<link href="css/dark.css?v=2" rel="stylesheet">
 <style>
-:root{--sa-dark:#0f3460;--sa-mid:#16213e;--sa-accent:#e94560;--sidebar-w:240px;}
+:root{--sa-dark:#0f3460;--sa-mid:#16213e;--sa-accent:#e94560;--sidebar-w:240px;
+      --neu-bg:#141414;--neu-surf:#1c1c1b;--neu-s2:#222221;--neu-border:rgba(255,255,255,.06);--neu-text:#e2e2e0;--neu-muted:#9a9a95;}
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f1f5f9;display:flex;min-height:100vh;}
-.sidebar{width:var(--sidebar-w);background:linear-gradient(180deg,var(--sa-mid) 0%,var(--sa-dark) 100%);color:#fff;flex-shrink:0;display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--neu-bg);display:flex;min-height:100vh;color:var(--neu-text);}
+.sidebar{width:var(--sidebar-w);background:linear-gradient(180deg,#111827 0%,#16213e 55%,#0f3460 100%);color:#fff;flex-shrink:0;display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;box-shadow:4px 0 24px rgba(0,0,0,.5);border-right:1px solid rgba(255,255,255,.06);}
 .sidebar-brand{padding:24px 20px 20px;border-bottom:1px solid rgba(255,255,255,.08);}
-.sidebar-brand .badge-sa{background:var(--sa-accent);color:#fff;font-size:10px;padding:2px 8px;border-radius:20px;letter-spacing:.8px;}
-.sidebar-brand h2{font-size:16px;font-weight:700;margin-top:8px;}
-.sidebar-brand p{font-size:11px;opacity:.6;margin-top:2px;}
+.sidebar-brand .badge-sa{background:linear-gradient(135deg,#e94560,#c0305a);color:#fff;font-size:10px;padding:2px 8px;border-radius:20px;letter-spacing:.8px;box-shadow:0 2px 8px rgba(233,69,96,.35);}
+.sidebar-brand h2{font-size:16px;font-weight:700;margin-top:8px;color:#fff;}
+.sidebar-brand p{font-size:11px;color:rgba(255,255,255,.5);margin-top:2px;}
 .sidebar-menu{list-style:none;padding:12px 0;flex:1;overflow-y:auto;}
-.sidebar-menu a{display:flex;align-items:center;gap:12px;padding:12px 20px;color:rgba(255,255,255,.75);text-decoration:none;transition:all .2s;font-size:14px;border-left:3px solid transparent;}
-.sidebar-menu a:hover{background:rgba(255,255,255,.07);color:#fff;}
-.sidebar-menu a.active{background:rgba(255,255,255,.12);color:#fff;border-left-color:var(--sa-accent);}
+.sidebar-menu a{display:flex;align-items:center;gap:12px;padding:12px 20px;color:rgba(255,255,255,.72);text-decoration:none;transition:all .2s;font-size:14px;border-left:3px solid transparent;}
+.sidebar-menu a:hover{background:rgba(255,255,255,.08);color:#fff;border-left-color:rgba(255,255,255,.25);}
+.sidebar-menu a.active{background:rgba(255,255,255,.13);color:#fff;border-left-color:#e94560;}
 .sidebar-menu a i{width:18px;text-align:center;font-size:15px;}
-.sidebar-footer{padding:16px 20px;border-top:1px solid rgba(255,255,255,.08);font-size:12px;opacity:.5;}
-.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;}
-.topbar{background:#fff;padding:0 28px;height:60px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:99;}
-.topbar h1{font-size:18px;font-weight:700;color:#1e293b;}
-.content{padding:28px;max-width:900px;}
-.card{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:24px;}
-.card-head{padding:18px 22px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;}
-.card-head h3{font-size:15px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:8px;}
+.sidebar-footer{padding:16px 20px;border-top:1px solid rgba(255,255,255,.08);font-size:12px;color:rgba(255,255,255,.45);}
+.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;background:var(--neu-bg);}
+.topbar{background:var(--neu-surf);padding:0 28px;height:60px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--neu-border);position:sticky;top:0;z-index:99;box-shadow:0 2px 20px rgba(0,0,0,.4);}
+.topbar h1{font-size:18px;font-weight:700;color:#fff;}
+.topbar .user-info{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--neu-muted);}
+.content{padding:28px;max-width:900px;background:var(--neu-bg);}
+.card{background:var(--neu-s2);border-radius:14px;border:1px solid var(--neu-border);box-shadow:14px 14px 28px rgba(0,0,0,.5),-7px -7px 18px rgba(255,255,255,.035),0 0 0 1px var(--neu-border);margin-bottom:24px;}
+.card-head{padding:18px 22px;border-bottom:1px solid var(--neu-border);display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.02);border-radius:14px 14px 0 0;}
+.card-head h3{font-size:15px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px;}
 .card-body{padding:22px;}
-.section-label{font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin:0 0 14px 0;}
+.section-label{font-size:11px;font-weight:700;color:var(--neu-muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 14px 0;}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .form-field{display:flex;flex-direction:column;gap:6px;}
 .form-field.full{grid-column:1/-1;}
-.form-field label{font-size:13px;font-weight:600;color:#374151;}
-.form-field input,.form-field select,.form-field textarea{padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;color:#111827;background:#fff;transition:border-color .2s;}
-.form-field input:focus,.form-field select:focus,.form-field textarea:focus{outline:none;border-color:var(--sa-accent);}
-.form-field .hint{font-size:11px;color:#6B7280;margin-top:2px;}
-.url-auto{background:#F0FDF4;border-color:#86EFAC !important;color:#065F46 !important;font-size:12px;font-family:monospace;}
-.btn-save{padding:10px 24px;background:var(--sa-accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .2s;}
+.form-field label{font-size:13px;font-weight:600;color:var(--neu-muted);}
+.form-field input,.form-field select,.form-field textarea{padding:9px 12px;border:1px solid rgba(255,255,255,.08);border-radius:8px;font-size:14px;color:var(--neu-text);background:#1a1a19;box-shadow:inset 3px 3px 7px rgba(0,0,0,.3);}
+.form-field input:focus,.form-field select:focus,.form-field textarea:focus{outline:none;border-color:#e94560;}
+.form-field .hint{font-size:11px;color:var(--neu-muted);margin-top:2px;}
+.url-auto{background:rgba(16,185,129,.07);border-color:rgba(16,185,129,.3) !important;color:#6ee7b7 !important;font-size:12px;font-family:monospace;}
+.btn-save{padding:10px 24px;background:#e94560;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .2s;box-shadow:0 4px 14px rgba(233,69,96,.35);}
 .btn-save:hover{opacity:.9;}
-.btn-test{padding:10px 20px;background:#0f3460;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;}
+.btn-test{padding:10px 20px;background:linear-gradient(135deg,#16213e,#0f3460);color:#fff;border:1px solid rgba(255,255,255,.1);border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;}
 .status-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;}
-.status-pill.configured{background:#D1FAE5;color:#065F46;}
-.status-pill.empty{background:#FEE2E2;color:#991B1B;}
-.status-pill.sandbox{background:#FEF3C7;color:#92400E;}
+.status-pill.configured{background:rgba(16,185,129,.18);color:#6ee7b7;}
+.status-pill.empty{background:rgba(239,68,68,.18);color:#fca5a5;}
+.status-pill.sandbox{background:rgba(245,158,11,.18);color:#fcd34d;}
 .toast-msg{display:none;padding:12px 18px;border-radius:8px;font-size:14px;font-weight:600;margin-bottom:16px;}
-.toast-msg.success{background:#D1FAE5;color:#065F46;border:1px solid #6EE7B7;}
-.toast-msg.error{background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;}
+.toast-msg.success{background:rgba(16,185,129,.12);color:#6ee7b7;border:1px solid rgba(16,185,129,.25);}
+.toast-msg.error{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.25);}
 /* Settlement table */
 .settle-table{width:100%;border-collapse:collapse;}
-.settle-table th{padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;background:#F9FAFB;border-bottom:1px solid #E5E7EB;}
-.settle-table td{padding:12px 14px;border-bottom:1px solid #F3F4F6;font-size:14px;color:#111827;}
-.settle-table tbody tr:hover{background:#F9FAFB;}
-.amount-cell{font-weight:700;color:#065F46;}
-.info-box{background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:14px 16px;font-size:13px;color:#1e40af;line-height:1.6;}
-.info-box strong{color:#1d4ed8;}
+.settle-table th{padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--neu-muted);text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.04);border-bottom:1px solid var(--neu-border);}
+.settle-table td{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.04);font-size:14px;color:var(--neu-text);}
+.settle-table tbody tr:hover td{background:rgba(255,255,255,.035);}
+.amount-cell{font-weight:700;color:#6ee7b7;}
+.info-box{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);border-radius:8px;padding:14px 16px;font-size:13px;color:#93c5fd;line-height:1.6;}
+.info-box strong{color:#bfdbfe;}
 </style>
 </head>
 <body>
@@ -120,20 +122,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 <!-- Main -->
 <div class="main">
     <div class="topbar">
-        <h1><i class="fas fa-mobile-alt" style="color:var(--sa-accent);margin-right:8px;"></i>Platform M-Pesa Configuration</h1>
-        <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:#475569;">
+        <h1><i class="fas fa-mobile-alt" style="color:#e94560;margin-right:8px;"></i>Platform M-Pesa Configuration</h1>
+        <div class="user-info">
             <?php
             $isConfigured = !empty($cfg['consumer_key']) && !empty($cfg['shortcode']);
             $isLive = ($cfg['environment'] ?? 'sandbox') === 'production' || ($cfg['environment'] ?? 'sandbox') === 'live';
             ?>
             <?php if ($isConfigured): ?>
-                <span class="status-pill <?php echo $isLive ? 'configured' : 'sandbox'; ?>">
+                <span class="status-pill <?= $isLive ? 'configured' : 'sandbox' ?>">
                     <i class="fas fa-circle" style="font-size:8px;"></i>
-                    <?php echo $isLive ? 'Live (' . htmlspecialchars($cfg['shortcode']) . ')' : 'Sandbox'; ?>
+                    <?= $isLive ? 'Live (' . htmlspecialchars($cfg['shortcode']) . ')' : 'Sandbox' ?>
                 </span>
             <?php else: ?>
                 <span class="status-pill empty"><i class="fas fa-exclamation-circle" style="font-size:10px;"></i> Not Configured</span>
             <?php endif; ?>
+            <div style="width:34px;height:34px;background:rgba(255,255,255,.12);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;border:1.5px solid rgba(255,255,255,.15);"><?= strtoupper(substr($_SESSION['username'],0,1)) ?></div>
         </div>
     </div>
 

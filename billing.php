@@ -97,14 +97,34 @@ foreach ($bills as $b) {
     }
 }
 
-// M-Pesa config for STK push
-$mpesaConfig = [];
+// M-Pesa config — prefer tenant's own gateway, fall back to platform
+$mpesaConfig = ['shortcode' => '', 'env' => 'sandbox', 'using_own' => false];
 try {
-    require_once __DIR__ . '/config/mpesa.php';
-    $mpesaConfig = [
-        'shortcode' => defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : '',
-        'env'       => defined('MPESA_ENV') ? MPESA_ENV : 'sandbox',
-    ];
+    $gwStmt = $pdo->prepare(
+        "SELECT credentials FROM payment_gateways
+         WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1
+         ORDER BY is_default DESC LIMIT 1"
+    );
+    $gwStmt->execute([$tenant_id]);
+    $tenantGw = $gwStmt->fetch(PDO::FETCH_ASSOC);
+    if ($tenantGw) {
+        $gwCreds = json_decode($tenantGw['credentials'], true) ?? [];
+        if (!empty($gwCreds['shortcode']) && !empty($gwCreds['consumer_key'])) {
+            $mpesaConfig = [
+                'shortcode'  => $gwCreds['shortcode'],
+                'env'        => $gwCreds['environment'] ?? 'sandbox',
+                'using_own'  => true,
+            ];
+        }
+    }
+    if (!$mpesaConfig['using_own']) {
+        require_once __DIR__ . '/config/mpesa.php';
+        $mpesaConfig = [
+            'shortcode' => defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : '',
+            'env'       => defined('MPESA_ENV') ? MPESA_ENV : 'sandbox',
+            'using_own' => false,
+        ];
+    }
 } catch (Exception $e) {}
 
 include 'includes/header.php';
@@ -729,14 +749,21 @@ function resetToPhoneInput() {
 
 function switchToPaybill() {
     closeModal('mpesaModal');
+    const usingOwn  = <?php echo $mpesaConfig['using_own'] ? 'true' : 'false'; ?>;
+    const shortcode = <?php echo json_encode($mpesaConfig['shortcode']); ?>;
+    const scLabel   = shortcode || (usingOwn ? 'Your M-Pesa Shortcode' : 'FortuNett Paybill');
+    const note      = usingOwn
+        ? '<div style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);color:#6ee7b7;border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:12px;"><i class="fas fa-check-circle" style="margin-right:6px;"></i>Using <strong>your own M-Pesa shortcode</strong></div>'
+        : '<div style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);color:#93c5fd;border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:12px;"><i class="fas fa-info-circle" style="margin-right:6px;"></i>Using FortuNett platform paybill — configure your own in <a href="settings.php#payments" style="color:#93c5fd;font-weight:600;">Settings → Payments</a></div>';
     document.getElementById('mpesaInputSection').innerHTML = `
         <div class="mpesa-logo-badge"><span class="m">M</span><span class="dot">-</span><span class="p">PESA</span></div>
         <h4 style="font-weight:700;color:#111827;">Pay via M-PESA Paybill</h4>
+        ${note}
         <div style="background:#F0FDF4;border-radius:10px;padding:16px;margin-bottom:16px;text-align:left;font-size:13px;line-height:1.9;">
             <strong>Steps:</strong><br>
             1. Open <b>M-PESA</b> on your phone<br>
             2. Select <b>Lipa na M-PESA → Pay Bill</b><br>
-            3. Business No: <b><?php echo htmlspecialchars(defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : 'FortuNett Paybill'); ?></b><br>
+            3. Business No: <b>${scLabel}</b><br>
             4. Account No: <b><?php echo htmlspecialchars($orgName); ?></b><br>
             5. Amount: <b>KES ${fmt(currentInvoiceAmount)}</b><br>
             6. Enter your M-PESA PIN and confirm
