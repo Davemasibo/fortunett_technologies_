@@ -230,6 +230,17 @@ input:checked + .live-slider:before { transform: translateX(18px); }
 
 /* ── Preserve-notice ─────────────────────────────────────────────── */
 .preserve-note { font-size: 11px; color: rgba(255,255,255,.4); margin-top: 4px; }
+
+/* ── Credential saved/not-set badges ────────────────────────────── */
+.cred-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 10px; font-weight: 700; padding: 1px 7px;
+    border-radius: 20px; margin-left: 6px;
+    text-transform: none; letter-spacing: 0;
+}
+.cred-badge.saved  { background: rgba(16,185,129,.18); color: #6ee7b7; border: 1px solid rgba(16,185,129,.25); }
+.cred-badge.notset { background: rgba(239,68,68,.18);  color: #fca5a5; border: 1px solid rgba(239,68,68,.25); }
+.cred-badge.warn   { background: rgba(245,158,11,.18); color: #fcd34d; border: 1px solid rgba(245,158,11,.25); }
 </style>
 
 <div>
@@ -328,34 +339,41 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                 <div id="fields_mpesa_api" class="field-section">
                     <div class="field-row">
                         <div>
-                            <label class="form-label-sm">Consumer Key</label>
+                            <label class="form-label-sm">
+                                Consumer Key
+                                <span id="badge_consumer_key" class="cred-badge" style="display:none;"></span>
+                            </label>
                             <input type="text" name="mpesa_consumer_key" id="mpesa_consumer_key" class="form-input" placeholder="Daraja consumer key" autocomplete="off">
                         </div>
                         <div>
-                            <label class="form-label-sm">Consumer Secret</label>
+                            <label class="form-label-sm">
+                                Consumer Secret
+                                <span id="badge_consumer_secret" class="cred-badge" style="display:none;"></span>
+                            </label>
                             <div class="secret-wrap">
-                                <input type="password" name="mpesa_consumer_secret" id="mpesa_consumer_secret" class="form-input" placeholder="Leave blank to keep existing" autocomplete="new-password">
+                                <input type="password" name="mpesa_consumer_secret" id="mpesa_consumer_secret" class="form-input" autocomplete="new-password">
                                 <button type="button" class="secret-toggle" onclick="toggleSecret('mpesa_consumer_secret',this)" title="Show/hide"><i class="fas fa-eye"></i></button>
-                            </div>
-                            <div class="preserve-note" id="mpesa_secret_note" style="display:none;">
-                                <i class="fas fa-lock" style="font-size:10px;"></i> Leave blank to preserve existing secret
                             </div>
                         </div>
                     </div>
                     <div class="field-row">
                         <div>
-                            <label class="form-label-sm">Passkey (Lipa na M-Pesa)</label>
+                            <label class="form-label-sm">
+                                Passkey <span style="font-weight:400;text-transform:none;letter-spacing:0;">(Lipa na M-Pesa Online)</span>
+                                <span id="badge_passkey" class="cred-badge" style="display:none;"></span>
+                            </label>
                             <div class="secret-wrap">
-                                <input type="password" name="mpesa_passkey" id="mpesa_passkey" class="form-input" placeholder="Leave blank to keep existing" autocomplete="new-password">
+                                <input type="password" name="mpesa_passkey" id="mpesa_passkey" class="form-input" autocomplete="new-password">
                                 <button type="button" class="secret-toggle" onclick="toggleSecret('mpesa_passkey',this)" title="Show/hide"><i class="fas fa-eye"></i></button>
                             </div>
-                            <div class="preserve-note" id="mpesa_passkey_note" style="display:none;">
-                                <i class="fas fa-lock" style="font-size:10px;"></i> Leave blank to preserve existing passkey
+                            <div class="preserve-note" style="margin-top:4px;color:#fcd34d;">
+                                <i class="fas fa-info-circle" style="font-size:10px;"></i>
+                                Production passkey found in Daraja portal → Your App → <strong>Lipa Na M-Pesa Online</strong>
                             </div>
                         </div>
                         <div>
                             <label class="form-label-sm">Shortcode (Paybill / Till)</label>
-                            <input type="text" name="mpesa_shortcode" id="mpesa_shortcode" class="form-input" placeholder="e.g. 174379">
+                            <input type="text" name="mpesa_shortcode" id="mpesa_shortcode" class="form-input" placeholder="e.g. 4524255">
                         </div>
                     </div>
                     <div class="field-row">
@@ -376,10 +394,31 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                             </div>
                         </div>
                     </div>
-                    <div id="sandbox-warning" style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400E;display:none;margin-top:4px;">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <strong>Sandbox mode:</strong> STK Push will return "success" but NO prompt appears on any real phone.
-                        Use <strong>Production</strong> with your actual Safaricom Daraja credentials to push to real phones.
+
+                    <!-- Sandbox warning — redesigned dark neumorphic -->
+                    <div id="sandbox-warning" style="display:none;margin-top:8px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:14px 16px;">
+                        <div style="display:flex;align-items:flex-start;gap:10px;">
+                            <div style="width:34px;height:34px;background:rgba(245,158,11,.2);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <i class="fas fa-flask" style="color:#fcd34d;font-size:15px;"></i>
+                            </div>
+                            <div>
+                                <div style="font-size:13px;font-weight:700;color:#fcd34d;margin-bottom:4px;">Sandbox Mode — No real prompts will be sent</div>
+                                <div style="font-size:12px;color:rgba(252,211,77,.8);line-height:1.6;">
+                                    STK Push requests will succeed technically but <strong style="color:#fcd34d;">no phone prompt will appear on any real device.</strong>
+                                    This is for testing API connectivity only.<br>
+                                    Switch to <strong style="color:#fcd34d;">Production</strong> and enter your actual Safaricom Daraja credentials to push real prompts to customers.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Production confirmation banner -->
+                    <div id="production-confirm" style="display:none;margin-top:8px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
+                        <i class="fas fa-check-circle" style="color:#34D399;font-size:16px;flex-shrink:0;"></i>
+                        <div style="font-size:12px;color:#6ee7b7;line-height:1.5;">
+                            <strong>Production mode</strong> — real STK Push prompts will be sent to customer phones.
+                            Make sure your passkey matches the <strong>production</strong> passkey from Daraja, not the sandbox one.
+                        </div>
                     </div>
                 </div>
 
@@ -453,6 +492,14 @@ input:checked + .live-slider:before { transform: translateX(18px); }
     </div>
 
     <?php
+    // Compute $hasMpesaApi here so it's available for the platform paybill display below
+    // (it's also re-used later in the Platform Info Panel section)
+    if (!isset($hasMpesaApi)) {
+        $hasMpesaApi = false;
+        foreach ($gateways as $gw) {
+            if ($gw['gateway_type'] === 'mpesa_api' && $gw['is_active']) { $hasMpesaApi = true; break; }
+        }
+    }
     // Show Platform Shared Paybill as a default read-only gateway when no tenant M-Pesa API is configured
     $hasPlatformShortcode = !empty($platformShortcodeDB) || defined('MPESA_SHORTCODE');
     $platformPaybillNum = $platformShortcodeDB ?? (defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : null);
@@ -642,10 +689,7 @@ input:checked + .live-slider:before { transform: translateX(18px); }
 
     <!-- ─── Platform Shared Paybill Info Panel ─── -->
     <?php
-    $hasMpesaApi = false;
-    foreach ($gateways as $gw) {
-        if ($gw['gateway_type'] === 'mpesa_api' && $gw['is_active']) { $hasMpesaApi = true; break; }
-    }
+    // $hasMpesaApi already computed above; no need to recompute
     // Use DB-stored shortcode first (set by super admin), fall back to config constant
     $platformShortcode = $platformShortcodeDB ?? (defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : '—');
     $prefix = $accountPrefix ?? '?';
@@ -779,17 +823,14 @@ function selectType(type, card) {
     }
 }
 
-/* ── Sandbox/production env warning ─────────────────────────── */
+/* ── Sandbox/production env banners ─────────────────────────── */
 function onMpesaEnvChange(sel) {
-    const warn = document.getElementById('sandbox-warning');
-    if (!warn) return;
-    warn.style.display = (sel.value === 'sandbox') ? 'block' : 'none';
+    const isSandbox = sel.value === 'sandbox';
+    const sandboxEl = document.getElementById('sandbox-warning');
+    const prodEl    = document.getElementById('production-confirm');
+    if (sandboxEl) sandboxEl.style.display = isSandbox ? 'block' : 'none';
+    if (prodEl)    prodEl.style.display    = isSandbox ? 'none' : 'flex';
 }
-// Show on load if sandbox is already selected
-document.addEventListener('DOMContentLoaded', function() {
-    const env = document.getElementById('mpesa_env');
-    if (env) onMpesaEnvChange(env);
-});
 
 /* ── Toggle password visibility ─────────────────────────────── */
 function toggleSecret(fieldId, btn) {
@@ -820,6 +861,21 @@ function resetGatewayForm() {
     document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
     document.querySelectorAll('.field-section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('.preserve-note').forEach(n => n.style.display = 'none');
+    // Clear credential badges
+    ['badge_consumer_key','badge_consumer_secret','badge_passkey'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.style.display = 'none'; el.textContent = ''; el.className = 'cred-badge'; }
+    });
+    // Reset placeholder text on secret fields
+    const secretEl = document.getElementById('mpesa_consumer_secret');
+    const passEl   = document.getElementById('mpesa_passkey');
+    if (secretEl) secretEl.placeholder = 'Leave blank to keep existing';
+    if (passEl)   passEl.placeholder   = 'Leave blank to keep existing';
+    // Hide env banners
+    const sandboxEl = document.getElementById('sandbox-warning');
+    const prodEl    = document.getElementById('production-confirm');
+    if (sandboxEl) sandboxEl.style.display = 'none';
+    if (prodEl)    prodEl.style.display    = 'none';
     // Hide display name field until type is selected
     const nameWrap = document.getElementById('gatewayNameWrap');
     if (nameWrap) nameWrap.style.display = 'none';
@@ -855,14 +911,56 @@ function editGateway(g) {
         document.getElementById('use_generated_accounts').checked = creds.use_generated_accounts === '1';
 
     } else if (g.gateway_type === 'mpesa_api') {
-        document.getElementById('mpesa_consumer_key').value    = creds.consumer_key    || '';
-        document.getElementById('mpesa_shortcode').value       = creds.shortcode       || '';
-        document.getElementById('mpesa_env').value             = creds.environment     || 'sandbox';
-        document.getElementById('mpesa_callback_url').value   = creds.callback_url    || '';
-        document.getElementById('mpesa_secret_note').style.display  = 'block';
-        document.getElementById('mpesa_passkey_note').style.display = 'block';
-        document.getElementById('mpesa_consumer_secret').value = '';
-        document.getElementById('mpesa_passkey').value         = '';
+        document.getElementById('mpesa_consumer_key').value   = creds.consumer_key || '';
+        document.getElementById('mpesa_shortcode').value      = creds.shortcode    || '';
+        document.getElementById('mpesa_env').value            = creds.environment  || 'sandbox';
+        document.getElementById('mpesa_callback_url').value  = creds.callback_url || '';
+
+        // Secret fields — always blank for security, show saved badge + hint placeholder
+        const secretEl = document.getElementById('mpesa_consumer_secret');
+        const passEl   = document.getElementById('mpesa_passkey');
+        secretEl.value = '';
+        passEl.value   = '';
+
+        // Consumer Secret badge + placeholder
+        const secretBadge = document.getElementById('badge_consumer_secret');
+        if (creds.consumer_secret) {
+            const tail = creds.consumer_secret.slice(-4);
+            secretEl.placeholder = '••••••••' + tail + ' (leave blank to keep)';
+            secretBadge.textContent = '✓ Saved';
+            secretBadge.className = 'cred-badge saved';
+        } else {
+            secretEl.placeholder = 'Enter Consumer Secret';
+            secretBadge.textContent = '✗ Not set';
+            secretBadge.className = 'cred-badge notset';
+        }
+        secretBadge.style.display = 'inline-flex';
+
+        // Passkey badge + placeholder
+        const passKeyBadge = document.getElementById('badge_passkey');
+        if (creds.passkey) {
+            const tail = creds.passkey.slice(-6);
+            passEl.placeholder = '••••••••…' + tail + ' (leave blank to keep)';
+            passKeyBadge.textContent = '✓ Saved';
+            passKeyBadge.className = 'cred-badge saved';
+        } else {
+            passEl.placeholder = 'Enter Lipa Na M-Pesa Online Passkey';
+            passKeyBadge.textContent = '⚠ Not set — STK Push will fail';
+            passKeyBadge.className = 'cred-badge warn';
+        }
+        passKeyBadge.style.display = 'inline-flex';
+
+        // Consumer Key badge
+        const keyBadge = document.getElementById('badge_consumer_key');
+        if (creds.consumer_key) {
+            keyBadge.textContent = '✓ Saved';
+            keyBadge.className = 'cred-badge saved';
+        } else {
+            keyBadge.textContent = '✗ Not set';
+            keyBadge.className = 'cred-badge notset';
+        }
+        keyBadge.style.display = 'inline-flex';
+
         onMpesaEnvChange(document.getElementById('mpesa_env'));
 
     } else if (g.gateway_type === 'bank_account') {

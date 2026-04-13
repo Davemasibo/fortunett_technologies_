@@ -7,6 +7,7 @@ class MpesaAPI {
     private $consumer_secret;
     private $passkey;
     private $shortcode;
+    private $shortcode_type = 'paybill'; // 'paybill' or 'till'
     private $env;
     private $base_url;
     
@@ -121,6 +122,7 @@ class MpesaAPI {
         if (!empty($creds['consumer_secret'])) $this->consumer_secret = $creds['consumer_secret'];
         if (!empty($creds['passkey']))         $this->passkey         = $creds['passkey'];
         if (!empty($creds['shortcode']))       $this->shortcode       = $creds['shortcode'];
+        if (!empty($creds['shortcode_type']))  $this->shortcode_type  = $creds['shortcode_type'];
         $envRaw = $creds['environment'] ?? ($creds['env'] ?? null);
         if ($envRaw !== null) {
             $this->env = $this->normalizeEnv($envRaw);
@@ -181,11 +183,15 @@ class MpesaAPI {
         
         $callbackUrl = $this->resolveCallbackUrl();
         
+        $transactionType = ($this->shortcode_type === 'till')
+            ? 'CustomerBuyGoodsOnline'
+            : 'CustomerPayBillOnline';
+
         $curl_post_data = [
             'BusinessShortCode' => $this->shortcode,
             'Password' => $password,
             'Timestamp' => $timestamp,
-            'TransactionType' => 'CustomerPayBillOnline',
+            'TransactionType' => $transactionType,
             'Amount' => $amount,
             'PartyA' => $phone,
             'PartyB' => $this->shortcode,
