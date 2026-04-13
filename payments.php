@@ -655,8 +655,10 @@ function handlePaymentSubmit(e) {
                 btn.innerHTML = originalHTML;
                 btn.disabled = false;
             } else {
-                const msg = data.CustomerMessage || 'STK Push sent — check your phone.';
-                showFnToast(msg, 'success');
+                const baseMsg = data.using_platform
+                    ? 'STK request accepted via FortuNett paybill. If no phone prompt appears within 30s, the shortcode may not be enrolled for LNM Online — contact your admin.'
+                    : (data.CustomerMessage || 'STK Push sent — check your phone.');
+                showFnToast(baseMsg, 'success');
                 closePaymentModal();
                 setTimeout(() => location.reload(), 1800);
             }

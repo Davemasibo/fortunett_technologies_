@@ -887,14 +887,14 @@ function showStkWaiting(phone, data) {
 
     if (data.using_platform) {
         note.className = 'stk-cb-note';
-        note.innerHTML = '<strong>✅ Using FortuNett shared paybill</strong> ' + (sc ? '(' + sc + ')' : '') +
-            ' — payment will be auto-confirmed when you enter your PIN.';
+        note.innerHTML = '<strong>✅ Request accepted by Safaricom</strong> via FortuNett shared paybill' + (sc ? ' (' + sc + ')' : '') + '.'
+            + '<br><small style="opacity:.8;">If no M-Pesa prompt appeared on the phone within 30 seconds, the platform shortcode may not be enrolled for Lipa Na M-Pesa Online (STK Push). Contact your FortuNett admin to verify the platform Daraja configuration.</small>';
     } else {
         note.className = 'stk-cb-note';
         note.innerHTML = '✅ STK prompt sent to <strong>' + phoneSent + '</strong>'
             + (sc ? ' via shortcode <strong>' + sc + '</strong>' : '')
             + '. Enter your M-Pesa PIN on the phone.'
-            + '<br><small style="opacity:.8;">If no prompt appeared: verify the shortcode, passkey, and that the number is correct.'
+            + '<br><small style="opacity:.8;">If no prompt appeared after 30 seconds: check that the shortcode is enrolled for Lipa Na M-Pesa Online in your Daraja portal, and that the passkey matches the production environment.'
             + ' <a href="settings.php#payments" style="color:inherit;font-weight:600;">Check gateway settings →</a></small>';
     }
 }

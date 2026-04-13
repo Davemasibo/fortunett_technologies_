@@ -150,7 +150,7 @@ try {
 
 // Get Packages for Dropdown
 try {
-    $stmt = $db->prepare("SELECT id, name, price, COALESCE(type, connection_type, 'pppoe') AS type FROM packages WHERE tenant_id = ? ORDER BY price ASC");
+    $stmt = $db->prepare("SELECT id, name, price, COALESCE(NULLIF(type,''), NULLIF(connection_type,''), '') AS type FROM packages WHERE tenant_id = ? ORDER BY price ASC");
     $stmt->execute([$tenant_id]);
     $packages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
@@ -1390,9 +1390,20 @@ function openEditModal(customer) {
     document.getElementById('formEmail').value = customer.email;
     document.getElementById('formAddress').value = customer.address || customer.location;
     
-    filterPackagesByType(customer.connection_type || 'pppoe');
-    document.getElementById('formPackageId').value = customer.package_id;
-    document.getElementById('formConnectionType').value = customer.connection_type || 'pppoe';
+    // Set connection type first, then filter packages, then select the customer's package
+    const connType = (customer.connection_type || 'pppoe').toLowerCase();
+    document.getElementById('formConnectionType').value = connType;
+    filterPackagesByType(connType);
+    // Set package AFTER filtering (so the reset-if-hidden logic doesn't clear it)
+    if (customer.package_id) {
+        document.getElementById('formPackageId').value = customer.package_id;
+        // If it still didn't select (package hidden or missing), force-show that option
+        const sel = document.getElementById('formPackageId');
+        if (sel.value != customer.package_id) {
+            const opt = sel.querySelector('option[value="' + customer.package_id + '"]');
+            if (opt) { opt.hidden = false; sel.value = customer.package_id; }
+        }
+    }
     document.getElementById('formMikrotikUsername').value = customer.mikrotik_username || '';
     document.getElementById('formMikrotikPassword').placeholder = 'Leave blank to keep current';
     
@@ -1755,13 +1766,30 @@ function ucFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
 /* ── Package type filtering ────────────────────────────────── */
 function filterPackagesByType(connType) {
-    const ct = (connType || 'pppoe').toLowerCase();
-    // Form modal package select
-    document.querySelectorAll('#formPackageId option[data-type]').forEach(opt => {
-        const t = (opt.getAttribute('data-type') || 'pppoe').toLowerCase();
-        opt.hidden = (ct !== 'static' && t !== ct);
+    const ct = (connType || '').toLowerCase();
+    const opts = document.querySelectorAll('#formPackageId option[data-type]');
+
+    // If no connection type known, show all packages
+    if (!ct) {
+        opts.forEach(opt => { opt.hidden = false; });
+        return;
+    }
+
+    let visibleCount = 0;
+    opts.forEach(opt => {
+        const raw = (opt.getAttribute('data-type') || '').toLowerCase().trim();
+        // Treat blank/unknown data-type as matching any connection type
+        const matches = !raw || raw === ct || ct === 'static';
+        opt.hidden = !matches;
+        if (!opt.hidden) visibleCount++;
     });
-    // If current value is now hidden, reset
+
+    // If filtering left nothing visible, show all packages (data-type not set correctly in DB)
+    if (visibleCount === 0) {
+        opts.forEach(opt => { opt.hidden = false; });
+    }
+
+    // If current value is now hidden, reset selection
     const formSel = document.getElementById('formPackageId');
     if (formSel) {
         const selOpt = formSel.options[formSel.selectedIndex];
@@ -1770,11 +1798,23 @@ function filterPackagesByType(connType) {
 }
 
 function filterExpiryPackagesByType(connType) {
-    const ct = (connType || 'pppoe').toLowerCase();
-    document.querySelectorAll('#expiryPackageSelect option[data-type]').forEach(opt => {
-        const t = (opt.getAttribute('data-type') || 'pppoe').toLowerCase();
-        opt.hidden = (ct !== 'static' && t !== ct);
+    const ct = (connType || '').toLowerCase();
+    const opts = document.querySelectorAll('#expiryPackageSelect option[data-type]');
+
+    if (!ct) { opts.forEach(opt => { opt.hidden = false; }); return; }
+
+    let visibleCount = 0;
+    opts.forEach(opt => {
+        const raw = (opt.getAttribute('data-type') || '').toLowerCase().trim();
+        const matches = !raw || raw === ct || ct === 'static';
+        opt.hidden = !matches;
+        if (!opt.hidden) visibleCount++;
     });
+
+    // Fall back to showing all if nothing matched
+    if (visibleCount === 0) {
+        opts.forEach(opt => { opt.hidden = false; });
+    }
 }
 
 /* ── Pause / Resume Subscription ──────────────────────────── */

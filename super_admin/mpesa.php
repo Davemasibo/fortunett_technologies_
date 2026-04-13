@@ -167,18 +167,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                                 placeholder="Safaricom Consumer Key" autocomplete="off">
                         </div>
                         <div class="form-field">
-                            <label>Consumer Secret</label>
+                            <label>Consumer Secret
+                                <?php if (!empty($cfg['consumer_secret'])): ?>
+                                <span style="font-size:10px;background:rgba(16,185,129,.18);color:#6ee7b7;padding:1px 7px;border-radius:10px;font-weight:600;margin-left:6px;">✓ Saved</span>
+                                <?php else: ?>
+                                <span style="font-size:10px;background:rgba(239,68,68,.18);color:#fca5a5;padding:1px 7px;border-radius:10px;font-weight:600;margin-left:6px;">Not set</span>
+                                <?php endif; ?>
+                            </label>
                             <input type="password" name="consumer_secret" id="fConsumerSecret"
-                                placeholder="Consumer Secret (leave blank to keep current)"
+                                placeholder="<?php echo !empty($cfg['consumer_secret']) ? '••••••••' . substr($cfg['consumer_secret'], -4) . ' (leave blank to keep)' : 'Enter Consumer Secret'; ?>"
                                 autocomplete="new-password">
-                            <span class="hint">Leave blank to keep existing secret.</span>
                         </div>
                         <div class="form-field full">
-                            <label>Passkey (LipaNaMpesa Online Passkey)</label>
+                            <label>Passkey (LipaNaMpesa Online Passkey)
+                                <?php if (!empty($cfg['passkey'])): ?>
+                                <span style="font-size:10px;background:rgba(16,185,129,.18);color:#6ee7b7;padding:1px 7px;border-radius:10px;font-weight:600;margin-left:6px;">✓ Saved</span>
+                                <?php else: ?>
+                                <span style="font-size:10px;background:rgba(239,68,68,.18);color:#fca5a5;padding:1px 7px;border-radius:10px;font-weight:600;margin-left:6px;">⚠ Not set — STK Push will fail</span>
+                                <?php endif; ?>
+                            </label>
                             <input type="password" name="passkey" id="fPasskey"
-                                placeholder="Passkey (leave blank to keep current)"
+                                placeholder="<?php echo !empty($cfg['passkey']) ? '••••••••' . substr($cfg['passkey'], -4) . ' (leave blank to keep)' : 'Enter Lipa Na Mpesa Passkey'; ?>"
                                 autocomplete="new-password">
-                            <span class="hint">Leave blank to keep existing passkey.</span>
                         </div>
                     </div>
 

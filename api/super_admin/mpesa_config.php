@@ -175,15 +175,25 @@ if ($action === 'test') {
         curl_close($qch);
         $qResp = json_decode($qRaw);
 
-        // "17" = transaction not found (correct credentials, just no such transaction)
-        // "1032" = cancelled
-        // "500.001.1001" or similar = bad passkey/shortcode
-        $qCode = $qResp->ResultCode ?? $qResp->errorCode ?? null;
-        if ($qCode === '17' || $qCode === 17 || ($qResp->ResultDesc ?? '') !== '') {
-            $stkQueryResult = ' ✅ Passkey & shortcode validated (LNM query accepted).';
+        // ResultCode "17" = transaction not found = passkey + LNM enrollment are valid
+        // errorCode present = wrong passkey OR shortcode not enrolled for LNM
+        $qCode = $qResp->ResultCode ?? null;
+        $qErrCode = $qResp->errorCode ?? null;
+        if ($qCode === '17' || $qCode === 17) {
+            $stkQueryResult = ' ✅ Passkey & LNM enrollment confirmed.';
+        } elseif ($qErrCode !== null) {
+            $qMsg = $qResp->errorMessage ?? $qErrCode;
+            $hint = '';
+            if (strpos((string)$qErrCode, '500.001') !== false) {
+                $hint = ' → Wrong passkey for this shortcode/environment.';
+            } elseif (strpos((string)$qErrCode, '404.001') !== false) {
+                $hint = ' → Shortcode not enrolled for Lipa Na M-Pesa Online (STK Push). Enable it in your Safaricom Daraja portal.';
+            }
+            $warnings[] = '❌ LNM validation failed (' . $qErrCode . '): ' . substr((string)$qMsg, 0, 100) . $hint . ' — STK Push will NOT work even though OAuth succeeds.';
         } elseif ($qCode !== null) {
-            $qMsg = $qResp->ResultDesc ?? $qResp->errorMessage ?? $qRaw;
-            $warnings[] = '⚠️ Passkey/shortcode query returned: ' . $qCode . ' — ' . substr((string)$qMsg, 0, 120) . '. STK Push may fail.';
+            // Non-17 ResultCode from the query endpoint
+            $qMsg = $qResp->ResultDesc ?? $qRaw;
+            $warnings[] = '⚠️ LNM query returned code ' . $qCode . ': ' . substr((string)$qMsg, 0, 100);
         }
     }
 
