@@ -403,6 +403,7 @@ if ($action === 'stk_query') {
         '1037' => 'TIMEOUT — prompt appeared but user did not respond.',
         '2001' => 'WRONG PIN — user entered wrong M-Pesa PIN.',
         '1001' => 'Unable to lock subscriber — phone is busy.',
+        '2029' => "SAFARICOM INTERNAL ERROR — Your passkey is correct and Safaricom received the request, but their backend failed to deliver the STK prompt to the phone.\n\nThis is NOT a code issue. It means shortcode 4524255 is not fully provisioned for Lipa Na M-Pesa Online (STK Push) on Safaricom's side.\n\nAction required: Call Safaricom Business Support and say:\n  \"My STK push returns ResultCode 2029 — Failed due to an unresolved reason type.\n   Shortcode: 4524255. The API accepts the request (ResponseCode 0) but the phone\n   prompt never appears and the query returns 2029. Please check that the shortcode\n   is fully linked to Lipa Na M-Pesa Online on your backend.\"\n\nThis usually means they enabled the Daraja app but did not complete the shortcode provisioning step.",
     ];
     $meaning = $meanings[(string)$rc] ?? null;
 
