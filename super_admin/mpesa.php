@@ -298,6 +298,34 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
             </div>
         </div>
 
+        <!-- Test STK Push Card -->
+        <div class="card">
+            <div class="card-head">
+                <h3><i class="fas fa-paper-plane" style="color:#f59e0b;"></i> Test STK Push (Super Admin)</h3>
+            </div>
+            <div class="card-body">
+                <p style="font-size:12px;color:var(--neu-muted);margin-bottom:14px;line-height:1.6;">
+                    Send a real STK push directly from the platform credentials — bypasses all tenant logic. Use this to confirm credentials work independently of the tenant portal.
+                </p>
+                <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;flex-wrap:wrap;">
+                    <div>
+                        <label style="font-size:11px;font-weight:700;color:var(--neu-muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px;">Phone Number</label>
+                        <input type="text" id="testStkPhone" placeholder="07XXXXXXXX"
+                            style="width:100%;padding:8px 12px;background:#0d0d0d;border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#e2e2e0;font-size:13px;">
+                    </div>
+                    <div>
+                        <label style="font-size:11px;font-weight:700;color:var(--neu-muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px;">Amount (KES)</label>
+                        <input type="number" id="testStkAmount" value="1" min="1"
+                            style="width:100%;padding:8px 12px;background:#0d0d0d;border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#e2e2e0;font-size:13px;">
+                    </div>
+                    <button class="btn-save" onclick="sendTestStk()" id="testStkBtn" style="white-space:nowrap;padding:9px 20px;">
+                        <i class="fas fa-paper-plane" style="margin-right:6px;"></i>Send STK Push
+                    </button>
+                </div>
+                <div id="testStkResult" style="display:none;margin-top:12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;line-height:1.6;"></div>
+            </div>
+        </div>
+
         <!-- STK Push Diagnostics Card -->
         <div class="card">
             <div class="card-head">
@@ -305,9 +333,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                 <button class="btn-test" onclick="loadStkLog()"><i class="fas fa-sync" id="stkLogRefreshIcon" style="margin-right:6px;"></i>Refresh</button>
             </div>
             <div class="card-body">
+                <!-- STK Query Tool -->
+                <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+                    <div style="font-size:12px;font-weight:700;color:#a5b4fc;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;"><i class="fas fa-search" style="margin-right:6px;"></i>Query Safaricom — Did the phone prompt actually appear?</div>
+                    <div style="font-size:12px;color:#c7d2fe;margin-bottom:10px;line-height:1.6;">
+                        Paste a <code style="background:rgba(255,255,255,.07);padding:1px 5px;border-radius:3px;">CheckoutRequestID</code> from the STK log below to ask Safaricom directly whether the transaction was delivered and what the result was.
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <input type="text" id="stkQueryId" placeholder="ws_CO_13042026181550587729909387"
+                            style="flex:1;padding:8px 12px;background:#0d0d0d;border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#e2e2e0;font-family:monospace;font-size:12px;min-width:200px;">
+                        <button class="btn-test" onclick="queryStkStatus()" style="white-space:nowrap;padding:8px 16px;">
+                            <i class="fas fa-satellite-dish" style="margin-right:6px;"></i>Query Safaricom
+                        </button>
+                    </div>
+                    <div id="stkQueryResult" style="display:none;margin-top:10px;padding:10px 14px;border-radius:7px;font-size:12px;font-family:monospace;white-space:pre-wrap;line-height:1.7;"></div>
+                </div>
+
                 <p style="font-size:12px;color:var(--neu-muted);margin-bottom:10px;">
-                    Every STK Push attempt (success or failure) is logged below with the full Safaricom response.
-                    Trigger a payment from any tenant portal, then refresh this panel to see exactly what Safaricom returned.
+                    Every STK Push attempt is logged below with the Safaricom response and the callback URL used.
                 </p>
                 <div style="display:flex;gap:8px;margin-bottom:10px;">
                     <button class="btn-test" onclick="loadStkAllLog()" style="font-size:12px;padding:6px 14px;">All Attempts</button>
@@ -513,6 +556,88 @@ function loadSettlements() {
             document.getElementById('settleRefreshIcon').classList.remove('fa-spin');
             document.getElementById('settlementsContent').innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-size:14px;">Failed to load settlement data.</div>';
         });
+}
+
+function sendTestStk() {
+    const phone  = document.getElementById('testStkPhone').value.trim();
+    const amount = document.getElementById('testStkAmount').value.trim();
+    const el     = document.getElementById('testStkResult');
+    const btn    = document.getElementById('testStkBtn');
+
+    if (!phone) { showToast('Enter a phone number.', 'error'); return; }
+    if (!amount || amount < 1) { showToast('Amount must be at least 1.', 'error'); return; }
+
+    el.style.display = 'none';
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Sending…';
+
+    const fd = new FormData();
+    fd.append('action', 'test_stk');
+    fd.append('phone', phone);
+    fd.append('amount', amount);
+    fetch('../api/super_admin/mpesa_config.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px;"></i>Send STK Push';
+            el.style.display = 'block';
+            if (d.success) {
+                el.style.background = 'rgba(16,185,129,.1)';
+                el.style.border = '1px solid rgba(16,185,129,.2)';
+                el.style.color = '#6ee7b7';
+                el.innerHTML = '✅ STK Push sent! Check the phone for the M-Pesa PIN prompt.<br>'
+                    + '<span style="font-size:11px;font-weight:400;font-family:monospace;">'
+                    + 'CheckoutRequestID: ' + (d.checkout_request_id || '—') + '<br>'
+                    + 'Shortcode: ' + (d.shortcode || '—') + ' | Callback: ' + (d.callback_url || '—')
+                    + '</span><br><br>'
+                    + '<span style="font-weight:400;font-size:12px;">Paste the CheckoutRequestID above into the "Query Safaricom" box in 30 seconds to confirm delivery.</span>';
+                // Pre-fill the query box with this CheckoutRequestID
+                if (d.checkout_request_id) document.getElementById('stkQueryId').value = d.checkout_request_id;
+            } else {
+                el.style.background = 'rgba(239,68,68,.1)';
+                el.style.border = '1px solid rgba(239,68,68,.2)';
+                el.style.color = '#fca5a5';
+                el.textContent = '❌ ' + (d.message || 'Failed');
+            }
+        })
+        .catch(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px;"></i>Send STK Push';
+            showToast('Network error.', 'error');
+        });
+}
+
+function queryStkStatus() {
+    const id = document.getElementById('stkQueryId').value.trim();
+    if (!id) { showToast('Paste a CheckoutRequestID first.', 'error'); return; }
+    const el = document.getElementById('stkQueryResult');
+    el.style.display = 'block';
+    el.style.background = 'rgba(99,102,241,.08)';
+    el.style.border = '1px solid rgba(99,102,241,.2)';
+    el.style.color = '#a5b4fc';
+    el.textContent = 'Querying Safaricom…';
+    const fd = new FormData();
+    fd.append('action', 'stk_query');
+    fd.append('checkout_id', id);
+    fetch('../api/super_admin/mpesa_config.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.result_code === '0') {
+                el.style.background = 'rgba(16,185,129,.08)';
+                el.style.border = '1px solid rgba(16,185,129,.2)';
+                el.style.color = '#6ee7b7';
+            } else if (d.result_code === '17') {
+                el.style.background = 'rgba(239,68,68,.08)';
+                el.style.border = '1px solid rgba(239,68,68,.2)';
+                el.style.color = '#fca5a5';
+            } else {
+                el.style.background = 'rgba(245,158,11,.08)';
+                el.style.border = '1px solid rgba(245,158,11,.2)';
+                el.style.color = '#fcd34d';
+            }
+            el.textContent = d.message || (d.success ? 'Query complete.' : d.message);
+        })
+        .catch(() => { el.style.color = '#fca5a5'; el.textContent = 'Network error.'; });
 }
 
 function loadCallbackLog() {

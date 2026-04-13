@@ -248,6 +248,172 @@ if ($action === 'callback_log') {
     exit;
 }
 
+// ── TEST STK PUSH (super admin direct) ───────────────────────────────────────
+if ($action === 'test_stk') {
+    $phone  = trim($_POST['phone']  ?? '');
+    $amount = (int)($_POST['amount'] ?? 1);
+
+    if (empty($phone) || $amount < 1) {
+        echo json_encode(['success'=>false,'message'=>'Phone and amount required.']);
+        exit;
+    }
+
+    $row = $pdo->query("SELECT * FROM platform_mpesa_config WHERE id=1")->fetch(PDO::FETCH_ASSOC);
+    if (!$row || empty($row['consumer_key']) || empty($row['passkey']) || empty($row['shortcode'])) {
+        echo json_encode(['success'=>false,'message'=>'Platform credentials incomplete. Save Consumer Key, Consumer Secret, Passkey and Shortcode first.']);
+        exit;
+    }
+
+    require_once '../../classes/MpesaAPI.php';
+    $mpesa = new MpesaAPI($pdo, null); // start blank (no tenant)
+    $mpesa->loadFromArray($row);
+
+    // Determine callback URL for this test push
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host   = explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0];
+    $autoCallback = $scheme . '://' . $host . '/api/mpesa/callback.php';
+    if (empty($row['callback_url']) || preg_match('/https?:\/\/(localhost|127\.)/i', $row['callback_url'])) {
+        $testRow = $row;
+        $testRow['callback_url'] = $autoCallback;
+        $mpesa->loadFromArray($testRow);
+    }
+
+    if (!$mpesa->hasValidCredentials()) {
+        echo json_encode(['success'=>false,'message'=>'Credentials are incomplete after loading. Check passkey and shortcode.']);
+        exit;
+    }
+
+    try {
+        $response = $mpesa->stkPush($phone, $amount, 'SATEST');
+
+        $logDir = __DIR__ . '/../../logs';
+        if (!is_dir($logDir)) @mkdir($logDir, 0755, true);
+        @file_put_contents(
+            $logDir . '/stk_push_all.log',
+            date('Y-m-d H:i:s') . ' tenant=SUPERADMIN env=' . $mpesa->getEnvironment()
+                . ' sc=' . $mpesa->getShortcode() . ' phone=' . $phone . ' amount=' . $amount
+                . ' callback=' . $mpesa->getLastCallbackUrl()
+                . ' response=' . json_encode($response) . "\n",
+            FILE_APPEND | LOCK_EX
+        );
+
+        if ($response === null) {
+            echo json_encode(['success'=>false,'message'=>'No response from Safaricom API. Check server internet access.']);
+            exit;
+        }
+
+        $rc = $response->ResponseCode ?? $response->errorCode ?? null;
+        if ($rc === '0' || $rc === 0) {
+            echo json_encode([
+                'success'             => true,
+                'checkout_request_id' => $response->CheckoutRequestID ?? '',
+                'shortcode'           => $mpesa->getShortcode(),
+                'callback_url'        => $mpesa->getLastCallbackUrl(),
+                'environment'         => $mpesa->getEnvironment(),
+            ]);
+        } else {
+            $msg = $response->errorMessage ?? $response->ResultDesc ?? $response->ResponseDescription ?? 'Unknown error';
+            echo json_encode(['success'=>false,'message'=>"Safaricom returned code $rc: $msg"]);
+        }
+    } catch (Exception $e) {
+        echo json_encode(['success'=>false,'message'=>$e->getMessage()]);
+    }
+    exit;
+}
+
+// ── QUERY STK PUSH STATUS ────────────────────────────────────────────────────
+if ($action === 'stk_query') {
+    $checkoutId = trim($_POST['checkout_id'] ?? '');
+    if (empty($checkoutId)) {
+        echo json_encode(['success'=>false,'message'=>'CheckoutRequestID is required']);
+        exit;
+    }
+
+    $row = $pdo->query("SELECT * FROM platform_mpesa_config WHERE id=1")->fetch(PDO::FETCH_ASSOC);
+    if (!$row || empty($row['consumer_key'])) {
+        echo json_encode(['success'=>false,'message'=>'No platform credentials configured.']);
+        exit;
+    }
+
+    $env = strtolower($row['environment'] ?? 'sandbox');
+    $isProduction = in_array($env, ['production', 'live'], true);
+    $baseUrl = $isProduction ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke';
+
+    // Get access token
+    $auth = base64_encode($row['consumer_key'] . ':' . $row['consumer_secret']);
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL            => $baseUrl . '/oauth/v1/generate?grant_type=client_credentials',
+        CURLOPT_HTTPHEADER     => ['Authorization: Basic ' . $auth],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT        => 20,
+    ]);
+    $raw = curl_exec($ch);
+    $err = curl_error($ch);
+    curl_close($ch);
+
+    if ($err || empty(json_decode($raw)->access_token)) {
+        echo json_encode(['success'=>false,'message'=>'Could not get access token: ' . ($err ?: substr($raw, 0, 200))]);
+        exit;
+    }
+    $token = json_decode($raw)->access_token;
+
+    // STK push query
+    $timestamp = date('YmdHis');
+    $password  = base64_encode($row['shortcode'] . $row['passkey'] . $timestamp);
+    $body = json_encode([
+        'BusinessShortCode' => $row['shortcode'],
+        'Password'          => $password,
+        'Timestamp'         => $timestamp,
+        'CheckoutRequestID' => $checkoutId,
+    ]);
+
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL            => $baseUrl . '/mpesa/stkpushquery/v1/query',
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Authorization: Bearer ' . $token],
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $body,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT        => 20,
+    ]);
+    $qRaw = curl_exec($ch);
+    $qErr = curl_error($ch);
+    curl_close($ch);
+
+    if ($qErr) {
+        echo json_encode(['success'=>false,'message'=>'cURL error: ' . $qErr]);
+        exit;
+    }
+
+    $q = json_decode($qRaw);
+    $rc   = $q->ResultCode    ?? $q->errorCode        ?? '?';
+    $rdesc = $q->ResultDesc   ?? $q->errorMessage     ?? 'No description';
+
+    // Decode result codes
+    $meanings = [
+        '0'    => 'SUCCESS — payment was completed by user.',
+        '1'    => 'INSUFFICIENT FUNDS — user did not have enough balance.',
+        '17'   => 'TRANSACTION NOT FOUND — Safaricom has no record of this CheckoutRequestID. The STK prompt likely never reached the phone, possibly due to a wrong passkey or shortcode misconfiguration.',
+        '1032' => 'CANCELLED — user dismissed the STK prompt.',
+        '1037' => 'TIMEOUT — prompt appeared but user did not respond.',
+        '2001' => 'WRONG PIN — user entered wrong M-Pesa PIN.',
+        '1001' => 'Unable to lock subscriber — phone is busy.',
+    ];
+    $meaning = $meanings[(string)$rc] ?? null;
+
+    $decoded = "ResultCode: $rc\nResultDesc: $rdesc";
+    if ($meaning) $decoded .= "\n\nMeaning: $meaning";
+    if (!empty($q->errorCode)) $decoded .= "\n\nFull response: " . json_encode($q, JSON_PRETTY_PRINT);
+
+    echo json_encode(['success'=>true,'message'=>$decoded,'result_code'=>(string)$rc,'raw'=>$qRaw]);
+    exit;
+}
+
 // ── CHECK CALLBACK URL REACHABILITY ─────────────────────────────────────────
 if ($action === 'check_callback') {
     $url = trim($_POST['url'] ?? '');
