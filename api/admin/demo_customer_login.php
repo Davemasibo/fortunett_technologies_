@@ -13,6 +13,7 @@ header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/app_url.php';
 
 if (!isLoggedIn()) {
     http_response_code(401);
@@ -114,21 +115,9 @@ try {
     ")->execute([$demoClient['id'], $tenantId, $token, $expiresAt]);
 
     // ── Build customer portal URL ─────────────────────────────────────────────
-    $host = explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0];
-    $isLocal = ($host === 'localhost' || preg_match('/^\d+\.\d+/', $host));
-
-    if ($isLocal) {
-        $loginUrl = '/fortunett_technologies_/customer/login.html?token=' . $token . '&demo=1';
-    } else {
-        // Replace current subdomain with the tenant's own subdomain
-        $tStmt2 = $pdo->prepare("SELECT subdomain FROM tenants WHERE id = ?");
-        $tStmt2->execute([$tenantId]);
-        $sub      = $tStmt2->fetchColumn() ?: 'tenant';
-        $baseParts = explode('.', $host);
-        array_shift($baseParts); // remove current subdomain
-        $domain   = implode('.', $baseParts);
-        $loginUrl = 'https://' . $sub . '.' . $domain . '/customer/login.html?token=' . $token . '&demo=1';
-    }
+    // The customer portal is always on the SAME host as the admin portal
+    // (same subdomain, /customer/ path). appBase() handles localhost vs production.
+    $loginUrl = appOrigin() . appBase() . '/customer/login.html?token=' . $token . '&demo=1';
 
     echo json_encode([
         'success'    => true,

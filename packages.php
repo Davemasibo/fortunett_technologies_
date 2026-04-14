@@ -261,11 +261,15 @@ include 'includes/sidebar.php';
                 <div class="filter-group">
                      <!-- Spacer or additional filter -->
                 </div>
-                <div style="display:flex; gap: 10px; align-items:center;">
+                <div style="display:flex; gap: 10px; align-items:center; flex-wrap:wrap;">
                     <a href="packages.php" style="color:#6B7280; text-decoration:none; font-size:14px; margin-right:6px;">Clear</a>
                     <button type="button" class="create-btn" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);" onclick="exportPackagesCSV()">
                         <i class="fas fa-download"></i>
                         Export CSV
+                    </button>
+                    <button type="button" class="create-btn" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);" onclick="openImportModal('packages')">
+                        <i class="fas fa-upload"></i>
+                        Import CSV
                     </button>
                     <button type="button" class="create-btn" onclick="openAddPackageModal()">
                         <i class="fas fa-plus"></i>
@@ -720,11 +724,118 @@ if (new URLSearchParams(window.location.search).get('open_modal') === '1') {
 }
 
 function exportPackagesCSV() {
-    // Build export URL carrying current filters so the exported data matches what's on screen
     const params = new URLSearchParams(window.location.search);
     params.set('export', 'csv');
     window.location.href = 'packages.php?' + params.toString();
 }
+
+// ── CSV Import modal (shared across packages / clients / payments) ───────────
+function openImportModal(type) {
+    const _base = (location.hostname === 'localhost' || /^\d+\.\d+\./.test(location.hostname))
+        ? '/fortunett_technologies_' : '';
+    const titles = { packages: 'Import Packages', clients: 'Import Customers', payments: 'Import Transactions' };
+    const endpoints = {
+        packages: _base + '/api/import/packages.php',
+        clients:  _base + '/api/import/customers.php',
+        payments: _base + '/api/import/payments.php',
+    };
+    const templates = {
+        packages: 'name,type,price,download_speed,upload_speed,validity_value,validity_unit,data_limit,device_limit,description,status\nBasic Hotspot,hotspot,500,10,5,30,days,0,1,Entry level package,active',
+        clients:  'full_name,phone,email,address,username,package_name,connection_type,status,expiry_date\nJohn Doe,0712345678,john@example.com,,john.doe,Basic Hotspot,hotspot,active,2026-12-31',
+        payments: 'client_phone,amount,payment_method,transaction_id,payment_date,status,notes\n0712345678,500,cash,CASH001,2026-04-01 10:00:00,completed,Manual entry',
+    };
+    document.getElementById('importModalTitle').textContent  = titles[type];
+    document.getElementById('importModalForm').action        = endpoints[type];
+    document.getElementById('importTemplateLink').href       = 'data:text/csv;charset=utf-8,' + encodeURIComponent(templates[type]);
+    document.getElementById('importTemplateLink').download   = type + '_template.csv';
+    document.getElementById('importModalResult').innerHTML   = '';
+    document.getElementById('importCsvFile').value           = '';
+    document.getElementById('importModal').style.display     = 'flex';
+}
+function closeImportModal() {
+    document.getElementById('importModal').style.display = 'none';
+}
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('importModalForm');
+    if (!form) return;
+    form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const file = document.getElementById('importCsvFile').files[0];
+        if (!file) { showImportResult('Please select a CSV file.', 'error'); return; }
+        const btn = document.getElementById('importSubmitBtn');
+        btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing…';
+        try {
+            const fd = new FormData();
+            fd.append('csv_file', file);
+            const res  = await fetch(form.action, { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.success) {
+                let html = '<div style="color:#6ee7b7"><i class="fas fa-check-circle"></i> ' + (data.message || 'Done') + '</div>';
+                if (data.errors && data.errors.length) {
+                    html += '<div style="margin-top:8px;color:#fca5a5;font-size:12px"><strong>Errors:</strong><ul style="margin:4px 0 0 16px;padding:0">' +
+                        data.errors.map(e => '<li>' + e + '</li>').join('') + '</ul></div>';
+                }
+                showImportResult(html, 'success');
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                showImportResult(data.message || 'Import failed.', 'error');
+            }
+        } catch {
+            showImportResult('Connection error. Please try again.', 'error');
+        } finally {
+            btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload"></i> Import';
+        }
+    });
+});
+function showImportResult(html, type) {
+    const el = document.getElementById('importModalResult');
+    el.style.display    = 'block';
+    el.style.padding    = '10px 14px';
+    el.style.borderRadius = '8px';
+    el.style.fontSize   = '13px';
+    el.style.marginTop  = '12px';
+    el.style.border     = type === 'error' ? '1px solid rgba(239,68,68,.3)' : '1px solid rgba(16,185,129,.3)';
+    el.style.background = type === 'error' ? 'rgba(239,68,68,.1)' : 'rgba(16,185,129,.1)';
+    el.innerHTML = html;
+}
+document.getElementById('importModal')?.addEventListener('click', function(e) {
+    if (e.target === this) closeImportModal();
+});
 </script>
+
+<!-- ── Import CSV Modal ─────────────────────────────────────────────────────── -->
+<div id="importModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10000;align-items:center;justify-content:center;">
+    <div style="background:#222221;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:28px 32px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+            <h3 id="importModalTitle" style="margin:0;color:#e2e2e0;font-size:18px;font-weight:600;">Import CSV</h3>
+            <button onclick="closeImportModal()" style="background:none;border:none;color:rgba(255,255,255,.5);font-size:20px;cursor:pointer;line-height:1;">&times;</button>
+        </div>
+        <form id="importModalForm" method="post" enctype="multipart/form-data">
+            <div style="margin-bottom:16px;">
+                <label style="display:block;font-size:13px;color:rgba(255,255,255,.55);margin-bottom:6px;">CSV File <span style="color:#fca5a5">*</span></label>
+                <input id="importCsvFile" type="file" name="csv_file" accept=".csv,text/csv"
+                    style="width:100%;padding:9px 12px;background:#1a1a19;border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#e2e2e0;font-size:13px;box-sizing:border-box;">
+            </div>
+            <div style="margin-bottom:20px;font-size:13px;color:rgba(255,255,255,.4);">
+                <i class="fas fa-info-circle" style="color:#93c5fd;margin-right:4px;"></i>
+                First row must be the header row.
+                <a id="importTemplateLink" href="#" download style="color:#93c5fd;text-decoration:none;margin-left:4px;">
+                    <i class="fas fa-download"></i> Download template
+                </a>
+            </div>
+            <div id="importModalResult" style="display:none;"></div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+                <button type="button" onclick="closeImportModal()"
+                    style="padding:9px 20px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:rgba(255,255,255,.7);font-size:14px;cursor:pointer;">
+                    Cancel
+                </button>
+                <button id="importSubmitBtn" type="submit"
+                    style="padding:9px 20px;background:linear-gradient(135deg,var(--primary-dark,#2C5282) 0%,var(--primary-color,#3B6EA5) 100%);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">
+                    <i class="fas fa-upload"></i> Import
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <?php include 'includes/footer.php'; ?>

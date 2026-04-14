@@ -126,13 +126,21 @@ class CustomerAuth {
                 return ['success' => false, 'message' => 'Client not found'];
             }
             
-            // Mark token as used
-            $stmt = $this->pdo->prepare("
-                UPDATE payment_auto_logins 
-                SET status = 'used', used_at = NOW(), ip_address = ?, mac_address = ? 
-                WHERE id = ?
-            ");
-            $stmt->execute([$ipAddress, $macAddress, $autoLogin['id']]);
+            // Mark token as used (mac_address column may not exist on older installs)
+            try {
+                $this->pdo->prepare("
+                    UPDATE payment_auto_logins
+                    SET status = 'used', used_at = NOW(), ip_address = ?, mac_address = ?
+                    WHERE id = ?
+                ")->execute([$ipAddress, $macAddress, $autoLogin['id']]);
+            } catch (Exception $e) {
+                // Fallback: update without mac_address if column is absent
+                $this->pdo->prepare("
+                    UPDATE payment_auto_logins
+                    SET status = 'used', used_at = NOW(), ip_address = ?
+                    WHERE id = ?
+                ")->execute([$ipAddress, $autoLogin['id']]);
+            }
             
             return $this->createSession($client);
             

@@ -1,3 +1,8 @@
+<?php
+if (isLoggedIn()) {
+    require_once __DIR__ . '/app_url.php';
+}
+?>
 <?php if (isLoggedIn()): ?>
 <!-- Toggle button positioned in navbar area via CSS -->
 <button id="sidebarToggle" aria-label="Toggle sidebar" aria-expanded="true" title="Toggle sidebar">
@@ -504,7 +509,7 @@ async function openCustomerPortalPreview(e) {
     link.style.pointerEvents = 'none';
 
     try {
-        const res  = await fetch('/fortunett_technologies_/api/admin/demo_customer_login.php', { method: 'POST' });
+        const res  = await fetch('<?php echo appBase(); ?>/api/admin/demo_customer_login.php', { method: 'POST' });
         const data = await res.json();
         if (data.success) {
             window.open(data.login_url, '_blank', 'noopener');

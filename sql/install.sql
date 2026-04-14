@@ -269,6 +269,7 @@ CREATE TABLE IF NOT EXISTS `payment_auto_logins` (
     payment_id INT DEFAULT NULL,
     login_token VARCHAR(255) UNIQUE NOT NULL,
     ip_address VARCHAR(45),
+    mac_address VARCHAR(17),
     status ENUM('pending','used','expired') DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP NULL,

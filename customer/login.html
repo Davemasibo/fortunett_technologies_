@@ -199,7 +199,10 @@
     </div>
 
     <script>
-        const API_BASE = '/fortunett_technologies_/api/customer';
+        // Resolve base path: /fortunett_technologies_ on localhost, '' on production
+        const _base = (location.hostname === 'localhost' || /^\d+\.\d+\./.test(location.hostname))
+            ? '/fortunett_technologies_' : '';
+        const API_BASE = _base + '/api/customer';
 
         // Auto-login via token in URL
         window.addEventListener('DOMContentLoaded', () => {
@@ -256,7 +259,7 @@
                 const data = await res.json();
                 if (data.success) {
                     showAlert('Login successful! Connecting…', 'success');
-                    setTimeout(() => { window.location.href = '/fortunett_technologies_/customer/dashboard.php'; }, 1000);
+                    setTimeout(() => { window.location.href = _base + '/customer/dashboard.php'; }, 1000);
                 } else {
                     hideLoading();
                     showAlert(data.message || 'Login failed. Please check your credentials.');
@@ -276,7 +279,7 @@
                 const data = await res.json();
                 if (data.success) {
                     showAlert('Voucher activated! Connecting…', 'success');
-                    setTimeout(() => { window.location.href = '/fortunett_technologies_/customer/dashboard.php'; }, 1000);
+                    setTimeout(() => { window.location.href = _base + '/customer/dashboard.php'; }, 1000);
                 } else {
                     hideLoading();
                     showAlert(data.message || 'Invalid voucher code.');
@@ -298,7 +301,7 @@
                 if (data.success) {
                     const msg = isDemo ? 'Demo session ready! Opening portal…' : 'Payment successful! Connecting…';
                     showAlert(msg, 'success');
-                    const dest = '/fortunett_technologies_/customer/dashboard.php' + (isDemo ? '?demo=1' : '');
+                    const dest = _base + '/customer/dashboard.php' + (isDemo ? '?demo=1' : '');
                     setTimeout(() => { window.location.href = dest; }, 1000);
                 } else {
                     hideLoading();
