@@ -289,14 +289,17 @@
 
         async function handleAutoLogin(token) {
             showLoading();
+            const isDemo = new URLSearchParams(window.location.search).get('demo') === '1';
             try {
                 const fd = new FormData();
                 fd.append('auto_login_token', token);
                 const res  = await fetch(API_BASE + '/login.php', { method: 'POST', body: fd });
                 const data = await res.json();
                 if (data.success) {
-                    showAlert('Payment successful! Connecting…', 'success');
-                    setTimeout(() => { window.location.href = '/fortunett_technologies_/customer/dashboard.php'; }, 1000);
+                    const msg = isDemo ? 'Demo session ready! Opening portal…' : 'Payment successful! Connecting…';
+                    showAlert(msg, 'success');
+                    const dest = '/fortunett_technologies_/customer/dashboard.php' + (isDemo ? '?demo=1' : '');
+                    setTimeout(() => { window.location.href = dest; }, 1000);
                 } else {
                     hideLoading();
                     showAlert(data.message || 'Auto-login failed.');

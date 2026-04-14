@@ -1994,4 +1994,12 @@ setInterval(loadOnlineStatus, 45000);
 if (new URLSearchParams(window.location.search).get('open_modal') === '1') {
     openAddModal();
 }
+
+function exportCSV() {
+    // Build export URL carrying current filter state so the downloaded file
+    // matches exactly what the admin is currently viewing on screen.
+    const params = new URLSearchParams(window.location.search);
+    params.set('export', 'csv');
+    window.location.href = 'clients.php?' + params.toString();
+}
 </script>

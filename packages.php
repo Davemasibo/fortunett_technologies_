@@ -84,6 +84,31 @@ try {
     $packages = [];
 }
 
+// ── CSV Export ────────────────────────────────────────────────────────────────
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="packages_export_' . date('Y-m-d') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['ID', 'Name', 'Type', 'Download (Mbps)', 'Upload (Mbps)', 'Data Limit (GB)', 'Validity', 'Devices', 'Price (KES)', 'Status', 'Created']);
+    foreach ($packages as $p) {
+        fputcsv($out, [
+            $p['id'],
+            $p['name'],
+            strtoupper($p['type'] ?? 'hotspot'),
+            $p['download_speed'] ?? 0,
+            $p['upload_speed']   ?? 0,
+            (($p['data_limit'] ?? 0) > 0) ? round(($p['data_limit'] / 1073741824), 2) : 'Unlimited',
+            ($p['validity_value'] ?? 30) . ' ' . ($p['validity_unit'] ?? 'days'),
+            $p['device_limit'] ?? 1,
+            $p['price'],
+            ucfirst($p['status'] ?? 'active'),
+            $p['created_at'] ?? '',
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
@@ -237,7 +262,11 @@ include 'includes/sidebar.php';
                      <!-- Spacer or additional filter -->
                 </div>
                 <div style="display:flex; gap: 10px; align-items:center;">
-                    <a href="packages.php" style="color:#6B7280; text-decoration:none; font-size:14px; margin-right:10px;">Clear</a>
+                    <a href="packages.php" style="color:#6B7280; text-decoration:none; font-size:14px; margin-right:6px;">Clear</a>
+                    <button type="button" class="create-btn" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);" onclick="exportPackagesCSV()">
+                        <i class="fas fa-download"></i>
+                        Export CSV
+                    </button>
                     <button type="button" class="create-btn" onclick="openAddPackageModal()">
                         <i class="fas fa-plus"></i>
                         Create Package
@@ -688,6 +717,13 @@ function deletePackage(id) {
 // Auto-open create package modal when navigated from quick actions
 if (new URLSearchParams(window.location.search).get('open_modal') === '1') {
     openAddPackageModal();
+}
+
+function exportPackagesCSV() {
+    // Build export URL carrying current filters so the exported data matches what's on screen
+    const params = new URLSearchParams(window.location.search);
+    params.set('export', 'csv');
+    window.location.href = 'packages.php?' + params.toString();
 }
 </script>
 

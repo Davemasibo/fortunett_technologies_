@@ -7,6 +7,7 @@ header('Content-Type: application/json');
 require_once '../../includes/auth.php';
 require_once '../../config/database.php';
 require_once '../../classes/RouterOSAPI.php';
+require_once '../../includes/auto_provision.php';
 
 redirectIfNotLoggedIn();
 
@@ -138,15 +139,15 @@ try {
     }
     
     $api->disconnect();
-    
+
     // Update client record
     $updateStmt = $db->prepare("
-        UPDATE clients 
-        SET mikrotik_username = ?, status = 'active'
+        UPDATE clients
+        SET mikrotik_username = ?, mikrotik_password = ?, status = 'active'
         WHERE id = ?
     ");
-    $updateStmt->execute([$username, $clientId]);
-    
+    $updateStmt->execute([$username, $password, $clientId]);
+
     // Record deployment in router_services table
     $stmt = $db->prepare("
         INSERT INTO router_services (
@@ -159,10 +160,13 @@ try {
             deployed_at = CURRENT_TIMESTAMP
     ");
     $stmt->execute([$tenantId, $routerId, $clientId, $packageId, $username, $password]);
-    
+
+    // Upload branded hotspot login page to router via FTP
+    _uploadHotspotLoginPage($db, $router, (int)$tenantId);
+
     echo json_encode([
         'status' => 'success',
-        'message' => 'Hotspot service deployed successfully',
+        'message' => 'Hotspot service deployed and login page uploaded successfully',
         'credentials' => [
             'username' => $username,
             'password' => $password,

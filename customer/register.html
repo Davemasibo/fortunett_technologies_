@@ -453,7 +453,7 @@
 
         async function loadPackages() {
             try {
-                const res  = await fetch('/fortunett_technologies_/api/packages.php?t=' + Date.now());
+                const res  = await fetch('/fortunett_technologies_/api/customer/packages.php?t=' + Date.now());
                 const data = await res.json();
                 if (data.success) {
                     packages = data.packages.filter(p => p.status === 'active');
@@ -585,8 +585,11 @@
                         document.getElementById('loading').style.display      = 'none';
                         document.getElementById('successState').style.display = 'block';
                         document.getElementById('successMsg').innerHTML =
-                            '<strong>Username:</strong> ' + data.username + '<br>Redirecting to login…';
-                        setTimeout(() => window.location.href = 'login.html', 3000);
+                            '<strong>Username:</strong> ' + esc(data.username) +
+                            '<br><strong>Password:</strong> ' + esc(data.password) +
+                            '<br><small style="color:#6b7280">' + esc(data.provision_msg || '') + '</small>' +
+                            '<br>Redirecting to login…';
+                        setTimeout(() => window.location.href = 'login.html', 4000);
                     } else {
                         pollPayment(data.checkout_request_id);
                     }
@@ -599,9 +602,19 @@
         }
 
         function revertState(msg) {
-            alert(msg);
             document.getElementById('loading').style.display           = 'none';
             document.getElementById('registrationForm').style.display  = 'block';
+            // Show inline error banner
+            let err = document.getElementById('regError');
+            if (!err) {
+                err = document.createElement('div');
+                err.id = 'regError';
+                err.style.cssText = 'background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:12px 16px;font-size:13px;margin-bottom:16px;display:flex;align-items:center;gap:8px;';
+                err.innerHTML = '<i class="fas fa-exclamation-circle"></i><span id="regErrorMsg"></span>';
+                document.getElementById('registrationForm').prepend(err);
+            }
+            document.getElementById('regErrorMsg').textContent = msg;
+            err.style.display = 'flex';
         }
 
         function pollPayment(reqId) {

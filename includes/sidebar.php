@@ -67,6 +67,12 @@
                 <i class="fas fa-sliders-h"></i> <span>Settings</span>
             </a>
         </li>
+        <!-- Preview Customer Portal — opens a demo session in a new tab -->
+        <li class="sidebar-preview-item">
+            <a href="#" onclick="openCustomerPortalPreview(event)" title="Preview the customer portal as a demo user">
+                <i class="fas fa-eye"></i> <span>Preview Portal</span>
+            </a>
+        </li>
         <li class="sidebar-profile-item">
             <a href="profile.php" class="<?php echo isActivePage('profile.php'); ?>">
                 <i class="fas fa-user-circle"></i> <span><?php echo htmlspecialchars($_SESSION['username'] ?? 'Profile'); ?></span>
@@ -352,6 +358,22 @@
     }
     .sidebar-profile-item a:hover { opacity: 1; }
 
+    /* Preview Portal item — teal/cyan accent */
+    .sidebar-preview-item {
+        border-top: 1px solid rgba(255,255,255,.07);
+        padding-top: 4px;
+    }
+    .sidebar-preview-item a {
+        color: rgba(99,235,200,.85) !important;
+        opacity: .85;
+    }
+    .sidebar-preview-item a:hover {
+        background: rgba(99,235,200,.1) !important;
+        color: rgba(99,235,200,1) !important;
+        border-left-color: rgba(99,235,200,.5) !important;
+        opacity: 1;
+    }
+
     /* Logout item — red tint, below profile */
     .sidebar-logout-item a {
         opacity: .8;
@@ -472,6 +494,30 @@
         }
     });
 })();
+
+// ── Preview Customer Portal ──────────────────────────────────────────────────
+async function openCustomerPortalPreview(e) {
+    e.preventDefault();
+    const link = e.currentTarget;
+    const origHtml = link.innerHTML;
+    link.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Opening…</span>';
+    link.style.pointerEvents = 'none';
+
+    try {
+        const res  = await fetch('/fortunett_technologies_/api/admin/demo_customer_login.php', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            window.open(data.login_url, '_blank', 'noopener');
+        } else {
+            alert('Could not open preview: ' + (data.message || 'Unknown error'));
+        }
+    } catch (err) {
+        alert('Connection error. Please try again.');
+    } finally {
+        link.innerHTML = origHtml;
+        link.style.pointerEvents = '';
+    }
+}
 </script>
 
 <?php endif; ?>

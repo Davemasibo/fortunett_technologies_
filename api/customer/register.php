@@ -11,6 +11,7 @@ require_once __DIR__ . '/../../includes/tenant.php';
 require_once __DIR__ . '/../../classes/MpesaAPI.php';
 require_once __DIR__ . '/../../classes/CustomerAuth.php';
 require_once __DIR__ . '/../../includes/account_number_generator.php';
+require_once __DIR__ . '/../../includes/auto_provision.php';
 
 try {
     // ── Resolve tenant from subdomain ─────────────────────────────────────────
@@ -93,7 +94,35 @@ try {
     $accountNumber    = $accountGenerator->generateAccountNumber($tenantId);
     $pdo->prepare("UPDATE clients SET account_number = ? WHERE id = ?")->execute([$accountNumber, $clientId]);
 
-    // ── Create pending payment record ─────────────────────────────────────────
+    // ── Free package: activate immediately, no payment required ─────────────
+    if ((float)$package['price'] <= 0) {
+        $pdo->prepare("UPDATE clients SET status = 'active' WHERE id = ?")->execute([$clientId]);
+
+        $auth = new CustomerAuth($pdo);
+        $auth->logActivity($clientId, 'activation', 'Free package activation: ' . $package['name']);
+
+        // Auto-provision on the tenant's first active router (best-effort)
+        $provision = autoProvisionClient($pdo, $clientId, $tenantId);
+
+        $provisionMsg = $provision['success']
+            ? 'Your service has been provisioned on the router.'
+            : 'Account ready. Router provisioning will complete shortly.';
+
+        echo json_encode([
+            'success'      => true,
+            'message'      => 'Registration successful. You are now connected!',
+            'is_free'      => true,
+            'client_id'    => $clientId,
+            'username'     => $provision['username'] ?? $username,
+            'password'     => $provision['password'] ?? $randomPassword,
+            'provision_ok' => $provision['success'],
+            'provision_msg'=> $provisionMsg,
+            'redirect'     => 'login.html',
+        ]);
+        exit;
+    }
+
+    // ── Paid package: create pending payment record and initiate STK Push ────
     $payStmt = $pdo->prepare("
         INSERT INTO payments
             (tenant_id, client_id, amount, payment_method, payment_date, status, notes, invoice)
@@ -105,24 +134,6 @@ try {
         $accountNumber,
     ]);
     $paymentId = (int)$pdo->lastInsertId();
-
-    // ── Free package: activate immediately ────────────────────────────────────
-    if ($package['price'] <= 0) {
-        $pdo->prepare("UPDATE clients SET status = 'active' WHERE id = ?")->execute([$clientId]);
-        $auth = new CustomerAuth($pdo);
-        $auth->logActivity($clientId, 'activation', 'Free package activation: ' . $package['name']);
-
-        echo json_encode([
-            'success'   => true,
-            'message'   => 'Registration successful. You are now connected!',
-            'is_free'   => true,
-            'client_id' => $clientId,
-            'username'  => $username,
-            'password'  => $randomPassword,
-            'redirect'  => 'login.html',
-        ]);
-        exit;
-    }
 
     // ── Initiate M-Pesa STK Push using tenant's gateway credentials ───────────
     $mpesa    = new MpesaAPI($pdo, $tenantId);

@@ -34,6 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 require_once __DIR__ . '/../../includes/db_master.php';
+require_once __DIR__ . '/../../includes/auto_provision.php';
 
 $data = json_decode($content);
 if (!$data || !isset($data->Body->stkCallback)) {
@@ -140,6 +141,9 @@ try {
                         INSERT INTO customer_activity_log (client_id, tenant_id, activity_type, description)
                         VALUES (?, ?, 'payment_success', ?)
                     ")->execute([$clientId, $resolvedTenantId, 'Service activated via M-Pesa (' . $receipt . ') until ' . $expiryDate]);
+
+                    // Auto-provision on the tenant's router (best-effort — failure is logged, not fatal)
+                    autoProvisionClient($pdo, $clientId, (int)$resolvedTenantId);
                 }
             }
         }

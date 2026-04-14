@@ -130,6 +130,10 @@ try {
         $api->write('=profile=' . $profileName, false);
         $api->write('=service=pppoe', false);
         $api->read();
+        // Re-enable the secret in case it was disabled
+        $api->write('/ppp/secret/enable', false);
+        $api->write('=.id=' . $secretId, false);
+        $api->read();
     } else {
         // Create new secret
         $api->write('/ppp/secret/add', false);
@@ -145,11 +149,11 @@ try {
     
     // Update client record
     $updateStmt = $db->prepare("
-        UPDATE clients 
-        SET mikrotik_username = ?, status = 'active'
+        UPDATE clients
+        SET mikrotik_username = ?, mikrotik_password = ?, status = 'active'
         WHERE id = ?
     ");
-    $updateStmt->execute([$username, $clientId]);
+    $updateStmt->execute([$username, $password, $clientId]);
     
     // Record deployment in router_services table
     $stmt = $db->prepare("

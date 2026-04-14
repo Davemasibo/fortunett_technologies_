@@ -14,8 +14,19 @@ if ($customer['package_id']) {
 $daysLeft = getDaysUntilExpiry($customer['expiry_date']);
 $isActive = isSubscriptionActive($customer['expiry_date']);
 
+$isDemo = isset($_GET['demo']) && $_GET['demo'] === '1'
+       && ($customer['username'] ?? '') === '__demo_preview__';
+
 include 'includes/header.php';
 ?>
+
+<?php if ($isDemo): ?>
+<div style="background:linear-gradient(90deg,#0f4c3a,#1a6b50);color:#d1fae5;padding:10px 20px;font-size:13px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:1000;">
+    <i class="fas fa-eye" style="font-size:16px;"></i>
+    <span><strong>Admin Preview Mode</strong> — You are viewing the customer portal as a demo user. Data shown is not real.</span>
+    <a href="javascript:window.close()" style="margin-left:auto;color:#6ee7b7;font-weight:600;text-decoration:none;">✕ Close Preview</a>
+</div>
+<?php endif; ?>
 
 <div class="dashboard-container">
     <!-- Welcome Section -->
