@@ -72,37 +72,42 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
             
             <ul class="sidebar-menu">
                 <li>
-                    <a href="dashboard.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'active' : ''; ?>">
+                    <a href="dashboard.php" data-label="Dashboard"
+                       class="<?php echo basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'active' : ''; ?>">
                         <i class="fas fa-home"></i>
                         <span>Dashboard</span>
                     </a>
                 </li>
                 <li>
-                    <a href="packages.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'packages.php' ? 'active' : ''; ?>">
+                    <a href="packages.php" data-label="Packages"
+                       class="<?php echo basename($_SERVER['PHP_SELF']) == 'packages.php' ? 'active' : ''; ?>">
                         <i class="fas fa-box"></i>
                         <span>Packages</span>
                     </a>
                 </li>
                 <li>
-                    <a href="payment.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'payment.php' ? 'active' : ''; ?>">
+                    <a href="payment.php" data-label="Payments"
+                       class="<?php echo basename($_SERVER['PHP_SELF']) == 'payment.php' ? 'active' : ''; ?>">
                         <i class="fas fa-credit-card"></i>
                         <span>Payments</span>
                     </a>
                 </li>
                 <li>
-                    <a href="account.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'account.php' ? 'active' : ''; ?>">
+                    <a href="account.php" data-label="Account"
+                       class="<?php echo basename($_SERVER['PHP_SELF']) == 'account.php' ? 'active' : ''; ?>">
                         <i class="fas fa-user"></i>
                         <span>Account</span>
                     </a>
                 </li>
                 <li>
-                    <a href="devices.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'devices.php' ? 'active' : ''; ?>">
+                    <a href="devices.php" data-label="Devices"
+                       class="<?php echo basename($_SERVER['PHP_SELF']) == 'devices.php' ? 'active' : ''; ?>">
                         <i class="fas fa-laptop"></i>
                         <span>Devices</span>
                     </a>
                 </li>
                 <li>
-                    <a href="logout.php" class="logout">
+                    <a href="logout.php" data-label="Logout" class="logout">
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Logout</span>
                     </a>
@@ -135,6 +140,7 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
                     <button class="menu-toggle" onclick="toggleSidebarMobile()">
                         <i class="fas fa-bars"></i>
                     </button>
+                    <span class="page-title" id="topbar-page-title"></span>
                 </div>
                 <div class="topbar-right">
                     <div class="user-info">
@@ -182,6 +188,13 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
                             document.getElementById('sidebar').classList.add('collapsed');
                             document.getElementById('mainContent').classList.add('expanded');
                         }
+                    }
+                    // Set topbar page title from active sidebar link
+                    const activeLink = document.querySelector('.sidebar-menu a.active');
+                    if (activeLink) {
+                        const label = activeLink.querySelector('span');
+                        const titleEl = document.getElementById('topbar-page-title');
+                        if (label && titleEl) titleEl.textContent = label.textContent.trim();
                     }
                 });
             </script>

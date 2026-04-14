@@ -322,6 +322,86 @@ include 'includes/header.php';
 .gw-empty i { font-size: 40px; margin-bottom: 12px; display: block; color: rgba(245,158,11,.5); }
 .gw-empty p { font-size: 14px; }
 
+/* ── Page tabs ──────────────────────────────────────────────────── */
+.pay-tabs {
+    display: flex;
+    gap: 4px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 50px;
+    padding: 4px;
+    margin-bottom: 28px;
+    width: fit-content;
+}
+.pay-tab {
+    padding: 9px 24px;
+    border-radius: 40px;
+    border: none;
+    background: transparent;
+    color: rgba(255,255,255,.45);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.pay-tab.active {
+    background: #222221;
+    color: #e2e2e0;
+    box-shadow: 4px 4px 10px rgba(0,0,0,.4), -2px -2px 6px rgba(255,255,255,.04);
+}
+.pay-tab i { font-size: 12px; }
+.pay-panel { display: none; }
+.pay-panel.active { display: block; }
+
+/* ── Top-up panel ───────────────────────────────────────────────── */
+.topup-amount-row { display: flex; gap: 8px; margin-bottom: 16px; }
+.topup-input {
+    flex: 1;
+    padding: 12px 16px;
+    background: #1a1a19;
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 10px;
+    color: #e2e2e0;
+    font-size: 20px;
+    font-weight: 700;
+    box-shadow: inset 3px 3px 7px rgba(0,0,0,.35), inset -1px -1px 3px rgba(255,255,255,.03);
+    font-family: inherit;
+}
+.topup-input::placeholder { color: rgba(255,255,255,.2); font-size: 15px; font-weight: 400; }
+.topup-input:focus { outline: none; border-color: rgba(59,130,246,.5); }
+.topup-preset-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.topup-preset {
+    padding: 6px 14px;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 20px;
+    color: rgba(255,255,255,.65);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .18s;
+    font-family: inherit;
+}
+.topup-preset:hover { background: rgba(255,255,255,.13); color: #fff; }
+.topup-preset.selected { background: rgba(59,130,246,.2); border-color: rgba(59,130,246,.4); color: #93c5fd; }
+.topup-balance-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: rgba(16,185,129,.08);
+    border: 1px solid rgba(16,185,129,.2);
+    border-radius: 10px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: rgba(255,255,255,.55);
+}
+.topup-balance-strip .bal-val { font-size: 18px; font-weight: 700; color: #6ee7b7; }
+
 /* ── STK processing modal ───────────────────────────── */
 .stk-overlay {
     display: none;
@@ -357,9 +437,21 @@ include 'includes/header.php';
 </style>
 
 <div class="pay-page">
-    <h1 class="pay-page-title"><i class="fas fa-credit-card" style="color:rgba(255,255,255,.4);margin-right:10px;"></i>Make Payment</h1>
-    <p class="pay-page-sub">Complete your payment to activate or renew your subscription</p>
+    <h1 class="pay-page-title"><i class="fas fa-credit-card" style="color:rgba(255,255,255,.4);margin-right:10px;"></i>Payments</h1>
+    <p class="pay-page-sub">Manage payments and top up your account balance</p>
 
+    <!-- Tab switcher -->
+    <div class="pay-tabs">
+        <button class="pay-tab active" id="tab-pkg" onclick="switchTab('pkg')">
+            <i class="fas fa-wifi"></i> Package Payment
+        </button>
+        <button class="pay-tab" id="tab-topup" onclick="switchTab('topup')">
+            <i class="fas fa-plus-circle"></i> Top Up Balance
+        </button>
+    </div>
+
+    <!-- ══ Panel: Package Payment ══ -->
+    <div class="pay-panel active" id="panel-pkg">
     <div class="pay-grid">
 
         <!-- ── Left: Summary ──────────────────────────── -->
@@ -520,6 +612,149 @@ include 'includes/header.php';
             </div>
         </div>
     </div>
+    </div><!-- /#panel-pkg -->
+
+    <!-- ══ Panel: Top Up Balance ══ -->
+    <div class="pay-panel" id="panel-topup">
+        <div class="pay-grid">
+            <!-- Left: Current balance info -->
+            <div>
+                <div class="pay-card">
+                    <div class="pay-card-head"><i class="fas fa-wallet"></i> Account Balance</div>
+                    <div class="pay-card-body">
+                        <div class="topup-balance-strip">
+                            <span>Current Balance</span>
+                            <span class="bal-val">KES <?php echo number_format($accountBalance, 2); ?></span>
+                        </div>
+                        <p style="font-size:13px;color:rgba(255,255,255,.4);margin-bottom:16px;">
+                            Top up your balance to pay for packages later or cover renewal costs automatically.
+                        </p>
+                        <div style="font-size:12px;color:rgba(255,255,255,.3);">
+                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;"><i class="fas fa-check-circle" style="color:rgba(16,185,129,.6);"></i> Use balance to activate any package instantly</div>
+                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;"><i class="fas fa-check-circle" style="color:rgba(16,185,129,.6);"></i> Balance carries over — never expires</div>
+                            <div style="display:flex;align-items:center;gap:6px;"><i class="fas fa-check-circle" style="color:rgba(16,185,129,.6);"></i> Auto-renew when balance is sufficient</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Top-up form -->
+            <div>
+                <div class="pay-card">
+                    <div class="pay-card-head"><i class="fas fa-plus-circle"></i> Add Funds</div>
+                    <div class="pay-card-body">
+                        <!-- Amount input -->
+                        <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Amount (KES)</div>
+                        <div class="topup-amount-row">
+                            <input type="number" id="topup_amount" class="topup-input" placeholder="Enter amount" min="1" step="1">
+                        </div>
+                        <div class="topup-preset-row">
+                            <?php foreach ([100,200,500,1000,2000,5000] as $amt): ?>
+                            <button class="topup-preset" onclick="setTopupAmount(<?php echo $amt; ?>)">KES <?php echo number_format($amt, 0); ?></button>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <?php if (empty($gateways)): ?>
+                        <div class="gw-empty">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <p>No payment methods configured.<br>Please contact your ISP for assistance.</p>
+                        </div>
+                        <?php else: ?>
+
+                        <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Choose Payment Method</div>
+                        <div class="gw-list">
+                            <?php foreach ($gateways as $idx => $g):
+                                $creds   = json_decode($g['credentials'], true) ?? [];
+                                $gwType  = $g['gateway_type'];
+                                $iconCls = in_array($gwType, ['mpesa_api','paybill_no_api']) ? 'mpesa' : ($gwType === 'bank_account' ? 'bank' : 'other');
+                                $iconFa  = $gwType === 'bank_account' ? 'fa-university' : ($gwType === 'paypal' ? 'fa-paypal' : 'fa-mobile-alt');
+                            ?>
+                            <div class="gw-item <?php echo $idx === 0 ? 'open' : ''; ?>" id="tu-gw-<?php echo $g['id']; ?>">
+                                <button class="gw-trigger" onclick="toggleGw('tu-gw-<?php echo $g['id']; ?>')">
+                                    <div class="gw-icon <?php echo $iconCls; ?>"><i class="fas <?php echo $iconFa; ?>"></i></div>
+                                    <div>
+                                        <div class="gw-label"><?php echo htmlspecialchars($g['gateway_name']); ?></div>
+                                        <div class="gw-type"><?php echo ucwords(str_replace('_', ' ', $gwType)); ?></div>
+                                    </div>
+                                    <i class="fas fa-chevron-down gw-chevron"></i>
+                                </button>
+                                <div class="gw-body">
+                                    <?php if ($gwType === 'mpesa_api'): ?>
+                                        <p style="font-size:13px;color:rgba(255,255,255,.45);margin-bottom:12px;">Pay via M-Pesa STK Push. Your phone will receive a PIN prompt.</p>
+                                        <div class="stk-row">
+                                            <input type="tel" id="tu_phone_<?php echo $g['id']; ?>" class="stk-input"
+                                                   value="<?php echo htmlspecialchars($customer['phone']); ?>" placeholder="07xxxxxxxx">
+                                            <button class="stk-btn" onclick="initiateTopupSTK(<?php echo $g['id']; ?>, this)">
+                                                <i class="fas fa-paper-plane"></i> Top Up
+                                            </button>
+                                        </div>
+
+                                    <?php elseif ($gwType === 'paybill_no_api'):
+                                        $useGenerated = !empty($creds['use_generated_accounts']) && $creds['use_generated_accounts'] == '1';
+                                        $displayAcct  = $useGenerated ? ($customer['account_number'] ?? '') : ($creds['account_number'] ?? '');
+                                    ?>
+                                        <p style="font-size:12px;color:rgba(255,255,255,.35);margin-bottom:12px;">Send the amount you entered above via M-Pesa to:</p>
+                                        <div class="pb-row">
+                                            <div>
+                                                <div class="pb-field">Business Number (Paybill)</div>
+                                                <div class="pb-val"><?php echo htmlspecialchars($creds['paybill_number'] ?? 'N/A'); ?></div>
+                                            </div>
+                                            <button class="copy-btn" onclick="copyText('<?php echo htmlspecialchars($creds['paybill_number'] ?? ''); ?>', this)">
+                                                <i class="fas fa-copy"></i> Copy
+                                            </button>
+                                        </div>
+                                        <?php if ($displayAcct): ?>
+                                        <div class="pb-row <?php echo $useGenerated ? 'highlight' : ''; ?>">
+                                            <div>
+                                                <div class="pb-field"><?php echo $useGenerated ? '🎯 Your Account Number' : 'Account Number'; ?></div>
+                                                <div class="pb-val"><?php echo htmlspecialchars($displayAcct); ?></div>
+                                                <?php if ($useGenerated): ?><div class="pb-hint">Use as M-Pesa account reference</div><?php endif; ?>
+                                            </div>
+                                            <button class="copy-btn" onclick="copyText('<?php echo htmlspecialchars($displayAcct); ?>', this)">
+                                                <i class="fas fa-copy"></i> Copy
+                                            </button>
+                                        </div>
+                                        <?php endif; ?>
+                                        <?php if (!empty($creds['instructions'])): ?>
+                                        <div class="gw-alert"><i class="fas fa-info-circle"></i> <?php echo htmlspecialchars($creds['instructions']); ?></div>
+                                        <?php endif; ?>
+
+                                    <?php elseif ($gwType === 'bank_account'): ?>
+                                        <div class="pb-row">
+                                            <div><div class="pb-field">Bank</div><div class="pb-val" style="font-size:16px;letter-spacing:0;"><?php echo htmlspecialchars($creds['bank_name'] ?? ''); ?></div></div>
+                                        </div>
+                                        <div class="pb-row">
+                                            <div><div class="pb-field">Account Name</div><div class="pb-val" style="font-size:15px;letter-spacing:0;"><?php echo htmlspecialchars($creds['account_name'] ?? ''); ?></div></div>
+                                        </div>
+                                        <div class="pb-row">
+                                            <div><div class="pb-field">Account Number</div><div class="pb-val"><?php echo htmlspecialchars($creds['account_number'] ?? ''); ?></div></div>
+                                            <button class="copy-btn" onclick="copyText('<?php echo htmlspecialchars($creds['account_number'] ?? ''); ?>', this)"><i class="fas fa-copy"></i> Copy</button>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
+
+                        <!-- Manual top-up confirmation -->
+                        <div class="confirm-section" style="margin-top:16px;">
+                            <div class="confirm-title"><i class="fas fa-check-double"></i> Already Paid? Confirm Top-Up</div>
+                            <p class="confirm-hint">Enter your M-Pesa or bank reference code to confirm the top-up.</p>
+                            <form onsubmit="handleTopupVerify(event)">
+                                <div class="confirm-row">
+                                    <input type="text" id="topup_trans_code" class="confirm-input" placeholder="e.g. RJH1234567" required>
+                                    <button type="submit" class="confirm-btn" id="topupVerifyBtn">
+                                        <i class="fas fa-search"></i> Confirm
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div><!-- /#panel-topup -->
 </div>
 
 <!-- STK Processing Overlay -->
@@ -640,6 +875,129 @@ function handleVerify(e) {
         btn.innerHTML = '<i class="fas fa-search"></i> Confirm';
     });
 }
+
+/* ── Tab switching ─────────────────────────────────── */
+function switchTab(tab) {
+    document.querySelectorAll('.pay-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.pay-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    document.getElementById('panel-' + tab).classList.add('active');
+}
+
+/* ── Top-up preset amounts ─────────────────────────── */
+function setTopupAmount(amt) {
+    document.getElementById('topup_amount').value = amt;
+    document.querySelectorAll('.topup-preset').forEach(b => b.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
+}
+
+/* ── Top-up STK Push ───────────────────────────────── */
+function initiateTopupSTK(gatewayId, btn) {
+    const amount = parseFloat(document.getElementById('topup_amount').value);
+    if (!amount || amount < 1) {
+        showCustToast('Please enter a valid amount to top up.', 'error');
+        document.getElementById('topup_amount').focus();
+        return;
+    }
+    const phoneInput = document.getElementById('tu_phone_' + gatewayId);
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+    if (!phone) { phoneInput && phoneInput.focus(); return; }
+
+    const overlay = document.getElementById('stkOverlay');
+    overlay.classList.add('show');
+    document.getElementById('stkStatus').textContent = 'Initiating Top-Up via M-Pesa…';
+
+    const fd = new FormData();
+    fd.append('gateway_id', gatewayId);
+    fd.append('phone', phone);
+    fd.append('amount', amount);
+    fd.append('type', 'topup');
+
+    fetch(_base + '/customer/api/initiate_stk.php', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('stkStatus').textContent = 'Prompt sent! Enter your PIN on your phone.';
+            pollTopupStatus(data.checkout_id);
+        } else {
+            overlay.classList.remove('show');
+            showCustToast(data.message || 'STK Push failed. Please try again.', 'error');
+        }
+    })
+    .catch(() => {
+        overlay.classList.remove('show');
+        showCustToast('Connection error. Please try again.', 'error');
+    });
+}
+
+function pollTopupStatus(checkoutId) {
+    const overlay = document.getElementById('stkOverlay');
+    const interval = setInterval(() => {
+        fetch(_base + '/customer/api/check_status.php?checkout_id=' + checkoutId)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'paid') {
+                clearInterval(interval);
+                document.getElementById('stkStatus').textContent = 'Balance topped up! Refreshing…';
+                setTimeout(() => window.location.href = 'payment.php?topup=success', 2000);
+            } else if (data.status === 'failed') {
+                clearInterval(interval);
+                overlay.classList.remove('show');
+                showCustToast('Payment failed or was cancelled.', 'error');
+            }
+        })
+        .catch(() => {});
+    }, 3000);
+}
+
+/* ── Manual top-up confirm ─────────────────────────── */
+function handleTopupVerify(e) {
+    e.preventDefault();
+    const amount = parseFloat(document.getElementById('topup_amount').value);
+    if (!amount || amount < 1) {
+        showCustToast('Please enter the top-up amount first.', 'error');
+        document.getElementById('topup_amount').focus();
+        return;
+    }
+    const code = document.getElementById('topup_trans_code').value.trim();
+    const btn  = document.getElementById('topupVerifyBtn');
+    if (!code) return;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying…';
+
+    const fd = new FormData();
+    fd.append('code', code);
+    fd.append('amount', amount);
+    fd.append('type', 'topup');
+    fetch(_base + '/api/customer/verify_manual_payment.php', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showCustToast('Top-up submitted! Your balance will be updated once verified.', 'success');
+            setTimeout(() => window.location.href = 'payment.php?topup=submitted', 2200);
+        } else {
+            showCustToast(data.message || 'Verification failed.', 'error');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-search"></i> Confirm';
+        }
+    })
+    .catch(() => {
+        showCustToast('Connection error. Please try again.', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-search"></i> Confirm';
+    });
+}
+
+// Auto-switch to top-up tab if redirected after top-up
+(function() {
+    const p = new URLSearchParams(location.search);
+    if (p.has('topup')) {
+        switchTab('topup');
+        if (p.get('topup') === 'success') showCustToast('Balance topped up successfully!', 'success');
+        else if (p.get('topup') === 'submitted') showCustToast('Top-up submitted for verification.', 'info');
+    }
+    if (p.get('payment') === 'success') showCustToast('Payment successful!', 'success');
+})();
 
 /* ── Activate with balance ─────────────────────────── */
 function activateWithBalance() {
