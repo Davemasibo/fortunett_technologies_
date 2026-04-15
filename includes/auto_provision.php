@@ -361,15 +361,16 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
         $mode     = (str_starts_with($serveUrl, 'https://')) ? 'https' : 'http';
 
         // Connect to router via API and issue /tool/fetch
+        $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
         $api = new MikrotikAPI(
-            $router['ip_address'],
+            $connectIp,
             $router['username'],
             $router['password'],
             (int)($router['api_port'] ?? 8728)
         );
 
         if (!$api->isReachable(4)) {
-            error_log('_uploadHotspotLoginPage: router not reachable: ' . $router['ip_address']);
+            error_log('_uploadHotspotLoginPage: router not reachable: ' . $connectIp);
             return;
         }
 
