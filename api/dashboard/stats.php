@@ -124,7 +124,7 @@ try {
 
         // Quick TCP reachability check (2-second timeout) before full API call
         $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
-        $sock = @fsockopen($connectIp, $port, $tcpErrno, $tcpErrstr, 2);
+        $sock = @fsockopen($connectIp, $port, $tcpErrno, $tcpErrstr, 5);
         if ($sock) {
             fclose($sock);
             try {

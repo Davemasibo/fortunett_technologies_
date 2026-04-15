@@ -599,6 +599,7 @@ include 'includes/sidebar.php';
                     <a href="#" onclick="editUser();return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#d4d4d2;text-decoration:none;font-size:13px;"><i class="fas fa-edit" style="color:rgba(255,255,255,.4);width:14px;"></i> Edit Details</a>
                     <a href="#" onclick="promptPayment();return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#d4d4d2;text-decoration:none;font-size:13px;"><i class="fas fa-mobile-alt" style="color:#34d399;width:14px;"></i> Payment Prompt</a>
                     <a href="#" onclick="switchToTab('sms');openSMSModal(currentCustomer);return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#d4d4d2;text-decoration:none;font-size:13px;"><i class="fas fa-comment" style="color:#60a5fa;width:14px;"></i> Send SMS</a>
+                    <a href="#" onclick="provisionToRouter();return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#d4d4d2;text-decoration:none;font-size:13px;"><i class="fas fa-network-wired" style="color:#a78bfa;width:14px;"></i> Provision to Router</a>
                     <div style="border-top:1px solid rgba(255,255,255,.06);margin:3px 0;"></div>
                     <a href="#" onclick="confirmDelete(currentCustomer.id,currentCustomer.full_name||currentCustomer.name);return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#f87171;text-decoration:none;font-size:13px;"><i class="fas fa-trash" style="width:14px;"></i> Delete</a>
                 </div>
@@ -1481,6 +1482,25 @@ function confirmDelete(id, name) {
             })
             .catch(() => showToast('Network error. Please try again.', 'error'));
     }
+}
+
+function provisionToRouter() {
+    if (!currentCustomer) return;
+    const name = currentCustomer.full_name || currentCustomer.name || 'this customer';
+    if (!confirm('Provision "' + name + '" to the router?\n\nThis creates/updates their PPPoE secret or hotspot user and uploads the branded login page.')) return;
+    const fd = new FormData();
+    fd.append('client_id', currentCustomer.id);
+    showToast('Provisioning…', 'info');
+    fetch('api/customers/provision.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                showToast('Provisioned: ' + (d.username || '') + ' via ' + (d.service || '') + ' on ' + (d.router || ''), 'success');
+            } else {
+                showToast('Provision failed: ' + d.message, 'error');
+            }
+        })
+        .catch(() => showToast('Network error during provisioning.', 'error'));
 }
 
 function openSMSModal(customer) {
