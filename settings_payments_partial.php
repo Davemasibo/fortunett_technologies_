@@ -372,8 +372,15 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                             </div>
                         </div>
                         <div>
-                            <label class="form-label-sm">Shortcode (Paybill / Till)</label>
+                            <label class="form-label-sm">Shortcode (Paybill / Till Number)</label>
                             <input type="text" name="mpesa_shortcode" id="mpesa_shortcode" class="form-input" placeholder="e.g. 4524255">
+                        </div>
+                        <div>
+                            <label class="form-label-sm">Shortcode Type</label>
+                            <select name="mpesa_shortcode_type" id="mpesa_shortcode_type" class="form-input">
+                                <option value="paybill">Paybill (CustomerPayBillOnline)</option>
+                                <option value="till">Till / Buy Goods (CustomerBuyGoodsOnline)</option>
+                            </select>
                         </div>
                     </div>
                     <div class="field-row">
@@ -911,10 +918,11 @@ function editGateway(g) {
         document.getElementById('use_generated_accounts').checked = creds.use_generated_accounts === '1';
 
     } else if (g.gateway_type === 'mpesa_api') {
-        document.getElementById('mpesa_consumer_key').value   = creds.consumer_key || '';
-        document.getElementById('mpesa_shortcode').value      = creds.shortcode    || '';
-        document.getElementById('mpesa_env').value            = creds.environment  || 'sandbox';
-        document.getElementById('mpesa_callback_url').value  = creds.callback_url || '';
+        document.getElementById('mpesa_consumer_key').value    = creds.consumer_key    || '';
+        document.getElementById('mpesa_shortcode').value       = creds.shortcode       || '';
+        document.getElementById('mpesa_shortcode_type').value  = creds.shortcode_type  || 'paybill';
+        document.getElementById('mpesa_env').value             = creds.environment     || 'sandbox';
+        document.getElementById('mpesa_callback_url').value    = creds.callback_url    || '';
 
         // Secret fields — always blank for security, show saved badge + hint placeholder
         const secretEl = document.getElementById('mpesa_consumer_secret');

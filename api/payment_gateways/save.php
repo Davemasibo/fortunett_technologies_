@@ -67,6 +67,7 @@ try {
                 'consumer_secret' => $_POST['mpesa_consumer_secret'] ?? $_POST['consumer_secret'] ?? '',
                 'passkey'         => $_POST['mpesa_passkey']         ?? $_POST['passkey']         ?? '',
                 'shortcode'       => $_POST['mpesa_shortcode']       ?? $_POST['shortcode']       ?? '',
+                'shortcode_type'  => $_POST['mpesa_shortcode_type']  ?? $_POST['shortcode_type']  ?? 'paybill',
                 'environment'     => $_POST['mpesa_env']             ?? $_POST['environment']     ?? 'sandbox',
                 'callback_url'    => trim($_POST['mpesa_callback_url'] ?? ''),
             ];

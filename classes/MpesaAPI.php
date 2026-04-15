@@ -57,6 +57,7 @@ class MpesaAPI {
                     $this->consumer_secret = $creds['consumer_secret'] ?? $this->consumer_secret;
                     $this->passkey         = $creds['passkey']         ?? $this->passkey;
                     $this->shortcode       = $creds['shortcode']       ?? $this->shortcode;
+                    $this->shortcode_type  = $creds['shortcode_type']  ?? $this->shortcode_type;
                     $this->env             = $this->normalizeEnv($creds['environment'] ?? ($creds['env'] ?? $this->env));
                     // Per-tenant callback URL (overrides global config)
                     if (!empty($creds['callback_url'])) {
