@@ -1,8 +1,11 @@
 <?php
-header('Content-Type: application/json');
+ob_start();
+ini_set('display_errors', 0);
 require_once '../../includes/db_master.php';
 require_once '../../includes/tenant.php';
 require_once '../../classes/WireGuardManager.php';
+ob_clean();
+header('Content-Type: application/json');
 
 $token    = $_GET['token']    ?? '';
 $identity = $_GET['identity'] ?? 'MikroTik';
@@ -66,15 +69,24 @@ try {
                 $vpsWgPub     = WireGuardManager::getVpsPublicKey();
 
                 // Insert pending row to get a router ID → derive VPN IP
+                // Use only base columns first, then try to set WG columns (may not exist yet)
                 $pdo->prepare("
                     INSERT INTO mikrotik_routers
-                        (tenant_id, name, ip_address, status, provision_id,
-                         wg_private_key, wg_public_key)
-                    VALUES (?, ?, '', 'pending', ?, ?, ?)
-                ")->execute([$tenantId, $identity ?: 'Pending-' . substr($provisionId, 0, 8),
-                              $provisionId, $routerWgPriv, $routerWgPub]);
+                        (tenant_id, name, ip_address, status)
+                    VALUES (?, ?, '', 'pending')
+                ")->execute([$tenantId, $identity ?: 'Pending-' . substr($provisionId, 0, 8)]);
 
                 $routerId = (int)$pdo->lastInsertId();
+
+                // Set WG + provision columns (silently skip if columns missing)
+                foreach ([
+                    "UPDATE mikrotik_routers SET provision_id=? WHERE id=?"  => [$provisionId, $routerId],
+                    "UPDATE mikrotik_routers SET wg_private_key=? WHERE id=?" => [$routerWgPriv, $routerId],
+                    "UPDATE mikrotik_routers SET wg_public_key=? WHERE id=?"  => [$routerWgPub, $routerId],
+                ] as $sql => $params) {
+                    try { $pdo->prepare($sql)->execute($params); } catch (\Exception $e) {}
+                }
+
                 $vpnIp    = WireGuardManager::vpnIp($routerId);
 
                 // Update the row with the assigned VPN IP
