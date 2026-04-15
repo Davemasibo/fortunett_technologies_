@@ -655,6 +655,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
                 <p id="svcSelectionHint" style="font-size:12px; color:rgba(239,68,68,.7); margin-top:12px; display:none;"><i class="fas fa-exclamation-circle"></i> Please select at least one service.</p>
+
+                <!-- Hotspot settings panel — shown only when hotspot is selected -->
+                <div id="hotspotSettingsPanel" style="display:none; margin-top:20px; text-align:left; background:rgba(16,185,129,.06); border:1px solid rgba(16,185,129,.2); border-radius:8px; padding:16px;">
+                    <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:#6ee7b7; margin-bottom:12px;">
+                        <i class="fas fa-wifi" style="margin-right:6px;"></i> Hotspot Settings
+                    </div>
+
+                    <!-- Session sharing -->
+                    <label style="display:flex; align-items:flex-start; gap:12px; cursor:pointer; padding:10px; border-radius:6px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06);">
+                        <div style="flex-shrink:0; margin-top:2px;">
+                            <input type="checkbox" id="hsNoSharing" style="width:16px;height:16px;accent-color:var(--primary-color,#3B6EA5);cursor:pointer;">
+                        </div>
+                        <div>
+                            <div style="font-weight:600; color:#e2e2e0; font-size:13px;">Prevent session sharing</div>
+                            <div style="font-size:11px; color:rgba(255,255,255,.35); margin-top:2px;">
+                                Limits each hotspot account to <strong style="color:rgba(255,255,255,.5);">one active device at a time</strong>. If the user connects a second device, the first session is kicked. Recommended for prepaid voucher ISPs.
+                            </div>
+                        </div>
+                    </label>
+                </div>
             </div>
         </div>
 
@@ -887,6 +907,10 @@ function toggleService(service, el) {
         el.querySelector('.svc-check').style.display = 'flex';
     }
     document.getElementById('svcSelectionHint').style.display = 'none';
+
+    // Show hotspot settings panel only while hotspot is selected
+    const panel = document.getElementById('hotspotSettingsPanel');
+    if (panel) panel.style.display = selectedServices.has('hotspot') ? 'block' : 'none';
 }
 
 function resetSelections() {
@@ -899,6 +923,10 @@ function resetSelections() {
     });
     const hint = document.getElementById('svcSelectionHint');
     if (hint) hint.style.display = 'none';
+    const panel = document.getElementById('hotspotSettingsPanel');
+    if (panel) panel.style.display = 'none';
+    const cb = document.getElementById('hsNoSharing');
+    if (cb) cb.checked = false;
 }
 
 function finishWizard() {
@@ -911,12 +939,14 @@ function finishWizard() {
     btn.textContent = 'Configuring...';
     btn.disabled = true;
 
-    const name = document.getElementById('mikrotikName').value;
+    const name         = document.getElementById('mikrotikName').value;
     const servicesList = Array.from(selectedServices).join(',');
+    const noSharing    = document.getElementById('hsNoSharing')?.checked ? '1' : '0';
 
     const formData = new FormData();
-    formData.append('identity', name);
-    formData.append('services', servicesList);
+    formData.append('identity',           name);
+    formData.append('services',           servicesList);
+    formData.append('hotspot_no_sharing', noSharing);
 
     fetch('api/routers/configure_service.php', {
         method: 'POST',

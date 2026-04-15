@@ -80,10 +80,13 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
         $api->connect();
 
         // ── Provision ─────────────────────────────────────────────────────────
+        // hotspot_shared_users: 0 = unlimited, 1 = one active session per user
+        $sharedUsers = ((int)($router['hotspot_shared_users'] ?? 0) === 1) ? '1' : 'unlimited';
+
         if ($connType === 'pppoe') {
             _provisionPPPoE($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '');
         } else {
-            _provisionHotspot($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '');
+            _provisionHotspot($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '', $sharedUsers);
         }
 
         $api->disconnect();
@@ -184,8 +187,10 @@ function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, s
 /**
  * Create or update a hotspot user, enable it, set MAC auth, and reconnect
  * any active session so the customer gets internet access immediately.
+ *
+ * @param string $sharedUsers  RouterOS shared-users value: '1' (no sharing) or 'unlimited'
  */
-function _provisionHotspot(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment): void
+function _provisionHotspot(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment, string $sharedUsers = 'unlimited'): void
 {
     // ── Upsert hotspot profile ────────────────────────────────────────────────
     $profiles = $api->comm('/ip/hotspot/user/profile/print', ['?name=' . $profileName]);
@@ -195,10 +200,22 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
     }
     if (!$hasProfile) {
         $api->comm('/ip/hotspot/user/profile/add', [
-            '=name='         . $profileName,
-            '=rate-limit='   . $rateLimit,
-            '=shared-users=1',
+            '=name='          . $profileName,
+            '=rate-limit='    . $rateLimit,
+            '=shared-users='  . $sharedUsers,
         ]);
+    } else {
+        // Profile already exists — update shared-users in case setting changed
+        foreach ($profiles as $p) {
+            if (isset($p['!re']) && ($p['name'] ?? '') === $profileName && isset($p['.id'])) {
+                $api->comm('/ip/hotspot/user/profile/set', [
+                    '=.id='          . $p['.id'],
+                    '=rate-limit='   . $rateLimit,
+                    '=shared-users=' . $sharedUsers,
+                ]);
+                break;
+            }
+        }
     }
 
     // ── Upsert hotspot user ───────────────────────────────────────────────────

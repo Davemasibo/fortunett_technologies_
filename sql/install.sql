@@ -147,6 +147,7 @@ CREATE TABLE IF NOT EXISTS `mikrotik_routers` (
     identity VARCHAR(100),
     status ENUM('active','inactive','pending') DEFAULT 'pending',
     service_types VARCHAR(20) DEFAULT NULL COMMENT 'Comma-separated: pppoe, hotspot, or pppoe,hotspot',
+    hotspot_shared_users TINYINT(1) UNSIGNED NOT NULL DEFAULT 0 COMMENT '0=unlimited sessions, 1=one session per user (no sharing)',
     last_seen TIMESTAMP NULL,
     tenant_id INT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
