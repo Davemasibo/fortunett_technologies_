@@ -45,43 +45,44 @@ class MikrotikAPI {
             throw new Exception("Cannot connect to {$this->host}:{$this->port} — $errstr ($errno)");
         }
 
-        stream_set_timeout($this->socket, 5);
+        stream_set_timeout($this->socket, 8);
 
-        // ── RouterOS API Login ───────────────────────────────────────
-        // Step 1: Initial /login (RouterOS v6.43+ accepts plain-text;
-        //         older firmware (RB951 ≤ v6.42) returns a challenge word)
-        $this->write('/login', false, []);
+        // ── RouterOS API Login ────────────────────────────────────────────────
+        // Send /login + credentials in ONE sentence. This works on RouterOS 6.43+
+        // (plain-text) and also on older firmware — older versions ignore the
+        // extra params in the first sentence and return a challenge, which we
+        // then answer with MD5.
+        $this->writeWord('/login');
+        $this->writeWord('=name=' . $this->username);
+        $this->writeWord('=password=' . $this->password);
+        $this->writeWord(''); // end of sentence
+
         $response = $this->read();
 
         if (isset($response[0]['!trap'])) {
-            throw new Exception("Login failed: " . ($response[0]['message'] ?? 'Unknown error'));
+            throw new Exception("Authentication failed: " . ($response[0]['message'] ?? 'Invalid credentials'));
         }
 
-        // Check for legacy MD5-challenge response (RouterOS < 6.43)
+        // Older firmware (RouterOS < 6.43) ignores name/password in first sentence
+        // and returns !done with =ret=<challenge>. Handle that here.
         $challenge = null;
         foreach ($response as $item) {
             if (isset($item['ret'])) { $challenge = $item['ret']; break; }
         }
 
         if ($challenge !== null) {
-            // Legacy auth: MD5(challenge + password)
+            // MD5 challenge-response for legacy firmware
             $hash = '00' . md5(chr(0) . $this->password . pack('H*', $challenge));
-            $this->write('/login', false, [
-                '=name='     . $this->username,
-                '=response=' . $hash,
-            ]);
-        } else {
-            // Modern plain-text auth (RouterOS 6.43+)
-            $this->write('/login', false, [
-                '=name='     . $this->username,
-                '=password=' . $this->password,
-            ]);
-        }
+            $this->writeWord('/login');
+            $this->writeWord('=name='     . $this->username);
+            $this->writeWord('=response=' . $hash);
+            $this->writeWord(''); // end of sentence
 
-        $response = $this->read();
+            $response = $this->read();
 
-        if (isset($response[0]['!trap'])) {
-            throw new Exception("Authentication failed: " . ($response[0]['message'] ?? 'Invalid credentials'));
+            if (isset($response[0]['!trap'])) {
+                throw new Exception("Authentication failed (legacy): " . ($response[0]['message'] ?? 'Invalid credentials'));
+            }
         }
 
         $this->connected = true;
