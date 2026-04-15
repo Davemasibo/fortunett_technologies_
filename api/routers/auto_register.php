@@ -20,11 +20,36 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 try {
     // Get POST data
     $provisioning_token = $_POST['provisioning_token'] ?? '';
-    // If router_ip is not provided or is a local IP, use REMOTE_ADDR
-    $router_ip = $_POST['router_ip'] ?? '';
-    if (!$router_ip || substr($router_ip, 0, 8) === '192.168.' || $router_ip === '127.0.0.1') {
-        $router_ip = $_SERVER['REMOTE_ADDR'];
+
+    // Resolve the real router WAN IP.
+    // When the site is behind Cloudflare, REMOTE_ADDR is a Cloudflare edge IP
+    // (e.g. 172.71.x.x), NOT the router's actual IP.
+    // Cloudflare always sends the real client IP in CF-Connecting-IP.
+    // We also accept X-Real-IP (nginx) and the first entry of X-Forwarded-For.
+    $real_ip = '';
+    foreach ([
+        'HTTP_CF_CONNECTING_IP',   // Cloudflare — most reliable
+        'HTTP_X_REAL_IP',          // nginx proxy
+        'HTTP_X_FORWARDED_FOR',    // generic proxy (may be comma-separated)
+        'REMOTE_ADDR',             // direct connection fallback
+    ] as $key) {
+        $val = $_SERVER[$key] ?? '';
+        // X-Forwarded-For can be "client, proxy1, proxy2" — take the first
+        $val = trim(explode(',', $val)[0]);
+        if ($val && filter_var($val, FILTER_VALIDATE_IP)) {
+            $real_ip = $val;
+            break;
+        }
     }
+
+    // Use the posted router_ip only if it is a routable public IP.
+    // The provision script posts 192.168.88.1 (a placeholder), so we always
+    // fall back to the real IP derived above for private/invalid values.
+    $posted_ip = $_POST['router_ip'] ?? '';
+    $router_ip = (
+        $posted_ip &&
+        filter_var($posted_ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)
+    ) ? $posted_ip : $real_ip;
     
     $router_mac = $_POST['router_mac'] ?? '';
     $router_identity = $_POST['router_identity'] ?? '';
