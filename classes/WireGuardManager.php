@@ -26,13 +26,13 @@ class WireGuardManager
      */
     public static function generateKeyPair(): array
     {
-        $private = trim(shell_exec('wg genkey 2>/dev/null') ?: '');
+        $private = trim(shell_exec('sudo wg genkey 2>/dev/null') ?: '');
         if (empty($private)) {
             throw new \RuntimeException(
                 'wg command unavailable. Install wireguard-tools: apt install wireguard'
             );
         }
-        $public = trim(shell_exec('echo ' . escapeshellarg($private) . ' | wg pubkey 2>/dev/null') ?: '');
+        $public = trim(shell_exec('echo ' . escapeshellarg($private) . ' | sudo wg pubkey 2>/dev/null') ?: '');
         if (empty($public)) {
             throw new \RuntimeException('Failed to derive WireGuard public key');
         }
@@ -61,7 +61,7 @@ class WireGuardManager
      */
     public static function getVpsPublicKey(): string
     {
-        $key = trim(shell_exec('wg show ' . escapeshellarg(self::WG_INTERFACE) . ' public-key 2>/dev/null') ?: '');
+        $key = trim(shell_exec('sudo wg show ' . escapeshellarg(self::WG_INTERFACE) . ' public-key 2>/dev/null') ?: '');
         if (empty($key)) {
             throw new \RuntimeException(
                 'WireGuard interface ' . self::WG_INTERFACE . ' is not running. ' .
@@ -72,36 +72,51 @@ class WireGuardManager
     }
 
     /**
-     * Add (or update) a router peer to the running wg0 instance and persist config.
+     * Add (or update) a router peer to the running wg0 instance and persist to config file.
      */
     public static function addPeer(string $publicKey, string $vpnIp): void
     {
         $allowed = $vpnIp . '/32';
+        // Add to running instance
         $cmd = sprintf(
-            'wg set %s peer %s allowed-ips %s persistent-keepalive 25 2>&1',
+            'sudo wg set %s peer %s allowed-ips %s persistent-keepalive 25 2>&1',
             escapeshellarg(self::WG_INTERFACE),
             escapeshellarg($publicKey),
             escapeshellarg($allowed)
         );
         $out = shell_exec($cmd);
-        if ($out) {
-            error_log('[WireGuard] addPeer: ' . trim($out));
+        if ($out) error_log('[WireGuard] addPeer: ' . trim($out));
+
+        // Persist — write peer block directly to config file so it survives reboot
+        $peerConf = "\n[Peer]\n# added by Fortunett\nPublicKey = $publicKey\nAllowedIPs = $allowed\nPersistentKeepalive = 25\n";
+        $confPath = '/etc/wireguard/' . self::WG_INTERFACE . '.conf';
+        // Only append if not already present
+        $existing = file_get_contents($confPath) ?: '';
+        if (strpos($existing, $publicKey) === false) {
+            file_put_contents($confPath, $peerConf, FILE_APPEND | LOCK_EX);
         }
-        // Persist to /etc/wireguard/wg0.conf so it survives restarts
-        shell_exec('wg-quick save ' . escapeshellarg(self::WG_INTERFACE) . ' 2>/dev/null');
     }
 
     /**
-     * Remove a router peer from the running wg0 instance and persist config.
+     * Remove a router peer from the running wg0 instance and config file.
      */
     public static function removePeer(string $publicKey): void
     {
         shell_exec(sprintf(
-            'wg set %s peer %s remove 2>/dev/null',
+            'sudo wg set %s peer %s remove 2>/dev/null',
             escapeshellarg(self::WG_INTERFACE),
             escapeshellarg($publicKey)
         ));
-        shell_exec('wg-quick save ' . escapeshellarg(self::WG_INTERFACE) . ' 2>/dev/null');
+        // Remove from config file
+        $confPath = '/etc/wireguard/' . self::WG_INTERFACE . '.conf';
+        $conf = file_get_contents($confPath) ?: '';
+        // Strip the [Peer] block containing this public key
+        $conf = preg_replace(
+            '/\n\[Peer\][^\[]*' . preg_quote($publicKey, '/') . '[^\[]*/s',
+            '',
+            $conf
+        );
+        file_put_contents($confPath, $conf, LOCK_EX);
     }
 
     /**
