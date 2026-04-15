@@ -398,43 +398,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- Router Cards -->
         <div class="routers-grid">
-            <?php foreach ($routers as $router): 
-                $status = strtolower($router['status'] ?? 'offline');
-                // Mock usage stats if not in DB
-                $active_users = rand(10, 100); 
-                $bandwidth = rand(10, 95);
-                $bwClass = $bandwidth > 90 ? 'danger' : ($bandwidth > 70 ? 'warning' : 'good');
+            <?php foreach ($routers as $router):
+                $status    = strtolower($router['status'] ?? 'pending');
+                $svcTypes  = array_filter(array_map('trim', explode(',', $router['service_types'] ?? '')));
+                $statusIcon = $status === 'active' ? 'check-circle' : ($status === 'inactive' ? 'times-circle' : 'question-circle');
             ?>
-            <div class="router-card">
+            <div class="router-card" id="rcard-<?php echo $router['id']; ?>">
                 <div class="router-card-header">
                     <div class="router-info">
-                        <div class="router-status-dot <?php echo $status; ?>"></div>
+                        <div class="router-status-dot <?php echo $status; ?>" id="rdot-<?php echo $router['id']; ?>"></div>
                         <div>
                             <div class="router-name"><?php echo htmlspecialchars($router['name']); ?></div>
                             <div class="router-ip"><?php echo htmlspecialchars($router['ip_address'] ?? 'N/A'); ?></div>
                         </div>
                     </div>
-                    <span class="status-badge <?php echo $status; ?>">
-                        <i class="fas fa-<?php echo $status === 'online' ? 'check-circle' : ($status === 'offline' ? 'times-circle' : 'question-circle'); ?>"></i>
-                        <?php echo ucfirst($status); ?>
-                    </span>
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+                        <span class="status-badge <?php echo $status; ?>" id="rbadge-<?php echo $router['id']; ?>">
+                            <i class="fas fa-<?php echo $statusIcon; ?>"></i>
+                            <?php echo ucfirst($status); ?>
+                        </span>
+                        <?php if (!empty($svcTypes)): ?>
+                        <div style="display:flex;gap:4px;">
+                            <?php foreach ($svcTypes as $svc): ?>
+                            <span style="font-size:10px;padding:2px 7px;border-radius:4px;font-weight:600;background:<?php echo $svc === 'pppoe' ? 'rgba(59,130,246,.15)' : 'rgba(16,185,129,.15)'; ?>;color:<?php echo $svc === 'pppoe' ? '#93c5fd' : '#6ee7b7'; ?>;border:1px solid <?php echo $svc === 'pppoe' ? 'rgba(59,130,246,.3)' : 'rgba(16,185,129,.3)'; ?>;">
+                                <?php echo strtoupper($svc); ?>
+                            </span>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
                 <div class="router-card-body">
                     <div class="router-metric">
-                        <div class="metric-header"><span class="metric-label"><i class="fas fa-users"></i>Active Users</span><span class="metric-value"><?php echo $active_users; ?></span></div>
+                        <div class="metric-header">
+                            <span class="metric-label"><i class="fas fa-users"></i> Live Connections</span>
+                            <span class="metric-value" id="rstat-active-<?php echo $router['id']; ?>">—</span>
+                        </div>
+                        <div style="font-size:11px;color:rgba(255,255,255,.25);margin-top:2px;" id="rstat-breakdown-<?php echo $router['id']; ?>"></div>
                     </div>
                     <div class="router-metric">
-                        <div class="metric-header"><span class="metric-label"><i class="fas fa-chart-line"></i>Bandwidth Usage</span><span class="metric-value"><?php echo $bandwidth; ?>%</span></div>
-                        <div class="progress-bar"><div class="progress-fill <?php echo $bwClass; ?>" style="width: <?php echo $bandwidth; ?>%"></div></div>
+                        <div class="metric-header">
+                            <span class="metric-label"><i class="fas fa-clock"></i> Uptime</span>
+                            <span class="metric-value" id="rstat-uptime-<?php echo $router['id']; ?>">—</span>
+                        </div>
                     </div>
                     <div class="router-metric">
-                        <div class="metric-header"><span class="metric-label"><i class="fas fa-clock"></i>Uptime</span><span class="metric-value">Unknown</span></div>
+                        <div class="metric-header">
+                            <span class="metric-label"><i class="fas fa-microchip"></i> CPU Load</span>
+                            <span class="metric-value" id="rstat-cpu-<?php echo $router['id']; ?>">—</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill good" id="rstat-cpubar-<?php echo $router['id']; ?>" style="width:0%"></div>
+                        </div>
                     </div>
                 </div>
                 <div class="router-card-footer">
-                    <div class="footer-info">Last Seen: <?php echo $router['last_seen'] ?? 'Never'; ?></div>
+                    <div class="footer-info">Last Seen: <?php echo $router['last_seen'] ? date('d M H:i', strtotime($router['last_seen'])) : 'Never'; ?></div>
                     <div class="footer-actions">
-                        <button class="footer-btn secondary" onclick="testConnection(<?php echo $router['id']; ?>, this)"><i class="fas fa-plug"></i> Test</button>
+                        <button class="footer-btn secondary" id="rbtn-test-<?php echo $router['id']; ?>" onclick="testConnection(<?php echo $router['id']; ?>, this)"><i class="fas fa-plug"></i> Test</button>
                         <button class="footer-btn secondary" onclick="editRouter(<?php echo htmlspecialchars(json_encode($router)); ?>)"><i class="fas fa-edit"></i> Edit</button>
                         <button class="footer-btn danger" onclick="confirmDeleteRouter(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars($router['name']); ?>')"><i class="fas fa-trash"></i> Delete</button>
                     </div>
@@ -1048,37 +1069,83 @@ function copyToClipboard(text) {
     });
 }
 
-function testConnection(id, btn) {
+function updateRouterCard(id, data) {
+    const dot   = document.getElementById('rdot-'   + id);
+    const badge = document.getElementById('rbadge-' + id);
 
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
-    btn.disabled = true;
-    
+    if (data.status === 'success') {
+        if (dot)   { dot.className = 'router-status-dot active'; }
+        if (badge) { badge.className = 'status-badge active'; badge.innerHTML = '<i class="fas fa-check-circle"></i> Active'; }
+
+        const s = data.stats || {};
+        const setEl = (elId, val) => { const el = document.getElementById(elId); if (el) el.textContent = val; };
+
+        setEl('rstat-active-'    + id, s.active_total ?? 0);
+        setEl('rstat-uptime-'    + id, s.uptime        ?? '—');
+        setEl('rstat-cpu-'       + id, (s.cpu_load ?? 0) + '%');
+
+        const bd = document.getElementById('rstat-breakdown-' + id);
+        if (bd && s.active_total !== undefined) {
+            const parts = [];
+            if (s.pppoe_active  > 0) parts.push(s.pppoe_active  + ' PPPoE');
+            if (s.hotspot_active > 0) parts.push(s.hotspot_active + ' Hotspot');
+            bd.textContent = parts.length ? parts.join(' · ') : 'No active sessions';
+        }
+
+        const cpuBar = document.getElementById('rstat-cpubar-' + id);
+        if (cpuBar) {
+            const cpu = parseInt(s.cpu_load ?? 0);
+            cpuBar.style.width = cpu + '%';
+            cpuBar.className   = 'progress-fill ' + (cpu > 90 ? 'danger' : (cpu > 70 ? 'warning' : 'good'));
+        }
+    } else {
+        if (dot)   { dot.className = 'router-status-dot inactive'; }
+        if (badge) { badge.className = 'status-badge inactive'; badge.innerHTML = '<i class="fas fa-times-circle"></i> Inactive'; }
+        const setEl = (elId, val) => { const el = document.getElementById(elId); if (el) el.textContent = val; };
+        setEl('rstat-active-'    + id, '—');
+        setEl('rstat-uptime-'    + id, '—');
+        setEl('rstat-cpu-'       + id, '—');
+    }
+}
+
+function testConnection(id, btn) {
+    const originalText = btn ? btn.innerHTML : '';
+    if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...'; btn.disabled = true; }
+
     const formData = new FormData();
     formData.append('id', id);
-    
+
     fetch('api/routers/test_connection.php', {
         method: 'POST',
         body: formData
     })
     .then(r => r.json())
     .then(data => {
-        if(data.status === 'success') {
-            btn.innerHTML = '<i class="fas fa-check"></i> Connected';
-            btn.style.color = 'green';
-            setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; btn.style.color = ''; }, 3000);
-        } else {
-            alert('Failed: ' + data.message);
-            btn.innerHTML = originalText;
-            btn.disabled = false;
+        updateRouterCard(id, data);
+        if (btn) {
+            if (data.status === 'success') {
+                btn.innerHTML = '<i class="fas fa-check"></i> Connected';
+                btn.style.color = '#34d399';
+                setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; btn.style.color = ''; }, 3000);
+            } else {
+                showRouterToast('Failed: ' + data.message, 'error');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
         }
     })
     .catch(e => {
-        alert('Error: ' + e);
-        btn.innerHTML = originalText;
-        btn.disabled = false;
+        if (btn) { btn.innerHTML = originalText; btn.disabled = false; }
+        showRouterToast('Error: ' + e, 'error');
     });
 }
+
+// Auto-load live stats for all router cards on page load
+document.addEventListener('DOMContentLoaded', () => {
+    <?php foreach ($routers as $r): ?>
+    testConnection(<?php echo (int)$r['id']; ?>, null);
+    <?php endforeach; ?>
+});
 
 function confirmDeleteRouter(routerId, routerName) {
     if (confirm(`Are you sure you want to delete router "${routerName}"? This action cannot be undone.`)) {

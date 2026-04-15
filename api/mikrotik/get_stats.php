@@ -19,8 +19,9 @@ $t_stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $t_stmt->execute([$user_id]);
 $tenant_id = $t_stmt->fetchColumn();
 
-// Get router credentials
-$stmt = $pdo->query("SELECT * FROM mikrotik_routers WHERE status = 'active' LIMIT 1");
+// Get router credentials — use tenant's first active router
+$stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ? LIMIT 1");
+$stmt->execute([$tenant_id]);
 $router = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$router) {
@@ -32,32 +33,33 @@ try {
     $api = new MikrotikAPI($router['ip_address'], $router['username'], $router['password'], $router['api_port']);
     
     if ($api->connect()) {
-        // 1. Get Active Sessions
-        $activeSessions = $api->getActiveSessions();
-        
-        // Filter by Tenant
-        $stmt = $pdo->prepare("SELECT mikrotik_username FROM clients WHERE tenant_id = ?");
+        // 1. Fetch tenant usernames for filtering
+        $stmt = $pdo->prepare("SELECT mikrotik_username FROM clients WHERE tenant_id = ? AND mikrotik_username IS NOT NULL AND mikrotik_username != ''");
         $stmt->execute([$tenant_id]);
-        $tenant_users = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        // Normalize for comparison (lowercase)
-        $tenant_users = array_map('strtolower', $tenant_users);
-        
-        $hotspotActive = 0;
+        $tenant_users = array_map('strtolower', $stmt->fetchAll(PDO::FETCH_COLUMN));
+
+        // 2. PPPoE active sessions
+        $pppoeSessions = $api->getActiveSessions();
         $pppoeActive = 0;
-        $filteredActiveCount = 0;
-        
-        foreach ($activeSessions as $session) {
-            if (isset($session['name']) && in_array(strtolower($session['name']), $tenant_users)) {
-                $filteredActiveCount++;
-                if (isset($session['service']) && $session['service'] == 'pppoe') {
-                    $pppoeActive++;
-                } else {
-                    $hotspotActive++;
-                }
+        foreach ($pppoeSessions as $session) {
+            $name = strtolower($session['name'] ?? $session['user'] ?? '');
+            if ($name && (empty($tenant_users) || in_array($name, $tenant_users))) {
+                $pppoeActive++;
             }
         }
-        
-        // 2. Get Resources (CPU, Uptime)
+
+        // 3. Hotspot active sessions
+        $hotspotMap = $api->getActiveHotspotSessionsMap();
+        $hotspotActive = 0;
+        foreach (array_keys($hotspotMap) as $name) {
+            if (empty($tenant_users) || in_array(strtolower($name), $tenant_users)) {
+                $hotspotActive++;
+            }
+        }
+
+        $filteredActiveCount = $pppoeActive + $hotspotActive;
+
+        // 4. Get Resources (CPU, Uptime)
         $resources = $api->getResources();
         
         // 3. Get Interface Traffic (WAN interface usually ether1, assuming)

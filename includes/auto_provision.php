@@ -298,69 +298,80 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
 }
 
 /**
- * Upload a tenant-branded hotspot login page to the router via FTP.
- * Uses the template at /hotspot/login.html and injects brand tokens.
- * Silent on failure — provisioning must not be blocked by FTP issues.
+ * Upload a tenant-branded hotspot login page to the router.
+ *
+ * Strategy: use the RouterOS API to instruct the router to pull the branded
+ * login page from this server via /tool/fetch.  This is more reliable than
+ * FTP because:
+ *   • The server is already publicly reachable (it hosts the customer portal).
+ *   • The RouterOS API connection is already proven to work (provisioning used it).
+ *   • FTP requires a separate service to be enabled on the router.
+ *
+ * The branded page is served by /hotspot/login_serve.php?token={provisioning_token}.
+ *
+ * Silent on failure — provisioning must not be blocked by upload issues.
  */
 function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
 {
     try {
-        // Load tenant branding
-        $stmt = $pdo->prepare("SELECT brand_color, company_name FROM tenants WHERE id = ?");
+        // Get the tenant's provisioning token (used to authenticate the serve endpoint)
+        $stmt = $pdo->prepare("SELECT provisioning_token FROM tenants WHERE id = ?");
         $stmt->execute([$tenantId]);
-        $tenant      = $stmt->fetch(PDO::FETCH_ASSOC);
-        $brandColor  = $tenant['brand_color']  ?? '#0f3460';
-        $companyName = $tenant['company_name'] ?? 'FortuNett Technologies';
+        $provToken = $stmt->fetchColumn();
 
-        // Compute a slightly darker shade for the gradient
-        $brandDark = _darkenHex($brandColor, 40);
-
-        // Read the template
-        $templatePath = __DIR__ . '/../hotspot/login.html';
-        if (!file_exists($templatePath)) {
-            error_log('_uploadHotspotLoginPage: template not found at ' . $templatePath);
+        if (!$provToken) {
+            error_log('_uploadHotspotLoginPage: no provisioning token for tenant ' . $tenantId);
             return;
         }
 
-        $html = file_get_contents($templatePath);
-        $html = str_replace(
-            ['{{BRAND_COLOR}}', '{{BRAND_DARK}}', '{{COMPANY_NAME}}'],
-            [$brandColor, $brandDark, htmlspecialchars($companyName, ENT_QUOTES)],
-            $html
+        // Build the URL that the router will fetch.
+        // Derive server base from HTTP_HOST if available, otherwise use the provisioning
+        // callback URL pattern (MPESA_CALLBACK_URL is set from config/mpesa.php).
+        if (!empty($_SERVER['HTTP_HOST'])) {
+            $proto    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $basePath = rtrim(dirname(dirname($_SERVER['SCRIPT_NAME'])), '/\\');
+            $baseUrl  = $proto . '://' . $_SERVER['HTTP_HOST'] . $basePath;
+        } elseif (defined('MPESA_CALLBACK_URL')) {
+            // e.g. https://demo.fortunetttech.site/api/mpesa/callback.php → strip 3 segments
+            $baseUrl = dirname(dirname(dirname(MPESA_CALLBACK_URL)));
+        } else {
+            error_log('_uploadHotspotLoginPage: cannot determine server URL');
+            return;
+        }
+
+        $serveUrl = $baseUrl . '/hotspot/login_serve.php?token=' . urlencode($provToken);
+        $mode     = (str_starts_with($serveUrl, 'https://')) ? 'https' : 'http';
+
+        // Connect to router via API and issue /tool/fetch
+        $api = new MikrotikAPI(
+            $router['ip_address'],
+            $router['username'],
+            $router['password'],
+            (int)($router['api_port'] ?? 8728)
         );
 
-        // Write to a temp file
-        $tmp = tempnam(sys_get_temp_dir(), 'hs_login_');
-        file_put_contents($tmp, $html);
-
-        // FTP connect (MikroTik FTP is on port 21 by default)
-        $ftp = @ftp_connect($router['ip_address'], 21, 6);
-        if (!$ftp) {
-            error_log('_uploadHotspotLoginPage: FTP connect failed to ' . $router['ip_address']);
-            @unlink($tmp);
+        if (!$api->isReachable(4)) {
+            error_log('_uploadHotspotLoginPage: router not reachable: ' . $router['ip_address']);
             return;
         }
 
-        if (!@ftp_login($ftp, $router['username'], $router['password'])) {
-            error_log('_uploadHotspotLoginPage: FTP login failed for ' . $router['ip_address']);
-            ftp_close($ftp);
-            @unlink($tmp);
-            return;
+        $api->connect();
+
+        // RouterOS /tool/fetch: router pulls file from server and saves to flash
+        $result = $api->comm('/tool/fetch', [
+            '=url='      . $serveUrl,
+            '=dst-path=hotspot/login.html',
+            '=mode='     . $mode,
+        ]);
+
+        $api->disconnect();
+
+        // Log any trap (error) from the router
+        foreach ($result as $r) {
+            if (isset($r['!trap'])) {
+                error_log('_uploadHotspotLoginPage: router fetch error: ' . ($r['message'] ?? 'unknown'));
+            }
         }
-
-        ftp_pasv($ftp, true); // passive mode
-
-        // Ensure hotspot directory exists
-        @ftp_mkdir($ftp, 'hotspot');
-
-        // Upload the login page
-        $uploaded = ftp_put($ftp, 'hotspot/login.html', $tmp, FTP_BINARY);
-        if (!$uploaded) {
-            error_log('_uploadHotspotLoginPage: ftp_put failed for ' . $router['ip_address']);
-        }
-
-        ftp_close($ftp);
-        @unlink($tmp);
 
     } catch (Throwable $e) {
         error_log('_uploadHotspotLoginPage: ' . $e->getMessage());

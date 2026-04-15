@@ -2,7 +2,7 @@
 header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
-require_once '../../classes/RouterOSAPI.php';
+require_once '../../classes/MikrotikAPI.php';
 
 // disable error reporting to screen to prevent HTML in JSON
 ini_set('display_errors', 0);
@@ -48,35 +48,49 @@ try {
     $pass = $router['password']; 
     $port = $router['api_port'] ?? 8728;
 
-    // Test Connection
-    $api = new RouterOSAPI();
-    
-    // Attempt Connection
-    // Connection timeout defaults are generally handled by fsockopen inside RouterOSAPI
-    if ($api->connect($ip, $user, $pass)) {
-        
-        // Try to read identity
-        $api->write('/system/identity/print');
-        $read = $api->read(false);
-        $identity = $read[0]['name'] ?? 'Unknown';
+    $mk = new MikrotikAPI($ip, $user, $pass, $port);
 
-        // Update status to online
-        $upd = $pdo->prepare("UPDATE mikrotik_routers SET status = 'online', last_seen = NOW() WHERE id = ?");
-        $upd->execute([$id]);
+    if ($mk->isReachable(4) && $mk->connect()) {
 
-        $api->disconnect();
+        // Identity
+        $idResp   = $mk->comm('/system/identity/print');
+        $identity = '';
+        foreach ($idResp as $r) { if (isset($r['!re'])) { $identity = $r['name'] ?? ''; break; } }
+
+        // Resources (uptime, CPU)
+        $resources = $mk->getResources();
+        $uptime    = $resources['uptime']   ?? '—';
+        $cpuLoad   = $resources['cpu-load'] ?? '0';
+
+        // Live sessions: PPPoE + hotspot
+        $pppoeSessions  = $mk->getActiveSessions();
+        $pppoeCount     = count($pppoeSessions);
+        $hotspotMap     = $mk->getActiveHotspotSessionsMap();
+        $hotspotCount   = count($hotspotMap);
+        $totalActive    = $pppoeCount + $hotspotCount;
+
+        $mk->disconnect();
+
+        // Mark active — valid ENUM value
+        $pdo->prepare("UPDATE mikrotik_routers SET status = 'active', last_seen = NOW() WHERE id = ?")->execute([$id]);
+
         echo json_encode([
-            'status' => 'success', 
-            'message' => "Connected successfully to '$identity'",
-            'debug' => "IP: $ip, User: $user"
+            'status'        => 'success',
+            'message'       => "Connected to '" . ($identity ?: $ip) . "'",
+            'stats' => [
+                'active_total'  => $totalActive,
+                'pppoe_active'  => $pppoeCount,
+                'hotspot_active'=> $hotspotCount,
+                'uptime'        => $uptime,
+                'cpu_load'      => (int)$cpuLoad,
+            ],
         ]);
     } else {
-        $upd = $pdo->prepare("UPDATE mikrotik_routers SET status = 'offline' WHERE id = ?");
-        $upd->execute([$id]);
-        
+        $pdo->prepare("UPDATE mikrotik_routers SET status = 'inactive' WHERE id = ?")->execute([$id]);
+
         echo json_encode([
-            'status' => 'error', 
-            'message' => "Connection failed to $ip. Verify Request: Is the router reachable from this server?"
+            'status'  => 'error',
+            'message' => "Connection failed to $ip. Is the router reachable from this server?",
         ]);
     }
 

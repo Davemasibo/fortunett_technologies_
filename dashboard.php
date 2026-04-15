@@ -31,7 +31,7 @@ try {
     $stmt->execute([$tenant_id]);
     $yearly_revenue = (float)$stmt->fetchColumn();
     
-    // Active Users
+    // Active subscriptions (initial page-load placeholder — AJAX replaces with live router count)
     $stmt = $db->prepare("SELECT COUNT(*) FROM clients WHERE status = 'active' AND tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $active_users = (int)$stmt->fetchColumn();
@@ -479,14 +479,14 @@ include 'includes/sidebar.php';
             <div class="metrics-grid">
                 <div class="metric-card">
                     <div class="metric-header">
-                        <span class="metric-label">Active Users</span>
+                        <span class="metric-label">Live Connections</span>
                         <div class="metric-icon users">
-                            <i class="fas fa-users"></i>
+                            <i class="fas fa-wifi"></i>
                         </div>
                     </div>
                     <div class="metric-value" id="stat-active"><?php echo number_format($active_users); ?></div>
                     <div class="metric-change">
-                        <span class="metric-period">current</span>
+                        <span class="metric-period" id="stat-active-label">subscriptions (loading live…)</span>
                     </div>
                 </div>
 
@@ -889,6 +889,17 @@ function updateStatCards(s) {
     set('stat-monthly', 'KES ' + (s.monthly_revenue || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
     set('stat-yearly',  'KES ' + (s.yearly_revenue  || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
     set('stat-active',  (s.active_users       || 0).toLocaleString());
+    // Update the sub-label: show "live from router" when router is reachable
+    const lbl = document.getElementById('stat-active-label');
+    if (lbl) {
+        if (s.router_online) {
+            lbl.textContent = 'live from router';
+            lbl.style.color = '#34d399';
+        } else {
+            lbl.textContent = 'active subscriptions';
+            lbl.style.color = '';
+        }
+    }
     set('stat-expired', (s.expired_accounts   || 0).toLocaleString());
     set('stat-newreg',  (s.new_registrations  || 0).toLocaleString());
 }
