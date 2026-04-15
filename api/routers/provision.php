@@ -43,8 +43,18 @@ try {
         $serverUrl = $protocol . $_SERVER['HTTP_HOST'] . $basePath . '/auto_register.php';
         $mode      = str_starts_with($serverUrl, 'https://') ? "mode=https" : "mode=http";
 
-        // Resolve the VPS IP so the router can allow API access from it
-        $serverIp  = $_SERVER['SERVER_ADDR'] ?? @gethostbyname($_SERVER['HTTP_HOST']) ?? '';
+        // Resolve the VPS public IP.
+        // SERVER_ADDR is often 127.0.0.1 behind nginx/Apache, so we prefer
+        // DNS resolution of the public hostname which always gives the real IP.
+        $serverIp = '';
+        $resolved = @gethostbyname($_SERVER['HTTP_HOST']);
+        if ($resolved && $resolved !== $_SERVER['HTTP_HOST']
+            && filter_var($resolved, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            $serverIp = $resolved; // e.g. 165.22.x.x
+        } elseif (!empty($_SERVER['SERVER_ADDR'])
+            && filter_var($_SERVER['SERVER_ADDR'], FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            $serverIp = $_SERVER['SERVER_ADDR'];
+        }
 
         // Secure password for the managed admin user
         $adminPassword = bin2hex(random_bytes(8));
@@ -52,9 +62,10 @@ try {
         $t = $token;  // short alias for embedding in heredoc strings
 
         echo "# Fortunett Technologies Provisioning Script\n";
-        echo "# Generated: " . date('Y-m-d H:i:s') . "\n";
-        echo "# Tenant ID: $tenantId\n";
-        echo "# Re-running this script is safe — it cleans up previous config first.\n\n";
+        echo "# Generated:  " . date('Y-m-d H:i:s') . "\n";
+        echo "# Tenant ID:  $tenantId\n";
+        echo "# Server IP:  " . ($serverIp ?: 'COULD NOT RESOLVE — firewall rule will be skipped') . "\n";
+        echo "# Safe to re-run — cleans up previous config first.\n\n";
 
         echo ":log info \"[Fortunett] Starting provisioning for $identity\";\n\n";
 
@@ -66,15 +77,22 @@ try {
         echo "/user add name=\"fortunett_admin\" group=full password=\"$adminPassword\" comment=\"Managed by Fortunett\";\n\n";
 
         // ── 3. Enable API service ──────────────────────────────────────────────
-        echo "/ip service set api disabled=no port=8728;\n\n";
+        if ($serverIp) {
+            // Restrict the API service to only accept connections from the server IP.
+            // This is a service-level whitelist (independent of firewall rules).
+            echo "/ip service set api disabled=no port=8728 address=$serverIp/32;\n\n";
+        } else {
+            echo "/ip service set api disabled=no port=8728;\n\n";
+        }
 
         // ── 4. Firewall: allow the Fortunett server to reach the API port ──────
-        // Remove any previous rule, then insert an ACCEPT at position 0 so it
-        // fires before any drop/reject rules in the input chain.
+        // We add the rule without place-before first, then move it to position 0
+        // to ensure it fires before any drop/reject rules.
         if ($serverIp) {
-            echo "# Allow Fortunett server API access\n";
+            echo "# Allow Fortunett server (${serverIp}) to reach RouterOS API\n";
             echo ":do { /ip firewall filter remove [find comment=\"Fortunett-API\"] } on-error={};\n";
-            echo "/ip firewall filter add chain=input protocol=tcp dst-port=8728 src-address=$serverIp action=accept comment=\"Fortunett-API\" place-before=0;\n\n";
+            echo "/ip firewall filter add chain=input protocol=tcp dst-port=8728 src-address=$serverIp/32 action=accept comment=\"Fortunett-API\";\n";
+            echo "/ip firewall filter move [find comment=\"Fortunett-API\"] destination=0;\n\n";
         }
 
         // ── 5. Heartbeat scheduler (idempotent) ────────────────────────────────
