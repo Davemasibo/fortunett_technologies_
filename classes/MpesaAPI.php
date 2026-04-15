@@ -192,30 +192,22 @@ class MpesaAPI {
         $phone = $this->formatPhone($phone);
         $timestamp = date('YmdHis');
 
-        $isTill = ($this->shortcode_type === 'till');
-        $transactionType = $isTill ? 'CustomerBuyGoodsOnline' : 'CustomerPayBillOnline';
+        $transactionType = ($this->shortcode_type === 'till')
+            ? 'CustomerBuyGoodsOnline'
+            : 'CustomerPayBillOnline';
 
-        // For Buy Goods (Till):
-        //   BusinessShortCode = Store/Head-Office number (used for password + payload header)
-        //   PartyB            = Till number (where funds land)
-        // If store_number is not configured, fall back to shortcode for both (works when
-        // till number IS also the store number, or for Paybill where they're always the same).
-        $businessShortCode = ($isTill && !empty($this->store_number))
-            ? $this->store_number
-            : $this->shortcode;
-
-        $password = base64_encode($businessShortCode . $this->passkey . $timestamp);
-
+        // Safaricom confirmed: for CustomerBuyGoodsOnline, BusinessShortCode = PartyB = Till number.
+        $password    = base64_encode($this->shortcode . $this->passkey . $timestamp);
         $callbackUrl = $this->resolveCallbackUrl();
 
         $curl_post_data = [
-            'BusinessShortCode' => $businessShortCode,
+            'BusinessShortCode' => $this->shortcode,
             'Password'          => $password,
             'Timestamp'         => $timestamp,
             'TransactionType'   => $transactionType,
             'Amount'            => $amount,
             'PartyA'            => $phone,
-            'PartyB'            => $this->shortcode, // always the till/paybill number
+            'PartyB'            => $this->shortcode,
             'PhoneNumber'       => $phone,
             'CallBackURL'       => $callbackUrl,
             'AccountReference'  => $reference,
@@ -223,8 +215,20 @@ class MpesaAPI {
         ];
         
         $url = $this->base_url . '/mpesa/stkpush/v1/processrequest';
+
+        // Log the exact payload for debugging / sharing with Safaricom
+        $debugPayload = $curl_post_data;
+        $debugPayload['Password'] = '***'; // mask for log safety
+        error_log('[MpesaAPI stkPush] payload: ' . json_encode($debugPayload));
+        $logDir = defined('LOG_DIR') ? LOG_DIR : __DIR__ . '/../logs';
+        @file_put_contents(
+            $logDir . '/stk_push_payload.log',
+            date('Y-m-d H:i:s') . ' ' . json_encode($debugPayload) . "\n",
+            FILE_APPEND | LOCK_EX
+        );
+
         $token = $this->getAccessToken();
-        
+
         if (!$token) {
             $detail = $this->last_error ? ' (' . $this->last_error . ')' : '';
             throw new Exception("Failed to get M-Pesa access token" . $detail);
