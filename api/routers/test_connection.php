@@ -1,12 +1,16 @@
 <?php
-header('Content-Type: application/json');
+// Buffer ALL output so a stray warning/notice never corrupts the JSON
+ob_start();
+ini_set('display_errors', 0);
+error_reporting(E_ALL);
+
 require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
 require_once '../../classes/MikrotikAPI.php';
 
-// disable error reporting to screen to prevent HTML in JSON
-ini_set('display_errors', 0);
-error_reporting(E_ALL);
+// Discard any output that came from require_once (BOM, notices, etc.)
+ob_clean();
+header('Content-Type: application/json');
 
 // Start session if not started
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -53,10 +57,13 @@ try {
     // Check TCP reachability separately so we can give a clear error reason
     if (!$mk->isReachable(4)) {
         $pdo->prepare("UPDATE mikrotik_routers SET status = 'inactive' WHERE id = ?")->execute([$id]);
+        // Include the server's real outbound IP so the admin can verify the firewall rule
+        $serverIp = $_SERVER['SERVER_ADDR'] ?? 'unknown';
         echo json_encode([
-            'status'  => 'error',
-            'reason'  => 'unreachable',
-            'message' => "TCP port $port unreachable on $ip. Re-run the provisioning script to add the firewall rule, then test again.",
+            'status'     => 'error',
+            'reason'     => 'unreachable',
+            'server_ip'  => $serverIp,
+            'message'    => "TCP port $port unreachable on $ip. Server IP is $serverIp — run: /ip firewall filter print where comment=Fortunett-API and verify it allows $serverIp/32.",
         ]);
         exit;
     }

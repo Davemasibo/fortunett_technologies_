@@ -3,9 +3,12 @@
  * Dashboard live stats API
  * Returns metrics and chart data as JSON
  */
-header('Content-Type: application/json');
+ob_start();
+ini_set('display_errors', 0);
 require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
+ob_clean();
+header('Content-Type: application/json');
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user_id'])) { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
