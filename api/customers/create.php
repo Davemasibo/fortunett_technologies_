@@ -71,7 +71,7 @@ try {
     $pdo->beginTransaction();
 
     // 1. Get Package Details
-    $stmt = $pdo->prepare("SELECT *, COALESCE(type, connection_type, 'pppoe') AS pkg_type FROM packages WHERE id = ? AND tenant_id = ?");
+    $stmt = $pdo->prepare("SELECT *, COALESCE(NULLIF(type,''), 'pppoe') AS pkg_type FROM packages WHERE id = ? AND tenant_id = ?");
     $stmt->execute([$package_id, $tenant_id]);
     $package = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$package) throw new Exception("Invalid package selected or access denied");
@@ -125,15 +125,16 @@ try {
     if (!empty($mikrotik_username) && !empty($mikrotik_password)) {
         try {
             $router_stmt = $pdo->prepare(
-                "SELECT * FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ? LIMIT 1"
+                "SELECT id, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ? LIMIT 1"
             );
             $router_stmt->execute([$tenant_id]);
             $router = $router_stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($router) {
+                $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
                 $api = new MikrotikAPI(
-                    $router['ip_address'], $router['username'],
-                    $router['password'],   (int)($router['api_port'] ?? 8728)
+                    $connectIp, $router['username'],
+                    $router['password'],  (int)($router['api_port'] ?? 8728)
                 );
                 if ($api->connect()) {
                     $profile = $package['name'] ?? 'default';

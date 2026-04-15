@@ -149,15 +149,12 @@ try {
             echo "/ip firewall filter move [find comment=\"Fortunett-API-VPN\"] destination=0;\n\n";
         } else {
             echo $wgNote;
-            // Fallback: open API service without VPN restriction
-            if ($serverIp) {
-                echo "/ip service set api disabled=no port=8728 address=$serverIp/32;\n";
-                echo ":do { /ip firewall filter remove [find comment=\"Fortunett-API\"] } on-error={};\n";
-                echo "/ip firewall filter add chain=input action=accept protocol=tcp src-address=$serverIp/32 dst-port=8728 comment=\"Fortunett-API\";\n";
-                echo "/ip firewall filter move [find comment=\"Fortunett-API\"] destination=0;\n\n";
-            } else {
-                echo "/ip service set api disabled=no port=8728;\n\n";
-            }
+            // WireGuard unavailable — enable API but DO NOT set an address restriction.
+            // If the router already has a WG tunnel with address=10.200.200.1/32 from a
+            // previous provisioning, we must NOT overwrite it with the public server IP.
+            // The existing restriction is preserved; access will only work once WG is up.
+            echo "/ip service set api disabled=no port=8728;\n";
+            echo "# NOTE: API address restriction NOT changed — run setup_wireguard_server.sh on VPS first.\n\n";
         }
 
         // 4. Heartbeat scheduler — posts to auto_register.php every 5 min

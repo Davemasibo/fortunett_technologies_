@@ -150,7 +150,7 @@ try {
 
 // Get Packages for Dropdown
 try {
-    $stmt = $db->prepare("SELECT id, name, price, COALESCE(NULLIF(type,''), NULLIF(connection_type,''), '') AS type FROM packages WHERE tenant_id = ? ORDER BY price ASC");
+    $stmt = $db->prepare("SELECT id, name, price, COALESCE(NULLIF(type,''), 'hotspot') AS type FROM packages WHERE tenant_id = ? AND status = 'active' ORDER BY price ASC");
     $stmt->execute([$tenant_id]);
     $packages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
