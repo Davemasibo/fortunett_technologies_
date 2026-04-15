@@ -73,6 +73,8 @@ body {
     display: flex;
     flex-direction: column;
     position: fixed;
+    top: 0;
+    left: 0;
     height: 100vh;
     z-index: 1000;
     transition: width var(--trans);
@@ -171,11 +173,11 @@ body {
 .sidebar-menu a.active {
     background: rgba(255,255,255,.14);
     color: #fff;
-    border-left-color: #fff;
+    border-left-color: var(--primary-light, #4A90E2);
     font-weight: 600;
 }
 .sidebar-menu a.active i {
-    filter: drop-shadow(0 0 6px rgba(255,255,255,.4));
+    filter: drop-shadow(0 0 6px rgba(74,144,226,.5));
 }
 .sidebar-menu a.logout {
     color: rgba(239,68,68,.75);
@@ -189,7 +191,7 @@ body {
 
 .sidebar.collapsed .sidebar-menu a span { display: none; }
 .sidebar.collapsed .sidebar-menu a { justify-content: center; padding: 12px; border-left: 3px solid transparent; }
-.sidebar.collapsed .sidebar-menu a.active { border-left-color: #fff; }
+.sidebar.collapsed .sidebar-menu a.active { border-left-color: var(--primary-light, #4A90E2); }
 .sidebar.collapsed li { margin-right: 0; }
 
 /* Tooltip on collapsed sidebar */
@@ -756,12 +758,21 @@ tbody tr:hover td { background: rgba(44,82,130,.03); }
 
 /* ── Mobile (≤ 768px) ── */
 @media (max-width: 768px) {
-    /* Sidebar slides in as overlay */
-    .sidebar { transform: translateX(-100%); transition: transform var(--trans); }
-    .sidebar.active { transform: translateX(0); }
-    .sidebar.collapsed { width: var(--sidebar-w); transform: translateX(-100%); }
-    .sidebar.collapsed.active { transform: translateX(0); }
-    /* Never show tooltips on mobile (sidebar is overlay, not collapsed) */
+    /* Sidebar slides in from left as a full-height overlay */
+    .sidebar {
+        top: 0; left: 0;
+        width: var(--sidebar-w) !important;
+        height: 100vh; height: 100dvh;
+        transform: translateX(-100%);
+        transition: transform var(--trans), box-shadow var(--trans);
+        box-shadow: none;
+        will-change: transform;
+    }
+    .sidebar.active {
+        transform: translateX(0);
+        box-shadow: 8px 0 32px rgba(0,0,0,.55);
+    }
+    /* Never show tooltips on mobile */
     .sidebar .sidebar-menu a[data-label]:hover::after,
     .sidebar .sidebar-menu a[data-label]:hover::before { display: none; }
 
@@ -898,10 +909,14 @@ tbody tr:hover td { background: rgba(44,82,130,.03); }
 /* ── Mobile sidebar overlay ──────────────────────────────────────── */
 .sidebar-overlay {
     display: none;
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,.45);
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,.55);
     z-index: 599;
-    backdrop-filter: blur(2px);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    animation: fadeIn .22s ease;
 }
 .sidebar-overlay.active { display: block; }
 

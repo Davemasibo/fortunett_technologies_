@@ -33,22 +33,50 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
     <link rel="stylesheet" href="/customer/css/customer.css?v=<?php echo filemtime(__DIR__.'/../css/customer.css'); ?>">
     <style>
         :root {
-            --primary: <?php echo $tenant_branding['brand_color']; ?>;
-            --primary-light: <?php echo $tenant_branding['brand_color']; ?>80; /* Fallback or opacity */
+            --primary:       <?php echo $tenant_branding['brand_color']; ?>;
+            --primary-light: <?php
+                // Lighten the brand colour by bumping each hex channel +40 (clamped to ff)
+                $hex = ltrim($tenant_branding['brand_color'], '#');
+                if (strlen($hex) === 6) {
+                    $r = min(255, hexdec(substr($hex,0,2)) + 40);
+                    $g = min(255, hexdec(substr($hex,2,2)) + 40);
+                    $b = min(255, hexdec(substr($hex,4,2)) + 40);
+                    echo sprintf('#%02x%02x%02x', $r, $g, $b);
+                } else {
+                    echo $tenant_branding['brand_color'];
+                }
+            ?>;
+            --primary-dark:  <?php
+                $hex = ltrim($tenant_branding['brand_color'], '#');
+                if (strlen($hex) === 6) {
+                    $r = max(0, hexdec(substr($hex,0,2)) - 40);
+                    $g = max(0, hexdec(substr($hex,2,2)) - 40);
+                    $b = max(0, hexdec(substr($hex,4,2)) - 40);
+                    echo sprintf('#%02x%02x%02x', $r, $g, $b);
+                } else {
+                    echo $tenant_branding['brand_color'];
+                }
+            ?>;
+            --primary-glow:  <?php echo $tenant_branding['brand_color']; ?>40;
         }
         .sidebar-menu a.active {
-            border-left-color: var(--primary);
+            border-left-color: var(--primary-light);
+            background: linear-gradient(90deg, var(--primary)1a 0%, transparent 100%);
+            /* Fallback for browsers that don't interpolate hex+alpha correctly */
             background: linear-gradient(90deg, <?php echo $tenant_branding['brand_color']; ?>1a 0%, transparent 100%);
         }
         .user-avatar, .package-icon {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary) 100%);
+            background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
         }
         .btn-primary {
-            background: var(--primary);
+            background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-light) 100%);
         }
         .btn-primary:hover {
             opacity: 0.9;
             transform: translateY(-1px);
+        }
+        .topbar {
+            border-bottom-color: var(--primary)22;
         }
     </style>
 </head>

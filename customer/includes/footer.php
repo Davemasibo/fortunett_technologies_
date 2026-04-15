@@ -1,6 +1,6 @@
     </div> <!-- End content-wrapper -->
 
-    <footer style="text-align:center;padding:18px 24px;color:#6B7280;font-size:13px;margin-top:auto;border-top:1px solid #E5E7EB;">
+    <footer style="text-align:center;padding:18px 24px;color:rgba(255,255,255,.35);font-size:13px;margin-top:auto;border-top:1px solid rgba(255,255,255,.06);background:#1c1c1b;">
         <p style="margin:0 0 4px;">&copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars($tenant_branding['company_name'] ?? 'ISP System'); ?>. All rights reserved.</p>
         <?php if (!empty($tenant_branding['support_number']) || !empty($tenant_branding['support_email'])): ?>
         <p style="margin:0;">
