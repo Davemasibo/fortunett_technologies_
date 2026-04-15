@@ -26,13 +26,14 @@ class WireGuardManager
      */
     public static function generateKeyPair(): array
     {
-        $private = trim(shell_exec('sudo wg genkey 2>/dev/null') ?: '');
+        // wg genkey/pubkey don't touch the kernel interface — no sudo needed
+        $private = trim(shell_exec('wg genkey 2>/dev/null') ?: '');
         if (empty($private)) {
             throw new \RuntimeException(
-                'wg command unavailable. Install wireguard-tools: apt install wireguard'
+                'wg command unavailable. Install: apt install wireguard-tools'
             );
         }
-        $public = trim(shell_exec('echo ' . escapeshellarg($private) . ' | sudo wg pubkey 2>/dev/null') ?: '');
+        $public = trim(shell_exec('echo ' . escapeshellarg($private) . ' | wg pubkey 2>/dev/null') ?: '');
         if (empty($public)) {
             throw new \RuntimeException('Failed to derive WireGuard public key');
         }
