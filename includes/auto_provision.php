@@ -235,13 +235,19 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
         // Re-enable in case it was disabled by expiry/suspension
         $api->comm('/ip/hotspot/user/enable', ['=.id=' . $userId]);
     } else {
-        $api->comm('/ip/hotspot/user/add', [
+        $addResp = $api->comm('/ip/hotspot/user/add', [
             '=name='     . $username,
             '=password=' . $password,
             '=profile='  . $profileName,
             '=comment='  . $comment,
             '=server=all',
         ]);
+        // Check for RouterOS trap (error) — e.g. hotspot not configured on router
+        foreach ($addResp as $r) {
+            if (isset($r['!trap'])) {
+                throw new \RuntimeException('Hotspot user add failed: ' . ($r['message'] ?? 'RouterOS error. Is hotspot configured on this router?'));
+            }
+        }
         // Fetch the .id of the newly created user
         $newUsers = $api->comm('/ip/hotspot/user/print', ['?name=' . $username]);
         foreach ($newUsers as $u) {
