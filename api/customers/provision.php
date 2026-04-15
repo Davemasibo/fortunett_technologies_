@@ -5,6 +5,21 @@
  */
 ob_start();
 ini_set('display_errors', 0);
+error_reporting(0);
+
+// Register a shutdown handler to catch fatal errors and return valid JSON
+register_shutdown_function(function () {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        ob_clean();
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'message' => 'PHP fatal error: ' . $err['message'] . ' in ' . basename($err['file']) . ':' . $err['line']
+        ]);
+    }
+});
+
 require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
 require_once '../../includes/auto_provision.php';
