@@ -93,10 +93,11 @@ class MikrotikAPI {
      * Disconnect from router
      */
     public function disconnect() {
-        if ($this->socket) {
+        if (is_resource($this->socket)) {
             fclose($this->socket);
-            $this->connected = false;
         }
+        $this->socket    = null;
+        $this->connected = false;
     }
     
     /**
