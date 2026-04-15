@@ -43,17 +43,23 @@ try {
         $serverUrl = $protocol . $_SERVER['HTTP_HOST'] . $basePath . '/auto_register.php';
         $mode      = str_starts_with($serverUrl, 'https://') ? "mode=https" : "mode=http";
 
-        // Resolve the VPS public IP.
-        // SERVER_ADDR is often 127.0.0.1 behind nginx/Apache, so we prefer
-        // DNS resolution of the public hostname which always gives the real IP.
+        // Determine the VPS outbound IP — the IP the router will see connections FROM.
+        // IMPORTANT: sites behind Cloudflare/CDN return a proxy IP from gethostbyname,
+        // not the real server IP. SERVER_ADDR is always the actual NIC IP of this machine,
+        // so it is the correct outbound address. We use it first if it is public.
         $serverIp = '';
-        $resolved = @gethostbyname($_SERVER['HTTP_HOST']);
-        if ($resolved && $resolved !== $_SERVER['HTTP_HOST']
-            && filter_var($resolved, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-            $serverIp = $resolved; // e.g. 165.22.x.x
-        } elseif (!empty($_SERVER['SERVER_ADDR'])
-            && filter_var($_SERVER['SERVER_ADDR'], FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-            $serverIp = $_SERVER['SERVER_ADDR'];
+        $serverAddr = $_SERVER['SERVER_ADDR'] ?? '';
+        if ($serverAddr && filter_var($serverAddr, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            // SERVER_ADDR is a public IP — this is the real VPS origin IP
+            $serverIp = $serverAddr;
+        } else {
+            // SERVER_ADDR is private/empty (e.g. Docker, some reverse proxies).
+            // Fall back to DNS resolution — may still be a CDN IP but it's the best we have.
+            $resolved = @gethostbyname($_SERVER['HTTP_HOST']);
+            if ($resolved && $resolved !== $_SERVER['HTTP_HOST']
+                && filter_var($resolved, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                $serverIp = $resolved;
+            }
         }
 
         // Secure password for the managed admin user
