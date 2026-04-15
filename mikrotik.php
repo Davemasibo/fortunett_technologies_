@@ -608,18 +608,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <i class="fas fa-check" style="font-size:24px;"></i>
                 </div>
                 <h3 style="font-size:18px; font-weight:600; margin-bottom:8px; color:#e2e2e0;">Router Connected Successfully!</h3>
-                <p style="color:rgba(255,255,255,.4); margin-bottom:24px;">You can now configure services on this router.</p>
+                <p style="color:rgba(255,255,255,.4); margin-bottom:8px;">Select one or both services to enable on this router.</p>
+                <p style="font-size:12px; color:rgba(255,255,255,.25); margin-bottom:20px;">You can select both if this router serves PPPoE and hotspot clients.</p>
 
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; text-align:left;">
-                    <div class="service-card" onclick="selectService('pppoe', this)" style="border:1px solid var(--neu-border); background:var(--neu-surf); padding:16px; border-radius:8px; cursor:pointer; transition:.2s;">
-                        <div style="font-weight:600; margin-bottom:4px; color:#e2e2e0;">PPPoE Server</div>
-                        <p style="font-size:12px; color:rgba(255,255,255,.35); margin:0;">Deploy PPPoE server on selected interface</p>
+                    <div class="service-card" id="svc-pppoe" onclick="toggleService('pppoe', this)" style="border:1px solid var(--neu-border); background:var(--neu-surf); padding:16px; border-radius:8px; cursor:pointer; transition:.2s; position:relative;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                            <i class="fas fa-network-wired" style="color:rgba(255,255,255,.4); font-size:14px;"></i>
+                            <span style="font-weight:600; color:#e2e2e0;">PPPoE Server</span>
+                        </div>
+                        <p style="font-size:12px; color:rgba(255,255,255,.35); margin:0;">For home/business broadband clients</p>
+                        <div class="svc-check" style="display:none; position:absolute; top:10px; right:10px; width:18px; height:18px; background:var(--primary-color,#3B6EA5); border-radius:50%; align-items:center; justify-content:center;">
+                            <i class="fas fa-check" style="font-size:9px; color:white;"></i>
+                        </div>
                     </div>
-                    <div class="service-card" onclick="selectService('hotspot', this)" style="border:1px solid var(--neu-border); background:var(--neu-surf); padding:16px; border-radius:8px; cursor:pointer; transition:.2s;">
-                        <div style="font-weight:600; margin-bottom:4px; color:#e2e2e0;">Hotspot Server</div>
-                        <p style="font-size:12px; color:rgba(255,255,255,.35); margin:0;">Deploy Hotspot server and walled garden</p>
+                    <div class="service-card" id="svc-hotspot" onclick="toggleService('hotspot', this)" style="border:1px solid var(--neu-border); background:var(--neu-surf); padding:16px; border-radius:8px; cursor:pointer; transition:.2s; position:relative;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                            <i class="fas fa-wifi" style="color:rgba(255,255,255,.4); font-size:14px;"></i>
+                            <span style="font-weight:600; color:#e2e2e0;">Hotspot Server</span>
+                        </div>
+                        <p style="font-size:12px; color:rgba(255,255,255,.35); margin:0;">For voucher / captive-portal clients</p>
+                        <div class="svc-check" style="display:none; position:absolute; top:10px; right:10px; width:18px; height:18px; background:var(--primary-color,#3B6EA5); border-radius:50%; align-items:center; justify-content:center;">
+                            <i class="fas fa-check" style="font-size:9px; color:white;"></i>
+                        </div>
                     </div>
                 </div>
+                <p id="svcSelectionHint" style="font-size:12px; color:rgba(239,68,68,.7); margin-top:12px; display:none;"><i class="fas fa-exclamation-circle"></i> Please select at least one service.</p>
             </div>
         </div>
 
@@ -634,15 +648,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <script>
 
 let currentStep = 1;
-const ngrokUrl = "<?php echo $ngrok_url; ?>";
 let provisioningTimer = null;
-let selectedService = null;
+let selectedServices = new Set(); // supports multi-select: 'pppoe', 'hotspot', or both
 let wizardMethod = 'provision'; // 'provision' | 'direct'
 
 function openWizard() {
     document.getElementById('wizardModal').style.display = 'flex';
     currentStep = 1;
-    selectedService = null;
+    selectedServices = new Set();
     wizardMethod = 'provision';
     selectMethod('provision');
     updateWizard();
@@ -840,58 +853,81 @@ function startPolling() {
     }, 3000); // Check every 3 seconds
 }
 
-function selectService(service, el) {
-    selectedService = service;
-    document.querySelectorAll('.service-card').forEach(c => { c.style.borderColor = 'rgba(255,255,255,.07)'; c.style.backgroundColor = '#1c1c1b'; });
-    el.style.borderColor = 'var(--primary-color, #3B6EA5)';
-    el.style.backgroundColor = 'rgba(59,110,165,.15)';
+function toggleService(service, el) {
+    if (selectedServices.has(service)) {
+        selectedServices.delete(service);
+        el.style.borderColor = 'rgba(255,255,255,.07)';
+        el.style.backgroundColor = '#1c1c1b';
+        el.querySelector('.svc-check').style.display = 'none';
+    } else {
+        selectedServices.add(service);
+        el.style.borderColor = 'var(--primary-color, #3B6EA5)';
+        el.style.backgroundColor = 'rgba(59,110,165,.15)';
+        el.querySelector('.svc-check').style.display = 'flex';
+    }
+    document.getElementById('svcSelectionHint').style.display = 'none';
 }
 
 function resetSelections() {
-   document.querySelectorAll('.service-card').forEach(c => {
-       c.style.borderColor = 'rgba(255,255,255,.07)';
-       c.style.backgroundColor = '#1c1c1b';
-   });
+    selectedServices = new Set();
+    document.querySelectorAll('.service-card').forEach(c => {
+        c.style.borderColor = 'rgba(255,255,255,.07)';
+        c.style.backgroundColor = '#1c1c1b';
+        const chk = c.querySelector('.svc-check');
+        if (chk) chk.style.display = 'none';
+    });
+    const hint = document.getElementById('svcSelectionHint');
+    if (hint) hint.style.display = 'none';
 }
 
 function finishWizard() {
-    if(!selectedService) {
-        location.reload();
+    if (selectedServices.size === 0) {
+        document.getElementById('svcSelectionHint').style.display = 'block';
         return;
     }
-    
+
     const btn = document.getElementById('nextBtn');
     btn.textContent = 'Configuring...';
     btn.disabled = true;
-    
+
     const name = document.getElementById('mikrotikName').value;
-    
+    const servicesList = Array.from(selectedServices).join(',');
+
     const formData = new FormData();
     formData.append('identity', name);
-    formData.append('service', selectedService);
-    
+    formData.append('services', servicesList);
+
     fetch('api/routers/configure_service.php', {
         method: 'POST',
         body: formData
     })
     .then(r => r.json())
     .then(data => {
-        if(data.status === 'success') {
-            // Show result
-            document.getElementById('step3').innerHTML = `
-                <div style="text-align:center; padding:20px;">
-                    <div style="width:48px; height:48px; background:rgba(52,211,153,.15); color:#6ee7b7; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
-                        <i class="fas fa-check" style="font-size:24px;"></i>
-                    </div>
-                    <h3 style="font-size:18px; font-weight:600; margin-bottom:8px; color:#e2e2e0;">Configuration Generated</h3>
-                    <p style="color:rgba(255,255,255,.4); margin-bottom:16px;">Run this command to finalize the ${selectedService.toUpperCase()} setup:</p>
-                    
+        if (data.status === 'success') {
+            const label = data.services.map(s => s.toUpperCase()).join(' + ');
+            const commandBlocks = data.commands.map((cmd, i) => `
+                <div style="margin-bottom:${i < data.commands.length - 1 ? '16px' : '0'};">
+                    <div style="font-size:11px; font-weight:600; color:rgba(255,255,255,.35); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">${data.services[i].toUpperCase()} Command</div>
                     <div class="command-box" style="text-align:left;">
-                        <button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.textContent).then(()=>alert('Copied'))">Copy</button>
-                        <div class="command-text">${data.command}</div>
+                        <button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.textContent)">Copy</button>
+                        <div class="command-text">${cmd}</div>
                     </div>
-                    
-                    <button onclick="location.reload()" style="margin-top:20px; padding:10px 24px; background:linear-gradient(135deg, var(--primary-dark,#1e3a5f) 0%, var(--primary-color,#3B6EA5) 100%); color:white; border:none; border-radius:6px; cursor:pointer;">Done</button>
+                </div>
+            `).join('');
+
+            document.getElementById('step3').innerHTML = `
+                <div style="padding:20px;">
+                    <div style="text-align:center; margin-bottom:20px;">
+                        <div style="width:48px; height:48px; background:rgba(52,211,153,.15); color:#6ee7b7; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 12px;">
+                            <i class="fas fa-check" style="font-size:24px;"></i>
+                        </div>
+                        <h3 style="font-size:18px; font-weight:600; margin-bottom:4px; color:#e2e2e0;">${label} Configured</h3>
+                        <p style="color:rgba(255,255,255,.4); font-size:13px;">Run the command(s) below in your MikroTik terminal to finalize setup.</p>
+                    </div>
+                    ${commandBlocks}
+                    <div style="text-align:center; margin-top:20px;">
+                        <button onclick="location.reload()" style="padding:10px 24px; background:linear-gradient(135deg, var(--primary-dark,#1e3a5f) 0%, var(--primary-color,#3B6EA5) 100%); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">Done</button>
+                    </div>
                 </div>
             `;
             btn.style.display = 'none';
