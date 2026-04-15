@@ -216,28 +216,40 @@ class MikrotikAPI {
      * Read length from socket
      */
     private function readLen() {
-        $byte = ord(fread($this->socket, 1));
-        
+        $data = fread($this->socket, 1);
+
+        // Empty string or false means socket timed out or was closed by the router.
+        // Returning 0 here would cause read() to loop forever, so throw instead.
+        if ($data === false || $data === '') {
+            $meta = stream_get_meta_data($this->socket);
+            if ($meta['timed_out'] ?? false) {
+                throw new Exception("Router API read timeout — no response within the allowed window");
+            }
+            throw new Exception("Connection closed by router unexpectedly");
+        }
+
+        $byte = ord($data);
+
         if ($byte == 0) {
             return 0;
         }
-        
+
         if (($byte & 0x80) == 0) {
             return $byte;
         }
-        
+
         if (($byte & 0xC0) == 0x80) {
             return (($byte & 0x3F) << 8) + ord(fread($this->socket, 1));
         }
-        
+
         if (($byte & 0xE0) == 0xC0) {
             return (($byte & 0x1F) << 16) + (ord(fread($this->socket, 1)) << 8) + ord(fread($this->socket, 1));
         }
-        
+
         if (($byte & 0xF0) == 0xE0) {
             return (($byte & 0x0F) << 24) + (ord(fread($this->socket, 1)) << 16) + (ord(fread($this->socket, 1)) << 8) + ord(fread($this->socket, 1));
         }
-        
+
         return (ord(fread($this->socket, 1)) << 24) + (ord(fread($this->socket, 1)) << 16) + (ord(fread($this->socket, 1)) << 8) + ord(fread($this->socket, 1));
     }
     
