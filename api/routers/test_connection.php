@@ -50,7 +50,18 @@ try {
 
     $mk = new MikrotikAPI($ip, $user, $pass, $port);
 
-    if ($mk->isReachable(4) && $mk->connect()) {
+    // Check TCP reachability separately so we can give a clear error reason
+    if (!$mk->isReachable(4)) {
+        $pdo->prepare("UPDATE mikrotik_routers SET status = 'inactive' WHERE id = ?")->execute([$id]);
+        echo json_encode([
+            'status'  => 'error',
+            'reason'  => 'unreachable',
+            'message' => "TCP port $port unreachable on $ip. Re-run the provisioning script to add the firewall rule, then test again.",
+        ]);
+        exit;
+    }
+
+    if ($mk->connect()) {
 
         // Identity
         $idResp   = $mk->comm('/system/identity/print');

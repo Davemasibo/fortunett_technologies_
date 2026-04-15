@@ -61,30 +61,38 @@ try {
         WHERE id = ?
     ")->execute([$serviceTypesStr, $noSharing, $router['id']]);
 
-    // Build one RouterOS command string per requested service
+    // Build one RouterOS command string per requested service.
+    // Every block uses :do { remove } on-error={} before adding so the script is
+    // idempotent — safe to run multiple times even if config already exists.
     $commands = [];
     foreach ($services as $service) {
         if ($service === 'pppoe') {
-            $commands[] =
-                "/ip pool add name=pppoe-pool ranges=10.10.10.2-10.10.10.254; " .
-                "/ppp profile add name=pppoe-profile local-address=10.10.10.1 " .
-                    "remote-address=pppoe-pool dns-server=8.8.8.8,8.8.4.4; " .
-                "/interface pppoe-server server add service-name=pppoe-service " .
-                    "interface=ether2 default-profile=pppoe-profile disabled=no;";
+            $commands[] = implode(' ', [
+                // Remove existing (ignore errors if they don't exist)
+                ':do { /interface pppoe-server server remove [find service-name=pppoe-service] } on-error={};',
+                ':do { /ppp profile remove [find name=pppoe-profile] } on-error={};',
+                ':do { /ip pool remove [find name=pppoe-pool] } on-error={};',
+                // Create fresh
+                '/ip pool add name=pppoe-pool ranges=10.10.10.2-10.10.10.254;',
+                '/ppp profile add name=pppoe-profile local-address=10.10.10.1 remote-address=pppoe-pool dns-server=8.8.8.8,8.8.4.4;',
+                '/interface pppoe-server server add service-name=pppoe-service interface=ether2 default-profile=pppoe-profile disabled=no;',
+            ]);
 
         } elseif ($service === 'hotspot') {
-            // shared-users controls how many concurrent sessions one account can have.
-            // 1  = session sharing disabled (one device at a time — kicks existing session on new login)
-            // unlimited = no restriction
-            $commands[] =
-                "/ip pool add name=hs-pool ranges=10.5.50.2-10.5.50.254; " .
-                "/ip address add address=10.5.50.1/24 interface=ether2; " .
-                "/ip hotspot profile add name=hsprof1 dns-name=hotspot.fortunett.com " .
-                    "hotspot-address=10.5.50.1; " .
-                "/ip hotspot user profile set [find name=default] rate-limit=5M/5M " .
-                    "shared-users={$sharedUsers}; " .
-                "/ip hotspot add name=hotspot1 interface=ether2 address-pool=hs-pool " .
-                    "profile=hsprof1 disabled=no;";
+            // shared-users: '1' = one device at a time (session sharing off), 'unlimited' = no cap
+            $commands[] = implode(' ', [
+                // Remove existing (reverse dependency order)
+                ':do { /ip hotspot remove [find name=hotspot1] } on-error={};',
+                ':do { /ip hotspot profile remove [find name=hsprof1] } on-error={};',
+                ':do { /ip pool remove [find name=hs-pool] } on-error={};',
+                ':do { /ip address remove [find address="10.5.50.1/24"] } on-error={};',
+                // Create fresh
+                '/ip pool add name=hs-pool ranges=10.5.50.2-10.5.50.254;',
+                '/ip address add address=10.5.50.1/24 interface=ether2;',
+                '/ip hotspot profile add name=hsprof1 dns-name=hotspot.fortunett.com hotspot-address=10.5.50.1;',
+                "/ip hotspot user profile set [find name=default] rate-limit=5M/5M shared-users={$sharedUsers};",
+                '/ip hotspot add name=hotspot1 interface=ether2 address-pool=hs-pool profile=hsprof1 disabled=no;',
+            ]);
         }
     }
 

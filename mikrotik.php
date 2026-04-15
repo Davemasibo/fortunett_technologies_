@@ -1130,11 +1130,20 @@ function updateRouterCard(id, data) {
         }
     } else {
         if (dot)   { dot.className = 'router-status-dot inactive'; }
-        if (badge) { badge.className = 'status-badge inactive'; badge.innerHTML = '<i class="fas fa-times-circle"></i> Inactive'; }
+        if (badge) { badge.className = 'status-badge inactive'; badge.innerHTML = '<i class="fas fa-times-circle"></i> Offline'; }
         const setEl = (elId, val) => { const el = document.getElementById(elId); if (el) el.textContent = val; };
         setEl('rstat-active-'    + id, '—');
         setEl('rstat-uptime-'    + id, '—');
         setEl('rstat-cpu-'       + id, '—');
+        // Show reason in the breakdown slot
+        const bd = document.getElementById('rstat-breakdown-' + id);
+        if (bd) {
+            const reason = data.reason === 'unreachable'
+                ? 'Port 8728 blocked — re-run provisioning script'
+                : (data.message || 'Connection failed');
+            bd.textContent = reason;
+            bd.style.color = 'rgba(239,68,68,.6)';
+        }
     }
 }
 
