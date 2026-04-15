@@ -549,10 +549,13 @@ include 'includes/sidebar.php';
                             <div class="payment-amount">KES <?php echo number_format($customer['package_price'] ?? 0, 0); ?></div>
                             <div class="payment-period"><?php echo $customer['payments_count'] ?? 0; ?> payments</div>
                         </td>
-                        <!-- VIEW column — just eye icon, all other actions inside the modal -->
-                        <td onclick="event.stopPropagation()">
+                        <!-- Actions column -->
+                        <td onclick="event.stopPropagation()" style="white-space:nowrap;">
                             <button onclick='viewCustomer(<?php echo $customerJson; ?>)' class="action-btn" title="View Customer" style="color:var(--primary-color,#3B6EA5);">
                                 <i class="fas fa-eye"></i>
+                            </button>
+                            <button onclick='confirmDelete(<?php echo $customer["id"]; ?>,<?php echo json_encode($customer["full_name"] ?? $customer["name"] ?? ""); ?>)' class="action-btn" title="Delete Customer" style="color:#f87171;">
+                                <i class="fas fa-trash"></i>
                             </button>
                         </td>
                     </tr>
