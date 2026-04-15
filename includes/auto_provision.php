@@ -66,9 +66,10 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
         $rateLimit     = "{$downloadSpeed}M/{$uploadSpeed}M";
         $profileName   = 'profile_' . $username;
 
-        // ── Connect to router ─────────────────────────────────────────────────
+        // ── Connect to router — prefer VPN IP (WireGuard) over public IP ─────
+        $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
         $api = new MikrotikAPI(
-            $router['ip_address'],
+            $connectIp,
             $router['username'],
             $router['password']
         );

@@ -101,7 +101,7 @@ try {
     // active_users = sum of LIVE sessions across all reachable routers,
     // NOT the DB subscription count (use subscribed_users for that).
     require_once '../../classes/MikrotikAPI.php';
-    $rSt = $pdo->prepare("SELECT id, name, ip_address, username, password, api_port FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ?");
+    $rSt = $pdo->prepare("SELECT id, name, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ?");
     $rSt->execute([$tenant_id]);
     $routerRows = $rSt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -123,11 +123,12 @@ try {
         ];
 
         // Quick TCP reachability check (2-second timeout) before full API call
-        $sock = @fsockopen($router['ip_address'], $port, $tcpErrno, $tcpErrstr, 2);
+        $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
+        $sock = @fsockopen($connectIp, $port, $tcpErrno, $tcpErrstr, 2);
         if ($sock) {
             fclose($sock);
             try {
-                $mk = new MikrotikAPI($router['ip_address'], $router['username'], $router['password'], $port);
+                $mk = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
                 $mk->connect();
 
                 // PPPoE active sessions

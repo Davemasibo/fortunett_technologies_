@@ -51,10 +51,12 @@ try {
         filter_var($posted_ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)
     ) ? $posted_ip : $real_ip;
     
-    $router_mac = $_POST['router_mac'] ?? '';
+    $router_mac      = $_POST['router_mac']      ?? '';
     $router_identity = $_POST['router_identity'] ?? '';
     $router_username = $_POST['router_username'] ?? 'admin';
     $router_password = $_POST['router_password'] ?? '';
+    $provision_id    = $_POST['provision_id']    ?? '';
+    $vpn_ip_posted   = trim($_POST['vpn_ip']     ?? '');
     
     // Validate required fields
     if (empty($provisioning_token)) {
@@ -88,33 +90,48 @@ try {
         exit;
     }
     
-    // Check if router already exists (by MAC address)
-    $stmt = $pdo->prepare("
-        SELECT id, status FROM mikrotik_routers 
-        WHERE mac_address = ? AND tenant_id = ?
-    ");
-    $stmt->execute([$router_mac, $tenantId]);
-    $existingRouter = $stmt->fetch(PDO::FETCH_ASSOC);
+    // Resolve VPN IP: trust the posted value (it came from the RSC we generated)
+    // but only if it's in our VPN subnet
+    $vpn_ip = (filter_var($vpn_ip_posted, FILTER_VALIDATE_IP) &&
+               str_starts_with($vpn_ip_posted, '10.200.200.'))
+              ? $vpn_ip_posted : null;
+
+    // Check if router already exists — first by provision_id (new flow), then by MAC
+    $existingRouter = null;
+    if ($provision_id) {
+        $stmt = $pdo->prepare("SELECT id, status FROM mikrotik_routers WHERE provision_id = ? AND tenant_id = ?");
+        $stmt->execute([$provision_id, $tenantId]);
+        $existingRouter = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+    if (!$existingRouter && $router_mac) {
+        $stmt = $pdo->prepare("SELECT id, status FROM mikrotik_routers WHERE mac_address = ? AND tenant_id = ?");
+        $stmt->execute([$router_mac, $tenantId]);
+        $existingRouter = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
     
     if ($existingRouter) {
-        // Update existing router
+        // Update existing router — also store MAC and VPN IP if available
         $stmt = $pdo->prepare("
-            UPDATE mikrotik_routers 
-            SET ip_address = ?,
-                identity = ?,
-                username = ?,
-                password = ?,
-                status = 'active',
-                last_seen = CURRENT_TIMESTAMP,
-                updated_at = CURRENT_TIMESTAMP
+            UPDATE mikrotik_routers
+            SET ip_address  = ?,
+                mac_address = COALESCE(NULLIF(?, ''), mac_address),
+                identity    = ?,
+                username    = ?,
+                password    = ?,
+                vpn_ip      = COALESCE(?, vpn_ip),
+                status      = 'active',
+                last_seen   = CURRENT_TIMESTAMP,
+                updated_at  = CURRENT_TIMESTAMP
             WHERE id = ?
         ");
         $stmt->execute([
             $router_ip,
+            $router_mac,
             $router_identity,
             $router_username,
             $router_password,
-            $existingRouter['id']
+            $vpn_ip,
+            $existingRouter['id'],
         ]);
         
         echo json_encode([
@@ -129,26 +146,14 @@ try {
         
         $stmt = $pdo->prepare("
             INSERT INTO mikrotik_routers (
-                tenant_id,
-                name,
-                ip_address,
-                mac_address,
-                identity,
-                username,
-                password,
-                status,
-                last_seen
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP)
+                tenant_id, name, ip_address, mac_address,
+                identity, username, password, vpn_ip,
+                status, last_seen
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP)
         ");
-        
         $stmt->execute([
-            $tenantId,
-            $routerName,
-            $router_ip,
-            $router_mac,
-            $router_identity,
-            $router_username,
-            $router_password
+            $tenantId, $routerName, $router_ip, $router_mac,
+            $router_identity, $router_username, $router_password, $vpn_ip,
         ]);
         
         $routerId = $pdo->lastInsertId();

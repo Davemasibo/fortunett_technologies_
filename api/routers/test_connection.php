@@ -47,9 +47,10 @@ try {
         throw new Exception("Router not found or access denied");
     }
 
-    $ip = $router['ip_address'];
+    // Prefer VPN IP (WireGuard tunnel) over public IP — works even when router is behind NAT
+    $ip   = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
     $user = $router['username'];
-    $pass = $router['password']; 
+    $pass = $router['password'];
     $port = $router['api_port'] ?? 8728;
 
     $mk = new MikrotikAPI($ip, $user, $pass, $port);
