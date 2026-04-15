@@ -20,6 +20,7 @@ try {
         passkey       VARCHAR(255) DEFAULT '',
         shortcode     VARCHAR(20)  DEFAULT '',
         shortcode_type ENUM('paybill','till') DEFAULT 'paybill',
+        store_number  VARCHAR(20)  DEFAULT '',
         environment   ENUM('sandbox','live','production') DEFAULT 'sandbox',
         callback_url  VARCHAR(512) DEFAULT '',
         c2b_validation_url VARCHAR(512) DEFAULT '',
@@ -56,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' || $action === 'get') {
 
 // ── SAVE ─────────────────────────────────────────────────────────────────────
 if ($action === 'save') {
-    $fields = ['consumer_key','consumer_secret','passkey','shortcode','shortcode_type','environment','callback_url','c2b_validation_url','c2b_confirmation_url','notes'];
+    $fields = ['consumer_key','consumer_secret','passkey','shortcode','shortcode_type','store_number','environment','callback_url','c2b_validation_url','c2b_confirmation_url','notes'];
     $updates = [];
     $params  = [];
     foreach ($fields as $f) {

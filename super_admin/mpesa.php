@@ -236,8 +236,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                             <label>Shortcode Type</label>
                             <select name="shortcode_type">
                                 <option value="paybill" <?php echo ($cfg['shortcode_type']??'paybill')==='paybill'?'selected':''; ?>>Paybill</option>
-                                <option value="till" <?php echo ($cfg['shortcode_type']??'')==='till'?'selected':''; ?>>Till Number</option>
+                                <option value="till" <?php echo ($cfg['shortcode_type']??'')==='till'?'selected':''; ?>>Till Number (Buy Goods)</option>
                             </select>
+                        </div>
+                        <div class="form-field">
+                            <label>Store / Head-Office Number <span style="font-weight:400;font-size:11px;opacity:.7;">(Till only — leave blank if same as shortcode)</span></label>
+                            <input type="text" name="store_number" id="fStoreNumber"
+                                value="<?php echo htmlspecialchars($cfg['store_number'] ?? ''); ?>"
+                                placeholder="e.g. 600XXX — from Safaricom Daraja portal">
                         </div>
                         <div class="form-field">
                             <label>Environment</label>

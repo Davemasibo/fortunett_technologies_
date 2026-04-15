@@ -7,6 +7,7 @@ class MpesaAPI {
     private $consumer_secret;
     private $passkey;
     private $shortcode;
+    private $store_number   = ''; // For Buy Goods: BusinessShortCode (store/head-office). Falls back to $shortcode if empty.
     private $shortcode_type = 'paybill'; // 'paybill' or 'till'
     private $env;
     private $base_url;
@@ -58,6 +59,7 @@ class MpesaAPI {
                     $this->passkey         = $creds['passkey']         ?? $this->passkey;
                     $this->shortcode       = $creds['shortcode']       ?? $this->shortcode;
                     $this->shortcode_type  = $creds['shortcode_type']  ?? $this->shortcode_type;
+                    $this->store_number    = $creds['store_number']    ?? $this->store_number;
                     $this->env             = $this->normalizeEnv($creds['environment'] ?? ($creds['env'] ?? $this->env));
                     // Per-tenant callback URL (overrides global config)
                     if (!empty($creds['callback_url'])) {
@@ -132,6 +134,7 @@ class MpesaAPI {
         if (!empty($creds['passkey']))         $this->passkey         = $creds['passkey'];
         if (!empty($creds['shortcode']))       $this->shortcode       = $creds['shortcode'];
         if (!empty($creds['shortcode_type']))  $this->shortcode_type  = $creds['shortcode_type'];
+        if (isset($creds['store_number']))     $this->store_number    = $creds['store_number']; // may be empty string to clear
         $envRaw = $creds['environment'] ?? ($creds['env'] ?? null);
         if ($envRaw !== null) {
             $this->env = $this->normalizeEnv($envRaw);
@@ -188,26 +191,35 @@ class MpesaAPI {
         $amount = (int)$amount;
         $phone = $this->formatPhone($phone);
         $timestamp = date('YmdHis');
-        $password = base64_encode($this->shortcode . $this->passkey . $timestamp);
-        
+
+        $isTill = ($this->shortcode_type === 'till');
+        $transactionType = $isTill ? 'CustomerBuyGoodsOnline' : 'CustomerPayBillOnline';
+
+        // For Buy Goods (Till):
+        //   BusinessShortCode = Store/Head-Office number (used for password + payload header)
+        //   PartyB            = Till number (where funds land)
+        // If store_number is not configured, fall back to shortcode for both (works when
+        // till number IS also the store number, or for Paybill where they're always the same).
+        $businessShortCode = ($isTill && !empty($this->store_number))
+            ? $this->store_number
+            : $this->shortcode;
+
+        $password = base64_encode($businessShortCode . $this->passkey . $timestamp);
+
         $callbackUrl = $this->resolveCallbackUrl();
-        
-        $transactionType = ($this->shortcode_type === 'till')
-            ? 'CustomerBuyGoodsOnline'
-            : 'CustomerPayBillOnline';
 
         $curl_post_data = [
-            'BusinessShortCode' => $this->shortcode,
-            'Password' => $password,
-            'Timestamp' => $timestamp,
-            'TransactionType' => $transactionType,
-            'Amount' => $amount,
-            'PartyA' => $phone,
-            'PartyB' => $this->shortcode,
-            'PhoneNumber' => $phone,
-            'CallBackURL' => $callbackUrl,
-            'AccountReference' => $reference,
-            'TransactionDesc' => $description
+            'BusinessShortCode' => $businessShortCode,
+            'Password'          => $password,
+            'Timestamp'         => $timestamp,
+            'TransactionType'   => $transactionType,
+            'Amount'            => $amount,
+            'PartyA'            => $phone,
+            'PartyB'            => $this->shortcode, // always the till/paybill number
+            'PhoneNumber'       => $phone,
+            'CallBackURL'       => $callbackUrl,
+            'AccountReference'  => $reference,
+            'TransactionDesc'   => $description,
         ];
         
         $url = $this->base_url . '/mpesa/stkpush/v1/processrequest';

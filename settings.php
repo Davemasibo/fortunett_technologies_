@@ -83,6 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $credentials['passkey']         = $_POST['mpesa_passkey'] ?? '';
             $credentials['shortcode']       = $_POST['mpesa_shortcode'] ?? '';
             $credentials['shortcode_type']  = $_POST['mpesa_shortcode_type'] ?? 'paybill';
+            $credentials['store_number']    = trim($_POST['mpesa_store_number'] ?? '');
             $credentials['environment']     = $_POST['mpesa_env'] ?? 'sandbox';
             $credentials['callback_url']    = trim($_POST['mpesa_callback_url'] ?? '');
         } elseif ($gateway_type === 'paypal') {

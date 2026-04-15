@@ -382,6 +382,10 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                                 <option value="till">Till / Buy Goods (CustomerBuyGoodsOnline)</option>
                             </select>
                         </div>
+                        <div>
+                            <label class="form-label-sm">Store / Head-Office Number <span style="font-weight:400;color:#9CA3AF;">(Till only — blank if same as shortcode)</span></label>
+                            <input type="text" name="mpesa_store_number" id="mpesa_store_number" class="form-input" placeholder="From Safaricom Daraja portal">
+                        </div>
                     </div>
                     <div class="field-row">
                         <div>
@@ -921,6 +925,7 @@ function editGateway(g) {
         document.getElementById('mpesa_consumer_key').value    = creds.consumer_key    || '';
         document.getElementById('mpesa_shortcode').value       = creds.shortcode       || '';
         document.getElementById('mpesa_shortcode_type').value  = creds.shortcode_type  || 'paybill';
+        document.getElementById('mpesa_store_number').value    = creds.store_number    || '';
         document.getElementById('mpesa_env').value             = creds.environment     || 'sandbox';
         document.getElementById('mpesa_callback_url').value    = creds.callback_url    || '';
 
