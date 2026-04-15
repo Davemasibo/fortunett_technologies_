@@ -60,7 +60,7 @@ if (empty($id) || empty($name)) {
         // 2. Get Package Details (if changed)
         $pkgName = $oldClient['subscription_plan'];
         if ($package_id) {
-            $stmt = $pdo->prepare("SELECT *, COALESCE(type, connection_type, 'pppoe') AS pkg_type FROM packages WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)");
+            $stmt = $pdo->prepare("SELECT *, COALESCE(NULLIF(type,''), 'pppoe') AS pkg_type FROM packages WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)");
             $stmt->execute([$package_id, $tenant_id]);
             $package = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($package) {
@@ -127,13 +127,14 @@ if (empty($id) || empty($name)) {
     $stmt->execute($values);
     
     // 4. Update on MikroTik (tenant-scoped)
-    $router_stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ? LIMIT 1");
+    $router_stmt = $pdo->prepare("SELECT id, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ? LIMIT 1");
     $router_stmt->execute([$tenant_id]);
     $router = $router_stmt->fetch(PDO::FETCH_ASSOC);
-    
+
     if ($router && !empty($mikrotik_username)) {
         try {
-            $api = new MikrotikAPI($router['ip_address'], $router['username'], $router['password'], $router['api_port']);
+            $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
+            $api = new MikrotikAPI($connectIp, $router['username'], $router['password'], $router['api_port']);
             if ($api->connect()) {
                 $profile = null;
                 if ($package_id) {

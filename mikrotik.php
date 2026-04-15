@@ -77,7 +77,7 @@ try {
     $stmt->execute([$tenant_id]);
     $total_routers = (int)$stmt->fetchColumn();
     
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mikrotik_routers WHERE status = 'online' AND tenant_id = ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $online_routers = (int)$stmt->fetchColumn();
     
