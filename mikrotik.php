@@ -3,9 +3,9 @@ require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/mpesa.php';
 
-// Extract Base URL from M-Pesa Config for Provisioning
-// We need to go up 3 levels from .../api/mpesa/callback.php to get PROJECT_ROOT
-$ngrok_url = defined('MPESA_CALLBACK_URL') ? dirname(dirname(dirname(MPESA_CALLBACK_URL))) : 'http://localhost/fortunett_technologies_';
+// Compute the base path for this app dynamically from the current script's URL.
+// e.g. on localhost: /fortunett_technologies_, on production: (empty string)
+$_base_path = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 
 redirectIfNotLoggedIn();
 
@@ -790,7 +790,7 @@ function nextStep() {
         const token    = "<?php echo $tenant['provisioning_token'] ?? ''; ?>";
         const host     = window.location.host;
         const protocol = window.location.protocol;
-        const endpoint = `${protocol}//${host}/fortunett_technologies_/api/routers/provision.php`;
+        const endpoint = `${protocol}//${host}<?php echo $_base_path; ?>/api/routers/provision.php`;
         const cmd      = `/tool fetch url="${endpoint}?token=${token}&identity=${encodeURIComponent(name)}&format=rsc" dst-path=provision.rsc; :delay 5s; /import provision.rsc;`;
 
         if (host.includes('localhost') || host.includes('127.0.0.1')) {
