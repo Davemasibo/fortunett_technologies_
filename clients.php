@@ -1503,7 +1503,7 @@ function provisionToRouter() {
                 showToast('Provision failed: ' + d.message, 'error');
             }
         })
-        .catch(() => showToast('Network error during provisioning.', 'error'));
+        .catch(e => showToast('Provisioning request failed: ' + e.message, 'error'));
 }
 
 function openSMSModal(customer) {
