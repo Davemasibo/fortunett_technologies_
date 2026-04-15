@@ -160,17 +160,30 @@ class MikrotikAPI {
      */
     private function read() {
         $response = [];
-        
+        $done     = false;
+
         while (true) {
             $word = $this->readWord();
-            
+
             if ($word === '') {
-                break;
+                // Empty word = end of one sentence.
+                // Only stop when we have already seen !done (or !fatal) —
+                // otherwise keep reading because more !re sentences may follow.
+                if ($done) {
+                    break;
+                }
+                continue; // mid-response sentence boundary — keep going
             }
-            
+
             $response[] = $word;
+
+            // !done signals the router has sent the full reply.
+            // !fatal signals a fatal error that closes the connection.
+            if ($word === '!done' || str_starts_with($word, '!fatal')) {
+                $done = true;
+            }
         }
-        
+
         return $this->parseResponse($response);
     }
     

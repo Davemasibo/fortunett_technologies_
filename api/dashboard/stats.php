@@ -102,8 +102,9 @@ try {
     $rSt->execute([$tenant_id]);
     $routerRows = $rSt->fetchAll(PDO::FETCH_ASSOC);
 
-    $routerStatus   = [];
-    $totalLiveUsers = 0;
+    $routerStatus    = [];
+    $totalLiveUsers  = 0;
+    $routersOnline   = 0;
     $anyRouterOnline = false;
 
     foreach ($routerRows as $router) {
@@ -141,11 +142,13 @@ try {
 
                 $totalLiveUsers += $rs['active_clients'];
                 $anyRouterOnline = true;
+                $routersOnline++;
 
                 $mk->disconnect();
             } catch (Exception $mkEx) {
                 $rs['online'] = true; // TCP reachable but API issue — mark online, count stays 0
                 $anyRouterOnline = true;
+                $routersOnline++;
             }
         }
         $routerStatus[] = $rs;
@@ -153,9 +156,11 @@ try {
 
     // active_users = live connections from router(s).
     // If no router is reachable at all, fall back to subscribed_users so the card isn't empty.
-    $data['active_users'] = $anyRouterOnline ? $totalLiveUsers : $data['subscribed_users'];
-    $data['router_online'] = $anyRouterOnline;
-    $data['router_status'] = $routerStatus;
+    $data['active_users']    = $anyRouterOnline ? $totalLiveUsers : $data['subscribed_users'];
+    $data['router_online']   = $anyRouterOnline;
+    $data['routers_online']  = $routersOnline;
+    $data['routers_total']   = count($routerRows);
+    $data['router_status']   = $routerStatus;
 
     // ── SMS stats (last 7 days) ───────────────────────────────────
     $smsLabels = []; $smsData = [];

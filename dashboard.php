@@ -515,6 +515,19 @@ include 'includes/sidebar.php';
                         <span class="metric-period">this month</span>
                     </div>
                 </div>
+
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-label">Routers Online</span>
+                        <div class="metric-icon users">
+                            <i class="fas fa-server"></i>
+                        </div>
+                    </div>
+                    <div class="metric-value" id="stat-routers-online">—</div>
+                    <div class="metric-change">
+                        <span class="metric-period" id="stat-routers-label">checking…</span>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -902,6 +915,13 @@ function updateStatCards(s) {
     }
     set('stat-expired', (s.expired_accounts   || 0).toLocaleString());
     set('stat-newreg',  (s.new_registrations  || 0).toLocaleString());
+    // Routers online card
+    set('stat-routers-online', (s.routers_online ?? '—').toString());
+    const routerLbl = document.getElementById('stat-routers-label');
+    if (routerLbl && s.routers_total !== undefined) {
+        routerLbl.textContent = `of ${s.routers_total} configured`;
+        routerLbl.style.color = (s.routers_online > 0) ? '#34d399' : '#f87171';
+    }
 }
 
 // ── Update router status dots from live MikroTik data ─────────────────────────
