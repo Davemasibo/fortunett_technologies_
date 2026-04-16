@@ -14,7 +14,7 @@
     --success:        #10B981;
     --warning:        #F59E0B;
     --danger:         #EF4444;
-    --sidebar-bg:     linear-gradient(180deg, #111827 0%, #1e3a5f 55%, #2C5282 100%);
+    --sidebar-bg:     linear-gradient(180deg, var(--primary-dark, #1a2e4a) 0%, var(--primary, #2C5282) 100%);
     --sidebar-w:      256px;
     --sidebar-w-col:  72px;
     --topbar-h:       64px;
