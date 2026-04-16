@@ -607,6 +607,7 @@ include 'includes/sidebar.php';
                     <a href="#" onclick="promptPayment();return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#d4d4d2;text-decoration:none;font-size:13px;"><i class="fas fa-mobile-alt" style="color:#34d399;width:14px;"></i> Payment Prompt</a>
                     <a href="#" onclick="switchToTab('sms');openSMSModal(currentCustomer);return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#d4d4d2;text-decoration:none;font-size:13px;"><i class="fas fa-comment" style="color:#60a5fa;width:14px;"></i> Send SMS</a>
                     <a href="#" onclick="provisionToRouter();return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#d4d4d2;text-decoration:none;font-size:13px;"><i class="fas fa-network-wired" style="color:#a78bfa;width:14px;"></i> Provision to Router</a>
+                    <a href="#" onclick="verifyOnRouter();return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#d4d4d2;text-decoration:none;font-size:13px;"><i class="fas fa-clipboard-check" style="color:#fcd34d;width:14px;"></i> Verify on Router</a>
                     <div style="border-top:1px solid rgba(255,255,255,.06);margin:3px 0;"></div>
                     <a href="#" onclick="confirmDelete(currentCustomer.id,currentCustomer.full_name||currentCustomer.name);return false;" style="display:flex;align-items:center;gap:8px;padding:9px 14px;color:#f87171;text-decoration:none;font-size:13px;"><i class="fas fa-trash" style="width:14px;"></i> Delete</a>
                 </div>
@@ -1517,8 +1518,26 @@ function handleFormSubmit(e) {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            showToast('Customer saved successfully.', 'success');
-            setTimeout(() => location.reload(), 900);
+            // For new customers, report MikroTik sync result explicitly
+            const isNew = !formData.get('id');
+            if (isNew) {
+                if (data.mikrotik_synced) {
+                    showToast(
+                        `Customer saved & pushed to router (${data.router_ip}) · Profile: ${data.profile_used} · Credentials work now.`,
+                        'success'
+                    );
+                } else if (data.no_router) {
+                    showToast('Customer saved to DB — no active router configured, router sync skipped.', 'warning');
+                } else {
+                    showToast(
+                        `Customer saved to DB but router sync failed: ${data.mikrotik_error || 'unknown error'}`,
+                        'warning'
+                    );
+                }
+            } else {
+                showToast('Customer updated successfully.', 'success');
+            }
+            setTimeout(() => location.reload(), 1800);
         } else {
             showToast('Error: ' + data.message, 'error');
         }
@@ -1568,6 +1587,48 @@ function provisionToRouter() {
             }
         })
         .catch(e => showToast('Provisioning request failed: ' + e.message, 'error'));
+}
+
+function verifyOnRouter() {
+    if (!currentCustomer) return;
+    document.getElementById('actionsMenu').style.display = 'none';
+    showToast('Checking router…', 'info');
+
+    fetch('api/mikrotik/verify_user.php?client_id=' + currentCustomer.id)
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) { showToast('Verify error: ' + d.message, 'error'); return; }
+
+            // Build a readable report
+            const lines = [];
+            lines.push('DB: ' + (d.db_ok ? '✓ Found' : '✗ Missing') + ' · Status: ' + d.db_status);
+            lines.push('Username: ' + (d.db_username || '(none)') + ' · Type: ' + d.db_connection);
+
+            if (d.router_error) {
+                lines.push('Router: ✗ ' + d.router_error);
+            } else {
+                lines.push('Router (' + d.router_ip + '): ' + (d.router_ok ? '✓ User exists' : '✗ User NOT found'));
+                if (d.router_ok) {
+                    lines.push('Profile on router: ' + (d.router_profile || 'unknown'));
+                    lines.push('Expected profile: ' + d.expected_profile);
+                    lines.push('Profile match: ' + (d.profile_match ? '✓ Yes' : '✗ Mismatch — re-provision to fix'));
+                    if (d.is_online) {
+                        const s = d.session;
+                        lines.push('🟢 ONLINE — IP: ' + s.address + ' · Uptime: ' + s.uptime + ' · ↓' + s.rx_mb + 'MB ↑' + s.tx_mb + 'MB');
+                    } else {
+                        lines.push('⚫ Not currently connected');
+                    }
+                }
+            }
+
+            const type = (d.db_ok && d.router_ok && d.profile_match) ? 'success'
+                       : (d.db_ok && !d.router_ok) ? 'warning'
+                       : 'error';
+            // Show the full report as an alert so all lines are readable
+            alert('Router Verification — ' + (d.db_username || 'unknown') + '\n\n' + lines.join('\n'));
+            if (d.is_online) showToast('Customer is ONLINE right now.', 'success');
+        })
+        .catch(() => showToast('Network error during verification.', 'error'));
 }
 
 function openSMSModal(customer) {

@@ -124,6 +124,11 @@ try {
 
     // 6. Sync to MikroTik (non-fatal, short timeout)
     $mikrotikSynced = false;
+    $mikrotikError  = null;
+    $profileUsed    = null;
+    $routerIp       = null;
+    $noRouter       = false;
+
     if (!empty($mikrotik_username) && !empty($mikrotik_password)) {
         try {
             $router_stmt = $pdo->prepare(
@@ -132,7 +137,10 @@ try {
             $router_stmt->execute([$tenant_id]);
             $router = $router_stmt->fetch(PDO::FETCH_ASSOC);
 
-            if ($router) {
+            if (!$router) {
+                $noRouter = true;
+            } else {
+                $routerIp  = $router['ip_address'];
                 $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
                 $api = new MikrotikAPI(
                     $connectIp, $router['username'],
@@ -141,9 +149,9 @@ try {
                 if ($api->connect()) {
                     // Use the package's named profile (created when package was saved).
                     // Fall back to slugified package name, then 'default'.
-                    $profile = $package['mikrotik_profile']
+                    $profileUsed = $package['mikrotik_profile']
                         ?: preg_replace('/[^a-zA-Z0-9-]/', '', strtolower($package['name']));
-                    if (empty($profile)) $profile = 'default';
+                    if (empty($profileUsed)) $profileUsed = 'default';
 
                     if ($connection_type === 'hotspot') {
                         $exists = false;
@@ -151,24 +159,29 @@ try {
                             if (($u['name'] ?? '') === $mikrotik_username) { $exists = true; break; }
                         }
                         $exists
-                            ? $api->updateHotspotUser($mikrotik_username, $mikrotik_password, $profile)
-                            : $api->addHotspotUser($mikrotik_username, $mikrotik_password, $profile);
+                            ? $api->updateHotspotUser($mikrotik_username, $mikrotik_password, $profileUsed)
+                            : $api->addHotspotUser($mikrotik_username, $mikrotik_password, $profileUsed);
                     } else {
                         $exists = false;
                         foreach ($api->getPPPoEUsers() as $u) {
                             if (($u['name'] ?? '') === $mikrotik_username) { $exists = true; break; }
                         }
                         $exists
-                            ? $api->updatePPPoEUser($mikrotik_username, $mikrotik_password, $profile)
-                            : $api->addPPPoEUser($mikrotik_username, $mikrotik_password, $profile);
+                            ? $api->updatePPPoEUser($mikrotik_username, $mikrotik_password, $profileUsed)
+                            : $api->addPPPoEUser($mikrotik_username, $mikrotik_password, $profileUsed);
                     }
                     $api->disconnect();
                     $mikrotikSynced = true;
+                } else {
+                    $mikrotikError = "Could not connect to router $routerIp";
                 }
             }
         } catch (Exception $e) {
+            $mikrotikError = $e->getMessage();
             error_log("MikroTik sync on create failed: " . $e->getMessage());
         }
+    } else {
+        $mikrotikError = 'No username/password provided — skipped router sync';
     }
 
     // Mark active if MikroTik user was created (credentials will work immediately)
@@ -177,7 +190,17 @@ try {
     }
 
     ob_clean();
-    echo json_encode(['success' => true, 'message' => 'Customer created successfully', 'client_id' => $client_id]);
+    echo json_encode([
+        'success'          => true,
+        'client_id'        => $client_id,
+        'mikrotik_synced'  => $mikrotikSynced,
+        'mikrotik_error'   => $mikrotikError,
+        'no_router'        => $noRouter,
+        'router_ip'        => $routerIp,
+        'profile_used'     => $profileUsed,
+        'username'         => $mikrotik_username,
+        'connection_type'  => $connection_type,
+    ]);
 
 } catch (Exception $e) {
     if ($pdo->inTransaction()) {
