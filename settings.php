@@ -203,6 +203,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) { $action_result = 'error|' . $e->getMessage(); }
     }
 
+    // --- 7a. Platform Paybill Toggle ---
+    elseif ($action === 'save_platform_paybill_toggle') {
+        $active_tab = 'payments';
+        $val = isset($_POST['show_platform_paybill']) ? '1' : '0';
+        try {
+            $pdo->prepare("INSERT INTO tenant_settings (tenant_id, setting_key, setting_value)
+                           VALUES (?, 'show_platform_paybill', ?)
+                           ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)")
+                ->execute([$tenant_id, $val]);
+            $action_result = 'success|Platform paybill visibility updated';
+        } catch (Exception $e) {
+            $action_result = 'error|' . $e->getMessage();
+        }
+    }
+
     // --- 7. Notification Settings ---
     elseif ($action === 'update_notifications') {
         $active_tab = 'notifications';

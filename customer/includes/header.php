@@ -76,7 +76,7 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
             transform: translateY(-1px);
         }
         .topbar {
-            border-bottom-color: var(--primary)22;
+            border-bottom: none;
         }
     </style>
 </head>
@@ -142,20 +142,25 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
                 </li>
             </ul>
 
+            <!-- Sidebar profile — links to account page -->
             <?php
-            $acctNum = $_SESSION['customer_data']['account_number'] ?? null;
+            $acctNum  = $_SESSION['customer_data']['account_number'] ?? null;
             $custName = $_SESSION['customer_data']['full_name'] ?? $_SESSION['customer_data']['name'] ?? null;
-            if ($acctNum || $custName):
+            $initial  = strtoupper(substr($custName ?? 'C', 0, 1));
+            $isAcctPage = basename($_SERVER['PHP_SELF']) === 'account.php';
             ?>
-            <div class="sidebar-footer-info">
-                <?php if ($custName): ?>
-                <div class="sfi-name"><?= htmlspecialchars($custName) ?></div>
-                <?php endif; ?>
-                <?php if ($acctNum): ?>
-                <div class="sfi-acct"><i class="fas fa-id-badge"></i> <?= htmlspecialchars($acctNum) ?></div>
-                <?php endif; ?>
-            </div>
-            <?php endif; ?>
+            <a href="account.php" class="sidebar-profile-card <?= $isAcctPage ? 'active' : '' ?>" title="My Account">
+                <div class="sp-avatar"><?= $initial ?></div>
+                <div class="sp-info">
+                    <?php if ($custName): ?>
+                    <div class="sp-name"><?= htmlspecialchars($custName) ?></div>
+                    <?php endif; ?>
+                    <?php if ($acctNum): ?>
+                    <div class="sp-acct"><i class="fas fa-id-badge"></i> <?= htmlspecialchars($acctNum) ?></div>
+                    <?php endif; ?>
+                </div>
+                <i class="fas fa-chevron-right sp-arrow"></i>
+            </a>
         </aside>
 
         <!-- Mobile overlay for sidebar -->
@@ -170,17 +175,7 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
                     </button>
                     <span class="page-title" id="topbar-page-title"></span>
                 </div>
-                <div class="topbar-right">
-                    <div class="user-info">
-                        <div class="user-avatar">
-                            <?php echo strtoupper(substr($_SESSION['customer_data']['full_name'] ?? $_SESSION['customer_data']['name'] ?? 'C', 0, 1)); ?>
-                        </div>
-                        <div class="user-details">
-                            <div class="user-name"><?php echo htmlspecialchars($_SESSION['customer_data']['full_name'] ?? $_SESSION['customer_data']['name'] ?? 'Customer'); ?></div>
-                            <div class="user-email"><?php echo htmlspecialchars($_SESSION['customer_data']['account_number'] ?? $_SESSION['customer_data']['email'] ?? ''); ?></div>
-                        </div>
-                    </div>
-                </div>
+                <div class="topbar-right"></div>
             </div>
 
             <script>

@@ -30,6 +30,29 @@ foreach ($gateways as $g) {
     if ($g['gateway_type'] === 'mpesa_api') { $mpesaGw = $g; break; }
 }
 
+// Platform paybill — show to customer unless tenant has disabled it
+$platformPaybill = null;
+$showPlatformPaybill = true;
+try {
+    $tsCheck = $pdo->prepare("SELECT setting_value FROM tenant_settings WHERE tenant_id = ? AND setting_key = 'show_platform_paybill' LIMIT 1");
+    $tsCheck->execute([$tenantId]);
+    $pref = $tsCheck->fetchColumn();
+    if ($pref === '0') $showPlatformPaybill = false;
+} catch (Exception $e) {}
+
+if ($showPlatformPaybill) {
+    try {
+        $platQ = $pdo->query("SELECT shortcode, shortcode_type, consumer_key FROM platform_mpesa_config WHERE id = 1 LIMIT 1");
+        $platRow = $platQ ? $platQ->fetch(PDO::FETCH_ASSOC) : null;
+        if ($platRow && !empty($platRow['shortcode'])) {
+            $platformPaybill = $platRow;
+        }
+    } catch (Exception $e) {}
+}
+
+// If tenant has no mpesa_api gateway but platform has STK credentials, allow STK via platform (gateway_id = 0)
+$stkGwId = $mpesaGw ? $mpesaGw['id'] : ($platformPaybill && !empty($platformPaybill['consumer_key']) ? 0 : null);
+
 $_base = (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false
        || preg_match('/^\d+\.\d+\./', $_SERVER['HTTP_HOST'] ?? ''))
        ? '/fortunett_technologies_' : '';
@@ -462,16 +485,19 @@ include 'includes/header.php';
                         <i class="fas fa-bolt"></i> Activate Now
                     </button>
 
-                <?php elseif ($mpesaGw): ?>
+                <?php elseif ($stkGwId !== null): ?>
                     <button class="pay-now-btn" onclick="openPayModal()">
                         <i class="fas fa-mobile-alt"></i>
                         Pay KES <?= number_format($amountToPay, 0) ?> via M-Pesa
+                        <?php if ($stkGwId === 0): ?>
+                        <span style="font-size:11px;opacity:.75;font-weight:500;"> · via FortuNett</span>
+                        <?php endif; ?>
                     </button>
 
                 <?php else: ?>
                     <div style="margin-top:16px;padding:14px 16px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;font-size:13px;color:#fcd34d;">
                         <i class="fas fa-info-circle" style="margin-right:7px;"></i>
-                        No M-Pesa STK gateway configured. Use the payment methods below or contact support.
+                        Use the payment methods below or contact your ISP.
                     </div>
                 <?php endif; ?>
             </div>
@@ -557,6 +583,32 @@ include 'includes/header.php';
                         </div>
                     </div>
                     <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+
+                <?php if ($platformPaybill): ?>
+                <!-- Platform paybill (FortuNett shared shortcode) -->
+                <div style="margin-top:<?= empty($gateways) ? '0' : '14px' ?>;padding:14px 16px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:12px;">
+                    <div style="font-size:11px;font-weight:700;color:rgba(130,120,255,.9);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">
+                        <i class="fas fa-shield-alt" style="margin-right:6px;"></i>Platform Paybill — FortuNett Technologies
+                    </div>
+                    <div class="pb-row" style="background:rgba(99,102,241,.1);border-color:rgba(99,102,241,.25);margin-bottom:8px;">
+                        <div>
+                            <div class="pb-field"><?= ($platformPaybill['shortcode_type'] ?? 'paybill') === 'till' ? 'Till Number' : 'Paybill Number' ?></div>
+                            <div class="pb-val" style="color:#a5b4fc;"><?= htmlspecialchars($platformPaybill['shortcode']) ?></div>
+                        </div>
+                        <button class="copy-btn" onclick="copyText('<?= htmlspecialchars($platformPaybill['shortcode']) ?>', this)"><i class="fas fa-copy"></i> Copy</button>
+                    </div>
+                    <?php if (!empty($customer['account_number'])): ?>
+                    <div class="pb-row">
+                        <div>
+                            <div class="pb-field">Account Reference (required)</div>
+                            <div class="pb-val" style="font-size:18px;"><?= htmlspecialchars($customer['account_number']) ?></div>
+                            <div class="pb-hint" style="color:rgba(255,255,255,.35);margin-top:2px;">Enter exactly as shown when prompted</div>
+                        </div>
+                        <button class="copy-btn" onclick="copyText('<?= htmlspecialchars($customer['account_number']) ?>', this)"><i class="fas fa-copy"></i> Copy</button>
+                    </div>
+                    <?php endif; ?>
                 </div>
                 <?php endif; ?>
             </div>
@@ -736,7 +788,7 @@ include 'includes/header.php';
 
 <script>
 const _base      = (location.hostname === 'localhost' || /^\d+\.\d+\./.test(location.hostname)) ? '/fortunett_technologies_' : '';
-const _gwId      = <?= $mpesaGw ? $mpesaGw['id'] : 'null' ?>;
+const _gwId      = <?= $stkGwId !== null ? $stkGwId : 'null' ?>;
 const _amountDue = <?= $amountToPay ?>;
 
 /* ── Tabs ─────────────────────────────────────────── */

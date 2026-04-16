@@ -45,17 +45,23 @@ if (!$gatewayId || !$phone || $amount <= 0) {
     exit;
 }
 
-// Verify gateway belongs to this tenant and is an M-Pesa API gateway
-$gwStmt = $pdo->prepare(
-    "SELECT * FROM payment_gateways
-     WHERE id = ? AND tenant_id = ? AND is_active = 1 AND gateway_type = 'mpesa_api'"
-);
-$gwStmt->execute([$gatewayId, $tenantId]);
-$gateway = $gwStmt->fetch(PDO::FETCH_ASSOC);
+// gateway_id = 0 means "use platform credentials directly" (tenant has no own gateway)
+$usingPlatformGateway = ($gatewayId === 0);
+$gateway = null;
 
-if (!$gateway) {
-    echo json_encode(['success' => false, 'message' => 'Payment gateway unavailable. Please contact support.']);
-    exit;
+if (!$usingPlatformGateway) {
+    // Verify gateway belongs to this tenant and is an M-Pesa API gateway
+    $gwStmt = $pdo->prepare(
+        "SELECT * FROM payment_gateways
+         WHERE id = ? AND tenant_id = ? AND is_active = 1 AND gateway_type = 'mpesa_api'"
+    );
+    $gwStmt->execute([$gatewayId, $tenantId]);
+    $gateway = $gwStmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$gateway) {
+        echo json_encode(['success' => false, 'message' => 'Payment gateway unavailable. Please contact support.']);
+        exit;
+    }
 }
 
 // AccountReference — must be ≤ 12 chars (Safaricom hard limit)
@@ -64,12 +70,12 @@ $accountRef = !empty($acctNo)
     : ('C' . str_pad($clientId, 4, '0', STR_PAD_LEFT));
 
 try {
-    // Try tenant-specific credentials first
+    // If gateway_id = 0, go straight to platform credentials
     $mpesa = new MpesaAPI($pdo, $tenantId);
-    $usingPlatform = false;
+    $usingPlatform = $usingPlatformGateway;
 
-    if (!$mpesa->hasValidCredentials()) {
-        // Fall back to platform shared paybill
+    if ($usingPlatformGateway || !$mpesa->hasValidCredentials()) {
+        // Use platform shared paybill
         try {
             $plStmt = $pdo->query(
                 "SELECT consumer_key, consumer_secret, passkey, shortcode, shortcode_type, environment, callback_url

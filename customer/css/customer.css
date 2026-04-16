@@ -268,7 +268,7 @@ body {
 /* ── Topbar ──────────────────────────────────────────────────────── */
 .topbar {
     background: #1c1c1b;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: none;
     padding: 0 28px;
     height: var(--topbar-h);
     display: flex;
@@ -277,7 +277,7 @@ body {
     position: sticky;
     top: 0;
     z-index: 100;
-    box-shadow: 0 2px 16px rgba(0,0,0,.4);
+    box-shadow: 0 1px 0 rgba(255,255,255,.04), 0 4px 20px rgba(0,0,0,.35);
 }
 .topbar-left { display: flex; align-items: center; gap: 14px; }
 .topbar-left .page-title {
@@ -885,26 +885,64 @@ tbody tr:hover td { background: rgba(44,82,130,.03); }
     .status-value { font-size: 15px; }
 }
 
-/* ── Sidebar footer info (account number) ────────────────────────── */
-.sidebar-footer-info {
-    padding: 12px 16px 16px;
-    border-top: 1px solid rgba(255,255,255,.1);
+/* ── Sidebar profile card ────────────────────────────────────────── */
+.sidebar-profile-card {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 13px 16px;
+    border-top: 1px solid rgba(255,255,255,.08);
     margin-top: auto;
     flex-shrink: 0;
-    transition: opacity .3s, padding .3s;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background var(--trans);
+    background: transparent;
 }
-.sidebar-footer-info .sfi-name {
-    font-size: 12px; font-weight: 600;
+.sidebar-profile-card:hover {
+    background: rgba(255,255,255,.07);
+}
+.sidebar-profile-card.active {
+    background: rgba(255,255,255,.1);
+}
+.sp-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary-dark, #1a2e4a) 0%, var(--primary, #2C5282) 100%);
+    color: #fff;
+    font-size: 14px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.3);
+}
+.sp-info {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+.sp-name {
+    font-size: 12.5px; font-weight: 600;
     color: rgba(255,255,255,.9);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    margin-bottom: 3px;
+    margin-bottom: 2px;
 }
-.sidebar-footer-info .sfi-acct {
-    font-size: 11px; color: rgba(255,255,255,.55);
+.sp-acct {
+    font-size: 10.5px; color: rgba(255,255,255,.45);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    display: flex; align-items: center; gap: 5px;
+    display: flex; align-items: center; gap: 4px;
 }
-.sidebar.collapsed .sidebar-footer-info { opacity: 0; pointer-events: none; padding: 0; }
+.sp-arrow {
+    font-size: 11px;
+    color: rgba(255,255,255,.25);
+    flex-shrink: 0;
+    transition: transform var(--trans), color var(--trans);
+}
+.sidebar-profile-card:hover .sp-arrow { color: rgba(255,255,255,.6); transform: translateX(2px); }
+
+/* Collapsed state — show only avatar */
+.sidebar.collapsed .sidebar-profile-card { justify-content: center; padding: 12px 0; gap: 0; }
+.sidebar.collapsed .sp-info,
+.sidebar.collapsed .sp-arrow { display: none; }
 
 /* ── Mobile sidebar overlay ──────────────────────────────────────── */
 .sidebar-overlay {
@@ -1226,6 +1264,22 @@ a:hover { color: #fff; }
 /* Payment history amount colors */
 .amount-positive { color: #6ee7b7 !important; }
 .amount-negative { color: #fca5a5 !important; }
+
+/* ── Page container centering ────────────────────────────────────── */
+.pay-page,
+.dev-page,
+.acct-page {
+    margin: 0 auto;
+}
+
+/* ── Sidebar vertical distribution ──────────────────────────────── */
+/* Spread nav items so they don't bunch at top on taller screens */
+.sidebar-menu {
+    padding: 16px 0 8px;
+}
+.sidebar-menu li {
+    margin: 1px 8px 1px 0;
+}
 
 /* Devices/account page specific */
 .device-card, .info-card {

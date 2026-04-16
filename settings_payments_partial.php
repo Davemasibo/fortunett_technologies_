@@ -556,6 +556,28 @@ input:checked + .live-slider:before { transform: translateX(18px); }
     </div>
     <?php endif; ?>
 
+    <?php if ($hasPlatformShortcode): ?>
+    <!-- Toggle: show/hide platform paybill on customer portal -->
+    <form method="POST" style="margin-bottom:14px;" id="platformPaybillToggleForm">
+        <input type="hidden" name="action" value="save_platform_paybill_toggle">
+        <?php
+        $showPlatTgl = ($tSettings['show_platform_paybill'] ?? '1') !== '0';
+        ?>
+        <div style="background:#222221;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+            <div>
+                <div style="font-size:13px;font-weight:600;color:#e2e2e0;margin-bottom:2px;">Show FortuNett platform paybill on customer portal</div>
+                <div style="font-size:12px;color:rgba(255,255,255,.38);">Customers can see the platform shortcode as a payment option. Disable if you collect entirely on your own paybill.</div>
+            </div>
+            <label style="flex-shrink:0;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.55);">
+                <input type="checkbox" name="show_platform_paybill" id="showPlatformPaybill"
+                       <?= $showPlatTgl ? 'checked' : '' ?>
+                       onchange="this.form.submit()" style="width:16px;height:16px;accent-color:#3b82f6;">
+                Visible
+            </label>
+        </div>
+    </form>
+    <?php endif; ?>
+
     <?php if (empty($gateways) && !(!$hasMpesaApi && $hasPlatformShortcode)): ?>
     <div class="pg-empty">
         <i class="fas fa-credit-card"></i>
