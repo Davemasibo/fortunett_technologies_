@@ -2,7 +2,6 @@
 require_once __DIR__ . '/includes/auth.php';
 $customer = requireCustomerLogin();
 
-// Resolve tenant_id from the client's own record
 $tenantId = $customer['tenant_id'] ?? null;
 if (!$tenantId) {
     $s = $pdo->prepare("SELECT tenant_id FROM users WHERE username = ?");
@@ -26,435 +25,437 @@ $gatewaysStmt = $pdo->prepare("SELECT * FROM payment_gateways WHERE tenant_id = 
 $gatewaysStmt->execute([$tenantId]);
 $gateways = $gatewaysStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Base path helper (same logic used site-wide)
+// Find first mpesa_api gateway for the prominent Pay button
+$mpesaGw = null;
+foreach ($gateways as $g) {
+    if ($g['gateway_type'] === 'mpesa_api') { $mpesaGw = $g; break; }
+}
+
 $_base = (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false
        || preg_match('/^\d+\.\d+\./', $_SERVER['HTTP_HOST'] ?? ''))
        ? '/fortunett_technologies_' : '';
 
 include 'includes/header.php';
 ?>
-
 <style>
-/* ── Page shell ─────────────────────────────────────── */
-.pay-page { padding: 28px 32px; max-width: 1100px; }
-.pay-page-title   { font-size: 26px; font-weight: 700; color: #e2e2e0; margin: 0 0 4px; }
-.pay-page-sub     { font-size: 14px; color: rgba(255,255,255,.4); margin: 0 0 28px; }
+/* ══════════════════════════════════════════════════
+   PAYMENT PAGE — dark neumorphism, consistent with admin
+   ══════════════════════════════════════════════════ */
+:root {
+    --neu-bg:     #141414;
+    --neu-surf:   #1c1c1b;
+    --neu-s2:     #222221;
+    --neu-border: rgba(255,255,255,.07);
+    --neu-card:   10px 10px 24px rgba(0,0,0,.5), -5px -5px 14px rgba(255,255,255,.04);
+    --neu-inset:  inset 3px 3px 8px rgba(0,0,0,.55), inset -2px -2px 5px rgba(255,255,255,.05);
+    --green:   #10b981;
+    --green-lt:#6ee7b7;
+}
 
-/* ── Layout ─────────────────────────────────────────── */
+.pay-page { padding: 28px 32px; max-width: 1100px; }
+@media(max-width:640px){ .pay-page{ padding:16px; } }
+
+.pay-page-title { font-size: 24px; font-weight: 700; color: #e2e2e0; margin: 0 0 4px; }
+.pay-page-sub   { font-size: 14px; color: rgba(255,255,255,.38); margin: 0 0 28px; }
+
+/* ── Tabs ────────────────────────────────────────── */
+.pay-tabs {
+    display:flex; gap:4px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid var(--neu-border);
+    border-radius: 50px; padding: 4px;
+    margin-bottom: 28px; width: fit-content;
+}
+.pay-tab {
+    padding: 9px 22px; border-radius: 40px; border: none;
+    background: transparent; color: rgba(255,255,255,.42);
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: all .2s; font-family: inherit;
+    display: flex; align-items: center; gap: 7px;
+}
+.pay-tab.active {
+    background: var(--neu-s2); color: #e2e2e0;
+    box-shadow: 4px 4px 10px rgba(0,0,0,.4), -2px -2px 6px rgba(255,255,255,.04);
+}
+.pay-panel { display:none; }
+.pay-panel.active { display:block; }
+
+/* ── Grid ────────────────────────────────────────── */
 .pay-grid {
-    display: grid;
-    grid-template-columns: 340px 1fr;
-    gap: 24px;
-    align-items: start;
+    display: grid; grid-template-columns: 340px 1fr;
+    gap: 24px; align-items: start;
 }
 @media(max-width:860px){ .pay-grid{ grid-template-columns:1fr; } }
 
-/* ── Dark card ──────────────────────────────────────── */
+/* ── Card ────────────────────────────────────────── */
 .pay-card {
-    background: #222221;
-    border: 1px solid rgba(255,255,255,.07);
-    border-radius: 14px;
-    box-shadow: 8px 8px 20px rgba(0,0,0,.4), -4px -4px 10px rgba(255,255,255,.03);
-    overflow: hidden;
-    margin-bottom: 20px;
+    background: var(--neu-s2);
+    border: 1px solid var(--neu-border);
+    border-radius: 16px;
+    box-shadow: var(--neu-card);
+    overflow: hidden; margin-bottom: 20px;
 }
 .pay-card-head {
-    padding: 18px 22px;
-    border-bottom: 1px solid rgba(255,255,255,.07);
-    font-size: 15px;
-    font-weight: 600;
-    color: #e2e2e0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--neu-border);
+    font-size: 14px; font-weight: 600; color: #e2e2e0;
+    display: flex; align-items: center; gap: 8px;
 }
-.pay-card-head i { color: rgba(255,255,255,.4); font-size: 14px; }
-.pay-card-body  { padding: 22px; }
+.pay-card-head i { color: rgba(255,255,255,.35); font-size: 13px; }
+.pay-card-body { padding: 22px; }
 
-/* ── Summary ────────────────────────────────────────── */
+/* ── Package summary row ─────────────────────────── */
 .pkg-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
+    display: flex; align-items: center; gap: 14px;
     background: rgba(255,255,255,.04);
-    border: 1px solid rgba(255,255,255,.07);
-    border-radius: 10px;
-    padding: 14px 16px;
-    margin-bottom: 18px;
+    border: 1px solid var(--neu-border);
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 18px;
 }
 .pkg-icon {
     width: 44px; height: 44px;
-    background: rgba(59,130,246,.15);
-    color: #93c5fd;
-    border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 18px;
-    flex-shrink: 0;
+    background: rgba(59,130,246,.15); color: #93c5fd;
+    border-radius: 10px; display: flex; align-items: center;
+    justify-content: center; font-size: 18px; flex-shrink: 0;
 }
 .pkg-name  { font-weight: 600; color: #e2e2e0; font-size: 14px; }
-.pkg-speed { font-size: 12px; color: rgba(255,255,255,.4); margin-top: 2px; }
-.pkg-price { margin-left: auto; font-size: 20px; font-weight: 700; color: #6ee7b7; white-space: nowrap; }
+.pkg-speed { font-size: 12px; color: rgba(255,255,255,.38); margin-top: 2px; }
+.pkg-price { margin-left: auto; font-size: 20px; font-weight: 700; color: var(--green-lt); white-space: nowrap; }
 
 .sum-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 13px;
-    padding: 9px 0;
+    display: flex; justify-content: space-between;
+    font-size: 13px; padding: 9px 0;
     border-bottom: 1px solid rgba(255,255,255,.05);
-    color: rgba(255,255,255,.55);
+    color: rgba(255,255,255,.48);
 }
 .sum-row:last-child { border-bottom: none; }
 .sum-row span:last-child { color: #e2e2e0; font-weight: 500; }
-.sum-row.credit span:last-child { color: #6ee7b7; }
+.sum-row.credit span:last-child { color: var(--green-lt); }
 .sum-total {
-    display: flex;
-    justify-content: space-between;
-    font-size: 18px;
-    font-weight: 700;
-    padding: 14px 0 0;
-    margin-top: 6px;
-    border-top: 1px solid rgba(255,255,255,.1);
-    color: #fff;
+    display: flex; justify-content: space-between;
+    font-size: 18px; font-weight: 700;
+    padding: 14px 0 0; margin-top: 6px;
+    border-top: 1px solid rgba(255,255,255,.1); color: #fff;
 }
 
 .balance-covered {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    display: flex; align-items: center; gap: 10px;
     padding: 12px 16px;
     background: rgba(16,185,129,.1);
     border: 1px solid rgba(16,185,129,.25);
-    border-radius: 10px;
-    font-size: 13px;
-    color: #6ee7b7;
+    border-radius: 10px; font-size: 13px; color: var(--green-lt);
+    margin-bottom: 12px;
 }
 
-/* ── Payment method tabs ────────────────────────────── */
+/* ── Primary pay button ──────────────────────────── */
+.pay-now-btn {
+    width: 100%; padding: 15px;
+    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+    border: none; border-radius: 12px;
+    color: #fff; font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: opacity .2s, transform .15s;
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; margin-top: 6px;
+    box-shadow: 0 4px 20px rgba(16,185,129,.35);
+}
+.pay-now-btn:hover { opacity: .92; transform: translateY(-1px); }
+.pay-now-btn:disabled { opacity: .5; cursor: default; transform: none; }
+
+.activate-btn {
+    width: 100%; margin-top: 6px; padding: 14px;
+    background: linear-gradient(135deg, rgba(16,185,129,.2) 0%, rgba(16,185,129,.1) 100%);
+    border: 1px solid rgba(16,185,129,.35); border-radius: 12px;
+    color: var(--green-lt); font-size: 15px; font-weight: 700;
+    cursor: pointer; transition: all .2s;
+    display: <?php echo ($amountToPay > 0) ? 'none' : 'flex'; ?>;
+    align-items: center; justify-content: center; gap: 8px;
+}
+.activate-btn:hover { background: rgba(16,185,129,.25); transform: translateY(-1px); }
+
+/* ── Gateway accordion ───────────────────────────── */
 .gw-list   { display: flex; flex-direction: column; gap: 10px; }
-.gw-item   {
-    border: 1px solid rgba(255,255,255,.08);
-    border-radius: 10px;
-    overflow: hidden;
-    transition: border-color .2s;
-}
+.gw-item   { border: 1px solid var(--neu-border); border-radius: 12px; overflow: hidden; transition: border-color .2s; }
 .gw-item.open { border-color: rgba(255,255,255,.18); }
-
 .gw-trigger {
-    width: 100%;
-    background: rgba(255,255,255,.04);
-    border: none;
-    padding: 14px 18px;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    cursor: pointer;
-    text-align: left;
-    transition: background .18s;
+    width: 100%; background: rgba(255,255,255,.04); border: none;
+    padding: 14px 18px; display: flex; align-items: center;
+    gap: 14px; cursor: pointer; text-align: left; transition: background .18s;
 }
 .gw-trigger:hover { background: rgba(255,255,255,.07); }
 .gw-icon {
-    width: 38px; height: 38px;
-    border-radius: 8px;
+    width: 38px; height: 38px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 16px;
-    flex-shrink: 0;
+    font-size: 16px; flex-shrink: 0;
 }
-.gw-icon.mpesa { background: rgba(16,185,129,.15); color: #6ee7b7; }
+.gw-icon.mpesa { background: rgba(16,185,129,.15); color: var(--green-lt); }
 .gw-icon.bank  { background: rgba(59,130,246,.15); color: #93c5fd; }
 .gw-icon.other { background: rgba(99,102,241,.15); color: #a5b4fc; }
-
 .gw-label { font-size: 14px; font-weight: 600; color: #e2e2e0; }
-.gw-type  { font-size: 11px; color: rgba(255,255,255,.35); margin-top: 1px; }
-.gw-chevron { margin-left: auto; color: rgba(255,255,255,.3); font-size: 12px; transition: transform .2s; }
+.gw-type  { font-size: 11px; color: rgba(255,255,255,.32); margin-top: 1px; }
+.gw-chevron { margin-left: auto; color: rgba(255,255,255,.28); font-size: 12px; transition: transform .2s; }
 .gw-item.open .gw-chevron { transform: rotate(180deg); }
-
-.gw-body {
-    display: none;
-    padding: 18px;
-    background: rgba(0,0,0,.2);
-    border-top: 1px solid rgba(255,255,255,.06);
-}
+.gw-body { display: none; padding: 18px; background: rgba(0,0,0,.2); border-top: 1px solid var(--neu-border); }
 .gw-item.open .gw-body { display: block; }
 
-/* ── Paybill display ────────────────────────────────── */
+/* ── Paybill display ─────────────────────────────── */
 .pb-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: rgba(255,255,255,.04);
-    border: 1px solid rgba(255,255,255,.08);
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 10px;
+    display: flex; justify-content: space-between; align-items: center;
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 8px; padding: 12px 16px; margin-bottom: 10px;
 }
 .pb-row:last-child { margin-bottom: 0; }
-.pb-field { font-size: 10px; font-weight: 600; color: rgba(255,255,255,.35); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
+.pb-field { font-size: 10px; font-weight: 600; color: rgba(255,255,255,.32); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
 .pb-val   { font-size: 22px; font-weight: 800; color: #e2e2e0; letter-spacing: 2px; }
 .pb-row.highlight { background: rgba(99,102,241,.1); border-color: rgba(99,102,241,.25); }
 .pb-row.highlight .pb-val { color: #a5b4fc; }
 .pb-hint  { font-size: 11px; color: rgba(99,102,241,.7); margin-top: 2px; }
 .copy-btn {
-    padding: 6px 12px;
-    background: rgba(255,255,255,.08);
-    border: 1px solid rgba(255,255,255,.1);
-    border-radius: 6px;
-    color: rgba(255,255,255,.6);
-    font-size: 12px;
-    cursor: pointer;
-    transition: all .18s;
-    white-space: nowrap;
-    flex-shrink: 0;
+    padding: 6px 12px; background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.1); border-radius: 6px;
+    color: rgba(255,255,255,.6); font-size: 12px; cursor: pointer;
+    transition: all .18s; white-space: nowrap; flex-shrink: 0;
 }
 .copy-btn:hover { background: rgba(255,255,255,.14); color: #fff; }
-.copy-btn.copied { background: rgba(16,185,129,.2); border-color: rgba(16,185,129,.35); color: #6ee7b7; }
+.copy-btn.copied { background: rgba(16,185,129,.2); border-color: rgba(16,185,129,.35); color: var(--green-lt); }
+.gw-alert {
+    margin-top: 12px; padding: 10px 14px;
+    background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.25);
+    border-radius: 8px; font-size: 12px; color: #fcd34d;
+}
 
-/* ── STK Push input ─────────────────────────────────── */
+/* ── Confirm-code section ────────────────────────── */
+.confirm-section {
+    margin-top: 20px; padding: 18px;
+    background: rgba(255,255,255,.03);
+    border: 1px dashed rgba(255,255,255,.1); border-radius: 12px;
+}
+.confirm-title { font-size: 13px; font-weight: 600; color: rgba(255,255,255,.6); margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+.confirm-hint  { font-size: 12px; color: rgba(255,255,255,.28); margin-bottom: 12px; }
+.confirm-row   { display: flex; gap: 8px; }
+.confirm-input {
+    flex: 1; padding: 10px 14px; background: #1a1a19;
+    border: 1px solid rgba(255,255,255,.1); border-radius: 8px;
+    color: #e2e2e0; font-size: 14px; font-family: monospace;
+    box-shadow: var(--neu-inset);
+}
+.confirm-input::placeholder { color: rgba(255,255,255,.2); font-family: inherit; }
+.confirm-input:focus { outline: none; border-color: rgba(255,255,255,.25); }
+.confirm-btn {
+    padding: 10px 18px; background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.12); border-radius: 8px;
+    color: #e2e2e0; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: all .18s; white-space: nowrap;
+}
+.confirm-btn:hover { background: rgba(255,255,255,.13); }
+
+/* ── Top-up panel ────────────────────────────────── */
+.topup-amount-row { display: flex; gap: 8px; margin-bottom: 16px; }
+.topup-input {
+    flex: 1; padding: 12px 16px; background: #1a1a19;
+    border: 1px solid rgba(255,255,255,.1); border-radius: 10px;
+    color: #e2e2e0; font-size: 20px; font-weight: 700;
+    box-shadow: var(--neu-inset); font-family: inherit;
+}
+.topup-input::placeholder { color: rgba(255,255,255,.2); font-size: 15px; font-weight: 400; }
+.topup-input:focus { outline: none; border-color: rgba(59,130,246,.5); }
+.topup-preset-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.topup-preset {
+    padding: 6px 14px; background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.1); border-radius: 20px;
+    color: rgba(255,255,255,.62); font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all .18s; font-family: inherit;
+}
+.topup-preset:hover { background: rgba(255,255,255,.13); color: #fff; }
+.topup-preset.selected { background: rgba(59,130,246,.2); border-color: rgba(59,130,246,.4); color: #93c5fd; }
+.topup-balance-strip {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; background: rgba(16,185,129,.08);
+    border: 1px solid rgba(16,185,129,.2); border-radius: 10px;
+    margin-bottom: 20px; font-size: 13px; color: rgba(255,255,255,.52);
+}
+.topup-balance-strip .bal-val { font-size: 18px; font-weight: 700; color: var(--green-lt); }
+
+.gw-empty { text-align:center; padding:40px 20px; color:rgba(255,255,255,.28); }
+.gw-empty i { font-size:36px; margin-bottom:12px; display:block; color:rgba(245,158,11,.45); }
+.gw-empty p { font-size:14px; }
+
+/* ══════════════════════════════════════════════════
+   MODALS — dark neumorphism + backdrop blur
+   ══════════════════════════════════════════════════ */
+
+/* Shared backdrop */
+.modal-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 9000;
+    background: rgba(0,0,0,.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    align-items: center; justify-content: center; padding: 16px;
+    box-sizing: border-box;
+}
+.modal-backdrop.show { display: flex; }
+
+/* Neumorphic modal box */
+.neu-modal {
+    background: var(--neu-s2);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 20px;
+    box-shadow: 20px 20px 50px rgba(0,0,0,.7), -8px -8px 24px rgba(255,255,255,.04),
+                0 0 0 1px rgba(255,255,255,.06);
+    width: 100%; max-width: 440px;
+    overflow: hidden;
+    animation: modalSlideUp .22s cubic-bezier(.4,0,.2,1) both;
+}
+@keyframes modalSlideUp {
+    from { opacity:0; transform: translateY(24px); }
+    to   { opacity:1; transform: translateY(0); }
+}
+
+.neu-modal-head {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--neu-border);
+    display: flex; align-items: flex-start; justify-content: space-between;
+}
+.neu-modal-title { font-size: 17px; font-weight: 700; color: #fff; margin-bottom: 3px; }
+.neu-modal-sub   { font-size: 12px; color: rgba(255,255,255,.38); }
+.neu-modal-close {
+    background: rgba(255,255,255,.07); border: none;
+    border-radius: 8px; cursor: pointer; color: rgba(255,255,255,.4);
+    font-size: 16px; width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .18s; flex-shrink: 0; margin-left: 12px;
+}
+.neu-modal-close:hover { background: rgba(255,255,255,.14); color: #fff; }
+
+.neu-modal-body { padding: 22px 24px; }
+.neu-modal-foot {
+    padding: 16px 24px;
+    border-top: 1px solid var(--neu-border);
+    display: flex; gap: 10px; justify-content: flex-end;
+}
+
+/* Amount pill in Pay modal */
+.pay-amount-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 18px;
+    background: rgba(16,185,129,.12);
+    border: 1px solid rgba(16,185,129,.25); border-radius: 100px;
+    font-size: 22px; font-weight: 800; color: var(--green-lt);
+    margin-bottom: 20px;
+}
+.pay-amount-pill span { font-size: 13px; font-weight: 500; color: rgba(255,255,255,.45); }
+
+/* Phone input row in Pay modal */
+.phone-field { margin-bottom: 18px; }
+.phone-label {
+    font-size: 12px; font-weight: 600; color: rgba(255,255,255,.45);
+    text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px;
+    display: block;
+}
+.phone-input-wrap { position: relative; }
+.phone-input-wrap .flag {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    font-size: 18px; pointer-events: none;
+}
+.phone-neu-input {
+    width: 100%; padding: 13px 14px 13px 46px;
+    background: #1a1a19;
+    border: 1px solid rgba(255,255,255,.1); border-radius: 10px;
+    color: #fff; font-size: 17px; font-weight: 600; font-family: inherit;
+    box-shadow: var(--neu-inset); letter-spacing: .5px;
+    box-sizing: border-box;
+}
+.phone-neu-input::placeholder { color: rgba(255,255,255,.22); font-weight: 400; font-size: 14px; letter-spacing: 0; }
+.phone-neu-input:focus { outline: none; border-color: var(--green); box-shadow: var(--neu-inset), 0 0 0 3px rgba(16,185,129,.2); }
+
+/* Package mini-info row inside Pay modal */
+.pay-modal-pkg {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; margin-bottom: 18px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid var(--neu-border); border-radius: 10px;
+}
+.pay-modal-pkg .pm-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: rgba(59,130,246,.15); color: #93c5fd;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; flex-shrink: 0;
+}
+.pay-modal-pkg .pm-name  { font-size: 13px; font-weight: 600; color: #e2e2e0; }
+.pay-modal-pkg .pm-speed { font-size: 11px; color: rgba(255,255,255,.38); margin-top: 2px; }
+.pay-modal-pkg .pm-price { margin-left: auto; font-size: 15px; font-weight: 700; color: var(--green-lt); }
+
+/* Confirm button inside modal */
+.stk-confirm-btn {
+    flex: 1; padding: 13px;
+    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+    border: none; border-radius: 10px;
+    color: #fff; font-size: 15px; font-weight: 700;
+    cursor: pointer; transition: opacity .2s, transform .15s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    box-shadow: 0 4px 18px rgba(16,185,129,.35);
+}
+.stk-confirm-btn:hover:not(:disabled) { opacity: .92; transform: translateY(-1px); }
+.stk-confirm-btn:disabled { opacity: .5; cursor: default; transform: none; }
+
+/* Cancel/ghost button */
+.ghost-btn {
+    padding: 13px 20px; background: rgba(255,255,255,.07);
+    border: 1px solid var(--neu-border); border-radius: 10px;
+    color: rgba(255,255,255,.55); font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: all .18s; font-family: inherit;
+}
+.ghost-btn:hover { background: rgba(255,255,255,.12); color: #e2e2e0; }
+
+/* ── STK Processing modal ────────────────────────── */
+.stk-spinner {
+    width: 52px; height: 52px;
+    border: 4px solid rgba(16,185,129,.15);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: spin .9s linear infinite;
+    margin: 0 auto 20px;
+}
+@keyframes spin { to{ transform:rotate(360deg); } }
+
+.stk-status-head { font-size: 18px; font-weight: 700; color: #e2e2e0; margin-bottom: 8px; text-align:center; }
+.stk-status-sub  { font-size: 13px; color: rgba(255,255,255,.42); text-align:center; line-height:1.55; }
+
+/* ── Topup STK area ──────────────────────────────── */
 .stk-row { display: flex; gap: 8px; }
 .stk-input {
-    flex: 1;
-    padding: 10px 14px;
-    background: #1a1a19;
-    border: 1px solid rgba(255,255,255,.1);
-    border-radius: 8px;
-    color: #e2e2e0;
-    font-size: 14px;
-    box-shadow: inset 3px 3px 7px rgba(0,0,0,.35), inset -1px -1px 3px rgba(255,255,255,.03);
+    flex: 1; padding: 10px 14px; background: #1a1a19;
+    border: 1px solid rgba(255,255,255,.1); border-radius: 8px;
+    color: #e2e2e0; font-size: 14px; box-shadow: var(--neu-inset);
 }
 .stk-input::placeholder { color: rgba(255,255,255,.25); }
 .stk-input:focus { outline: none; border-color: rgba(16,185,129,.5); }
 .stk-btn {
     padding: 10px 18px;
     background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-    border: none;
-    border-radius: 8px;
-    color: #fff;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity .2s, transform .15s;
-    white-space: nowrap;
+    border: none; border-radius: 8px; color: #fff;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: opacity .2s; white-space: nowrap;
 }
-.stk-btn:hover { opacity: .9; transform: translateY(-1px); }
-
-/* ── Instructions alert ─────────────────────────────── */
-.gw-alert {
-    margin-top: 12px;
-    padding: 10px 14px;
-    background: rgba(245,158,11,.08);
-    border: 1px solid rgba(245,158,11,.25);
-    border-radius: 8px;
-    font-size: 12px;
-    color: #fcd34d;
-}
-
-/* ── Manual confirm form ────────────────────────────── */
-.confirm-section {
-    margin-top: 20px;
-    padding: 18px;
-    background: rgba(255,255,255,.03);
-    border: 1px dashed rgba(255,255,255,.1);
-    border-radius: 10px;
-}
-.confirm-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: rgba(255,255,255,.65);
-    margin-bottom: 6px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.confirm-hint { font-size: 12px; color: rgba(255,255,255,.3); margin-bottom: 12px; }
-.confirm-row  { display: flex; gap: 8px; }
-.confirm-input {
-    flex: 1;
-    padding: 10px 14px;
-    background: #1a1a19;
-    border: 1px solid rgba(255,255,255,.1);
-    border-radius: 8px;
-    color: #e2e2e0;
-    font-size: 14px;
-    font-family: monospace;
-    box-shadow: inset 3px 3px 7px rgba(0,0,0,.35), inset -1px -1px 3px rgba(255,255,255,.03);
-}
-.confirm-input::placeholder { color: rgba(255,255,255,.2); font-family: inherit; }
-.confirm-input:focus { outline: none; border-color: rgba(255,255,255,.25); }
-.confirm-btn {
-    padding: 10px 18px;
-    background: rgba(255,255,255,.08);
-    border: 1px solid rgba(255,255,255,.12);
-    border-radius: 8px;
-    color: #e2e2e0;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all .18s;
-    white-space: nowrap;
-}
-.confirm-btn:hover { background: rgba(255,255,255,.13); }
-
-/* ── Activate button ────────────────────────────────── */
-.activate-btn {
-    width: 100%;
-    margin-top: 18px;
-    padding: 13px;
-    background: linear-gradient(135deg, rgba(16,185,129,.2) 0%, rgba(16,185,129,.1) 100%);
-    border: 1px solid rgba(16,185,129,.35);
-    border-radius: 10px;
-    color: #6ee7b7;
-    font-size: 15px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all .2s;
-    display: <?php echo ($amountToPay > 0) ? 'none' : 'flex'; ?>;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-}
-.activate-btn:hover { background: rgba(16,185,129,.25); transform: translateY(-1px); }
-
-/* ── No gateways empty state ────────────────────────── */
-.gw-empty {
-    text-align: center;
-    padding: 48px 20px;
-    color: rgba(255,255,255,.3);
-}
-.gw-empty i { font-size: 40px; margin-bottom: 12px; display: block; color: rgba(245,158,11,.5); }
-.gw-empty p { font-size: 14px; }
-
-/* ── Page tabs ──────────────────────────────────────────────────── */
-.pay-tabs {
-    display: flex;
-    gap: 4px;
-    background: rgba(255,255,255,.05);
-    border: 1px solid rgba(255,255,255,.08);
-    border-radius: 50px;
-    padding: 4px;
-    margin-bottom: 28px;
-    width: fit-content;
-}
-.pay-tab {
-    padding: 9px 24px;
-    border-radius: 40px;
-    border: none;
-    background: transparent;
-    color: rgba(255,255,255,.45);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all .2s;
-    font-family: inherit;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-}
-.pay-tab.active {
-    background: #222221;
-    color: #e2e2e0;
-    box-shadow: 4px 4px 10px rgba(0,0,0,.4), -2px -2px 6px rgba(255,255,255,.04);
-}
-.pay-tab i { font-size: 12px; }
-.pay-panel { display: none; }
-.pay-panel.active { display: block; }
-
-/* ── Top-up panel ───────────────────────────────────────────────── */
-.topup-amount-row { display: flex; gap: 8px; margin-bottom: 16px; }
-.topup-input {
-    flex: 1;
-    padding: 12px 16px;
-    background: #1a1a19;
-    border: 1px solid rgba(255,255,255,.1);
-    border-radius: 10px;
-    color: #e2e2e0;
-    font-size: 20px;
-    font-weight: 700;
-    box-shadow: inset 3px 3px 7px rgba(0,0,0,.35), inset -1px -1px 3px rgba(255,255,255,.03);
-    font-family: inherit;
-}
-.topup-input::placeholder { color: rgba(255,255,255,.2); font-size: 15px; font-weight: 400; }
-.topup-input:focus { outline: none; border-color: rgba(59,130,246,.5); }
-.topup-preset-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
-.topup-preset {
-    padding: 6px 14px;
-    background: rgba(255,255,255,.07);
-    border: 1px solid rgba(255,255,255,.1);
-    border-radius: 20px;
-    color: rgba(255,255,255,.65);
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all .18s;
-    font-family: inherit;
-}
-.topup-preset:hover { background: rgba(255,255,255,.13); color: #fff; }
-.topup-preset.selected { background: rgba(59,130,246,.2); border-color: rgba(59,130,246,.4); color: #93c5fd; }
-.topup-balance-strip {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    background: rgba(16,185,129,.08);
-    border: 1px solid rgba(16,185,129,.2);
-    border-radius: 10px;
-    margin-bottom: 20px;
-    font-size: 13px;
-    color: rgba(255,255,255,.55);
-}
-.topup-balance-strip .bal-val { font-size: 18px; font-weight: 700; color: #6ee7b7; }
-
-/* ── STK processing modal ───────────────────────────── */
-.stk-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,.7);
-    z-index: 9999;
-    align-items: center;
-    justify-content: center;
-}
-.stk-overlay.show { display: flex; }
-.stk-modal {
-    background: #222221;
-    border: 1px solid rgba(255,255,255,.1);
-    border-radius: 16px;
-    padding: 36px 32px;
-    text-align: center;
-    max-width: 360px;
-    width: 90%;
-    box-shadow: 0 24px 64px rgba(0,0,0,.6);
-}
-.stk-spinner {
-    width: 52px; height: 52px;
-    border: 4px solid rgba(16,185,129,.15);
-    border-top-color: #10b981;
-    border-radius: 50%;
-    animation: spin .9s linear infinite;
-    margin: 0 auto 18px;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-.stk-modal h4  { color: #e2e2e0; font-size: 18px; font-weight: 700; margin-bottom: 8px; }
-.stk-modal p   { color: rgba(255,255,255,.45); font-size: 14px; }
+.stk-btn:hover { opacity: .9; }
 </style>
 
 <div class="pay-page">
-    <h1 class="pay-page-title"><i class="fas fa-credit-card" style="color:rgba(255,255,255,.4);margin-right:10px;"></i>Payments</h1>
-    <p class="pay-page-sub">Manage payments and top up your account balance</p>
+    <h1 class="pay-page-title"><i class="fas fa-credit-card" style="color:rgba(255,255,255,.35);margin-right:10px;"></i>Payments</h1>
+    <p class="pay-page-sub">Renew your subscription or top up your account balance</p>
 
-    <!-- Tab switcher -->
     <div class="pay-tabs">
-        <button class="pay-tab active" id="tab-pkg" onclick="switchTab('pkg')">
+        <button class="pay-tab active" id="tab-pkg"   onclick="switchTab('pkg')">
             <i class="fas fa-wifi"></i> Package Payment
         </button>
-        <button class="pay-tab" id="tab-topup" onclick="switchTab('topup')">
+        <button class="pay-tab"        id="tab-topup" onclick="switchTab('topup')">
             <i class="fas fa-plus-circle"></i> Top Up Balance
         </button>
     </div>
 
-    <!-- ══ Panel: Package Payment ══ -->
+    <!-- ══ Package Payment Panel ══ -->
     <div class="pay-panel active" id="panel-pkg">
     <div class="pay-grid">
 
-        <!-- ── Left: Summary ──────────────────────────── -->
+        <!-- Left: Summary -->
         <div>
             <div class="pay-card">
                 <div class="pay-card-head"><i class="fas fa-receipt"></i> Payment Summary</div>
@@ -463,66 +464,73 @@ include 'includes/header.php';
                     <div class="pkg-row">
                         <div class="pkg-icon"><i class="fas fa-wifi"></i></div>
                         <div>
-                            <div class="pkg-name"><?php echo htmlspecialchars($package['name']); ?></div>
-                            <div class="pkg-speed"><?php echo (int)$package['download_speed']; ?>/<?php echo (int)$package['upload_speed']; ?> Mbps &middot; <?php echo ($package['validity_value'] ?? 30) . ' ' . ($package['validity_unit'] ?? 'days'); ?></div>
+                            <div class="pkg-name"><?= htmlspecialchars($package['name']) ?></div>
+                            <div class="pkg-speed"><?= (int)$package['download_speed'] ?>/<?= (int)$package['upload_speed'] ?> Mbps &middot; <?= ($package['validity_value'] ?? 30) . ' ' . ($package['validity_unit'] ?? 'days') ?></div>
                         </div>
-                        <div class="pkg-price">KES <?php echo number_format($packagePrice, 0); ?></div>
+                        <div class="pkg-price">KES <?= number_format($packagePrice, 0) ?></div>
                     </div>
                     <?php endif; ?>
 
-                    <div class="sum-row"><span>Package Price</span><span>KES <?php echo number_format($packagePrice, 2); ?></span></div>
-                    <div class="sum-row credit"><span>Account Balance</span><span>− KES <?php echo number_format($accountBalance, 2); ?></span></div>
-                    <div class="sum-total"><span>Amount to Pay</span><span>KES <?php echo number_format($amountToPay, 2); ?></span></div>
+                    <div class="sum-row"><span>Package Price</span><span>KES <?= number_format($packagePrice, 2) ?></span></div>
+                    <div class="sum-row credit"><span>Account Balance</span><span>− KES <?= number_format($accountBalance, 2) ?></span></div>
+                    <div class="sum-total"><span>Amount to Pay</span><span>KES <?= number_format($amountToPay, 2) ?></span></div>
+
+                    <?php if ($amountToPay <= 0): ?>
+                    <div class="balance-covered" style="margin-top:16px;">
+                        <i class="fas fa-check-circle" style="font-size:18px;flex-shrink:0;"></i>
+                        <span>Your balance covers this package. Click <strong>Activate Now</strong> below.</span>
+                    </div>
+                    <button class="activate-btn" onclick="activateWithBalance()">
+                        <i class="fas fa-bolt"></i> Activate Now
+                    </button>
+                    <?php elseif ($mpesaGw): ?>
+                    <!-- Prominent M-Pesa pay button -->
+                    <button class="pay-now-btn" style="margin-top:18px;"
+                            onclick="openPayModal()">
+                        <i class="fas fa-mobile-alt"></i>
+                        Pay KES <?= number_format($amountToPay, 0) ?> via M-Pesa
+                    </button>
+                    <?php endif; ?>
                 </div>
             </div>
-
-            <?php if ($amountToPay <= 0): ?>
-            <div class="balance-covered">
-                <i class="fas fa-check-circle" style="font-size:18px;flex-shrink:0;"></i>
-                <span>Your account balance covers this package. Click <strong>Activate Now</strong> below.</span>
-            </div>
-            <?php endif; ?>
         </div>
 
-        <!-- ── Right: Payment Methods ─────────────────── -->
+        <!-- Right: Payment Methods -->
         <div>
             <div class="pay-card">
-                <div class="pay-card-head"><i class="fas fa-wallet"></i> Choose Payment Method</div>
+                <div class="pay-card-head"><i class="fas fa-wallet"></i> Payment Methods</div>
                 <div class="pay-card-body">
 
                     <?php if (empty($gateways)): ?>
                     <div class="gw-empty">
                         <i class="fas fa-exclamation-triangle"></i>
-                        <p>No payment methods configured.<br>Please contact your ISP for assistance.</p>
+                        <p>No payment methods configured.<br>Contact your ISP for assistance.</p>
                     </div>
                     <?php else: ?>
                     <div class="gw-list">
                         <?php foreach ($gateways as $idx => $g):
-                            $creds    = json_decode($g['credentials'], true) ?? [];
-                            $isFirst  = $idx === 0;
-                            $gwType   = $g['gateway_type'];
-                            $iconCls  = in_array($gwType, ['mpesa_api','paybill_no_api']) ? 'mpesa' : ($gwType === 'bank_account' ? 'bank' : 'other');
-                            $iconFa   = $gwType === 'bank_account' ? 'fa-university' : ($gwType === 'paypal' ? 'fa-paypal' : 'fa-mobile-alt');
+                            $creds   = json_decode($g['credentials'], true) ?? [];
+                            $gwType  = $g['gateway_type'];
+                            $iconCls = in_array($gwType, ['mpesa_api','paybill_no_api']) ? 'mpesa' : ($gwType === 'bank_account' ? 'bank' : 'other');
+                            $iconFa  = $gwType === 'bank_account' ? 'fa-university' : ($gwType === 'paypal' ? 'fa-paypal' : 'fa-mobile-alt');
                         ?>
-                        <div class="gw-item <?php echo $isFirst ? 'open' : ''; ?>" id="gw-<?php echo $g['id']; ?>">
-                            <button class="gw-trigger" onclick="toggleGw('gw-<?php echo $g['id']; ?>')">
-                                <div class="gw-icon <?php echo $iconCls; ?>"><i class="fas <?php echo $iconFa; ?>"></i></div>
+                        <div class="gw-item <?= $idx === 0 ? 'open' : '' ?>" id="gw-<?= $g['id'] ?>">
+                            <button class="gw-trigger" onclick="toggleGw('gw-<?= $g['id'] ?>')">
+                                <div class="gw-icon <?= $iconCls ?>"><i class="fas <?= $iconFa ?>"></i></div>
                                 <div>
-                                    <div class="gw-label"><?php echo htmlspecialchars($g['gateway_name']); ?></div>
-                                    <div class="gw-type"><?php echo ucwords(str_replace('_', ' ', $gwType)); ?></div>
+                                    <div class="gw-label"><?= htmlspecialchars($g['gateway_name']) ?></div>
+                                    <div class="gw-type"><?= ucwords(str_replace('_', ' ', $gwType)) ?></div>
                                 </div>
                                 <i class="fas fa-chevron-down gw-chevron"></i>
                             </button>
                             <div class="gw-body">
                                 <?php if ($gwType === 'mpesa_api'): ?>
-                                    <p style="font-size:13px;color:rgba(255,255,255,.45);margin-bottom:12px;">Pay instantly via M-Pesa STK Push. Your phone will receive a PIN prompt.</p>
-                                    <div class="stk-row">
-                                        <input type="tel" id="stk_phone_<?php echo $g['id']; ?>" class="stk-input"
-                                               value="<?php echo htmlspecialchars($customer['phone']); ?>" placeholder="07xxxxxxxx">
-                                        <button class="stk-btn" onclick="initiateSTK(<?php echo $g['id']; ?>, <?php echo $amountToPay; ?>, this)">
-                                            <i class="fas fa-paper-plane"></i> Pay KES <?php echo number_format($amountToPay, 0); ?>
-                                        </button>
-                                    </div>
+                                    <p style="font-size:13px;color:rgba(255,255,255,.42);margin-bottom:14px;">Your phone will receive an M-Pesa PIN prompt automatically.</p>
+                                    <button class="pay-now-btn" style="font-size:14px;padding:12px;"
+                                            onclick="openPayModal()">
+                                        <i class="fas fa-paper-plane"></i>
+                                        Send STK Push — KES <?= number_format($amountToPay, 0) ?>
+                                    </button>
 
                                 <?php elseif ($gwType === 'paybill_no_api'):
                                     $useGenerated = !empty($creds['use_generated_accounts']) && $creds['use_generated_accounts'] == '1';
@@ -530,57 +538,36 @@ include 'includes/header.php';
                                 ?>
                                     <div class="pb-row">
                                         <div>
-                                            <div class="pb-field">Business Number (Paybill)</div>
-                                            <div class="pb-val"><?php echo htmlspecialchars($creds['paybill_number'] ?? 'N/A'); ?></div>
+                                            <div class="pb-field">Paybill Number</div>
+                                            <div class="pb-val"><?= htmlspecialchars($creds['paybill_number'] ?? 'N/A') ?></div>
                                         </div>
-                                        <button class="copy-btn" onclick="copyText('<?php echo htmlspecialchars($creds['paybill_number'] ?? ''); ?>', this)">
-                                            <i class="fas fa-copy"></i> Copy
-                                        </button>
+                                        <button class="copy-btn" onclick="copyText('<?= htmlspecialchars($creds['paybill_number'] ?? '') ?>', this)"><i class="fas fa-copy"></i> Copy</button>
                                     </div>
                                     <?php if ($displayAcct): ?>
-                                    <div class="pb-row <?php echo $useGenerated ? 'highlight' : ''; ?>">
+                                    <div class="pb-row <?= $useGenerated ? 'highlight' : '' ?>">
                                         <div>
-                                            <div class="pb-field"><?php echo $useGenerated ? '🎯 Your Unique Account Number' : 'Account Number'; ?></div>
-                                            <div class="pb-val"><?php echo htmlspecialchars($displayAcct); ?></div>
-                                            <?php if ($useGenerated): ?><div class="pb-hint">Use this as your M-Pesa account reference</div><?php endif; ?>
+                                            <div class="pb-field"><?= $useGenerated ? 'Your Account Number' : 'Account Number' ?></div>
+                                            <div class="pb-val"><?= htmlspecialchars($displayAcct) ?></div>
+                                            <?php if ($useGenerated): ?><div class="pb-hint">Use as M-Pesa account reference</div><?php endif; ?>
                                         </div>
-                                        <button class="copy-btn" onclick="copyText('<?php echo htmlspecialchars($displayAcct); ?>', this)">
-                                            <i class="fas fa-copy"></i> Copy
-                                        </button>
+                                        <button class="copy-btn" onclick="copyText('<?= htmlspecialchars($displayAcct) ?>', this)"><i class="fas fa-copy"></i> Copy</button>
                                     </div>
                                     <?php endif; ?>
                                     <?php if (!empty($creds['instructions'])): ?>
-                                    <div class="gw-alert"><i class="fas fa-info-circle"></i> <?php echo htmlspecialchars($creds['instructions']); ?></div>
+                                    <div class="gw-alert"><i class="fas fa-info-circle"></i> <?= htmlspecialchars($creds['instructions']) ?></div>
                                     <?php endif; ?>
 
                                 <?php elseif ($gwType === 'bank_account'): ?>
+                                    <?php if (!empty($creds['bank_name'])): ?>
+                                    <div class="pb-row"><div><div class="pb-field">Bank</div><div class="pb-val" style="font-size:16px;letter-spacing:0;"><?= htmlspecialchars($creds['bank_name']) ?></div></div></div>
+                                    <?php endif; ?>
+                                    <?php if (!empty($creds['account_name'])): ?>
+                                    <div class="pb-row"><div><div class="pb-field">Account Name</div><div class="pb-val" style="font-size:15px;letter-spacing:0;"><?= htmlspecialchars($creds['account_name']) ?></div></div></div>
+                                    <?php endif; ?>
+                                    <?php if (!empty($creds['account_number'])): ?>
                                     <div class="pb-row">
-                                        <div>
-                                            <div class="pb-field">Bank</div>
-                                            <div class="pb-val" style="font-size:16px;letter-spacing:0;"><?php echo htmlspecialchars($creds['bank_name'] ?? ''); ?></div>
-                                        </div>
-                                    </div>
-                                    <div class="pb-row">
-                                        <div>
-                                            <div class="pb-field">Account Name</div>
-                                            <div class="pb-val" style="font-size:15px;letter-spacing:0;"><?php echo htmlspecialchars($creds['account_name'] ?? ''); ?></div>
-                                        </div>
-                                    </div>
-                                    <div class="pb-row">
-                                        <div>
-                                            <div class="pb-field">Account Number</div>
-                                            <div class="pb-val"><?php echo htmlspecialchars($creds['account_number'] ?? ''); ?></div>
-                                        </div>
-                                        <button class="copy-btn" onclick="copyText('<?php echo htmlspecialchars($creds['account_number'] ?? ''); ?>', this)">
-                                            <i class="fas fa-copy"></i> Copy
-                                        </button>
-                                    </div>
-                                    <?php if (!empty($creds['paybill_number'])): ?>
-                                    <div class="pb-row">
-                                        <div>
-                                            <div class="pb-field">Bank Paybill</div>
-                                            <div class="pb-val"><?php echo htmlspecialchars($creds['paybill_number']); ?></div>
-                                        </div>
+                                        <div><div class="pb-field">Account Number</div><div class="pb-val"><?= htmlspecialchars($creds['account_number']) ?></div></div>
+                                        <button class="copy-btn" onclick="copyText('<?= htmlspecialchars($creds['account_number']) ?>', this)"><i class="fas fa-copy"></i> Copy</button>
                                     </div>
                                     <?php endif; ?>
                                 <?php endif; ?>
@@ -590,78 +577,63 @@ include 'includes/header.php';
                     </div>
                     <?php endif; ?>
 
-                    <!-- Manual confirmation -->
+                    <!-- Already paid? Manual confirm -->
                     <div class="confirm-section">
                         <div class="confirm-title"><i class="fas fa-check-double"></i> Already Paid? Confirm Transaction</div>
-                        <p class="confirm-hint">If you paid via Paybill or Bank transfer, enter your M-Pesa / bank reference code here.</p>
+                        <p class="confirm-hint">If you paid via Paybill or Bank transfer, enter your M-Pesa / bank reference below.</p>
                         <form id="verifyPaymentForm" onsubmit="handleVerify(event)">
                             <div class="confirm-row">
                                 <input type="text" id="trans_code" class="confirm-input" placeholder="e.g. RJH1234567" required>
-                                <button type="submit" class="confirm-btn" id="verifyBtn">
-                                    <i class="fas fa-search"></i> Confirm
-                                </button>
+                                <button type="submit" class="confirm-btn" id="verifyBtn"><i class="fas fa-search"></i> Confirm</button>
                             </div>
                         </form>
                     </div>
-
-                    <button id="activateBtn" class="activate-btn" onclick="activateWithBalance()">
-                        <i class="fas fa-bolt"></i> Activate Now (balance covers package)
-                    </button>
-
                 </div>
             </div>
         </div>
     </div>
     </div><!-- /#panel-pkg -->
 
-    <!-- ══ Panel: Top Up Balance ══ -->
+    <!-- ══ Top Up Panel ══ -->
     <div class="pay-panel" id="panel-topup">
         <div class="pay-grid">
-            <!-- Left: Current balance info -->
             <div>
                 <div class="pay-card">
                     <div class="pay-card-head"><i class="fas fa-wallet"></i> Account Balance</div>
                     <div class="pay-card-body">
                         <div class="topup-balance-strip">
                             <span>Current Balance</span>
-                            <span class="bal-val">KES <?php echo number_format($accountBalance, 2); ?></span>
+                            <span class="bal-val">KES <?= number_format($accountBalance, 2) ?></span>
                         </div>
-                        <p style="font-size:13px;color:rgba(255,255,255,.4);margin-bottom:16px;">
-                            Top up your balance to pay for packages later or cover renewal costs automatically.
+                        <p style="font-size:13px;color:rgba(255,255,255,.38);margin-bottom:16px;">
+                            Top up to pay for packages later or cover renewals automatically.
                         </p>
-                        <div style="font-size:12px;color:rgba(255,255,255,.3);">
-                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;"><i class="fas fa-check-circle" style="color:rgba(16,185,129,.6);"></i> Use balance to activate any package instantly</div>
-                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;"><i class="fas fa-check-circle" style="color:rgba(16,185,129,.6);"></i> Balance carries over — never expires</div>
-                            <div style="display:flex;align-items:center;gap:6px;"><i class="fas fa-check-circle" style="color:rgba(16,185,129,.6);"></i> Auto-renew when balance is sufficient</div>
+                        <div style="font-size:12px;color:rgba(255,255,255,.28);display:flex;flex-direction:column;gap:6px;">
+                            <div><i class="fas fa-check-circle" style="color:rgba(16,185,129,.55);margin-right:6px;"></i> Use balance to activate any package instantly</div>
+                            <div><i class="fas fa-check-circle" style="color:rgba(16,185,129,.55);margin-right:6px;"></i> Balance carries over — never expires</div>
+                            <div><i class="fas fa-check-circle" style="color:rgba(16,185,129,.55);margin-right:6px;"></i> Auto-renew when balance is sufficient</div>
                         </div>
                     </div>
                 </div>
             </div>
-
-            <!-- Right: Top-up form -->
             <div>
                 <div class="pay-card">
                     <div class="pay-card-head"><i class="fas fa-plus-circle"></i> Add Funds</div>
                     <div class="pay-card-body">
-                        <!-- Amount input -->
-                        <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Amount (KES)</div>
+                        <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.32);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Amount (KES)</div>
                         <div class="topup-amount-row">
                             <input type="number" id="topup_amount" class="topup-input" placeholder="Enter amount" min="1" step="1">
                         </div>
                         <div class="topup-preset-row">
                             <?php foreach ([100,200,500,1000,2000,5000] as $amt): ?>
-                            <button class="topup-preset" onclick="setTopupAmount(<?php echo $amt; ?>)">KES <?php echo number_format($amt, 0); ?></button>
+                            <button class="topup-preset" onclick="setTopupAmount(<?= $amt ?>)">KES <?= number_format($amt, 0) ?></button>
                             <?php endforeach; ?>
                         </div>
 
                         <?php if (empty($gateways)): ?>
-                        <div class="gw-empty">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <p>No payment methods configured.<br>Please contact your ISP for assistance.</p>
-                        </div>
+                        <div class="gw-empty"><i class="fas fa-exclamation-triangle"></i><p>No payment methods configured.</p></div>
                         <?php else: ?>
-
-                        <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Choose Payment Method</div>
+                        <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.32);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Payment Method</div>
                         <div class="gw-list">
                             <?php foreach ($gateways as $idx => $g):
                                 $creds   = json_decode($g['credentials'], true) ?? [];
@@ -669,67 +641,35 @@ include 'includes/header.php';
                                 $iconCls = in_array($gwType, ['mpesa_api','paybill_no_api']) ? 'mpesa' : ($gwType === 'bank_account' ? 'bank' : 'other');
                                 $iconFa  = $gwType === 'bank_account' ? 'fa-university' : ($gwType === 'paypal' ? 'fa-paypal' : 'fa-mobile-alt');
                             ?>
-                            <div class="gw-item <?php echo $idx === 0 ? 'open' : ''; ?>" id="tu-gw-<?php echo $g['id']; ?>">
-                                <button class="gw-trigger" onclick="toggleGw('tu-gw-<?php echo $g['id']; ?>')">
-                                    <div class="gw-icon <?php echo $iconCls; ?>"><i class="fas <?php echo $iconFa; ?>"></i></div>
+                            <div class="gw-item <?= $idx === 0 ? 'open' : '' ?>" id="tu-gw-<?= $g['id'] ?>">
+                                <button class="gw-trigger" onclick="toggleGw('tu-gw-<?= $g['id'] ?>')">
+                                    <div class="gw-icon <?= $iconCls ?>"><i class="fas <?= $iconFa ?>"></i></div>
                                     <div>
-                                        <div class="gw-label"><?php echo htmlspecialchars($g['gateway_name']); ?></div>
-                                        <div class="gw-type"><?php echo ucwords(str_replace('_', ' ', $gwType)); ?></div>
+                                        <div class="gw-label"><?= htmlspecialchars($g['gateway_name']) ?></div>
+                                        <div class="gw-type"><?= ucwords(str_replace('_', ' ', $gwType)) ?></div>
                                     </div>
                                     <i class="fas fa-chevron-down gw-chevron"></i>
                                 </button>
                                 <div class="gw-body">
                                     <?php if ($gwType === 'mpesa_api'): ?>
-                                        <p style="font-size:13px;color:rgba(255,255,255,.45);margin-bottom:12px;">Pay via M-Pesa STK Push. Your phone will receive a PIN prompt.</p>
+                                        <p style="font-size:13px;color:rgba(255,255,255,.42);margin-bottom:12px;">Enter amount above, then send STK Push to your phone.</p>
                                         <div class="stk-row">
-                                            <input type="tel" id="tu_phone_<?php echo $g['id']; ?>" class="stk-input"
-                                                   value="<?php echo htmlspecialchars($customer['phone']); ?>" placeholder="07xxxxxxxx">
-                                            <button class="stk-btn" onclick="initiateTopupSTK(<?php echo $g['id']; ?>, this)">
+                                            <input type="tel" id="tu_phone_<?= $g['id'] ?>" class="stk-input"
+                                                   value="<?= htmlspecialchars($customer['phone']) ?>" placeholder="07xxxxxxxx">
+                                            <button class="stk-btn" onclick="initiateTopupSTK(<?= $g['id'] ?>, this)">
                                                 <i class="fas fa-paper-plane"></i> Top Up
                                             </button>
                                         </div>
-
                                     <?php elseif ($gwType === 'paybill_no_api'):
                                         $useGenerated = !empty($creds['use_generated_accounts']) && $creds['use_generated_accounts'] == '1';
                                         $displayAcct  = $useGenerated ? ($customer['account_number'] ?? '') : ($creds['account_number'] ?? '');
                                     ?>
-                                        <p style="font-size:12px;color:rgba(255,255,255,.35);margin-bottom:12px;">Send the amount you entered above via M-Pesa to:</p>
-                                        <div class="pb-row">
-                                            <div>
-                                                <div class="pb-field">Business Number (Paybill)</div>
-                                                <div class="pb-val"><?php echo htmlspecialchars($creds['paybill_number'] ?? 'N/A'); ?></div>
-                                            </div>
-                                            <button class="copy-btn" onclick="copyText('<?php echo htmlspecialchars($creds['paybill_number'] ?? ''); ?>', this)">
-                                                <i class="fas fa-copy"></i> Copy
-                                            </button>
-                                        </div>
+                                        <div class="pb-row"><div><div class="pb-field">Paybill</div><div class="pb-val"><?= htmlspecialchars($creds['paybill_number'] ?? 'N/A') ?></div></div>
+                                        <button class="copy-btn" onclick="copyText('<?= htmlspecialchars($creds['paybill_number'] ?? '') ?>', this)"><i class="fas fa-copy"></i> Copy</button></div>
                                         <?php if ($displayAcct): ?>
-                                        <div class="pb-row <?php echo $useGenerated ? 'highlight' : ''; ?>">
-                                            <div>
-                                                <div class="pb-field"><?php echo $useGenerated ? '🎯 Your Account Number' : 'Account Number'; ?></div>
-                                                <div class="pb-val"><?php echo htmlspecialchars($displayAcct); ?></div>
-                                                <?php if ($useGenerated): ?><div class="pb-hint">Use as M-Pesa account reference</div><?php endif; ?>
-                                            </div>
-                                            <button class="copy-btn" onclick="copyText('<?php echo htmlspecialchars($displayAcct); ?>', this)">
-                                                <i class="fas fa-copy"></i> Copy
-                                            </button>
-                                        </div>
+                                        <div class="pb-row <?= $useGenerated ? 'highlight' : '' ?>"><div><div class="pb-field"><?= $useGenerated ? 'Your Account Number' : 'Account Number' ?></div><div class="pb-val"><?= htmlspecialchars($displayAcct) ?></div></div>
+                                        <button class="copy-btn" onclick="copyText('<?= htmlspecialchars($displayAcct) ?>', this)"><i class="fas fa-copy"></i> Copy</button></div>
                                         <?php endif; ?>
-                                        <?php if (!empty($creds['instructions'])): ?>
-                                        <div class="gw-alert"><i class="fas fa-info-circle"></i> <?php echo htmlspecialchars($creds['instructions']); ?></div>
-                                        <?php endif; ?>
-
-                                    <?php elseif ($gwType === 'bank_account'): ?>
-                                        <div class="pb-row">
-                                            <div><div class="pb-field">Bank</div><div class="pb-val" style="font-size:16px;letter-spacing:0;"><?php echo htmlspecialchars($creds['bank_name'] ?? ''); ?></div></div>
-                                        </div>
-                                        <div class="pb-row">
-                                            <div><div class="pb-field">Account Name</div><div class="pb-val" style="font-size:15px;letter-spacing:0;"><?php echo htmlspecialchars($creds['account_name'] ?? ''); ?></div></div>
-                                        </div>
-                                        <div class="pb-row">
-                                            <div><div class="pb-field">Account Number</div><div class="pb-val"><?php echo htmlspecialchars($creds['account_number'] ?? ''); ?></div></div>
-                                            <button class="copy-btn" onclick="copyText('<?php echo htmlspecialchars($creds['account_number'] ?? ''); ?>', this)"><i class="fas fa-copy"></i> Copy</button>
-                                        </div>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -737,16 +677,13 @@ include 'includes/header.php';
                         </div>
                         <?php endif; ?>
 
-                        <!-- Manual top-up confirmation -->
                         <div class="confirm-section" style="margin-top:16px;">
-                            <div class="confirm-title"><i class="fas fa-check-double"></i> Already Paid? Confirm Top-Up</div>
-                            <p class="confirm-hint">Enter your M-Pesa or bank reference code to confirm the top-up.</p>
+                            <div class="confirm-title"><i class="fas fa-check-double"></i> Already Topped Up?</div>
+                            <p class="confirm-hint">Enter your M-Pesa or bank reference to confirm.</p>
                             <form onsubmit="handleTopupVerify(event)">
                                 <div class="confirm-row">
                                     <input type="text" id="topup_trans_code" class="confirm-input" placeholder="e.g. RJH1234567" required>
-                                    <button type="submit" class="confirm-btn" id="topupVerifyBtn">
-                                        <i class="fas fa-search"></i> Confirm
-                                    </button>
+                                    <button type="submit" class="confirm-btn" id="topupVerifyBtn"><i class="fas fa-search"></i> Confirm</button>
                                 </div>
                             </form>
                         </div>
@@ -757,126 +694,74 @@ include 'includes/header.php';
     </div><!-- /#panel-topup -->
 </div>
 
-<!-- STK Processing Overlay -->
-<div class="stk-overlay" id="stkOverlay">
-    <div class="stk-modal">
-        <div class="stk-spinner"></div>
-        <h4>Processing Payment</h4>
-        <p id="stkStatus">Please check your phone for the M-Pesa PIN prompt.</p>
+<!-- ══ PAY MODAL — M-Pesa STK Push ══ -->
+<div class="modal-backdrop" id="payModalBackdrop">
+<div class="neu-modal">
+    <div class="neu-modal-head">
+        <div>
+            <div class="neu-modal-title">Pay via M-Pesa</div>
+            <div class="neu-modal-sub">An STK Push will be sent to your phone</div>
+        </div>
+        <button class="neu-modal-close" onclick="closePayModal()"><i class="fas fa-times"></i></button>
     </div>
+    <div class="neu-modal-body">
+        <!-- Package mini info -->
+        <?php if ($package): ?>
+        <div class="pay-modal-pkg">
+            <div class="pm-icon"><i class="fas fa-wifi"></i></div>
+            <div>
+                <div class="pm-name"><?= htmlspecialchars($package['name']) ?></div>
+                <div class="pm-speed"><?= (int)$package['download_speed'] ?>/<?= (int)$package['upload_speed'] ?> Mbps</div>
+            </div>
+            <div class="pm-price">KES <?= number_format($packagePrice, 0) ?></div>
+        </div>
+        <?php endif; ?>
+
+        <!-- Amount badge -->
+        <div class="pay-amount-pill">
+            <span>Total due:</span>
+            KES <?= number_format($amountToPay, 2) ?>
+        </div>
+
+        <!-- Editable phone -->
+        <div class="phone-field">
+            <label class="phone-label" for="payModalPhone">M-Pesa Number</label>
+            <div class="phone-input-wrap">
+                <span class="flag">🇰🇪</span>
+                <input type="tel" id="payModalPhone" class="phone-neu-input"
+                       value="<?= htmlspecialchars($customer['phone'] ?? '') ?>"
+                       placeholder="07xxxxxxxx or 2547xxxxxxxx">
+            </div>
+            <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:5px;">You can change this to any number you want to receive the prompt on</div>
+        </div>
+    </div>
+    <div class="neu-modal-foot">
+        <button class="ghost-btn" onclick="closePayModal()">Cancel</button>
+        <button class="stk-confirm-btn" id="payModalBtn" onclick="submitPayModal()">
+            <i class="fas fa-mobile-alt"></i> Send STK Push
+        </button>
+    </div>
+</div>
+</div>
+
+<!-- ══ STK PROCESSING MODAL ══ -->
+<div class="modal-backdrop" id="stkProcessingBackdrop">
+<div class="neu-modal" style="max-width:360px;">
+    <div class="neu-modal-body" style="padding:36px 24px;text-align:center;">
+        <div class="stk-spinner"></div>
+        <div class="stk-status-head">Processing Payment</div>
+        <div class="stk-status-sub" id="stkStatus">Please check your phone for the M-Pesa PIN prompt.</div>
+    </div>
+</div>
 </div>
 
 <script>
-const _base = (location.hostname === 'localhost' || /^\d+\.\d+\./.test(location.hostname))
+const _base     = (location.hostname === 'localhost' || /^\d+\.\d+\./.test(location.hostname))
     ? '/fortunett_technologies_' : '';
+const _gwId     = <?= $mpesaGw ? $mpesaGw['id'] : 'null' ?>;
+const _amountDue = <?= $amountToPay ?>;
 
-/* ── Accordion ─────────────────────────────────────── */
-function toggleGw(id) {
-    const el = document.getElementById(id);
-    el.classList.toggle('open');
-}
-
-/* ── Copy to clipboard ─────────────────────────────── */
-function copyText(text, btn) {
-    navigator.clipboard.writeText(text).then(() => {
-        const orig = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
-        btn.classList.add('copied');
-        setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 1800);
-    }).catch(() => {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta); ta.select();
-        document.execCommand('copy'); document.body.removeChild(ta);
-        btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
-        btn.classList.add('copied');
-        setTimeout(() => { btn.innerHTML = btn.getAttribute('data-orig') || '<i class="fas fa-copy"></i> Copy'; btn.classList.remove('copied'); }, 1800);
-    });
-}
-
-/* ── STK Push ──────────────────────────────────────── */
-function initiateSTK(gatewayId, amount, btn) {
-    const phoneInput = document.getElementById('stk_phone_' + gatewayId);
-    const phone = phoneInput ? phoneInput.value.trim() : '';
-    if (!phone) { phoneInput && phoneInput.focus(); return; }
-
-    const overlay = document.getElementById('stkOverlay');
-    overlay.classList.add('show');
-    document.getElementById('stkStatus').textContent = 'Initiating STK Push…';
-
-    const fd = new FormData();
-    fd.append('gateway_id', gatewayId);
-    fd.append('phone', phone);
-    fd.append('amount', amount);
-
-    fetch(_base + '/customer/api/initiate_stk.php', { method: 'POST', body: fd })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            document.getElementById('stkStatus').textContent = 'Prompt sent! Enter your PIN on your phone.';
-            pollStatus(data.checkout_id);
-        } else {
-            overlay.classList.remove('show');
-            showCustToast(data.message || 'STK Push failed. Please try again.', 'error');
-        }
-    })
-    .catch(() => {
-        overlay.classList.remove('show');
-        showCustToast('Connection error. Please try again.', 'error');
-    });
-}
-
-function pollStatus(checkoutId) {
-    const overlay = document.getElementById('stkOverlay');
-    const interval = setInterval(() => {
-        fetch(_base + '/customer/api/check_status.php?checkout_id=' + checkoutId)
-        .then(r => r.json())
-        .then(data => {
-            if (data.status === 'paid') {
-                clearInterval(interval);
-                document.getElementById('stkStatus').textContent = 'Payment received! Activating…';
-                setTimeout(() => window.location.href = 'dashboard.php?payment=success', 2000);
-            } else if (data.status === 'failed') {
-                clearInterval(interval);
-                overlay.classList.remove('show');
-                showCustToast('Payment failed or was cancelled.', 'error');
-            }
-        })
-        .catch(() => {}); // keep polling silently
-    }, 3000);
-}
-
-/* ── Manual verify ─────────────────────────────────── */
-function handleVerify(e) {
-    e.preventDefault();
-    const code = document.getElementById('trans_code').value.trim();
-    const btn  = document.getElementById('verifyBtn');
-    if (!code) return;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying…';
-
-    const fd = new FormData();
-    fd.append('code', code);
-    fetch(_base + '/api/customer/verify_manual_payment.php', { method: 'POST', body: fd })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            showCustToast('Transaction submitted! Your account will be activated once verified.', 'success');
-            setTimeout(() => window.location.href = 'dashboard.php', 2200);
-        } else {
-            showCustToast(data.message || 'Verification failed.', 'error');
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-search"></i> Confirm';
-        }
-    })
-    .catch(() => {
-        showCustToast('Connection error. Please try again.', 'error');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-search"></i> Confirm';
-    });
-}
-
-/* ── Tab switching ─────────────────────────────────── */
+/* ── Tabs ───────────────────────────────────────── */
 function switchTab(tab) {
     document.querySelectorAll('.pay-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.pay-panel').forEach(p => p.classList.remove('active'));
@@ -884,28 +769,110 @@ function switchTab(tab) {
     document.getElementById('panel-' + tab).classList.add('active');
 }
 
-/* ── Top-up preset amounts ─────────────────────────── */
-function setTopupAmount(amt) {
-    document.getElementById('topup_amount').value = amt;
-    document.querySelectorAll('.topup-preset').forEach(b => b.classList.remove('selected'));
-    event.currentTarget.classList.add('selected');
+/* ── Accordion ──────────────────────────────────── */
+function toggleGw(id) { document.getElementById(id).classList.toggle('open'); }
+
+/* ── Copy ───────────────────────────────────────── */
+function copyText(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+        const o = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.innerHTML = o; btn.classList.remove('copied'); }, 1800);
+    }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy"></i> Copy'; }, 1800);
+    });
 }
 
-/* ── Top-up STK Push ───────────────────────────────── */
+/* ── Pay Modal ──────────────────────────────────── */
+function openPayModal() {
+    if (!_gwId) { showCustToast('No M-Pesa gateway configured.', 'error'); return; }
+    if (_amountDue <= 0) { showCustToast('No amount due — use Activate Now.', 'info'); return; }
+    document.getElementById('payModalBackdrop').classList.add('show');
+    document.getElementById('payModalPhone').focus();
+}
+function closePayModal() {
+    document.getElementById('payModalBackdrop').classList.remove('show');
+}
+
+function submitPayModal() {
+    const phone = document.getElementById('payModalPhone').value.trim();
+    if (!phone) { document.getElementById('payModalPhone').focus(); return; }
+    const btn = document.getElementById('payModalBtn');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+
+    const fd = new FormData();
+    fd.append('gateway_id', _gwId);
+    fd.append('phone', phone);
+    fd.append('amount', _amountDue);
+
+    fetch(_base + '/customer/api/initiate_stk.php', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+        closePayModal();
+        if (data.success) {
+            document.getElementById('stkStatus').textContent = 'Prompt sent! Enter your M-Pesa PIN on your phone.';
+            document.getElementById('stkProcessingBackdrop').classList.add('show');
+            pollStatus(data.checkout_id);
+        } else {
+            showCustToast(data.message || 'STK Push failed. Please try again.', 'error');
+        }
+    })
+    .catch(() => {
+        closePayModal();
+        showCustToast('Connection error. Please try again.', 'error');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-mobile-alt"></i> Send STK Push';
+    });
+}
+
+/* ── Poll payment status ────────────────────────── */
+function pollStatus(checkoutId) {
+    const interval = setInterval(() => {
+        fetch(_base + '/customer/api/check_status.php?checkout_id=' + checkoutId)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'paid') {
+                clearInterval(interval);
+                document.getElementById('stkStatus').textContent = 'Payment received! Activating your service…';
+                setTimeout(() => window.location.href = 'dashboard.php?payment=success', 2000);
+            } else if (data.status === 'failed') {
+                clearInterval(interval);
+                document.getElementById('stkProcessingBackdrop').classList.remove('show');
+                showCustToast('Payment failed or was cancelled.', 'error');
+            }
+        })
+        .catch(() => {});
+    }, 3000);
+    // Auto-cancel poll after 3 minutes
+    setTimeout(() => {
+        clearInterval(interval);
+        document.getElementById('stkProcessingBackdrop').classList.remove('show');
+        showCustToast('Payment timed out. Check your M-Pesa messages and use "Already Paid?" if you completed it.', 'warning');
+    }, 180000);
+}
+
+/* ── Topup STK Push ─────────────────────────────── */
 function initiateTopupSTK(gatewayId, btn) {
     const amount = parseFloat(document.getElementById('topup_amount').value);
     if (!amount || amount < 1) {
-        showCustToast('Please enter a valid amount to top up.', 'error');
-        document.getElementById('topup_amount').focus();
-        return;
+        showCustToast('Please enter a valid amount.', 'error');
+        document.getElementById('topup_amount').focus(); return;
     }
     const phoneInput = document.getElementById('tu_phone_' + gatewayId);
     const phone = phoneInput ? phoneInput.value.trim() : '';
     if (!phone) { phoneInput && phoneInput.focus(); return; }
 
-    const overlay = document.getElementById('stkOverlay');
-    overlay.classList.add('show');
     document.getElementById('stkStatus').textContent = 'Initiating Top-Up via M-Pesa…';
+    document.getElementById('stkProcessingBackdrop').classList.add('show');
 
     const fd = new FormData();
     fd.append('gateway_id', gatewayId);
@@ -920,18 +887,17 @@ function initiateTopupSTK(gatewayId, btn) {
             document.getElementById('stkStatus').textContent = 'Prompt sent! Enter your PIN on your phone.';
             pollTopupStatus(data.checkout_id);
         } else {
-            overlay.classList.remove('show');
-            showCustToast(data.message || 'STK Push failed. Please try again.', 'error');
+            document.getElementById('stkProcessingBackdrop').classList.remove('show');
+            showCustToast(data.message || 'STK Push failed.', 'error');
         }
     })
     .catch(() => {
-        overlay.classList.remove('show');
-        showCustToast('Connection error. Please try again.', 'error');
+        document.getElementById('stkProcessingBackdrop').classList.remove('show');
+        showCustToast('Connection error.', 'error');
     });
 }
 
 function pollTopupStatus(checkoutId) {
-    const overlay = document.getElementById('stkOverlay');
     const interval = setInterval(() => {
         fetch(_base + '/customer/api/check_status.php?checkout_id=' + checkoutId)
         .then(r => r.json())
@@ -942,7 +908,7 @@ function pollTopupStatus(checkoutId) {
                 setTimeout(() => window.location.href = 'payment.php?topup=success', 2000);
             } else if (data.status === 'failed') {
                 clearInterval(interval);
-                overlay.classList.remove('show');
+                document.getElementById('stkProcessingBackdrop').classList.remove('show');
                 showCustToast('Payment failed or was cancelled.', 'error');
             }
         })
@@ -950,56 +916,73 @@ function pollTopupStatus(checkoutId) {
     }, 3000);
 }
 
-/* ── Manual top-up confirm ─────────────────────────── */
+/* ── Manual verification ────────────────────────── */
+function handleVerify(e) {
+    e.preventDefault();
+    const code = document.getElementById('trans_code').value.trim();
+    const btn  = document.getElementById('verifyBtn');
+    if (!code) return;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying…';
+    const fd = new FormData();
+    fd.append('code', code);
+    fetch(_base + '/api/customer/verify_manual_payment.php', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showCustToast('Transaction submitted! Your account will activate once verified.', 'success');
+            setTimeout(() => window.location.href = 'dashboard.php', 2200);
+        } else {
+            showCustToast(data.message || 'Verification failed.', 'error');
+            btn.disabled = false; btn.innerHTML = '<i class="fas fa-search"></i> Confirm';
+        }
+    })
+    .catch(() => {
+        showCustToast('Connection error.', 'error');
+        btn.disabled = false; btn.innerHTML = '<i class="fas fa-search"></i> Confirm';
+    });
+}
+
+/* ── Topup manual confirm ───────────────────────── */
 function handleTopupVerify(e) {
     e.preventDefault();
     const amount = parseFloat(document.getElementById('topup_amount').value);
     if (!amount || amount < 1) {
         showCustToast('Please enter the top-up amount first.', 'error');
-        document.getElementById('topup_amount').focus();
-        return;
+        document.getElementById('topup_amount').focus(); return;
     }
     const code = document.getElementById('topup_trans_code').value.trim();
     const btn  = document.getElementById('topupVerifyBtn');
     if (!code) return;
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying…';
-
     const fd = new FormData();
-    fd.append('code', code);
-    fd.append('amount', amount);
-    fd.append('type', 'topup');
+    fd.append('code', code); fd.append('amount', amount); fd.append('type', 'topup');
     fetch(_base + '/api/customer/verify_manual_payment.php', { method: 'POST', body: fd })
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            showCustToast('Top-up submitted! Your balance will be updated once verified.', 'success');
+            showCustToast('Top-up submitted! Balance updates once verified.', 'success');
             setTimeout(() => window.location.href = 'payment.php?topup=submitted', 2200);
         } else {
             showCustToast(data.message || 'Verification failed.', 'error');
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-search"></i> Confirm';
+            btn.disabled = false; btn.innerHTML = '<i class="fas fa-search"></i> Confirm';
         }
     })
     .catch(() => {
-        showCustToast('Connection error. Please try again.', 'error');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-search"></i> Confirm';
+        showCustToast('Connection error.', 'error');
+        btn.disabled = false; btn.innerHTML = '<i class="fas fa-search"></i> Confirm';
     });
 }
 
-// Auto-switch to top-up tab if redirected after top-up
-(function() {
-    const p = new URLSearchParams(location.search);
-    if (p.has('topup')) {
-        switchTab('topup');
-        if (p.get('topup') === 'success') showCustToast('Balance topped up successfully!', 'success');
-        else if (p.get('topup') === 'submitted') showCustToast('Top-up submitted for verification.', 'info');
-    }
-    if (p.get('payment') === 'success') showCustToast('Payment successful!', 'success');
-})();
+/* ── Top-up presets ─────────────────────────────── */
+function setTopupAmount(amt) {
+    document.getElementById('topup_amount').value = amt;
+    document.querySelectorAll('.topup-preset').forEach(b => b.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
+}
 
-/* ── Activate with balance ─────────────────────────── */
+/* ── Activate with balance ──────────────────────── */
 function activateWithBalance() {
     fetch(_base + '/customer/api/activate.php', { method: 'POST' })
     .then(r => r.json())
@@ -1009,6 +992,22 @@ function activateWithBalance() {
     })
     .catch(() => showCustToast('Connection error.', 'error'));
 }
+
+/* ── Close modal on backdrop click ──────────────── */
+document.getElementById('payModalBackdrop').addEventListener('click', function(e) {
+    if (e.target === this) closePayModal();
+});
+
+/* ── URL-based auto-actions ─────────────────────── */
+(function() {
+    const p = new URLSearchParams(location.search);
+    if (p.has('topup')) {
+        switchTab('topup');
+        if (p.get('topup') === 'success') showCustToast('Balance topped up successfully!', 'success');
+        else if (p.get('topup') === 'submitted') showCustToast('Top-up submitted for verification.', 'info');
+    }
+    if (p.get('payment') === 'success') showCustToast('Payment successful!', 'success');
+})();
 </script>
 
 <?php include 'includes/footer.php'; ?>

@@ -193,26 +193,31 @@ include 'includes/header.php';
 /* Confirm modal */
 .modal {
     display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,.65); z-index: 2000;
+    background: rgba(0,0,0,.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 2000;
     align-items: center; justify-content: center;
     padding: 20px;
+    animation: fadeIn .2s ease;
 }
 .modal.show { display: flex; }
 .modal-content {
     background: #222221;
     border: 1px solid rgba(255,255,255,.1);
-    border-radius: 16px;
+    border-radius: 20px;
     width: 100%;
     max-width: 460px;
-    box-shadow: 0 24px 64px rgba(0,0,0,.6);
-    animation: fadeSlideUp .25s cubic-bezier(.22,1,.36,1);
+    box-shadow: 20px 20px 50px rgba(0,0,0,.7), -6px -6px 20px rgba(255,255,255,.03), 0 0 0 1px rgba(255,255,255,.06);
+    animation: fadeSlideUp .28s cubic-bezier(.22,1,.36,1);
 }
 .modal-header {
-    padding: 18px 22px;
+    padding: 20px 24px;
     border-bottom: 1px solid rgba(255,255,255,.07);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    border-radius: 20px 20px 0 0;
 }
 .modal-header h2 { font-size: 16px; font-weight: 700; color: #e2e2e0; margin: 0; }
 .modal-close {
@@ -248,11 +253,12 @@ include 'includes/header.php';
 }
 .modal-note i { margin-top: 1px; flex-shrink: 0; }
 .modal-footer {
-    padding: 16px 22px;
+    padding: 16px 24px;
     border-top: 1px solid rgba(255,255,255,.07);
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+    border-radius: 0 0 20px 20px;
 }
 .btn-secondary {
     padding: 9px 20px;
