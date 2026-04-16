@@ -64,7 +64,10 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
         $downloadSpeed = max(1, (int)($package['download_speed'] ?? 10));
         $uploadSpeed   = max(1, (int)($package['upload_speed']   ?? 5));
         $rateLimit     = "{$downloadSpeed}M/{$uploadSpeed}M";
-        $profileName   = 'profile_' . $username;
+        // Use the package-level profile (one shared profile per package, not per user).
+        $profileName   = $package['mikrotik_profile']
+            ?: preg_replace('/[^a-zA-Z0-9-]/', '', strtolower($package['name']));
+        if (empty($profileName)) $profileName = 'default';
 
         // ── Connect to router — prefer VPN IP (WireGuard) over public IP ─────
         $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
@@ -140,22 +143,26 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
 
 /**
  * Create or update a PPPoE secret and ensure it is enabled.
+ * Uses the package-level profile (profileName). Creates the profile on the router
+ * if it doesn't exist yet (e.g. router was offline when the package was saved).
  */
 function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment): void
 {
-    // Upsert PPPoE profile
-    $profiles = $api->comm('/ppp/profile/print', ['?name=' . $profileName]);
-    $hasProfile = false;
-    foreach ($profiles as $p) {
-        if (isset($p['!re']) && ($p['name'] ?? '') === $profileName) { $hasProfile = true; break; }
-    }
-    if (!$hasProfile) {
-        $api->comm('/ppp/profile/add', [
-            '=name='           . $profileName,
-            '=local-address=10.0.0.1',
-            '=remote-address=pool1',
-            '=rate-limit='     . $rateLimit,
-        ]);
+    // Ensure the package profile exists (skip if it's 'default' — that always exists)
+    if ($profileName !== 'default') {
+        $profiles = $api->comm('/ppp/profile/print', ['?name=' . $profileName]);
+        $hasProfile = false;
+        foreach ($profiles as $p) {
+            if (isset($p['!re']) && ($p['name'] ?? '') === $profileName) { $hasProfile = true; break; }
+        }
+        if (!$hasProfile) {
+            $api->comm('/ppp/profile/add', [
+                '=name='        . $profileName,
+                '=local-address=10.0.0.1',
+                '=remote-address=pppoe-pool',
+                '=rate-limit='  . $rateLimit,
+            ]);
+        }
     }
 
     // Upsert PPPoE secret
@@ -189,33 +196,28 @@ function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, s
  * Create or update a hotspot user, enable it, set MAC auth, and reconnect
  * any active session so the customer gets internet access immediately.
  *
+ * Uses the package-level profile (profileName) — one shared profile per package.
+ * Creates the profile on the router if it doesn't exist yet.
+ *
  * @param string $sharedUsers  RouterOS shared-users value: '1' (no sharing) or 'unlimited'
  */
 function _provisionHotspot(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment, string $sharedUsers = 'unlimited'): void
 {
-    // ── Upsert hotspot profile ────────────────────────────────────────────────
-    $profiles = $api->comm('/ip/hotspot/user/profile/print', ['?name=' . $profileName]);
-    $hasProfile = false;
-    foreach ($profiles as $p) {
-        if (isset($p['!re']) && ($p['name'] ?? '') === $profileName) { $hasProfile = true; break; }
-    }
-    if (!$hasProfile) {
-        $api->comm('/ip/hotspot/user/profile/add', [
-            '=name='          . $profileName,
-            '=rate-limit='    . $rateLimit,
-            '=shared-users='  . $sharedUsers,
-        ]);
-    } else {
-        // Profile already exists — update shared-users in case setting changed
+    // ── Ensure package profile exists ─────────────────────────────────────────
+    // We create it if missing (e.g. router was offline when the package was saved),
+    // but we do NOT recreate it per-user — one profile serves all users on that package.
+    if ($profileName !== 'default') {
+        $profiles = $api->comm('/ip/hotspot/user/profile/print', ['?name=' . $profileName]);
+        $hasProfile = false;
         foreach ($profiles as $p) {
-            if (isset($p['!re']) && ($p['name'] ?? '') === $profileName && isset($p['.id'])) {
-                $api->comm('/ip/hotspot/user/profile/set', [
-                    '=.id='          . $p['.id'],
-                    '=rate-limit='   . $rateLimit,
-                    '=shared-users=' . $sharedUsers,
-                ]);
-                break;
-            }
+            if (isset($p['!re']) && ($p['name'] ?? '') === $profileName) { $hasProfile = true; break; }
+        }
+        if (!$hasProfile) {
+            $api->comm('/ip/hotspot/user/profile/add', [
+                '=name='         . $profileName,
+                '=rate-limit='   . $rateLimit,
+                '=shared-users=' . $sharedUsers,
+            ]);
         }
     }
 

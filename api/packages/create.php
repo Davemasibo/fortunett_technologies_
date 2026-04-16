@@ -72,11 +72,12 @@ try {
         $colRows = $pdo->query("SHOW COLUMNS FROM packages")->fetchAll(PDO::FETCH_COLUMN);
         $colCache = array_flip($colRows);
     }
-    if (isset($colCache['rate_limit']))      { $cols[] = 'rate_limit';      $vals[] = $rate_limit; }
-    if (isset($colCache['connection_type'])) { $cols[] = 'connection_type'; $vals[] = $connection_type; }
-    if (isset($colCache['validity_value']))  { $cols[] = 'validity_value';  $vals[] = isset($_POST['validity_value']) && $_POST['validity_value'] !== '' ? (int)$_POST['validity_value'] : 30; }
-    if (isset($colCache['validity_unit']))   { $cols[] = 'validity_unit';   $vals[] = $_POST['validity_unit'] ?? 'days'; }
-    if (isset($colCache['device_limit']))    { $cols[] = 'device_limit';    $vals[] = isset($_POST['device_limit']) && $_POST['device_limit'] !== '' ? (int)$_POST['device_limit'] : 1; }
+    if (isset($colCache['rate_limit']))        { $cols[] = 'rate_limit';        $vals[] = $rate_limit; }
+    if (isset($colCache['connection_type']))   { $cols[] = 'connection_type';   $vals[] = $connection_type; }
+    if (isset($colCache['mikrotik_profile']))  { $cols[] = 'mikrotik_profile';  $vals[] = $mikrotik_profile; }
+    if (isset($colCache['validity_value']))    { $cols[] = 'validity_value';    $vals[] = isset($_POST['validity_value']) && $_POST['validity_value'] !== '' ? (int)$_POST['validity_value'] : 30; }
+    if (isset($colCache['validity_unit']))     { $cols[] = 'validity_unit';     $vals[] = $_POST['validity_unit'] ?? 'days'; }
+    if (isset($colCache['device_limit']))      { $cols[] = 'device_limit';      $vals[] = isset($_POST['device_limit']) && $_POST['device_limit'] !== '' ? (int)$_POST['device_limit'] : 1; }
 
     $placeholders = implode(',', array_fill(0, count($cols), '?'));
     $colList      = implode(',', $cols);

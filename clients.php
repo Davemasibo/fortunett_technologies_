@@ -445,6 +445,10 @@ include 'includes/sidebar.php';
                         <i class="fas fa-satellite-dish" id="syncIcon"></i>
                         <span id="syncLabel">Sync Router</span>
                     </button>
+                    <button class="export-btn" id="importRouterBtn" onclick="openImportRouterModal()" title="Import PPPoE/Hotspot users created on the router into the dashboard">
+                        <i class="fas fa-cloud-download-alt"></i>
+                        Import Router Users
+                    </button>
                     <button class="export-btn" onclick="exportCSV()">
                         <i class="fas fa-download"></i>
                         Export CSV
@@ -1014,6 +1018,36 @@ include 'includes/sidebar.php';
 </div>
 </div>
 
+<!-- Import Router Users Modal -->
+<div id="importRouterModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1002;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+<div style="background:#222221;width:100%;max-width:420px;border-radius:14px;border:1px solid rgba(255,255,255,.07);box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden;">
+    <div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;justify-content:space-between;align-items:center;">
+        <div>
+            <div style="font-size:15px;font-weight:700;color:#e2e2e0;">Import Router Users</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.4);margin-top:2px;">Pull existing users from MikroTik into the dashboard</div>
+        </div>
+        <button onclick="closeImportRouterModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:rgba(255,255,255,.4);line-height:1;padding:4px;">&times;</button>
+    </div>
+    <div style="padding:20px;">
+        <div style="background:rgba(59,110,165,.12);border:1px solid rgba(59,110,165,.3);border-radius:8px;padding:12px 14px;margin-bottom:18px;font-size:13px;color:rgba(255,255,255,.65);line-height:1.5;">
+            <i class="fas fa-info-circle" style="color:#93c5fd;margin-right:6px;"></i>
+            Users already in the dashboard are skipped. Imported users will have their username as the login name — you can set their password and package afterwards.
+        </div>
+        <div style="margin-bottom:16px;">
+            <label style="display:block;font-size:12px;font-weight:500;color:rgba(255,255,255,.55);margin-bottom:6px;">Connection Type</label>
+            <select id="importRouterConnType" style="width:100%;padding:9px 11px;background:#1c1c1b;border:1px solid rgba(255,255,255,.1);border-radius:8px;font-size:14px;color:#e2e2e0;">
+                <option value="pppoe">PPPoE (ppp/secret)</option>
+                <option value="hotspot">Hotspot (ip/hotspot/user)</option>
+            </select>
+        </div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid rgba(255,255,255,.07);display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeImportRouterModal()" style="padding:9px 18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;font-size:13px;color:rgba(255,255,255,.6);cursor:pointer;">Cancel</button>
+        <button id="importRouterRunBtn" onclick="runImportRouterUsers()" style="padding:9px 22px;background:linear-gradient(135deg,var(--primary-dark,#2a5a8f) 0%,var(--primary-color,#3B6EA5) 100%);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Import</button>
+    </div>
+</div>
+</div>
+
 <!-- SMS Modal -->
 <div id="smsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1002;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
 <div style="background:white;width:100%;max-width:500px;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden;">
@@ -1204,6 +1238,36 @@ function syncOnlineStatus() {
             icon.className = 'fas fa-satellite-dish';
             label.textContent = 'Sync Router';
         });
+}
+
+/* ── Import Router Users ────────────────────────────────────── */
+function openImportRouterModal() {
+    document.getElementById('importRouterModal').style.display = 'flex';
+}
+function closeImportRouterModal() {
+    document.getElementById('importRouterModal').style.display = 'none';
+}
+function runImportRouterUsers() {
+    const connType = document.getElementById('importRouterConnType').value;
+    const btn = document.getElementById('importRouterRunBtn');
+    btn.textContent = 'Importing…';
+    btn.disabled = true;
+
+    const fd = new FormData();
+    fd.append('connection_type', connType);
+    fetch('api/mikrotik/import_users.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showToast(data.message, 'success');
+                closeImportRouterModal();
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                showToast('Import failed: ' + data.message, 'error');
+            }
+        })
+        .catch(() => showToast('Network error during import', 'error'))
+        .finally(() => { btn.textContent = 'Import'; btn.disabled = false; });
 }
 
 /* ── Modal open/close ──────────────────────────────────────── */

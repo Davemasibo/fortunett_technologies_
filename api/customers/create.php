@@ -105,6 +105,7 @@ try {
         $username, $hashed_password, $mikrotik_username, $mikrotik_password,
         $package_id, $package['name'], $expiry_date, $connection_type
     ]);
+    // Note: status is 'inactive' until MikroTik sync succeeds; updated below.
     $client_id = $pdo->lastInsertId();
 
     // 4. Commit the main transaction BEFORE account number generation
@@ -122,6 +123,7 @@ try {
     }
 
     // 6. Sync to MikroTik (non-fatal, short timeout)
+    $mikrotikSynced = false;
     if (!empty($mikrotik_username) && !empty($mikrotik_password)) {
         try {
             $router_stmt = $pdo->prepare(
@@ -134,10 +136,15 @@ try {
                 $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
                 $api = new MikrotikAPI(
                     $connectIp, $router['username'],
-                    $router['password'],  (int)($router['api_port'] ?? 8728)
+                    $router['password'], (int)($router['api_port'] ?? 8728)
                 );
                 if ($api->connect()) {
-                    $profile = $package['name'] ?? 'default';
+                    // Use the package's named profile (created when package was saved).
+                    // Fall back to slugified package name, then 'default'.
+                    $profile = $package['mikrotik_profile']
+                        ?: preg_replace('/[^a-zA-Z0-9-]/', '', strtolower($package['name']));
+                    if (empty($profile)) $profile = 'default';
+
                     if ($connection_type === 'hotspot') {
                         $exists = false;
                         foreach ($api->getHotspotUsers() as $u) {
@@ -156,11 +163,17 @@ try {
                             : $api->addPPPoEUser($mikrotik_username, $mikrotik_password, $profile);
                     }
                     $api->disconnect();
+                    $mikrotikSynced = true;
                 }
             }
         } catch (Exception $e) {
             error_log("MikroTik sync on create failed: " . $e->getMessage());
         }
+    }
+
+    // Mark active if MikroTik user was created (credentials will work immediately)
+    if ($mikrotikSynced) {
+        $pdo->prepare("UPDATE clients SET status = 'active' WHERE id = ?")->execute([$client_id]);
     }
 
     ob_clean();
