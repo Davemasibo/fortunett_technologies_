@@ -101,7 +101,7 @@ try {
     // active_users = sum of LIVE sessions across all reachable routers,
     // NOT the DB subscription count (use subscribed_users for that).
     require_once '../../classes/MikrotikAPI.php';
-    $rSt = $pdo->prepare("SELECT id, name, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ?");
+    $rSt = $pdo->prepare("SELECT id, name, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
     $rSt->execute([$tenant_id]);
     $routerRows = $rSt->fetchAll(PDO::FETCH_ASSOC);
 

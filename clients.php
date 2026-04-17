@@ -2118,13 +2118,31 @@ function updateModalOnlineStatus(onlineSet, details) {
     }
     if (onlineSet.has(uname)) {
         const det = details[currentCustomer.mikrotik_username] || details[uname] || {};
-        let extra = '';
-        if (det.uptime) extra += ' · ' + det.uptime;
-        if (det.address) extra += ' · IP: ' + det.address;
-        el.innerHTML = '<span style="display:inline-flex;align-items:center;gap:5px;">' +
+
+        // Format bytes to human-readable
+        function fmtBytes(b) {
+            b = parseInt(b) || 0;
+            if (b >= 1073741824) return (b/1073741824).toFixed(2) + ' GB';
+            if (b >= 1048576)    return (b/1048576).toFixed(1)    + ' MB';
+            if (b >= 1024)       return (b/1024).toFixed(1)       + ' KB';
+            return b + ' B';
+        }
+
+        const bIn  = det.bytes_in  || det['bytes-in']  || 0;
+        const bOut = det.bytes_out || det['bytes-out'] || 0;
+
+        let statRows = '<div style="display:flex;align-items:center;gap:5px;margin-bottom:7px;">' +
             '<span style="width:8px;height:8px;border-radius:50%;background:#10B981;flex-shrink:0;animation:pulseDot 1.5s ease-in-out infinite;"></span>' +
-            '<span style="color:#065F46;font-weight:600;font-size:13px;">Online Now</span>' +
-            '<span style="font-size:11px;color:#6B7280;">' + escHtml(extra) + '</span></span>';
+            '<span style="color:#065F46;font-weight:700;font-size:13px;">Online Now</span></div>';
+
+        statRows += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px;">';
+        if (det.address)  statRows += '<div style="background:rgba(255,255,255,.04);border-radius:6px;padding:6px 8px;"><div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.04em;">IP Address</div><div style="font-size:12px;font-weight:600;color:#e2e2e0;font-family:monospace;">' + escHtml(det.address) + '</div></div>';
+        if (det.uptime)   statRows += '<div style="background:rgba(255,255,255,.04);border-radius:6px;padding:6px 8px;"><div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.04em;">Uptime</div><div style="font-size:12px;font-weight:600;color:#e2e2e0;">' + escHtml(det.uptime) + '</div></div>';
+        if (bIn)          statRows += '<div style="background:rgba(255,255,255,.04);border-radius:6px;padding:6px 8px;"><div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.04em;">↓ Download</div><div style="font-size:12px;font-weight:600;color:#34d399;">' + fmtBytes(bIn) + '</div></div>';
+        if (bOut)         statRows += '<div style="background:rgba(255,255,255,.04);border-radius:6px;padding:6px 8px;"><div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.04em;">↑ Upload</div><div style="font-size:12px;font-weight:600;color:#60a5fa;">' + fmtBytes(bOut) + '</div></div>';
+        statRows += '</div>';
+
+        el.innerHTML = statRows;
         // Also update the header status badge
         const badgeEl = document.getElementById('modalStatusBadge');
         if (badgeEl) {

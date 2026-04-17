@@ -60,7 +60,7 @@ try {
     // Optionally sync to MikroTik — disable/enable user
     try {
         require_once '../../classes/MikrotikAPI.php';
-        $rStmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ? LIMIT 1");
+        $rStmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ? LIMIT 1");
         $rStmt->execute([$tenant_id]);
         $router = $rStmt->fetch(PDO::FETCH_ASSOC);
         if ($router) {

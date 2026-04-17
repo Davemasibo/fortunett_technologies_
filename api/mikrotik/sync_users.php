@@ -7,7 +7,7 @@ require_once '../../includes/config.php';
 require_once '../../classes/MikrotikAPI.php';
 
 // Get router credentials
-$stmt = $pdo->query("SELECT * FROM mikrotik_routers WHERE status = 'active' LIMIT 1");
+$stmt = $pdo->query("SELECT * FROM mikrotik_routers WHERE status IN ('active','online') LIMIT 1");
 $router = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$router) {

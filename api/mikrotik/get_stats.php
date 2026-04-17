@@ -20,7 +20,7 @@ $t_stmt->execute([$user_id]);
 $tenant_id = $t_stmt->fetchColumn();
 
 // Get router credentials — use tenant's first active router
-$stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ? LIMIT 1");
+$stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ? LIMIT 1");
 $stmt->execute([$tenant_id]);
 $router = $stmt->fetch(PDO::FETCH_ASSOC);
 

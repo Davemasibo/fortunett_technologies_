@@ -112,7 +112,7 @@ switch($method) {
                 // Sync to MikroTik
                 try {
                     // Get active router
-                    $routerStmt = $db->prepare("SELECT * FROM mikrotik_routers WHERE tenant_id = ? AND status = 'active' LIMIT 1");
+                    $routerStmt = $db->prepare("SELECT * FROM mikrotik_routers WHERE tenant_id = ? AND status IN ('active','online') LIMIT 1");
                     $routerStmt->execute([$tenantId]);
                     $router = $routerStmt->fetch(PDO::FETCH_ASSOC);
                     

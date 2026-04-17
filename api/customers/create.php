@@ -132,7 +132,7 @@ try {
     if (!empty($mikrotik_username) && !empty($mikrotik_password)) {
         try {
             $router_stmt = $pdo->prepare(
-                "SELECT id, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ? LIMIT 1"
+                "SELECT id, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ? LIMIT 1"
             );
             $router_stmt->execute([$tenant_id]);
             $router = $router_stmt->fetch(PDO::FETCH_ASSOC);

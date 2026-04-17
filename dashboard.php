@@ -543,7 +543,7 @@ include 'includes/sidebar.php';
                     <?php
                     // Fetch configured routers
                     try {
-                        $r_stmt = $db->prepare("SELECT * FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ?");
+                        $r_stmt = $db->prepare("SELECT * FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
                         $r_stmt->execute([$tenant_id]);
                         $routers = $r_stmt->fetchAll(PDO::FETCH_ASSOC);
                         

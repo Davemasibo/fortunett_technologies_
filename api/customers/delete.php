@@ -44,7 +44,7 @@ try {
     
     // Remove from Router
     if ($client && !empty($client['mikrotik_username'])) {
-        $router_stmt = $pdo->query("SELECT * FROM mikrotik_routers WHERE status = 'active' LIMIT 1");
+        $router_stmt = $pdo->query("SELECT * FROM mikrotik_routers WHERE status IN ('active','online') LIMIT 1");
         $router = $router_stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($router) {

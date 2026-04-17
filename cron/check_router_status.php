@@ -18,50 +18,30 @@ $stmt = $pdo->query("SELECT * FROM mikrotik_routers");
 $routers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 foreach ($routers as $router) {
-    $status = 'offline';
+    // Use 'active'/'inactive' — consistent with test_connection.php and all API queries
+    $status   = 'inactive';
     $lastSeen = null;
-    
+
     try {
-        // Simple ping check using fsockopen
+        // Simple TCP reachability check on the RouterOS API port
         $fp = @fsockopen($router['ip_address'], $router['api_port'] ?? 8728, $errno, $errstr, 2);
-        
+
         if ($fp) {
-            $status = 'online';
+            $status   = 'active';
             $lastSeen = date('Y-m-d H:i:s');
             fclose($fp);
-            
-            // Optional: Try to get system resource info if RouterOS library is available
-            if (class_exists('RouterOS\Client')) {
-                try {
-                    $config = new Config([
-                        'host' => $router['ip_address'],
-                        'user' => $router['username'],
-                        'pass' => $router['password'],
-                        'port' => (int)($router['api_port'] ?? 8728),
-                    ]);
-                    
-                    $client = new Client($config);
-                    $response = $client->query('/system/resource/print')->read();
-                    
-                    if ($response) {
-                        $status = 'online';
-                    }
-                    
-                    $client->disconnect();
-                } catch (Exception $e) {
-                    // Still mark as online if port is open, even if API fails
-                    error_log("Router API error for {$router['name']}: " . $e->getMessage());
-                }
-            }
         }
     } catch (Exception $e) {
         error_log("Router check error for {$router['name']}: " . $e->getMessage());
     }
-    
-    // Update router status
-    $updateStmt = $pdo->prepare("UPDATE mikrotik_routers SET status = ?, last_seen = ? WHERE id = ?");
-    $updateStmt->execute([$status, $lastSeen, $router['id']]);
-    
+
+    // Update router status — skip routers that are 'pending' (never been test-connected)
+    // so they stay in pending until an admin explicitly tests them
+    if ($router['status'] !== 'pending') {
+        $updateStmt = $pdo->prepare("UPDATE mikrotik_routers SET status = ?, last_seen = ? WHERE id = ?");
+        $updateStmt->execute([$status, $lastSeen, $router['id']]);
+    }
+
     echo "Router {$router['name']} ({$router['ip_address']}): {$status}\n";
 }
 

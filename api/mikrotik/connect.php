@@ -15,7 +15,7 @@ $port = $_POST['port'] ?? 8728;
 // If not provided in POST, try to get from DB (default router)
 if (empty($host)) {
     try {
-        $stmt = $pdo->query("SELECT * FROM mikrotik_routers WHERE status = 'active' LIMIT 1");
+        $stmt = $pdo->query("SELECT * FROM mikrotik_routers WHERE status IN ('active','online') LIMIT 1");
         $router = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($router) {
@@ -56,7 +56,7 @@ try {
         
         // Update last connected time in DB if it was from DB
         if (isset($router['id'])) {
-            $update = $pdo->prepare("UPDATE mikrotik_routers SET last_connected = NOW(), status = 'active' WHERE id = ?");
+            $update = $pdo->prepare("UPDATE mikrotik_routers SET last_connected = NOW(), status IN ('active','online') WHERE id = ?");
             $update->execute([$router['id']]);
         }
 

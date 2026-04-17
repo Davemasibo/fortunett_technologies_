@@ -86,7 +86,7 @@ try {
     $package_id = $pdo->lastInsertId();
     
     // 2. Create Profile on all active Routers for this tenant
-    $router_stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ?");
+    $router_stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
     $router_stmt->execute([$tenant_id]);
     $routers = $router_stmt->fetchAll(PDO::FETCH_ASSOC);
     

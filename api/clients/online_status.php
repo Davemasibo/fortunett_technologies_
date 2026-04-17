@@ -25,7 +25,7 @@ if (isset($_SESSION[$cacheKey]) && ($now - $_SESSION[$cacheKey]['ts']) < 45) {
 
 require_once '../../classes/MikrotikAPI.php';
 
-$rSt = $pdo->prepare("SELECT id, ip_address, username, password, api_port FROM mikrotik_routers WHERE status = 'active' AND tenant_id = ?");
+$rSt = $pdo->prepare("SELECT id, ip_address, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
 $rSt->execute([$tenant_id]);
 $routers = $rSt->fetchAll(PDO::FETCH_ASSOC);
 
