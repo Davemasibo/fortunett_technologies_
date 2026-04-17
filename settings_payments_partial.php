@@ -163,8 +163,9 @@ input:checked + .toggle-slider:before { transform: translateX(18px); }
 }
 .pg-reset-btn:hover { background: rgba(255,255,255,.12); color: #e2e2e0; }
 
-/* ── Configured gateways grid ────────────────────────────────────── */
-.gateways-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
+/* ── Configured gateways grid — always 2-col ────────────────────── */
+.gateways-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+@media(max-width: 860px) { .gateways-grid { grid-template-columns: 1fr; } }
 .gw-card {
     background: rgb(30,30,29); border: 1px solid rgba(255,255,255,.07); border-radius: 12px;
     overflow: hidden; transition: box-shadow .2s, border-color .2s;
@@ -192,15 +193,18 @@ input:checked + .toggle-slider:before { transform: translateX(18px); }
 .gw-toggle-row { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: rgba(255,255,255,.03); border-top: 1px solid rgba(255,255,255,.06); }
 .gw-toggle-label { font-size: 12px; font-weight: 600; color: rgba(255,255,255,.7); flex: 1; }
 .gw-toggle-sub   { font-size: 11px; color: rgba(255,255,255,.35); }
-.live-toggle { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
-.live-toggle input { opacity: 0; width: 0; height: 0; }
-.live-slider { position: absolute; inset: 0; background: rgba(255,255,255,.18); border-radius: 24px; cursor: pointer; transition: .25s; }
-.live-slider:before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: rgba(255,255,255,.9); border-radius: 50%; transition: .25s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.live-toggle { position: relative; width: 42px; height: 24px; flex-shrink: 0; display: inline-block; vertical-align: middle; }
+.live-toggle input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+.live-slider { position: absolute; inset: 0; background: rgba(255,255,255,.18); border-radius: 24px; cursor: pointer; transition: background .25s; }
+.live-slider:before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: rgba(255,255,255,.9); border-radius: 50%; transition: transform .25s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
 input:checked + .live-slider { background: #10B981; }
 input:checked + .live-slider:before { transform: translateX(18px); }
 .live-toggle-text { font-size: 11.5px; font-weight: 700; min-width: 28px; }
 .live-toggle-text.on  { color: #34d399; }
 .live-toggle-text.off { color: rgba(255,255,255,.35); }
+@media(max-width: 860px) {
+    .gateways-grid { grid-template-columns: 1fr; }
+}
 
 /* ── Gateway action buttons ──────────────────────────────────────── */
 .gw-footer { padding: 10px 14px; display: flex; gap: 7px; border-top: 1px solid rgba(255,255,255,.06); background: rgba(255,255,255,.02); }
@@ -662,14 +666,41 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                         <span class="gw-detail-value"><?= htmlspecialchars($creds['shortcode'] ?? '—') ?></span>
                     </div>
                     <div class="gw-detail">
-                        <span class="gw-detail-label">Environment</span>
-                        <span class="gw-detail-value" style="font-family:inherit;color:<?= ($creds['environment'] ?? '') === 'production' ? '#059669' : '#D97706' ?>;">
-                            <?= ucfirst($creds['environment'] ?? 'sandbox') ?>
-                        </span>
+                        <span class="gw-detail-label">Type</span>
+                        <span class="gw-detail-value" style="font-family:inherit;"><?= ($creds['shortcode_type'] ?? 'paybill') === 'till' ? 'Till / Buy Goods' : 'Paybill' ?></span>
                     </div>
                     <div class="gw-detail">
-                        <span class="gw-detail-label">Consumer Key</span>
-                        <span class="gw-detail-value"><?= !empty($creds['consumer_key']) ? substr($creds['consumer_key'],0,8).'…' : '—' ?></span>
+                        <span class="gw-detail-label">Environment</span>
+                        <span class="gw-detail-value" style="font-family:inherit;color:<?= ($creds['environment'] ?? '') === 'production' ? '#059669' : '#D97706' ?>;">
+                            <?= ($creds['environment'] ?? '') === 'production' ? '● Production' : '◌ Sandbox' ?>
+                        </span>
+                    </div>
+                    <!-- Credential status row -->
+                    <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.05);">
+                        <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.28);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px;">Credentials</div>
+                        <div style="display:flex;flex-direction:column;gap:5px;">
+                            <?php
+                            $ck = $creds['consumer_key'] ?? '';
+                            $cs = $creds['consumer_secret'] ?? '';
+                            $pk = $creds['passkey'] ?? '';
+                            $credRows = [
+                                ['Consumer Key',    $ck, strlen($ck) > 8  ? substr($ck,0,4).'…'.substr($ck,-4)   : $ck],
+                                ['Consumer Secret', $cs, strlen($cs) > 8  ? '••••••••'.substr($cs,-4)             : ($cs ? '••••••••' : '')],
+                                ['Passkey',         $pk, strlen($pk) > 10 ? '••••••••…'.substr($pk,-6)            : ($pk ? '••••••••' : '')],
+                            ];
+                            foreach ($credRows as [$lbl, $val, $disp]): ?>
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                                <span style="font-size:11px;color:rgba(255,255,255,.38);"><?= $lbl ?></span>
+                                <?php if ($val): ?>
+                                <span style="font-size:11px;font-family:monospace;color:#6ee7b7;background:rgba(16,185,129,.1);padding:2px 8px;border-radius:20px;border:1px solid rgba(16,185,129,.2);">
+                                    ✓ <?= htmlspecialchars($disp) ?>
+                                </span>
+                                <?php else: ?>
+                                <span style="font-size:11px;color:#fca5a5;background:rgba(239,68,68,.1);padding:2px 8px;border-radius:20px;border:1px solid rgba(239,68,68,.2);">✗ Not set</span>
+                                <?php endif; ?>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
                 <?php elseif ($g['gateway_type'] === 'bank_account'): ?>
                     <div class="gw-detail">
@@ -739,112 +770,84 @@ input:checked + .live-slider:before { transform: translateX(18px); }
     </div>
     <?php endif; ?>
 
-    <!-- ─── Platform Shared Paybill Info Panel ─── -->
+    <!-- ─── Platform Shared Paybill Info Panel — minimal ─── -->
     <?php
-    // $hasMpesaApi already computed above; no need to recompute
-    // Use DB-stored shortcode first (set by super admin), fall back to config constant
-    $platformShortcode = $platformShortcodeDB ?? (defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : '—');
-    $prefix = $accountPrefix ?? '?';
-    $pStats  = $platformPayStats ?? ['platform_total' => 0, 'direct_total' => 0, 'platform_count' => 0, 'this_month' => 0];
+    $platformShortcode = $platformShortcodeDB ?? (defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : null);
+    $prefix         = $accountPrefix ?? '?';
     $disburseTarget = $tenantBound ?? [];
+    $c2bUrl         = defined('MPESA_C2B_CONFIRMATION_URL') ? MPESA_C2B_CONFIRMATION_URL : 'https://fortunetttech.site/api/mpesa/c2b_confirmation.php';
+    $cbUrl          = 'https://' . htmlspecialchars(explode('.', $_SERVER['HTTP_HOST'] ?? 'yourdomain.fortunetttech.site')[0]) . '.fortunetttech.site/api/mpesa/callback.php';
+    if ($platformShortcode):
     ?>
     <div style="margin-top:28px;">
         <div class="pg-section-title">
             <i class="fas fa-share-alt"></i>
             Platform Shared Paybill
-            <span class="pg-section-sub">FortuNett's M-Pesa paybill — available to all tenants</span>
+            <span class="pg-section-sub">FortuNett paybill reference info</span>
         </div>
-        <div style="background:rgb(30,30,29);border:1.5px solid <?= $hasMpesaApi ? 'rgba(255,255,255,.08)' : 'var(--primary-color)' ?>;border-radius:12px;padding:20px 24px;box-shadow:8px 8px 20px rgba(0,0,0,.4),-4px -4px 10px rgba(255,255,255,.025);">
-            <?php if (!$hasMpesaApi): ?>
-            <div style="display:flex;align-items:center;gap:10px;background:rgba(59,110,165,.1);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#93c5fd;border:1px solid rgba(59,110,165,.2);">
-                <i class="fas fa-info-circle" style="font-size:16px;flex-shrink:0;"></i>
-                <span>You haven't configured your own M-Pesa API credentials. Customers pay via the <strong>platform paybill</strong> using the account numbers below. FortuNett collects and disburses to your account.</span>
-            </div>
-            <?php endif; ?>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
 
-            <!-- Paybill info row -->
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:20px;">
-                <div>
-                    <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;">Platform Paybill No.</div>
-                    <div style="font-size:22px;font-weight:700;color:#e2e2e0;font-family:monospace;"><?= htmlspecialchars($platformShortcode) ?></div>
+            <!-- Left: Paybill + Prefix -->
+            <div style="background:rgb(30,30,29);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:18px 20px;box-shadow:8px 8px 20px rgba(0,0,0,.35),-4px -4px 10px rgba(255,255,255,.02);">
+                <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.28);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px;">
+                    <i class="fas fa-mobile-alt" style="margin-right:5px;color:rgba(255,255,255,.2);"></i>Paybill Details
                 </div>
-                <div>
-                    <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;">Your Account Prefix</div>
-                    <div style="font-size:22px;font-weight:700;color:var(--primary-color,#3B6EA5);font-family:monospace;"><?= htmlspecialchars($prefix) ?></div>
-                    <div style="font-size:11.5px;color:rgba(255,255,255,.4);margin-top:3px;">Client #1 → <strong><?= htmlspecialchars($prefix) ?>0001</strong>, #25 → <strong><?= htmlspecialchars($prefix) ?>0025</strong></div>
-                </div>
-                <div>
-                    <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;">C2B Confirmation URL</div>
-                    <div style="font-size:12px;color:rgba(255,255,255,.65);font-family:monospace;word-break:break-all;"><?= defined('MPESA_C2B_CONFIRMATION_URL') ? htmlspecialchars(MPESA_C2B_CONFIRMATION_URL) : 'https://fortunetttech.site/api/mpesa/c2b_confirmation.php' ?></div>
-                    <div style="font-size:11px;color:rgba(255,255,255,.35);margin-top:3px;">Register in Safaricom Daraja → C2B → Confirmation URL</div>
-                </div>
-            </div>
-
-            <!-- Platform collections stats -->
-            <?php if ((float)($pStats['platform_total'] ?? 0) > 0 || (float)($pStats['direct_total'] ?? 0) > 0): ?>
-            <div style="border-top:1px solid rgba(255,255,255,.07);padding-top:18px;margin-bottom:18px;">
-                <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px;">
-                    <i class="fas fa-chart-bar" style="margin-right:5px;"></i>Payment Collections
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;">
-                    <div style="background:rgba(255,255,255,.04);border-radius:8px;padding:12px 14px;border:1px solid rgba(255,255,255,.06);">
-                        <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Via Platform Paybill</div>
-                        <div style="font-size:18px;font-weight:700;color:#fbbf24;font-family:monospace;">KES <?= number_format((float)($pStats['platform_total'] ?? 0), 2) ?></div>
-                        <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:2px;"><?= (int)($pStats['platform_count'] ?? 0) ?> transactions (all-time)</div>
-                    </div>
-                    <div style="background:rgba(255,255,255,.04);border-radius:8px;padding:12px 14px;border:1px solid rgba(255,255,255,.06);">
-                        <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">This Month (Platform)</div>
-                        <div style="font-size:18px;font-weight:700;color:#34d399;font-family:monospace;">KES <?= number_format((float)($pStats['this_month'] ?? 0), 2) ?></div>
-                        <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:2px;">Current month total</div>
-                    </div>
-                    <div style="background:rgba(255,255,255,.04);border-radius:8px;padding:12px 14px;border:1px solid rgba(255,255,255,.06);">
-                        <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Via Your Own M-Pesa</div>
-                        <div style="font-size:18px;font-weight:700;color:#93c5fd;font-family:monospace;">KES <?= number_format((float)($pStats['direct_total'] ?? 0), 2) ?></div>
-                        <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:2px;">Collected directly to your shortcode</div>
-                    </div>
-                </div>
-            </div>
-            <?php endif; ?>
-
-            <!-- Disbursement info -->
-            <div style="border-top:1px solid rgba(255,255,255,.07);padding-top:16px;">
-                <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">
-                    <i class="fas fa-exchange-alt" style="margin-right:5px;"></i>Disbursement
-                </div>
-                <?php if (!empty($disburseTarget)): ?>
-                <div style="display:flex;align-items:flex-start;gap:12px;background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.2);border-radius:8px;padding:12px 14px;margin-bottom:10px;font-size:13px;color:#d1fae5;">
-                    <i class="fas fa-check-circle" style="color:#34d399;margin-top:2px;flex-shrink:0;"></i>
+                <div style="display:flex;flex-direction:column;gap:14px;">
                     <div>
-                        <strong>Disbursement target:</strong>
-                        <?php if ($disburseTarget['type'] === 'bank_account'): ?>
-                            <?= htmlspecialchars($disburseTarget['name']) ?> —
-                            <?= htmlspecialchars($disburseTarget['creds']['bank_name'] ?? '') ?>
-                            · Account <code style="background:rgba(255,255,255,.1);padding:1px 5px;border-radius:3px;"><?= htmlspecialchars($disburseTarget['creds']['account_number'] ?? '') ?></code>
-                        <?php elseif ($disburseTarget['type'] === 'paybill_no_api'): ?>
-                            <?= htmlspecialchars($disburseTarget['name']) ?> — Paybill
-                            <code style="background:rgba(255,255,255,.1);padding:1px 5px;border-radius:3px;"><?= htmlspecialchars($disburseTarget['creds']['paybill_number'] ?? '') ?></code>
+                        <div style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:4px;">Paybill Number</div>
+                        <div style="font-size:24px;font-weight:800;color:#e2e2e0;font-family:monospace;letter-spacing:2px;"><?= htmlspecialchars($platformShortcode) ?></div>
+                    </div>
+                    <div>
+                        <div style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:4px;">Your Account Prefix</div>
+                        <div style="font-size:24px;font-weight:800;color:var(--primary-color,#3B6EA5);font-family:monospace;letter-spacing:2px;"><?= htmlspecialchars($prefix) ?></div>
+                        <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:4px;">
+                            e.g. Customer #1 → <code style="background:rgba(255,255,255,.07);padding:1px 5px;border-radius:3px;"><?= htmlspecialchars($prefix) ?>0001</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: URLs + Disbursement -->
+            <div style="background:rgb(30,30,29);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:18px 20px;box-shadow:8px 8px 20px rgba(0,0,0,.35),-4px -4px 10px rgba(255,255,255,.02);">
+                <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.28);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px;">
+                    <i class="fas fa-link" style="margin-right:5px;color:rgba(255,255,255,.2);"></i>Integration
+                </div>
+                <div style="display:flex;flex-direction:column;gap:14px;">
+                    <div>
+                        <div style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:4px;">STK Push Callback URL</div>
+                        <div style="font-size:11px;font-family:monospace;color:#93c5fd;word-break:break-all;background:rgba(99,102,241,.07);padding:6px 10px;border-radius:6px;border:1px solid rgba(99,102,241,.15);"><?= $cbUrl ?></div>
+                    </div>
+                    <div>
+                        <div style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:4px;">C2B Confirmation URL</div>
+                        <div style="font-size:11px;font-family:monospace;color:#93c5fd;word-break:break-all;background:rgba(99,102,241,.07);padding:6px 10px;border-radius:6px;border:1px solid rgba(99,102,241,.15);"><?= htmlspecialchars($c2bUrl) ?></div>
+                    </div>
+                    <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:12px;">
+                        <div style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:6px;">Disbursement Target</div>
+                        <?php if (!empty($disburseTarget)): ?>
+                        <div style="font-size:12px;color:#6ee7b7;display:flex;align-items:center;gap:6px;">
+                            <i class="fas fa-check-circle" style="font-size:13px;flex-shrink:0;"></i>
+                            <?php if ($disburseTarget['type'] === 'bank_account'): ?>
+                                <?= htmlspecialchars($disburseTarget['name']) ?> &mdash;
+                                <?= htmlspecialchars($disburseTarget['creds']['bank_name'] ?? '') ?>
+                                <code style="background:rgba(255,255,255,.07);padding:1px 5px;border-radius:3px;color:#a7f3d0;"><?= htmlspecialchars($disburseTarget['creds']['account_number'] ?? '') ?></code>
+                            <?php else: ?>
+                                <?= htmlspecialchars($disburseTarget['name']) ?> — Paybill
+                                <code style="background:rgba(255,255,255,.07);padding:1px 5px;border-radius:3px;color:#a7f3d0;"><?= htmlspecialchars($disburseTarget['creds']['paybill_number'] ?? '') ?></code>
+                            <?php endif; ?>
+                        </div>
+                        <?php else: ?>
+                        <div style="font-size:12px;color:#fcd34d;display:flex;align-items:center;gap:6px;">
+                            <i class="fas fa-exclamation-triangle" style="font-size:12px;flex-shrink:0;"></i>
+                            No disbursement account — add a Bank Account or Paybill gateway above.
+                        </div>
                         <?php endif; ?>
                     </div>
                 </div>
-                <?php else: ?>
-                <div style="background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:12px 14px;font-size:13px;color:#fde68a;margin-bottom:10px;">
-                    <i class="fas fa-exclamation-triangle" style="margin-right:6px;color:#fbbf24;"></i>
-                    No disbursement account set. Add a <strong>Bank Account</strong> or <strong>Paybill</strong> gateway above so FortuNett knows where to send platform-collected funds.
-                </div>
-                <?php endif; ?>
-                <div style="font-size:12px;color:rgba(255,255,255,.38);display:flex;align-items:flex-start;gap:7px;">
-                    <i class="fas fa-info-circle" style="color:#6b7280;margin-top:2px;flex-shrink:0;"></i>
-                    <span>Platform-collected funds are disbursed weekly to your registered account. To request early disbursement or check status, contact <a href="mailto:support@fortunetttech.site" style="color:var(--primary-color,#3B6EA5);">support@fortunetttech.site</a>.</span>
-                </div>
             </div>
 
-            <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07);font-size:12px;color:rgba(255,255,255,.45);display:flex;align-items:center;gap:6px;">
-                <i class="fas fa-lightbulb" style="color:#fcd34d;"></i>
-                Want direct M-Pesa STK Push to your own shortcode? Add an <strong style="color:#e2e2e0;">M-Pesa API</strong> gateway above.
-                Your callback URL: <code style="background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-size:11px;color:#93c5fd;">https://<?= htmlspecialchars(explode('.', $_SERVER['HTTP_HOST'] ?? 'yourdomain.fortunetttech.site')[0]) ?>.fortunetttech.site/api/mpesa/callback.php</code>
-            </div>
         </div>
     </div>
+    <?php endif; ?>
 </div>
 
 <script>
