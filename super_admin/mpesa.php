@@ -230,23 +230,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                     <p class="section-label">Paybill / Till Details</p>
                     <div class="form-grid" style="margin-bottom:22px;">
                         <div class="form-field">
-                            <label>Business Shortcode</label>
+                            <label id="sa_lbl_shortcode"><?php echo ($cfg['shortcode_type']??'paybill')==='till' ? 'Till Number (PartyB — what customers pay to)' : 'Business Shortcode / Paybill Number'; ?></label>
                             <input type="text" name="shortcode" id="fShortcode"
                                 value="<?php echo htmlspecialchars($cfg['shortcode'] ?? ''); ?>"
-                                placeholder="e.g. 174379">
+                                placeholder="<?php echo ($cfg['shortcode_type']??'paybill')==='till' ? 'Till Number from M-Pesa Org Portal → Tills' : 'e.g. 174379'; ?>">
+                            <small id="sa_hint_shortcode" style="color:#fcd34d;<?php echo ($cfg['shortcode_type']??'paybill')!=='till'?'display:none;':''; ?>">
+                                This must be the <strong>Till Number</strong> (PartyB) — not the Store/Head-Office Number.
+                            </small>
                         </div>
                         <div class="form-field">
                             <label>Shortcode Type</label>
-                            <select name="shortcode_type">
+                            <select name="shortcode_type" id="fShortcodeType" onchange="onSaShortcodeTypeChange(this)">
                                 <option value="paybill" <?php echo ($cfg['shortcode_type']??'paybill')==='paybill'?'selected':''; ?>>Paybill</option>
                                 <option value="till" <?php echo ($cfg['shortcode_type']??'')==='till'?'selected':''; ?>>Till Number (Buy Goods)</option>
                             </select>
                         </div>
                         <div class="form-field">
-                            <label>Store / Head-Office Number <span style="font-weight:400;font-size:11px;opacity:.7;">(Till only — leave blank if same as shortcode)</span></label>
+                            <label id="sa_lbl_store">Store / Head-Office Number <span style="font-weight:400;font-size:11px;opacity:.7;"><?php echo ($cfg['shortcode_type']??'paybill')==='till' ? '— <span style="color:#f87171;">required for Till</span>' : '(Till only)'; ?></span></label>
                             <input type="text" name="store_number" id="fStoreNumber"
                                 value="<?php echo htmlspecialchars($cfg['store_number'] ?? ''); ?>"
-                                placeholder="e.g. 600XXX — from Safaricom Daraja portal">
+                                placeholder="<?php echo ($cfg['shortcode_type']??'paybill')==='till' ? 'Org shortcode from M-Pesa Org Portal' : 'e.g. 600XXX — from Safaricom Daraja portal'; ?>">
+                            <small id="sa_hint_store" style="color:#f87171;<?php echo ($cfg['shortcode_type']??'paybill')!=='till'?'display:none;':''; ?>">
+                                Used for password hashing (BusinessShortCode). Different from the Till Number above.
+                            </small>
                         </div>
                         <div class="form-field">
                             <label>Environment</label>
@@ -456,6 +462,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 </div><!-- /main -->
 
 <script>
+function onSaShortcodeTypeChange(sel) {
+    const isTill = sel.value === 'till';
+    const lblShortcode  = document.getElementById('sa_lbl_shortcode');
+    const hintShortcode = document.getElementById('sa_hint_shortcode');
+    const lblStore      = document.getElementById('sa_lbl_store');
+    const hintStore     = document.getElementById('sa_hint_store');
+    const inpShortcode  = document.getElementById('fShortcode');
+    const inpStore      = document.getElementById('fStoreNumber');
+
+    if (isTill) {
+        lblShortcode.textContent = 'Till Number (PartyB — what customers pay to)';
+        inpShortcode.placeholder = 'Till Number from M-Pesa Org Portal → Tills';
+        if (hintShortcode) hintShortcode.style.display = 'block';
+        lblStore.innerHTML = 'Store / Head-Office Number <span style="font-weight:400;font-size:11px;color:#f87171;">— required for Till</span>';
+        inpStore.placeholder = 'Org shortcode from M-Pesa Org Portal';
+        if (hintStore) hintStore.style.display = 'block';
+    } else {
+        lblShortcode.textContent = 'Business Shortcode / Paybill Number';
+        inpShortcode.placeholder = 'e.g. 174379';
+        if (hintShortcode) hintShortcode.style.display = 'none';
+        lblStore.innerHTML = 'Store / Head-Office Number <span style="font-weight:400;font-size:11px;opacity:.7;">(Till only)</span>';
+        inpStore.placeholder = 'e.g. 600XXX — from Safaricom Daraja portal';
+        if (hintStore) hintStore.style.display = 'none';
+    }
+}
+
 function showToast(msg, type) {
     const el = document.getElementById('toastMsg');
     el.textContent = msg;

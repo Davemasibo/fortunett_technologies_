@@ -376,19 +376,25 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                             </div>
                         </div>
                         <div>
-                            <label class="form-label-sm">Shortcode (Paybill / Till Number)</label>
+                            <label class="form-label-sm" id="lbl_mpesa_shortcode">Paybill Number</label>
                             <input type="text" name="mpesa_shortcode" id="mpesa_shortcode" class="form-input" placeholder="e.g. 4524255">
+                            <div id="hint_mpesa_shortcode" style="margin-top:4px;font-size:11px;color:#9CA3AF;display:none;">
+                                This is the <strong style="color:#fcd34d;">Till Number</strong> — the number customers pay to (shown on their M-Pesa prompt). Get it from M-Pesa Org Portal → Tills.
+                            </div>
                         </div>
                         <div>
                             <label class="form-label-sm">Shortcode Type</label>
-                            <select name="mpesa_shortcode_type" id="mpesa_shortcode_type" class="form-input">
+                            <select name="mpesa_shortcode_type" id="mpesa_shortcode_type" class="form-input" onchange="onMpesaShortcodeTypeChange(this)">
                                 <option value="paybill">Paybill (CustomerPayBillOnline)</option>
                                 <option value="till">Till / Buy Goods (CustomerBuyGoodsOnline)</option>
                             </select>
                         </div>
-                        <div>
-                            <label class="form-label-sm">Store / Head-Office Number <span style="font-weight:400;color:#9CA3AF;">(Till only — blank if same as shortcode)</span></label>
-                            <input type="text" name="mpesa_store_number" id="mpesa_store_number" class="form-input" placeholder="From Safaricom Daraja portal">
+                        <div id="wrap_store_number">
+                            <label class="form-label-sm" id="lbl_store_number">Store / Head-Office Number <span style="font-weight:400;color:#9CA3AF;">(Till only)</span></label>
+                            <input type="text" name="mpesa_store_number" id="mpesa_store_number" class="form-input" placeholder="From Safaricom Org Portal">
+                            <div id="hint_store_number" style="margin-top:4px;font-size:11px;color:#9CA3AF;display:none;">
+                                The <strong style="color:#fcd34d;">Store / Head-Office Number</strong> used for password hashing — found in M-Pesa Org Portal under your organization shortcode. <strong style="color:#f87171;">Required for Till</strong> — leaving blank will send the wrong PartyB to Safaricom.
+                            </div>
                         </div>
                     </div>
                     <div class="field-row">
@@ -888,6 +894,37 @@ function onMpesaEnvChange(sel) {
     if (prodEl)    prodEl.style.display    = isSandbox ? 'none' : 'flex';
 }
 
+function onMpesaShortcodeTypeChange(sel) {
+    const isTill = sel.value === 'till';
+    const lblShortcode   = document.getElementById('lbl_mpesa_shortcode');
+    const hintShortcode  = document.getElementById('hint_mpesa_shortcode');
+    const hintStore      = document.getElementById('hint_store_number');
+    const lblStore       = document.getElementById('lbl_store_number');
+    const inpShortcode   = document.getElementById('mpesa_shortcode');
+    const inpStore       = document.getElementById('mpesa_store_number');
+
+    if (isTill) {
+        lblShortcode.textContent = 'Till Number (PartyB — what customers pay to)';
+        lblShortcode.style.color = '#fcd34d';
+        inpShortcode.placeholder = 'e.g. 4524255 — from M-Pesa Org Portal → Tills';
+        if (hintShortcode) hintShortcode.style.display = 'block';
+
+        // Store number is required for till — highlight it
+        lblStore.innerHTML = 'Store / Head-Office Number <span style="color:#f87171;font-weight:700;">*required for Till</span>';
+        inpStore.placeholder = 'e.g. 654321 — from M-Pesa Org Portal (your org shortcode)';
+        if (hintStore) hintStore.style.display = 'block';
+    } else {
+        lblShortcode.textContent = 'Paybill Number';
+        lblShortcode.style.color = '';
+        inpShortcode.placeholder = 'e.g. 4524255';
+        if (hintShortcode) hintShortcode.style.display = 'none';
+
+        lblStore.innerHTML = 'Store / Head-Office Number <span style="font-weight:400;color:#9CA3AF;">(Till only)</span>';
+        inpStore.placeholder = 'From Safaricom Org Portal';
+        if (hintStore) hintStore.style.display = 'none';
+    }
+}
+
 /* ── Toggle password visibility ─────────────────────────────── */
 function toggleSecret(fieldId, btn) {
     const inp = document.getElementById(fieldId);
@@ -1020,6 +1057,7 @@ function editGateway(g) {
         keyBadge.style.display = 'inline-flex';
 
         onMpesaEnvChange(document.getElementById('mpesa_env'));
+        onMpesaShortcodeTypeChange(document.getElementById('mpesa_shortcode_type'));
 
     } else if (g.gateway_type === 'bank_account') {
         document.getElementById('bank_name').value          = creds.bank_name     || '';
