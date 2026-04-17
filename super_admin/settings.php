@@ -196,7 +196,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .topbar{background:var(--neu-surf);padding:0 28px;height:60px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--neu-border);position:sticky;top:0;z-index:99;box-shadow:0 2px 20px rgba(0,0,0,.4);}
 .topbar h1{font-size:18px;font-weight:700;color:#fff;}
 .topbar .user-info{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--neu-muted);}
-.content{padding:28px;max-width:960px;background:var(--neu-bg);}
+.content{padding:28px;max-width:1100px;margin:0 auto;background:var(--neu-bg);}
 /* Tabs */
 .tab-nav{display:flex;gap:4px;background:var(--neu-s2);border-radius:12px;padding:6px;border:1px solid var(--neu-border);box-shadow:8px 8px 20px rgba(0,0,0,.4),-4px -4px 10px rgba(255,255,255,.025);margin-bottom:24px;flex-wrap:wrap;}
 .tab-btn{padding:9px 18px;border:none;background:transparent;border-radius:8px;font-size:14px;font-weight:600;color:var(--neu-muted);cursor:pointer;transition:all .18s;display:flex;align-items:center;gap:7px;}

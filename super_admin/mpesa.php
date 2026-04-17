@@ -67,7 +67,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .topbar{background:var(--neu-surf);padding:0 28px;height:60px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--neu-border);position:sticky;top:0;z-index:99;box-shadow:0 2px 20px rgba(0,0,0,.4);}
 .topbar h1{font-size:18px;font-weight:700;color:#fff;}
 .topbar .user-info{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--neu-muted);}
-.content{padding:28px;max-width:900px;background:var(--neu-bg);}
+.content{padding:28px;max-width:1100px;margin:0 auto;background:var(--neu-bg);}
 .card{background:var(--neu-s2);border-radius:14px;border:1px solid var(--neu-border);box-shadow:14px 14px 28px rgba(0,0,0,.5),-7px -7px 18px rgba(255,255,255,.035),0 0 0 1px var(--neu-border);margin-bottom:24px;}
 .card-head{padding:18px 22px;border-bottom:1px solid var(--neu-border);display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.02);border-radius:14px 14px 0 0;}
 .card-head h3{font-size:15px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px;}
