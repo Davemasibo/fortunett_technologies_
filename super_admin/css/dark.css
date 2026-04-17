@@ -190,7 +190,12 @@ hr { border-color: var(--neu-border) !important; }
 
 /* Body + main layout */
 body { background: var(--neu-bg) !important; color: var(--neu-text) !important; }
-.content { background: var(--neu-bg) !important; }
+.content {
+    background: var(--neu-bg) !important;
+    max-width: 1100px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
 .main    { background: var(--neu-bg) !important; }
 
 /* Topbar */

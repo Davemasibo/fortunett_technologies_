@@ -12,6 +12,7 @@ try {
         passkey VARCHAR(255) DEFAULT '',
         shortcode VARCHAR(20) DEFAULT '',
         shortcode_type ENUM('paybill','till') DEFAULT 'paybill',
+        store_number VARCHAR(20) DEFAULT '',
         environment ENUM('sandbox','live','production') DEFAULT 'sandbox',
         callback_url VARCHAR(512) DEFAULT '',
         c2b_validation_url VARCHAR(512) DEFAULT '',
@@ -22,6 +23,8 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $pdo->exec("INSERT IGNORE INTO platform_mpesa_config (id) VALUES (1)");
 } catch (Exception $e) {}
+// Ensure store_number column exists on older schema
+try { $pdo->exec("ALTER TABLE platform_mpesa_config ADD COLUMN store_number VARCHAR(20) DEFAULT '' AFTER shortcode_type"); } catch (Exception $e) {}
 
 // Fetch current config
 $cfg = $pdo->query("SELECT * FROM platform_mpesa_config WHERE id=1")->fetch(PDO::FETCH_ASSOC);

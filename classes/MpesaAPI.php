@@ -196,18 +196,24 @@ class MpesaAPI {
             ? 'CustomerBuyGoodsOnline'
             : 'CustomerPayBillOnline';
 
-        // Safaricom confirmed: for CustomerBuyGoodsOnline, BusinessShortCode = PartyB = Till number.
-        $password    = base64_encode($this->shortcode . $this->passkey . $timestamp);
+        // For Till (Buy Goods): Safaricom requires BusinessShortCode and PartyB to be the
+        // store/head-office number (not the till number). Password is also computed using it.
+        // If store_number is blank, fall back to shortcode (handles paybill and simple till setups).
+        $businessShortCode = ($this->shortcode_type === 'till' && !empty($this->store_number))
+            ? $this->store_number
+            : $this->shortcode;
+
+        $password    = base64_encode($businessShortCode . $this->passkey . $timestamp);
         $callbackUrl = $this->resolveCallbackUrl();
 
         $curl_post_data = [
-            'BusinessShortCode' => $this->shortcode,
+            'BusinessShortCode' => $businessShortCode,
             'Password'          => $password,
             'Timestamp'         => $timestamp,
             'TransactionType'   => $transactionType,
             'Amount'            => $amount,
             'PartyA'            => $phone,
-            'PartyB'            => $this->shortcode,
+            'PartyB'            => $businessShortCode,
             'PhoneNumber'       => $phone,
             'CallBackURL'       => $callbackUrl,
             'AccountReference'  => $reference,

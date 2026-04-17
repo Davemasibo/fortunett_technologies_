@@ -518,7 +518,8 @@ input:checked + .live-slider:before { transform: translateX(18px); }
     // Show Platform Shared Paybill as a default read-only gateway when no tenant M-Pesa API is configured
     $hasPlatformShortcode = !empty($platformShortcodeDB) || defined('MPESA_SHORTCODE');
     $platformPaybillNum = $platformShortcodeDB ?? (defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : null);
-    if (!$hasMpesaApi && $hasPlatformShortcode):
+    $showPlatToggle = ($tSettings['show_platform_paybill'] ?? '1') !== '0';
+    if (!$hasMpesaApi && $hasPlatformShortcode && $showPlatToggle):
     ?>
     <div class="gateways-grid" style="margin-bottom:16px;">
         <div class="gw-card" style="border-color:var(--primary-color,#3B6EA5);box-shadow:0 0 0 2px rgba(59,110,165,.18);">
@@ -564,7 +565,7 @@ input:checked + .live-slider:before { transform: translateX(18px); }
     <!-- Toggle: show/hide platform paybill on customer portal — visible regardless of own M-Pesa status -->
     <form method="POST" style="margin-bottom:16px;" id="platformPaybillToggleForm">
         <input type="hidden" name="action" value="save_platform_paybill_toggle">
-        <?php $showPlatTgl = ($tSettings['show_platform_paybill'] ?? '1') !== '0'; ?>
+        <?php $showPlatTgl = $showPlatToggle; ?>
         <div style="background:#222221;border:1px solid <?= $hasMpesaApi ? 'rgba(99,102,241,.3)' : 'rgba(255,255,255,.07)' ?>;border-radius:10px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
             <div style="display:flex;align-items:flex-start;gap:12px;flex:1;">
                 <div style="width:36px;height:36px;background:rgba(99,102,241,.15);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -777,7 +778,7 @@ input:checked + .live-slider:before { transform: translateX(18px); }
     $disburseTarget = $tenantBound ?? [];
     $c2bUrl         = defined('MPESA_C2B_CONFIRMATION_URL') ? MPESA_C2B_CONFIRMATION_URL : 'https://fortunetttech.site/api/mpesa/c2b_confirmation.php';
     $cbUrl          = 'https://' . htmlspecialchars(explode('.', $_SERVER['HTTP_HOST'] ?? 'yourdomain.fortunetttech.site')[0]) . '.fortunetttech.site/api/mpesa/callback.php';
-    if ($platformShortcode):
+    if ($platformShortcode && $showPlatToggle):
     ?>
     <div style="margin-top:28px;">
         <div class="pg-section-title">
