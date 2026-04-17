@@ -69,8 +69,19 @@ include 'includes/header.php';
     --neu-inset: inset 3px 3px 8px rgba(0,0,0,.55), inset -2px -2px 5px rgba(255,255,255,.05);
 }
 
-.pay-page { padding: 28px 32px; max-width: 680px; }
+.pay-page { padding: 28px 32px; max-width: 1200px; }
 @media(max-width:640px){ .pay-page{ padding:16px 14px; } }
+
+/* ── Side-by-side grid for the two main cards ──────── */
+.pay-main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    align-items: start;
+    margin-bottom: 18px;
+}
+.pay-main-grid .pay-card { margin-bottom: 0; height: 100%; box-sizing: border-box; }
+@media(max-width: 860px){ .pay-main-grid { grid-template-columns: 1fr; } }
 
 .pay-page-title { font-size: 24px; font-weight: 700; color: #e2e2e0; margin: 0 0 4px; }
 .pay-page-sub   { font-size: 14px; color: rgba(255,255,255,.38); margin: 0 0 24px; }
@@ -457,6 +468,7 @@ include 'includes/header.php';
     <!-- ══ Package Payment Panel ══ -->
     <div class="pay-panel active" id="panel-pkg">
 
+    <div class="pay-main-grid">
         <!-- Card 1: Summary + Primary CTA -->
         <div class="pay-card">
             <div class="pay-card-head"><i class="fas fa-receipt"></i> Payment Summary</div>
@@ -504,7 +516,7 @@ include 'includes/header.php';
         </div>
 
         <!-- Card 2: Payment Methods (paybill details, bank, etc.) -->
-        <div class="pay-card">
+        <div class="pay-card" style="height:auto;">
             <div class="pay-card-head"><i class="fas fa-wallet"></i> Payment Methods</div>
             <div class="pay-card-body">
                 <?php if (empty($gateways)): ?>
@@ -614,6 +626,8 @@ include 'includes/header.php';
             </div>
         </div>
 
+    </div><!-- /.pay-main-grid -->
+
         <!-- Card 3: Already paid? -->
         <div class="pay-card">
             <div class="pay-card-head"><i class="fas fa-check-double"></i> Already Paid?</div>
@@ -634,7 +648,7 @@ include 'includes/header.php';
 
     <!-- ══ Top Up Panel ══ -->
     <div class="pay-panel" id="panel-topup">
-
+    <div class="pay-main-grid">
         <div class="pay-card">
             <div class="pay-card-head"><i class="fas fa-wallet"></i> Account Balance</div>
             <div class="pay-card-body">
@@ -650,7 +664,7 @@ include 'includes/header.php';
             </div>
         </div>
 
-        <div class="pay-card">
+        <div class="pay-card" style="height:auto;">
             <div class="pay-card-head"><i class="fas fa-plus-circle"></i> Add Funds</div>
             <div class="pay-card-body">
                 <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.32);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Amount (KES)</div>
@@ -727,6 +741,7 @@ include 'includes/header.php';
             </div>
         </div>
 
+    </div><!-- /.pay-main-grid topup -->
     </div><!-- /#panel-topup -->
 </div>
 
@@ -735,8 +750,8 @@ include 'includes/header.php';
     <div class="neu-modal">
         <div class="neu-modal-head">
             <div>
-                <div class="neu-modal-title">Pay via M-Pesa</div>
-                <div class="neu-modal-sub">An STK Push will be sent to your phone</div>
+                <div class="neu-modal-title"><i class="fas fa-mobile-alt" style="color:var(--green);margin-right:8px;font-size:15px;"></i>M-Pesa STK Push</div>
+                <div class="neu-modal-sub">A PIN prompt will appear on the number below</div>
             </div>
             <button class="neu-modal-close" onclick="closePayModal()"><i class="fas fa-times"></i></button>
         </div>
@@ -757,19 +772,46 @@ include 'includes/header.php';
                 <span class="pill-amount">KES <?= number_format($amountToPay, 2) ?></span>
             </div>
 
-            <label class="phone-label" for="payModalPhone">M-Pesa Number</label>
-            <div class="phone-input-wrap">
-                <span class="flag">🇰🇪</span>
-                <input type="tel" id="payModalPhone" class="phone-neu-input"
-                       value="<?= htmlspecialchars($customer['phone'] ?? '') ?>"
-                       placeholder="07xxxxxxxx or 2547xxxxxxxx">
+            <!-- Phone display / edit toggle -->
+            <div id="phoneDisplayRow" style="display:flex;align-items:center;justify-content:space-between;
+                background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.2);border-radius:10px;
+                padding:12px 16px;margin-bottom:4px;cursor:pointer;" onclick="togglePhoneEdit()">
+                <div>
+                    <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Sending STK Push to</div>
+                    <div id="phoneDisplayVal" style="font-size:19px;font-weight:700;color:#e2e2e0;letter-spacing:1px;font-family:monospace;">
+                        <?= htmlspecialchars($customer['phone'] ?? '—') ?>
+                    </div>
+                </div>
+                <button type="button" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);
+                    border-radius:8px;padding:7px 13px;color:rgba(255,255,255,.6);font-size:12px;font-weight:600;
+                    cursor:pointer;white-space:nowrap;font-family:inherit;display:flex;align-items:center;gap:5px;"
+                    onclick="togglePhoneEdit(event)">
+                    <i class="fas fa-pen" style="font-size:10px;"></i> Change
+                </button>
             </div>
-            <div style="font-size:11px;color:rgba(255,255,255,.3);margin-bottom:4px;">You can change this to any number you want to receive the prompt on</div>
+
+            <!-- Expandable phone edit field -->
+            <div id="phoneEditRow" style="display:none;margin-bottom:4px;">
+                <label class="phone-label" for="payModalPhone" style="margin-top:12px;">Edit M-Pesa Number</label>
+                <div class="phone-input-wrap">
+                    <span class="flag">🇰🇪</span>
+                    <input type="tel" id="payModalPhone" class="phone-neu-input"
+                           value="<?= htmlspecialchars($customer['phone'] ?? '') ?>"
+                           placeholder="07xxxxxxxx or 2547xxxxxxxx"
+                           oninput="syncPhoneDisplay(this.value)">
+                </div>
+                <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:5px;">
+                    <i class="fas fa-info-circle" style="margin-right:4px;"></i>
+                    Enter any M-Pesa-registered number to receive the PIN prompt on that phone.
+                </div>
+            </div>
+            <!-- Hidden input always submitted -->
+            <input type="hidden" id="payModalPhoneHidden" value="<?= htmlspecialchars($customer['phone'] ?? '') ?>">
         </div>
         <div class="neu-modal-foot">
             <button class="ghost-btn" onclick="closePayModal()">Cancel</button>
             <button class="stk-confirm-btn" id="payModalBtn" onclick="submitPayModal()">
-                <i class="fas fa-mobile-alt"></i> Send STK Push
+                <i class="fas fa-paper-plane"></i> Send STK Push
             </button>
         </div>
     </div>
@@ -820,10 +862,12 @@ function copyText(text, btn) {
 
 /* ── Pay Modal ────────────────────────────────────── */
 function openPayModal() {
-    if (!_gwId) { showCustToast('No M-Pesa gateway configured. Contact your ISP.', 'error'); return; }
+    if (_gwId === null || _gwId === undefined) { showCustToast('No M-Pesa gateway configured. Contact your ISP.', 'error'); return; }
     if (_amountDue <= 0) { showCustToast('No amount due — use Activate Now.', 'info'); return; }
+    // Reset to display mode (not edit mode) each time modal opens
+    document.getElementById('phoneDisplayRow').style.display = 'flex';
+    document.getElementById('phoneEditRow').style.display = 'none';
     document.getElementById('payModalBackdrop').classList.add('show');
-    setTimeout(() => document.getElementById('payModalPhone').focus(), 100);
 }
 function closePayModal() {
     document.getElementById('payModalBackdrop').classList.remove('show');
@@ -832,9 +876,43 @@ document.getElementById('payModalBackdrop').addEventListener('click', function(e
     if (e.target === this) closePayModal();
 });
 
+function togglePhoneEdit(e) {
+    if (e) e.stopPropagation();
+    const displayRow = document.getElementById('phoneDisplayRow');
+    const editRow    = document.getElementById('phoneEditRow');
+    const isEditing  = editRow.style.display !== 'none';
+    if (isEditing) {
+        // Save and collapse
+        const val = document.getElementById('payModalPhone').value.trim();
+        if (val) {
+            document.getElementById('payModalPhoneHidden').value = val;
+            document.getElementById('phoneDisplayVal').textContent = val;
+        }
+        displayRow.style.display = 'flex';
+        editRow.style.display    = 'none';
+    } else {
+        // Expand edit field
+        displayRow.style.display = 'none';
+        editRow.style.display    = 'block';
+        setTimeout(() => document.getElementById('payModalPhone').focus(), 60);
+    }
+}
+
+function syncPhoneDisplay(val) {
+    document.getElementById('payModalPhoneHidden').value = val;
+}
+
 function submitPayModal() {
-    const phone = document.getElementById('payModalPhone').value.trim();
-    if (!phone) { document.getElementById('payModalPhone').focus(); return; }
+    // Use hidden input (always in sync with display or edit field)
+    let phone = document.getElementById('payModalPhoneHidden').value.trim();
+    // Fall back to edit field if somehow hidden is empty
+    if (!phone) phone = (document.getElementById('payModalPhone').value || '').trim();
+    if (!phone) {
+        document.getElementById('phoneDisplayRow').style.display = 'none';
+        document.getElementById('phoneEditRow').style.display = 'block';
+        document.getElementById('payModalPhone').focus();
+        return;
+    }
     const btn = document.getElementById('payModalBtn');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';

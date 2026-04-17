@@ -557,23 +557,42 @@ input:checked + .live-slider:before { transform: translateX(18px); }
     <?php endif; ?>
 
     <?php if ($hasPlatformShortcode): ?>
-    <!-- Toggle: show/hide platform paybill on customer portal -->
-    <form method="POST" style="margin-bottom:14px;" id="platformPaybillToggleForm">
+    <!-- Toggle: show/hide platform paybill on customer portal — visible regardless of own M-Pesa status -->
+    <form method="POST" style="margin-bottom:16px;" id="platformPaybillToggleForm">
         <input type="hidden" name="action" value="save_platform_paybill_toggle">
-        <?php
-        $showPlatTgl = ($tSettings['show_platform_paybill'] ?? '1') !== '0';
-        ?>
-        <div style="background:#222221;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
-            <div>
-                <div style="font-size:13px;font-weight:600;color:#e2e2e0;margin-bottom:2px;">Show FortuNett platform paybill on customer portal</div>
-                <div style="font-size:12px;color:rgba(255,255,255,.38);">Customers can see the platform shortcode as a payment option. Disable if you collect entirely on your own paybill.</div>
+        <?php $showPlatTgl = ($tSettings['show_platform_paybill'] ?? '1') !== '0'; ?>
+        <div style="background:#222221;border:1px solid <?= $hasMpesaApi ? 'rgba(99,102,241,.3)' : 'rgba(255,255,255,.07)' ?>;border-radius:10px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+            <div style="display:flex;align-items:flex-start;gap:12px;flex:1;">
+                <div style="width:36px;height:36px;background:rgba(99,102,241,.15);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-shield-alt" style="color:#a5b4fc;font-size:15px;"></i>
+                </div>
+                <div>
+                    <div style="font-size:13px;font-weight:600;color:#e2e2e0;margin-bottom:3px;">
+                        Show FortuNett platform paybill on customer portal
+                        <?php if ($hasMpesaApi): ?>
+                        <span style="font-size:10px;background:rgba(99,102,241,.15);color:#a5b4fc;padding:2px 7px;border-radius:20px;margin-left:6px;font-weight:700;">You have own M-Pesa</span>
+                        <?php endif; ?>
+                    </div>
+                    <div style="font-size:12px;color:rgba(255,255,255,.38);">
+                        <?php if ($hasMpesaApi): ?>
+                        Your customers currently see both your M-Pesa gateway <em>and</em> the FortuNett platform paybill. Turn this off to hide the platform option and only show your own shortcode.
+                        <?php else: ?>
+                        Customers see the FortuNett platform shortcode as a payment option. Disable once you add your own M-Pesa API to collect directly.
+                        <?php endif; ?>
+                    </div>
+                </div>
             </div>
-            <label style="flex-shrink:0;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.55);">
-                <input type="checkbox" name="show_platform_paybill" id="showPlatformPaybill"
-                       <?= $showPlatTgl ? 'checked' : '' ?>
-                       onchange="this.form.submit()" style="width:16px;height:16px;accent-color:#3b82f6;">
-                Visible
-            </label>
+            <div style="flex-shrink:0;display:flex;align-items:center;gap:10px;">
+                <span style="font-size:12px;font-weight:600;color:<?= $showPlatTgl ? '#34d399' : 'rgba(255,255,255,.35)' ?>;" id="platToggleLabel">
+                    <?= $showPlatTgl ? 'ON' : 'OFF' ?>
+                </span>
+                <label class="live-toggle" style="cursor:pointer;" title="Toggle platform paybill visibility">
+                    <input type="checkbox" name="show_platform_paybill" id="showPlatformPaybill"
+                           <?= $showPlatTgl ? 'checked' : '' ?>
+                           onchange="document.getElementById('platToggleLabel').textContent=this.checked?'ON':'OFF';document.getElementById('platToggleLabel').style.color=this.checked?'#34d399':'rgba(255,255,255,.35)';this.form.submit()">
+                    <span class="live-slider"></span>
+                </label>
+            </div>
         </div>
     </form>
     <?php endif; ?>
