@@ -321,14 +321,18 @@ class MikrotikAPI {
     /**
      * Add PPPoE user
      */
-    public function addPPPoEUser($username, $password, $profile = 'default', $service = 'pppoe') {
+    public function addPPPoEUser($username, $password, $profile = 'default', $service = 'pppoe', $rateLimit = null) {
         $params = [
-            '=name=' . $username,
+            '=name='     . $username,
             '=password=' . $password,
-            '=service=' . $service,
-            '=profile=' . $profile
+            '=service='  . $service,
+            '=profile='  . $profile,
         ];
-        
+        // Apply bandwidth limit directly on the secret — enforced even if profile lacks limits
+        if (!empty($rateLimit)) {
+            $params[] = '=rate-limit=' . $rateLimit;
+        }
+
         $response = $this->comm('/ppp/secret/add', $params);
         
         if (isset($response[0]['!trap'])) {
@@ -541,17 +545,13 @@ class MikrotikAPI {
     /**
      * Create PPPoE profile
      */
-    public function createPPPoEProfile($name, $localAddress, $remoteAddress, $rateLimit = null) {
-        $params = [
-            '=name=' . $name,
-            '=local-address=' . $localAddress,
-            '=remote-address=' . $remoteAddress
-        ];
-        
-        if ($rateLimit) {
-            $params[] = '=rate-limit=' . $rateLimit;
-        }
-        
+    public function createPPPoEProfile($name, $localAddress = null, $remoteAddress = null, $rateLimit = null) {
+        $params = ['=name=' . $name];
+        // Only set addresses if explicitly provided — avoids referencing non-existent pools
+        if (!empty($localAddress))  $params[] = '=local-address='  . $localAddress;
+        if (!empty($remoteAddress)) $params[] = '=remote-address=' . $remoteAddress;
+        if (!empty($rateLimit))     $params[] = '=rate-limit='     . $rateLimit;
+
         $response = $this->comm('/ppp/profile/add', $params);
         
         if (isset($response[0]['!trap'])) {

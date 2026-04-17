@@ -120,7 +120,7 @@ try {
                     }
                     
                     if (!$exists) {
-                        $api->createPPPoEProfile($mikrotik_profile, '10.0.0.1', 'pppoe-pool', $rate_limit);
+                        $api->createPPPoEProfile($mikrotik_profile, null, null, $rate_limit);
                     }
                 }
                 

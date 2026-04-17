@@ -67,6 +67,9 @@ if (!empty($phone)) {
     }
 }
 
+// Ensure mikrotik_profile column exists on packages table (one-time migration)
+try { $pdo->exec("ALTER TABLE packages ADD COLUMN mikrotik_profile VARCHAR(100) DEFAULT NULL"); } catch (Exception $_e) {}
+
 try {
     $pdo->beginTransaction();
 
@@ -147,13 +150,35 @@ try {
                     $router['password'], (int)($router['api_port'] ?? 8728)
                 );
                 if ($api->connect()) {
-                    // Use the package's named profile (created when package was saved).
-                    // Fall back to slugified package name, then 'default'.
-                    $profileUsed = $package['mikrotik_profile']
-                        ?: preg_replace('/[^a-zA-Z0-9-]/', '', strtolower($package['name']));
+                    // Derive profile name: package's saved profile → slugified name → 'default'
+                    $profileUsed = !empty($package['mikrotik_profile'])
+                        ? $package['mikrotik_profile']
+                        : preg_replace('/[^a-zA-Z0-9-]/', '', strtolower($package['name']));
                     if (empty($profileUsed)) $profileUsed = 'default';
 
+                    // Build rate-limit string from package speeds (format: uploadM/downloadM)
+                    $rateLimit = null;
+                    if (!empty($package['rate_limit'])) {
+                        $rateLimit = $package['rate_limit'];
+                    } elseif (!empty($package['upload_speed']) || !empty($package['download_speed'])) {
+                        $up   = (int)($package['upload_speed']   ?? 0);
+                        $down = (int)($package['download_speed'] ?? 0);
+                        if ($up > 0 || $down > 0) {
+                            $rateLimit = $up . 'M/' . $down . 'M';
+                        }
+                    }
+
                     if ($connection_type === 'hotspot') {
+                        // Ensure hotspot profile exists with bandwidth limits
+                        if ($profileUsed !== 'default') {
+                            $hpExists = false;
+                            foreach ((array)$api->getHotspotUserProfiles() as $p) {
+                                if (($p['name'] ?? '') === $profileUsed) { $hpExists = true; break; }
+                            }
+                            if (!$hpExists) {
+                                try { $api->createHotspotProfile($profileUsed, $rateLimit); } catch (Exception $pe) {}
+                            }
+                        }
                         $exists = false;
                         foreach ($api->getHotspotUsers() as $u) {
                             if (($u['name'] ?? '') === $mikrotik_username) { $exists = true; break; }
@@ -162,13 +187,29 @@ try {
                             ? $api->updateHotspotUser($mikrotik_username, $mikrotik_password, $profileUsed)
                             : $api->addHotspotUser($mikrotik_username, $mikrotik_password, $profileUsed);
                     } else {
+                        // Ensure PPPoE profile exists with bandwidth limits before adding user
+                        if ($profileUsed !== 'default') {
+                            $ppExists = false;
+                            foreach ($api->getPPPoEProfiles() as $p) {
+                                if (($p['name'] ?? '') === $profileUsed) { $ppExists = true; break; }
+                            }
+                            if (!$ppExists) {
+                                try {
+                                    $api->createPPPoEProfile($profileUsed, null, null, $rateLimit);
+                                } catch (Exception $pe) {
+                                    error_log("PPPoE profile creation failed, falling back to default: " . $pe->getMessage());
+                                    $profileUsed = 'default';
+                                }
+                            }
+                        }
                         $exists = false;
                         foreach ($api->getPPPoEUsers() as $u) {
                             if (($u['name'] ?? '') === $mikrotik_username) { $exists = true; break; }
                         }
+                        // Pass rate-limit directly on the secret — enforced even if profile setup is incomplete
                         $exists
                             ? $api->updatePPPoEUser($mikrotik_username, $mikrotik_password, $profileUsed)
-                            : $api->addPPPoEUser($mikrotik_username, $mikrotik_password, $profileUsed);
+                            : $api->addPPPoEUser($mikrotik_username, $mikrotik_password, $profileUsed, 'pppoe', $rateLimit);
                     }
                     $api->disconnect();
                     $mikrotikSynced = true;

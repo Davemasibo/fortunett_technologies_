@@ -19,26 +19,28 @@ if (!$tenant_id) { echo json_encode(['success'=>false,'message'=>'No tenant']); 
 $cacheKey = 'online_status_' . $tenant_id;
 $now = time();
 if (isset($_SESSION[$cacheKey]) && ($now - $_SESSION[$cacheKey]['ts']) < 45) {
-    echo json_encode(['success'=>true,'online'=>$_SESSION[$cacheKey]['data'],'cached'=>true]);
+    echo json_encode(['success'=>true,'online'=>$_SESSION[$cacheKey]['data'],'details'=>$_SESSION[$cacheKey]['details']??[],'cached'=>true]);
     exit;
 }
 
 require_once '../../classes/MikrotikAPI.php';
 
-$rSt = $pdo->prepare("SELECT id, ip_address, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
+$rSt = $pdo->prepare("SELECT id, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
 $rSt->execute([$tenant_id]);
 $routers = $rSt->fetchAll(PDO::FETCH_ASSOC);
 
 $onlineUsernames = [];
-$routerDetails   = []; // {router_name, username, ip, uptime, bytes_in, bytes_out}
+$routerDetails   = []; // username → {uptime, bytes_in, bytes_out, address, service}
 
 foreach ($routers as $router) {
-    $port = (int)($router['api_port'] ?: 8728);
-    $sock = @fsockopen($router['ip_address'], $port, $e, $s, 2);
+    $port      = (int)($router['api_port'] ?: 8728);
+    // Use VPN IP if set (router API accessible via WireGuard/OpenVPN tunnel)
+    $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
+    $sock = @fsockopen($connectIp, $port, $e, $s, 2);
     if (!$sock) continue;
     fclose($sock);
     try {
-        $mk = new MikrotikAPI($router['ip_address'], $router['username'], $router['password'], $port);
+        $mk = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
         $mk->connect();
         $sessions = $mk->getActiveSessions();
         foreach ($sessions as $sess) {
