@@ -14,7 +14,8 @@ class MpesaAPI {
     
     private $pdo;
     private $tenant_id;
-    private $last_error = '';
+    private $last_error   = '';
+    private $last_payload = null; // full request body sent to Safaricom (for debugging)
 
     public function __construct($pdo = null, $tenant_id = null) {
         require_once __DIR__ . '/../config/mpesa.php';
@@ -108,6 +109,8 @@ class MpesaAPI {
 
     /** Return the active environment (sandbox/production) */
     public function getEnvironment(): string { return $this->env; }
+    /** Returns the full JSON body sent in the last stkPush call (for sharing with Safaricom support) */
+    public function getLastPayload(): ?array { return $this->last_payload; }
 
     /** Return the last error detail from Safaricom (populated after a failed getAccessToken call) */
     public function getLastError(): string { return $this->last_error; }
@@ -227,14 +230,13 @@ class MpesaAPI {
         
         $url = $this->base_url . '/mpesa/stkpush/v1/processrequest';
 
-        // Log the exact payload for debugging / sharing with Safaricom
-        $debugPayload = $curl_post_data;
-        $debugPayload['Password'] = '***'; // mask for log safety
-        error_log('[MpesaAPI stkPush] payload: ' . json_encode($debugPayload));
+        // Store full payload (including real Password hash) for Safaricom support sharing
+        $this->last_payload = $curl_post_data;
         $logDir = defined('LOG_DIR') ? LOG_DIR : __DIR__ . '/../logs';
+        if (!is_dir($logDir)) @mkdir($logDir, 0755, true);
         @file_put_contents(
             $logDir . '/stk_push_payload.log',
-            date('Y-m-d H:i:s') . ' ' . json_encode($debugPayload) . "\n",
+            date('Y-m-d H:i:s') . ' ' . json_encode($curl_post_data) . "\n",
             FILE_APPEND | LOCK_EX
         );
 

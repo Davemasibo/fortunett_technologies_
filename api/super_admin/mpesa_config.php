@@ -152,11 +152,15 @@ if ($action === 'test') {
     // not a credentials error — which proves the LNM configuration is correct.
     $stkQueryResult = '';
     if (!empty($row['passkey']) && !empty($row['shortcode'])) {
+        // For Till: BusinessShortCode = store_number (head-office); for Paybill: same as shortcode
+        $validateBSC = (($row['shortcode_type'] ?? 'paybill') === 'till' && !empty($row['store_number']))
+            ? $row['store_number']
+            : $row['shortcode'];
         $timestamp = date('YmdHis');
-        $password  = base64_encode($row['shortcode'] . $row['passkey'] . $timestamp);
+        $password  = base64_encode($validateBSC . $row['passkey'] . $timestamp);
         $queryUrl  = $baseUrl . '/mpesa/stkpushquery/v1/query';
         $qBody     = json_encode([
-            'BusinessShortCode' => $row['shortcode'],
+            'BusinessShortCode' => $validateBSC,
             'Password'          => $password,
             'Timestamp'         => $timestamp,
             'CheckoutRequestID' => 'ws_CO_test_' . time(),
@@ -303,6 +307,7 @@ if ($action === 'test_stk') {
             exit;
         }
 
+        $payload = $mpesa->getLastPayload();
         $rc = $response->ResponseCode ?? $response->errorCode ?? null;
         if ($rc === '0' || $rc === 0) {
             echo json_encode([
@@ -311,10 +316,16 @@ if ($action === 'test_stk') {
                 'shortcode'           => $mpesa->getShortcode(),
                 'callback_url'        => $mpesa->getLastCallbackUrl(),
                 'environment'         => $mpesa->getEnvironment(),
+                'request_body'        => $payload,
             ]);
         } else {
             $msg = $response->errorMessage ?? $response->ResultDesc ?? $response->ResponseDescription ?? 'Unknown error';
-            echo json_encode(['success'=>false,'message'=>"Safaricom returned code $rc: $msg"]);
+            echo json_encode([
+                'success'      => false,
+                'message'      => "Safaricom returned code $rc: $msg",
+                'request_body' => $payload,
+                'raw_response' => $response,
+            ]);
         }
     } catch (Exception $e) {
         echo json_encode(['success'=>false,'message'=>$e->getMessage()]);
@@ -361,11 +372,14 @@ if ($action === 'stk_query') {
     }
     $token = json_decode($raw)->access_token;
 
-    // STK push query
+    // STK push query — for Till, BusinessShortCode must be the store/head-office number
+    $queryBSC = (($row['shortcode_type'] ?? 'paybill') === 'till' && !empty($row['store_number']))
+        ? $row['store_number']
+        : $row['shortcode'];
     $timestamp = date('YmdHis');
-    $password  = base64_encode($row['shortcode'] . $row['passkey'] . $timestamp);
+    $password  = base64_encode($queryBSC . $row['passkey'] . $timestamp);
     $body = json_encode([
-        'BusinessShortCode' => $row['shortcode'],
+        'BusinessShortCode' => $queryBSC,
         'Password'          => $password,
         'Timestamp'         => $timestamp,
         'CheckoutRequestID' => $checkoutId,

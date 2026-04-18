@@ -462,6 +462,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 </div><!-- /main -->
 
 <script>
+function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function copyPayload() {
+    const box = document.getElementById('stkPayloadBox');
+    if (!box) return;
+    navigator.clipboard.writeText(box.textContent).then(() => {
+        showToast('Request body copied to clipboard.', 'success');
+    });
+}
+
 function onSaShortcodeTypeChange(sel) {
     const isTill = sel.value === 'till';
     const lblShortcode  = document.getElementById('sa_lbl_shortcode');
@@ -638,7 +649,18 @@ function sendTestStk() {
                 el.style.background = 'rgba(239,68,68,.1)';
                 el.style.border = '1px solid rgba(239,68,68,.2)';
                 el.style.color = '#fca5a5';
-                el.textContent = '❌ ' + (d.message || 'Failed');
+                let html = '❌ ' + (d.message || 'Failed');
+                if (d.request_body) {
+                    const bodyJson = JSON.stringify(d.request_body, null, 2);
+                    html += '<br><br><div style="margin-top:8px;">'
+                        + '<strong style="font-size:12px;color:#fcd34d;">📋 Request body sent to Safaricom (share this with their support):</strong>'
+                        + '<div style="position:relative;margin-top:6px;">'
+                        + '<pre id="stkPayloadBox" style="background:#0d0d0c;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;font-size:11px;color:#e2e8f0;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto;margin:0;">'
+                        + escHtml(bodyJson) + '</pre>'
+                        + '<button onclick="copyPayload()" style="position:absolute;top:6px;right:6px;background:rgba(99,102,241,.7);border:none;border-radius:5px;color:#fff;font-size:11px;padding:3px 8px;cursor:pointer;">Copy</button>'
+                        + '</div></div>';
+                }
+                el.innerHTML = html;
             }
         })
         .catch(() => {
