@@ -147,16 +147,8 @@ include 'includes/sidebar.php';
 ?>
 
 <style>
-    .main-content-wrapper { background: #141414 !important; align-items: stretch !important; }
-    /* Make payments container fill the full flex area — no max-width cap */
-    .main-content-wrapper > div.payments-container {
-        flex: 1 1 auto !important;
-        width: 0 !important;          /* flex-basis:auto + flex-grow:1 drives the actual width */
-        min-width: 0 !important;
-        max-width: 100% !important;
-        padding: 24px 32px 60px !important;
-        margin: 0 !important;
-        box-sizing: border-box !important;
+    .main-content-wrapper { background: #141414 !important; }
+    .payments-container { padding: 24px 32px; max-width: 1400px; margin: 0 auto;
     }
     .payments-title { font-size: 28px; font-weight: 600; color: #e2e2e0; margin: 0 0 4px 0; }
     .payments-subtitle { font-size: 14px; color: #9a9a95; margin: 0 0 24px 0; }
@@ -268,7 +260,7 @@ include 'includes/sidebar.php';
     .transactions-table { width: 100%; min-width: 700px; }
 
     @media (max-width: 1024px) { .filters-grid { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 640px) { .main-content-wrapper > div.payments-container { padding: 16px !important; } .filters-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 640px) { .payments-container { padding: 16px; } .filters-grid { grid-template-columns: 1fr; } }
 
     #paymentForm button[type="submit"]:hover { filter: brightness(110%); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.5); }
 </style>
