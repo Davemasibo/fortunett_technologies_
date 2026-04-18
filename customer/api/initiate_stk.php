@@ -78,7 +78,7 @@ try {
         // Use platform shared paybill
         try {
             $plStmt = $pdo->query(
-                "SELECT consumer_key, consumer_secret, passkey, shortcode, shortcode_type, environment, callback_url
+                "SELECT consumer_key, consumer_secret, passkey, shortcode, shortcode_type, store_number, environment, callback_url
                  FROM platform_mpesa_config LIMIT 1"
             );
             $platCreds = $plStmt ? $plStmt->fetch(PDO::FETCH_ASSOC) : null;
