@@ -97,14 +97,14 @@ $date_from = $_GET['date_from'] ?? date('Y-m-d', strtotime('-30 days'));
 $date_to = $_GET['date_to'] ?? date('Y-m-d');
 $filter_method = $_GET['method'] ?? '';
 
-// Build Query - Fetch real payments (join mpesa_transactions for confirmation status)
+// Build Query - Fetch all payments including failed/cancelled (join mpesa_transactions for actual result)
 $query = "
     SELECT p.*, c.full_name, c.phone,
-           mt.result_code AS mpesa_result_code
+           mt.result_code AS mpesa_result_code,
+           mt.result_desc AS mpesa_result_desc
     FROM payments p
     LEFT JOIN clients c ON p.client_id = c.id
-    LEFT JOIN mpesa_transactions mt
-           ON mt.checkout_request_id = p.transaction_id AND mt.result_code = '0'
+    LEFT JOIN mpesa_transactions mt ON mt.checkout_request_id = p.transaction_id
     WHERE p.tenant_id = ? AND DATE(p.payment_date) BETWEEN ? AND ?
 ";
 $params = [$tenant_id, $date_from, $date_to];
@@ -397,12 +397,16 @@ include 'includes/sidebar.php';
                         $status = $tx['status'] ?? 'pending';
                         $method = strtolower($tx['payment_method'] ?? 'cash');
                         // Determine display status: only "Confirmed" when result_code='0' in mpesa_transactions
-                        $isConfirmed = ($tx['mpesa_result_code'] ?? null) === '0';
-                        if ($isConfirmed) {
+                        $mpesaCode = (string)($tx['mpesa_result_code'] ?? '');
+                        if ($mpesaCode === '0' || $status === 'completed') {
                             $badgeClass = 'completed'; $badgeLabel = 'Confirmed';
-                        } elseif ($status === 'completed') {
-                            $badgeClass = 'completed'; $badgeLabel = 'Completed';
-                        } elseif ($status === 'failed') {
+                        } elseif ($mpesaCode === '1032') {
+                            $badgeClass = 'failed'; $badgeLabel = 'Cancelled';
+                        } elseif ($mpesaCode === '1037') {
+                            $badgeClass = 'failed'; $badgeLabel = 'Timed Out';
+                        } elseif ($mpesaCode === '1' || $mpesaCode === '17') {
+                            $badgeClass = 'failed'; $badgeLabel = 'Insufficient Funds';
+                        } elseif ($status === 'failed' || ($mpesaCode !== '' && $mpesaCode !== '0')) {
                             $badgeClass = 'failed'; $badgeLabel = 'Failed';
                         } else {
                             $badgeClass = 'pending'; $badgeLabel = 'Pending';
@@ -425,8 +429,15 @@ include 'includes/sidebar.php';
                         <td>
                             <?php
                                 $displayId = $tx['transaction_id'] ?? 'N/A';
-                                if ($status === 'pending' && strpos($displayId, 'ws_') === 0) {
-                                    echo '<span style="font-style:italic; color:#9CA3AF;">Processing...</span>';
+                                if ($mpesaCode === '1032') {
+                                    echo '<span style="font-style:italic;color:#fca5a5;">Cancelled by customer</span>';
+                                } elseif ($mpesaCode === '1037') {
+                                    echo '<span style="font-style:italic;color:#fca5a5;">Timed out</span>';
+                                } elseif ($status === 'pending' && strpos($displayId, 'ws_') === 0) {
+                                    echo '<span style="font-style:italic;color:#9CA3AF;">Awaiting M-Pesa...</span>';
+                                } elseif ($status === 'failed' && strpos($displayId, 'ws_') === 0) {
+                                    $reason = $tx['mpesa_result_desc'] ?? '';
+                                    echo '<span style="font-style:italic;color:#fca5a5;">' . htmlspecialchars($reason ?: 'Failed') . '</span>';
                                 } else {
                                     echo '<span class="transaction-id">' . htmlspecialchars($displayId) . '</span>';
                                 }

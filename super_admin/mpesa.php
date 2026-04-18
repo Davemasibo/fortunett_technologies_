@@ -581,28 +581,56 @@ function loadSettlements() {
             icon.classList.remove('fa-spin');
             const el = document.getElementById('settlementsContent');
             if (!d.success || !d.settlements || d.settlements.length === 0) {
-                el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:14px;"><i class="fas fa-check-circle" style="color:#22c55e;margin-right:8px;"></i>No pending platform-collected payments. All tenants are collecting via their own paybill, or no platform payments have been made yet.</div>';
+                el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:14px;"><i class="fas fa-info-circle" style="margin-right:8px;"></i>No M-Pesa transactions recorded yet across any tenant.</div>';
                 return;
             }
-            let total = 0;
+            let totalCompleted = 0, totalPlatform = 0;
+            d.settlements.forEach(s => {
+                totalCompleted += parseFloat(s.completed_amount);
+                totalPlatform  += parseFloat(s.platform_amount);
+            });
+            const fmt = v => parseFloat(v).toLocaleString('en-KE', {minimumFractionDigits:2});
             let rows = d.settlements.map(s => {
-                total += parseFloat(s.total_collected);
+                const hasPlatform = parseFloat(s.platform_amount) > 0;
+                const lastDate = s.last_payment_date || s.last_created_at;
                 return `<tr>
-                    <td><strong>${escH(s.company_name || s.subdomain)}</strong><br><span style="font-size:12px;color:#6B7280;">${escH(s.subdomain)}.fortunetttech.site</span></td>
-                    <td>${s.payment_count}</td>
-                    <td class="amount-cell">KSh ${parseFloat(s.total_collected).toLocaleString('en-KE',{minimumFractionDigits:2})}</td>
-                    <td style="font-size:13px;color:#6B7280;">${s.last_payment_date ? new Date(s.last_payment_date).toLocaleDateString('en-KE') : '—'}</td>
-                    <td><button onclick="alert('Settlement recording coming soon.')" style="padding:5px 12px;border:none;background:#0f3460;color:#fff;border-radius:6px;font-size:12px;cursor:pointer;">Mark Settled</button></td>
+                    <td>
+                        <strong style="color:#e2e8f0;">${escH(s.company_name || s.subdomain)}</strong><br>
+                        <span style="font-size:11px;color:#6B7280;">${escH(s.subdomain)}.fortunetttech.site</span>
+                    </td>
+                    <td style="text-align:center;">
+                        <span style="color:#6ee7b7;font-weight:600;">${s.completed_count}</span>
+                        ${parseInt(s.pending_count) > 0 ? `<br><span style="font-size:11px;color:#fcd34d;">${s.pending_count} pending</span>` : ''}
+                        ${parseInt(s.failed_count)  > 0 ? `<br><span style="font-size:11px;color:#fca5a5;">${s.failed_count} failed/cancelled</span>` : ''}
+                    </td>
+                    <td class="amount-cell" style="color:#6ee7b7;">KSh ${fmt(s.completed_amount)}</td>
+                    <td style="text-align:center;">
+                        ${hasPlatform
+                            ? `<span style="color:#fcd34d;font-weight:600;">KSh ${fmt(s.platform_amount)}</span><br><span style="font-size:11px;color:#6B7280;">via platform</span>`
+                            : '<span style="color:#6B7280;font-size:12px;">Own credentials</span>'}
+                    </td>
+                    <td style="font-size:12px;color:#6B7280;">${lastDate ? new Date(lastDate).toLocaleDateString('en-KE') : '—'}</td>
+                    <td>${hasPlatform ? `<button onclick="alert('Settlement recording coming soon.')" style="padding:4px 10px;border:none;background:#f59e0b;color:#000;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;">Settle</button>` : '<span style="font-size:11px;color:#6B7280;">—</span>'}</td>
                 </tr>`;
             }).join('');
             el.innerHTML = `
-                <div style="padding:12px 16px;background:#FEF3C7;border-bottom:1px solid #FDE68A;font-size:13px;color:#92400E;font-weight:600;">
-                    <i class="fas fa-coins" style="margin-right:6px;"></i>Total pending settlement: <strong>KSh ${total.toLocaleString('en-KE',{minimumFractionDigits:2})}</strong>
+                <div style="display:flex;gap:16px;padding:12px 16px;background:rgba(245,158,11,.08);border-bottom:1px solid rgba(245,158,11,.2);font-size:13px;flex-wrap:wrap;">
+                    <span style="color:#fcd34d;font-weight:600;"><i class="fas fa-coins" style="margin-right:5px;"></i>Total collected: <strong>KSh ${fmt(totalCompleted)}</strong></span>
+                    <span style="color:#f87171;font-weight:600;"><i class="fas fa-exchange-alt" style="margin-right:5px;"></i>Via platform (owed to tenants): <strong>KSh ${fmt(totalPlatform)}</strong></span>
                 </div>
+                <div style="overflow-x:auto;">
                 <table class="settle-table">
-                    <thead><tr><th>Tenant</th><th>Payments</th><th>Amount Owed</th><th>Last Payment</th><th>Action</th></tr></thead>
+                    <thead><tr>
+                        <th>Tenant</th>
+                        <th style="text-align:center;">Transactions</th>
+                        <th>Total Collected</th>
+                        <th style="text-align:center;">Platform Owed</th>
+                        <th>Last Payment</th>
+                        <th>Action</th>
+                    </tr></thead>
                     <tbody>${rows}</tbody>
-                </table>`;
+                </table>
+                </div>`;
         })
         .catch(() => {
             document.getElementById('settleRefreshIcon').classList.remove('fa-spin');
