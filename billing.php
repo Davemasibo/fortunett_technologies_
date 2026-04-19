@@ -75,8 +75,8 @@ $billId = $checkBill->fetchColumn();
 
 try {
     if ($billId) {
-        $upd = $pdo->prepare("UPDATE tenant_bills SET total_collections = ?, commission_amount = ? WHERE id = ? AND status = 'pending'");
-        $upd->execute([$currentRevenue, $hotspotFee, $billId]);
+        $upd = $pdo->prepare("UPDATE tenant_bills SET total_collections = ?, base_fee = ?, commission_amount = ? WHERE id = ? AND status = 'pending'");
+        $upd->execute([$currentRevenue, $pppoeSubtotal, $hotspotFee, $billId]);
     } else {
         $ins = $pdo->prepare("INSERT INTO tenant_bills (tenant_id, billing_period, total_collections, base_fee, commission_rate, commission_amount, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')");
         $ins->execute([$tenant_id, $currentMonthStart, $currentRevenue, $pppoeSubtotal, 3, $hotspotFee]);
@@ -374,15 +374,15 @@ include 'includes/sidebar.php';
             <div style="font-size:12px; color:#9CA3AF; margin-top:4px;">Total Due</div>
         </div>
         <?php
-        // Always build a bill object for the View Invoice button (use DB record or computed values)
-        $viewBill = $currentBill ?? [
-            'id'                => 0,
+        // Always use live-computed amounts; only take id and status from DB record
+        $viewBill = [
+            'id'                => $currentBill['id'] ?? 0,
             'billing_period'    => $currentMonthStart,
             'total_collections' => $currentRevenue,
             'base_fee'          => $pppoeSubtotal,
-            'commission_rate'   => 3,
+            'commission_rate'   => $currentBill['commission_rate'] ?? 3,
             'commission_amount' => $hotspotFee,
-            'status'            => 'pending',
+            'status'            => $currentBill['status'] ?? 'pending',
         ];
         ?>
         <button class="view-invoice-btn" onclick='openInvoiceModal(<?php echo json_encode($viewBill); ?>)'>
@@ -698,6 +698,7 @@ include 'includes/sidebar.php';
 
 <script>
 let currentInvoiceAmount = <?php echo $totalDue; ?>;
+let currentBillId        = <?php echo (int)($viewBill['id'] ?? 0); ?>;
 let currentMpesaMethod   = 'stk';
 const isSandbox          = <?php echo MPESA_ENV === 'sandbox' ? 'true' : 'false'; ?>;
 
@@ -717,6 +718,7 @@ function openInvoiceModal(bill) {
     document.getElementById('invTotalDue').textContent        = 'KES ' + fmt(total);
     document.getElementById('invPayBarAmt').textContent       = 'KES ' + fmt(total);
     currentInvoiceAmount = total;
+    currentBillId        = parseInt(bill.id || 0);
 
     // Period + due date + invoice number
     if (bill.billing_period) {
@@ -872,6 +874,7 @@ function submitMpesaPayment() {
     const fd = new FormData();
     fd.append('phone',       phone);
     fd.append('amount',      currentInvoiceAmount);
+    fd.append('bill_id',     currentBillId);
     fd.append('account_ref', 'INV-<?php echo htmlspecialchars($orgSlug); ?>');
 
     fetch('api/mpesa/stk_push.php', { method:'POST', body:fd })

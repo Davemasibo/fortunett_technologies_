@@ -100,6 +100,17 @@ try {
             WHERE checkout_request_id = ?
         ")->execute([$resultCode, $resultDesc, $receipt, $content, $checkoutRequestId]);
 
+        // Handle billing invoice payment (no client_id, result_desc starts with BILLING:)
+        if ($tx && !$tx['client_id'] && str_starts_with((string)($tx['result_desc'] ?? ''), 'BILLING:')) {
+            $resolvedTenantId = $tenant_id ?? ($tx['tenant_id'] ?? null);
+            $billId = (int)substr($tx['result_desc'], 8);
+            if ($billId && $resolvedTenantId) {
+                $pdo->prepare(
+                    "UPDATE tenant_bills SET status = 'paid' WHERE id = ? AND tenant_id = ?"
+                )->execute([$billId, $resolvedTenantId]);
+            }
+        }
+
         if ($tx && $tx['client_id']) {
             $clientId = (int)$tx['client_id'];
             $resolvedTenantId = $tenant_id ?? $tx['c_tenant_id'];

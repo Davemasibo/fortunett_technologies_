@@ -161,45 +161,50 @@ try {
 
     if ($responseCode === '0' || $responseCode === 0) {
 
-        // Log the transaction if a client is linked
-        if ($client_id > 0) {
+        $bill_id = (int)($_POST['bill_id'] ?? 0);
+
+        // Log the transaction — for client payments OR billing invoice payments
+        if ($client_id > 0 || $bill_id > 0) {
             try {
+                $txDesc = $client_id > 0 ? 'STK Push Initiated' : ('BILLING:' . $bill_id);
                 $txStmt = $pdo->prepare(
                     "INSERT INTO mpesa_transactions
                      (client_id, tenant_id, phone_number, amount, merchant_request_id, checkout_request_id,
                       result_code, result_desc, created_at, updated_at)
-                     VALUES (?, ?, ?, ?, ?, ?, 'pending', 'STK Push Initiated', NOW(), NOW())"
+                     VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, NOW(), NOW())"
                 );
                 $txStmt->execute([
-                    $client_id, $tenant_id, $phone, $amount,
+                    $client_id > 0 ? $client_id : null, $tenant_id, $phone, $amount,
                     $response->MerchantRequestID ?? 'N/A',
-                    $response->CheckoutRequestID ?? 'N/A'
+                    $response->CheckoutRequestID ?? 'N/A',
+                    $txDesc
                 ]);
 
-                // Try to record with collection_type (added by platform migration); fall back without
-                $collectionType = $usingPlatform ? 'platform' : 'direct';
-                try {
-                    $payStmt = $pdo->prepare(
-                        "INSERT INTO payments
-                         (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, collection_type)
-                         VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending', ?)"
-                    );
-                    $payStmt->execute([
-                        $client_id, $tenant_id, $amount,
-                        $response->CheckoutRequestID ?? ('STK-' . time()),
-                        $collectionType
-                    ]);
-                } catch (PDOException $colEx) {
-                    // column may not exist yet — insert without it
-                    $payStmt = $pdo->prepare(
-                        "INSERT INTO payments
-                         (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status)
-                         VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending')"
-                    );
-                    $payStmt->execute([
-                        $client_id, $tenant_id, $amount,
-                        $response->CheckoutRequestID ?? ('STK-' . time())
-                    ]);
+                // Record pending payment only for client payments (not billing invoice payments)
+                if ($client_id > 0) {
+                    $collectionType = $usingPlatform ? 'platform' : 'direct';
+                    try {
+                        $payStmt = $pdo->prepare(
+                            "INSERT INTO payments
+                             (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, collection_type)
+                             VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending', ?)"
+                        );
+                        $payStmt->execute([
+                            $client_id, $tenant_id, $amount,
+                            $response->CheckoutRequestID ?? ('STK-' . time()),
+                            $collectionType
+                        ]);
+                    } catch (PDOException $colEx) {
+                        $payStmt = $pdo->prepare(
+                            "INSERT INTO payments
+                             (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status)
+                             VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending')"
+                        );
+                        $payStmt->execute([
+                            $client_id, $tenant_id, $amount,
+                            $response->CheckoutRequestID ?? ('STK-' . time())
+                        ]);
+                    }
                 }
             } catch (Exception $dbEx) {
                 error_log("STK push DB error: " . $dbEx->getMessage());

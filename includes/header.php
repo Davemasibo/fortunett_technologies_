@@ -318,11 +318,9 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
         .main-content-wrapper {
             margin-left: var(--sidebar-width);
             width: calc(100% - var(--sidebar-width));
-            padding: 30px 0;
             min-height: calc(100vh - var(--navbar-height));
             background: #141414;
-            display: flex;
-            justify-content: center;
+            display: block;
             transition: margin-left 0.3s ease, width 0.3s ease;
         }
 
@@ -336,9 +334,13 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
             width: 100%;
         }
 
+        /* Force all page containers to span full available width */
         .main-content-wrapper > div {
             width: 100%;
-            padding-bottom: 60px; /* Space for footer */
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 24px 32px 60px !important;
+            box-sizing: border-box;
         }
 
         @media (max-width: 768px) {
@@ -354,7 +356,7 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
                 width: 100%;
             }
             .main-content-wrapper > div {
-                padding: 0 16px;
+                padding: 16px 16px 40px !important;
             }
         }
 
