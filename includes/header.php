@@ -134,13 +134,10 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
         ::-webkit-scrollbar-thumb:hover { background: #aaa; }
 
         /* ─── Mobile Responsive Tables ─────────────────────────────── */
-        /* Wrap any <table> inside a .table-wrap or .transactions-section
-           and it will scroll horizontally on small screens               */
+        /* Only explicit wrapper classes get the block+scroll treatment.
+           Individual table classes are handled by their own overflow-x wrapper divs. */
         .table-responsive-auto,
-        .table-wrap,
-        .transactions-section table,
-        .clients-table,
-        .packages-table {
+        .table-wrap {
             display: block;
             width: 100%;
             overflow-x: auto;
