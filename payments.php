@@ -210,10 +210,25 @@ include 'includes/sidebar.php';
     .status-badge.failed    { background: rgba(239,68,68,.15);   color: #fca5a5; border: 1px solid rgba(239,68,68,.25); }
     .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
-    /* Action icons */
-    .action-icons { display: flex; gap: 8px; }
-    .action-icon { width: 28px; height: 28px; border-radius: 6px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.05); color: #9a9a95; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; transition: all .18s; }
-    .action-icon:hover { background: var(--primary-color,#3B6EA5); border-color: transparent; color: #fff; }
+    /* Three-dot dropdown */
+    .dot-menu-wrap { position: relative; display: inline-block; }
+    .dot-menu-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.05); color: #9a9a95; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 15px; transition: all .18s; }
+    .dot-menu-btn:hover { background: var(--primary-color,#3B6EA5); border-color: transparent; color: #fff; }
+    .dot-menu-dropdown { display: none; position: absolute; right: 0; top: 36px; background: #2a2a29; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; min-width: 190px; box-shadow: 0 8px 32px rgba(0,0,0,.7); z-index: 500; overflow: hidden; }
+    .dot-menu-dropdown.open { display: block; }
+    .dot-menu-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-size: 13px; color: #d4d4d2; cursor: pointer; border: none; background: none; width: 100%; text-align: left; transition: background .15s; }
+    .dot-menu-item:hover { background: rgba(255,255,255,.07); color: #fff; }
+    .dot-menu-item i { width: 16px; text-align: center; color: rgba(255,255,255,.45); flex-shrink: 0; }
+    .dot-menu-item:hover i { color: var(--primary-light, #93c5fd); }
+    .dot-menu-item.sep { border-top: 1px solid rgba(255,255,255,.07); }
+
+    /* Transaction filter tabs */
+    .tx-tabs { display: flex; gap: 6px; padding: 14px 24px 0; flex-wrap: wrap; }
+    .tx-tab { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.04); color: rgba(255,255,255,.45); cursor: pointer; transition: all .2s; display: flex; align-items: center; gap: 6px; }
+    .tx-tab:hover { color: rgba(255,255,255,.75); background: rgba(255,255,255,.07); }
+    .tx-tab.active { background: rgba(255,255,255,.1); color: #fff; border-color: rgba(255,255,255,.2); }
+    .tx-tab .tc { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,.1); min-width: 18px; text-align: center; }
+    .tx-tab.active .tc { background: rgba(255,255,255,.2); }
 
     /* Payment modal shared input style */
     .pay-input {
@@ -374,7 +389,15 @@ include 'includes/sidebar.php';
                 </div>
             </div>
 
-          <div class="table-scroll">
+            <!-- Status filter tabs -->
+            <div class="tx-tabs">
+                <button class="tx-tab active" onclick="filterTxRows('all',this)">All <span class="tc" id="tcAll"><?php echo count($transactions); ?></span></button>
+                <button class="tx-tab" onclick="filterTxRows('completed',this)"><span style="color:#6ee7b7;font-size:8px;">●</span> Reconciled <span class="tc" id="tcCompleted">0</span></button>
+                <button class="tx-tab" onclick="filterTxRows('pending',this)"><span style="color:#fcd34d;font-size:8px;">●</span> Pending <span class="tc" id="tcPending">0</span></button>
+                <button class="tx-tab" onclick="filterTxRows('failed',this)"><span style="color:#fca5a5;font-size:8px;">●</span> Failed <span class="tc" id="tcFailed">0</span></button>
+            </div>
+
+          <div class="table-scroll" style="margin-top:14px;">
             <table class="transactions-table">
                 <thead>
                     <tr>
@@ -410,7 +433,8 @@ include 'includes/sidebar.php';
                             $badgeClass = 'pending'; $badgeLabel = 'Pending';
                         }
                     ?>
-                    <tr>
+                    <?php $txJson = htmlspecialchars(json_encode($tx), ENT_QUOTES, 'UTF-8'); ?>
+                    <tr data-status="<?php echo $badgeClass; ?>">
                         <td>
                             <div class="customer-name"><?php echo htmlspecialchars($tx['full_name'] ?? 'Unknown'); ?></div>
                             <div class="customer-id"><?php echo htmlspecialchars($tx['phone'] ?? 'N/A'); ?></div>
@@ -449,9 +473,21 @@ include 'includes/sidebar.php';
                         </td>
                         <td><?php echo date('d/m/Y H:i', strtotime($tx['payment_date'] ?? $tx['created_at'])); ?></td>
                         <td style="text-align:center;">
-                            <div class="action-icons" style="justify-content: center;">
-                                <button class="action-icon" title="View" onclick='openViewModal(<?php echo htmlspecialchars(json_encode($tx), ENT_QUOTES, "UTF-8"); ?>)'><i class="fas fa-eye"></i></button>
-                                <button class="action-icon" title="Print Receipt" onclick='printReceipt(<?php echo htmlspecialchars(json_encode($tx), ENT_QUOTES, "UTF-8"); ?>)'><i class="fas fa-print"></i></button>
+                            <div class="dot-menu-wrap">
+                                <button class="dot-menu-btn" onclick="toggleDotMenu(this)" title="Actions">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <div class="dot-menu-dropdown">
+                                    <button class="dot-menu-item" onclick="openViewModal(<?php echo $txJson; ?>);closeDotMenus()">
+                                        <i class="fas fa-eye"></i> View Details
+                                    </button>
+                                    <button class="dot-menu-item" onclick="printReceipt(<?php echo $txJson; ?>);closeDotMenus()">
+                                        <i class="fas fa-print"></i> Print Receipt
+                                    </button>
+                                    <button class="dot-menu-item sep" onclick="openPaymentStatus(<?php echo $txJson; ?>);closeDotMenus()">
+                                        <i class="fas fa-satellite-dish"></i> Payment Status
+                                    </button>
+                                </div>
                             </div>
                         </td>
                     </tr>
@@ -1028,5 +1064,162 @@ document.addEventListener('DOMContentLoaded', function () {
         </form>
     </div>
 </div>
+
+<!-- ── Payment Status Modal ──────────────────────────────────────────────────── -->
+<div id="payStatusModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:1100;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+    <div style="background:#1e1e1d;border:1px solid rgba(255,255,255,.08);width:100%;max-width:440px;border-radius:16px;padding:28px 28px 24px;position:relative;box-shadow:0 32px 80px rgba(0,0,0,.85);">
+        <button onclick="closePaymentStatus()" style="position:absolute;top:18px;right:18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;color:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;">&times;</button>
+        <h3 style="font-size:16px;font-weight:700;color:#e2e2e0;margin:0 0 20px 0;display:flex;align-items:center;gap:10px;">
+            <i class="fas fa-satellite-dish" style="color:var(--primary-light,#93c5fd);"></i> Payment Status
+        </h3>
+        <div id="payStatusContent"></div>
+    </div>
+</div>
+
+<script>
+// ── Three-dot dropdown ────────────────────────────────────────────────────────
+function toggleDotMenu(btn) {
+    const dropdown = btn.nextElementSibling;
+    const isOpen = dropdown.classList.contains('open');
+    closeDotMenus();
+    if (!isOpen) {
+        dropdown.classList.add('open');
+        btn.style.background = 'var(--primary-color,#3B6EA5)';
+        btn.style.color = '#fff';
+    }
+}
+function closeDotMenus() {
+    document.querySelectorAll('.dot-menu-dropdown.open').forEach(d => {
+        d.classList.remove('open');
+        const btn = d.previousElementSibling;
+        if (btn) { btn.style.background = ''; btn.style.color = ''; }
+    });
+}
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.dot-menu-wrap')) closeDotMenus();
+});
+
+// ── Row filter tabs ───────────────────────────────────────────────────────────
+function filterTxRows(status, tabEl) {
+    document.querySelectorAll('.tx-tab').forEach(t => t.classList.remove('active'));
+    tabEl.classList.add('active');
+    document.querySelectorAll('.transactions-table tbody tr[data-status]').forEach(tr => {
+        tr.style.display = (status === 'all' || tr.dataset.status === status) ? '' : 'none';
+    });
+}
+
+// Count tabs on load
+document.addEventListener('DOMContentLoaded', function() {
+    const rows = document.querySelectorAll('.transactions-table tbody tr[data-status]');
+    const counts = { completed: 0, pending: 0, failed: 0 };
+    rows.forEach(r => { if (counts[r.dataset.status] !== undefined) counts[r.dataset.status]++; });
+    document.getElementById('tcCompleted').textContent = counts.completed;
+    document.getElementById('tcPending').textContent   = counts.pending;
+    document.getElementById('tcFailed').textContent    = counts.failed;
+});
+
+// ── Payment Status modal ──────────────────────────────────────────────────────
+function openPaymentStatus(tx) {
+    const modal   = document.getElementById('payStatusModal');
+    const content = document.getElementById('payStatusContent');
+    const status  = tx.status || 'pending';
+    const method  = (tx.payment_method || '').toLowerCase();
+    const mpesaCode = String(tx.mpesa_result_code || '');
+    const collType  = tx.collection_type || null;
+
+    // Effective status (mirrors PHP badge logic)
+    let eff = status;
+    if (mpesaCode === '0') eff = 'completed';
+    else if (mpesaCode === '1032') eff = 'cancelled';
+    else if (mpesaCode === '1037') eff = 'timeout';
+    else if (mpesaCode && mpesaCode !== '0' && mpesaCode !== '') eff = 'failed';
+
+    // Delivery text
+    let deliveryIcon, deliveryColor, deliveryText, deliverySub;
+    if (method !== 'mpesa') {
+        deliveryIcon  = 'fa-money-bill-wave';
+        deliveryColor = '#93c5fd';
+        deliveryText  = 'Cash / Manual';
+        deliverySub   = 'Manually recorded — no M-Pesa settlement applies.';
+    } else if (eff === 'completed') {
+        deliveryIcon  = 'fa-check-circle';
+        deliveryColor = '#6ee7b7';
+        deliveryText  = 'Delivered';
+        deliverySub   = collType === 'platform'
+            ? 'Received via FortuNett shared paybill — settlement to your account is on the next cycle.'
+            : 'Received directly by your paybill.';
+    } else if (eff === 'cancelled') {
+        deliveryIcon  = 'fa-times-circle';
+        deliveryColor = '#fca5a5';
+        deliveryText  = 'Cancelled';
+        deliverySub   = 'Customer cancelled the M-Pesa prompt. No funds moved.';
+    } else if (eff === 'timeout') {
+        deliveryIcon  = 'fa-clock';
+        deliveryColor = '#fca5a5';
+        deliveryText  = 'Timed Out';
+        deliverySub   = 'No response from the phone within 60 seconds. No funds moved.';
+    } else if (eff === 'failed') {
+        deliveryIcon  = 'fa-exclamation-circle';
+        deliveryColor = '#fca5a5';
+        deliveryText  = 'Failed';
+        deliverySub   = 'M-Pesa returned an error. No funds moved.';
+    } else {
+        deliveryIcon  = 'fa-spinner fa-spin';
+        deliveryColor = '#fcd34d';
+        deliveryText  = 'Processing';
+        deliverySub   = 'Awaiting M-Pesa callback — funds have not been confirmed yet.';
+    }
+
+    const paybillLine = (method === 'mpesa')
+        ? `<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px;">
+               <span style="color:rgba(255,255,255,.45);">Collection via</span>
+               <span style="font-weight:600;color:#e2e2e0;">${collType === 'platform' ? 'FortuNett Shared Paybill' : (collType === 'direct' ? 'Your Own Paybill' : 'M-Pesa')}</span>
+           </div>`
+        : '';
+
+    const receiptLine = (tx.transaction_id && !tx.transaction_id.startsWith('ws_'))
+        ? `<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px;">
+               <span style="color:rgba(255,255,255,.45);">Receipt / Ref</span>
+               <span style="font-weight:600;color:#e2e2e0;font-family:monospace;">${tx.transaction_id}</span>
+           </div>`
+        : '';
+
+    const mpesaCodeLine = mpesaCode
+        ? `<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px;">
+               <span style="color:rgba(255,255,255,.45);">M-Pesa Code</span>
+               <span style="font-weight:600;color:#e2e2e0;font-family:monospace;">${mpesaCode}</span>
+           </div>`
+        : '';
+
+    content.innerHTML = `
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:18px 20px;margin-bottom:18px;text-align:center;">
+            <i class="fas ${deliveryIcon}" style="font-size:32px;color:${deliveryColor};margin-bottom:10px;display:block;"></i>
+            <div style="font-size:18px;font-weight:700;color:${deliveryColor};margin-bottom:6px;">${deliveryText}</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.45);line-height:1.5;">${deliverySub}</div>
+        </div>
+        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:14px 16px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px;">
+                <span style="color:rgba(255,255,255,.45);">Customer</span>
+                <span style="font-weight:600;color:#e2e2e0;">${tx.full_name || 'Unknown'}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px;">
+                <span style="color:rgba(255,255,255,.45);">Amount</span>
+                <span style="font-weight:700;color:#fff;">KES ${parseFloat(tx.amount||0).toLocaleString()}</span>
+            </div>
+            ${paybillLine}
+            ${receiptLine}
+            ${mpesaCodeLine}
+        </div>
+    `;
+
+    modal.style.display = 'flex';
+}
+function closePaymentStatus() {
+    document.getElementById('payStatusModal').style.display = 'none';
+}
+document.getElementById('payStatusModal').addEventListener('click', function(e) {
+    if (e.target === this) closePaymentStatus();
+});
+</script>
 
 <?php include 'includes/footer.php'; ?>
