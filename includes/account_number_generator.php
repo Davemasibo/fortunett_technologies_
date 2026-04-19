@@ -52,7 +52,18 @@ class AccountNumberGenerator {
      */
     private function getPrefix($tenantId) {
         try {
-            // Try to get: (1) explicit account_prefix, (2) subdomain of tenant, (3) admin username
+            // Priority 1: tenant_settings.account_prefix (set by tenant via Settings page)
+            $tsStmt = $this->db->prepare("
+                SELECT setting_value FROM tenant_settings
+                WHERE tenant_id = ? AND setting_key = 'account_prefix' LIMIT 1
+            ");
+            $tsStmt->execute([$tenantId]);
+            $tsSetting = $tsStmt->fetchColumn();
+            if (!empty($tsSetting)) {
+                return strtoupper($tsSetting);
+            }
+
+            // Priority 2: users.account_prefix (legacy) or subdomain
             $stmt = $this->db->prepare("
                 SELECT t.subdomain, u.account_prefix, u.username
                 FROM tenants t
@@ -64,37 +75,23 @@ class AccountNumberGenerator {
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$result) {
-                // Last resort: derive prefix from tenant_id itself
                 return 'T' . str_pad($tenantId, 2, '0', STR_PAD_LEFT);
             }
 
-            // Priority 1: explicit account_prefix already stored on user
             if (!empty($result['account_prefix'])) {
                 return strtoupper($result['account_prefix']);
             }
 
-            // Priority 2: subdomain (e.g. 'best' => 'B')
+            // Priority 3: subdomain first letters
             $subdomain = $result['subdomain'] ?? '';
             if (!empty($subdomain)) {
                 preg_match('/^([a-zA-Z]{1,3})/', $subdomain, $matches);
                 if (!empty($matches[1])) {
-                    $prefix = strtoupper($matches[1]);
-                    // Cache it on the user row if admin_user_id is set
-                    if (!empty($result['username'])) {
-                        try {
-                            $this->db->prepare("
-                                UPDATE users u
-                                JOIN tenants t ON t.admin_user_id = u.id
-                                SET u.account_prefix = ?
-                                WHERE t.id = ?
-                            ")->execute([$prefix, $tenantId]);
-                        } catch (\Exception $e) { /* ignore cache errors */ }
-                    }
-                    return $prefix;
+                    return strtoupper($matches[1]);
                 }
             }
 
-            // Priority 3: admin username
+            // Priority 4: admin username first letters
             $username = $result['username'] ?? '';
             if (!empty($username)) {
                 preg_match('/^([a-zA-Z]{1,3})/', $username, $matches);
@@ -103,7 +100,6 @@ class AccountNumberGenerator {
                 }
             }
 
-            // Absolute fallback
             return 'C';
 
         } catch (\PDOException $e) {

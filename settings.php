@@ -50,6 +50,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $upsert('brand_font',      $_POST['brand_font']       ?? 'Work Sans');
             $upsert('support_number',  $_POST['support_number']   ?? '');
             $upsert('support_email',   $_POST['support_email']    ?? '');
+            // Account number prefix — sanitize to 1-4 uppercase letters only
+            $rawPrefix = preg_replace('/[^a-zA-Z]/', '', $_POST['account_prefix'] ?? '');
+            $cleanPrefix = strtoupper(substr($rawPrefix, 0, 4));
+            if ($cleanPrefix !== '') {
+                $upsert('account_prefix', $cleanPrefix);
+            }
             $pdo->commit();
             $action_result = 'success|General settings updated successfully';
             $tenantStmt->execute([$tenant_id]);
@@ -631,6 +637,21 @@ input:checked + .set-slider:before { transform:translateX(20px);background:#fff;
                                 <input type="text" name="business_address" class="set-input"
                                        value="<?php echo htmlspecialchars($tSettings['business_address'] ?? ''); ?>"
                                        placeholder="123 Main St, Nairobi">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="set-label">Customer Account Prefix</label>
+                                <?php
+                                $currentPrefix = $tSettings['account_prefix'] ?? $accountPrefix;
+                                ?>
+                                <div style="display:flex;align-items:center;gap:10px;">
+                                    <input type="text" name="account_prefix" class="set-input"
+                                           value="<?php echo htmlspecialchars($currentPrefix); ?>"
+                                           placeholder="e.g. ECO" maxlength="4"
+                                           style="width:110px;text-transform:uppercase;font-weight:700;font-family:monospace;letter-spacing:.08em;"
+                                           oninput="this.value=this.value.replace(/[^a-zA-Z]/g,'').toUpperCase();document.getElementById('prefixPreview').textContent=this.value+'001'">
+                                    <span style="font-size:13px;color:rgba(255,255,255,.45);">Preview: <strong id="prefixPreview" style="color:#e2e2e0;font-family:monospace;"><?php echo htmlspecialchars($currentPrefix); ?>001</strong></span>
+                                </div>
+                                <div class="set-hint">1–4 letters only. New customers get this prefix + a sequential number (e.g. <strong><?php echo htmlspecialchars($currentPrefix); ?>001</strong>, <strong><?php echo htmlspecialchars($currentPrefix); ?>002</strong> …)</div>
                             </div>
                         </div>
                     </div>
