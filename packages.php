@@ -161,12 +161,21 @@ include 'includes/sidebar.php';
     .status-badge { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
     .status-badge.active   { background: rgba(16,185,129,.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,.25); }
     .status-badge.inactive { background: rgba(107,114,128,.15); color: #9ca3af; border: 1px solid rgba(107,114,128,.25); }
-    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
     /* Action icons */
-    .action-icons { display: flex; gap: 8px; }
-    .action-icon { width: 28px; height: 28px; border-radius: 6px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.05); color: #9a9a95; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; transition: all .18s; }
-    .action-icon:hover { background: var(--primary-color,#3B6EA5); border-color: transparent; color: #fff; }
+    /* Three-dot dropdown */
+    .dot-menu-wrap { position: relative; display: inline-block; }
+    .dot-menu-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.05); color: #9a9a95; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 15px; transition: all .18s; }
+    .dot-menu-btn:hover { background: var(--primary-color,#3B6EA5); border-color: transparent; color: #fff; }
+    .dot-menu-dropdown { display: none; position: absolute; right: 0; top: 36px; background: #2a2a29; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; min-width: 170px; box-shadow: 0 8px 32px rgba(0,0,0,.7); z-index: 500; overflow: hidden; }
+    .dot-menu-dropdown.open { display: block; }
+    .dot-menu-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-size: 13px; color: #d4d4d2; cursor: pointer; border: none; background: none; width: 100%; text-align: left; transition: background .15s; }
+    .dot-menu-item:hover { background: rgba(255,255,255,.07); color: #fff; }
+    .dot-menu-item i { width: 16px; text-align: center; color: rgba(255,255,255,.45); flex-shrink: 0; }
+    .dot-menu-item:hover i { color: var(--primary-light, #93c5fd); }
+    .dot-menu-item.sep { border-top: 1px solid rgba(255,255,255,.07); }
+    .dot-menu-item.danger:hover { background: rgba(239,68,68,.1); color: #fca5a5; }
+    .dot-menu-item.danger:hover i { color: #fca5a5; }
 
     .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .packages-table { min-width: 720px; }
@@ -290,7 +299,7 @@ include 'includes/sidebar.php';
                         <th>Devices</th>
                         <th>Price</th>
                         <th>Status</th>
-                        <th>Actions</th>
+                        <th style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -337,14 +346,23 @@ include 'includes/sidebar.php';
                         <td><strong>KES <?php echo number_format($pkg['price'], 0); ?></strong></td>
                         <td>
                             <span class="status-badge <?php echo $status; ?>">
-                                <span class="status-dot"></span>
                                 <?php echo ucfirst($status); ?>
                             </span>
                         </td>
-                        <td>
-                            <div class="action-icons">
-                                <button class="action-icon" title="Edit" onclick='openEditPackageModal(<?php echo htmlspecialchars(json_encode($pkg), ENT_QUOTES, "UTF-8"); ?>)'><i class="fas fa-edit"></i></button>
-                                <button class="action-icon" title="Delete" onclick="deletePackage(<?php echo $pkg['id']; ?>)"><i class="fas fa-trash"></i></button>
+                        <td style="text-align:center;">
+                            <?php $pkgJson = htmlspecialchars(json_encode($pkg), ENT_QUOTES, 'UTF-8'); ?>
+                            <div class="dot-menu-wrap">
+                                <button class="dot-menu-btn" onclick="toggleDotMenu(this)" title="Actions">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <div class="dot-menu-dropdown">
+                                    <button class="dot-menu-item" onclick="openEditPackageModal(<?php echo $pkgJson; ?>);closeDotMenus()">
+                                        <i class="fas fa-edit"></i> Edit Package
+                                    </button>
+                                    <button class="dot-menu-item sep danger" onclick="deletePackage(<?php echo $pkg['id']; ?>);closeDotMenus()">
+                                        <i class="fas fa-trash"></i> Delete
+                                    </button>
+                                </div>
                             </div>
                         </td>
                     </tr>
@@ -796,6 +814,28 @@ function showImportResult(html, type) {
 }
 document.getElementById('importModal')?.addEventListener('click', function(e) {
     if (e.target === this) closeImportModal();
+});
+
+// ── Three-dot dropdown ────────────────────────────────────────────────────────
+function toggleDotMenu(btn) {
+    const dropdown = btn.nextElementSibling;
+    const isOpen = dropdown.classList.contains('open');
+    closeDotMenus();
+    if (!isOpen) {
+        dropdown.classList.add('open');
+        btn.style.background = 'var(--primary-color,#3B6EA5)';
+        btn.style.color = '#fff';
+    }
+}
+function closeDotMenus() {
+    document.querySelectorAll('.dot-menu-dropdown.open').forEach(d => {
+        d.classList.remove('open');
+        const btn = d.previousElementSibling;
+        if (btn) { btn.style.background = ''; btn.style.color = ''; }
+    });
+}
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.dot-menu-wrap')) closeDotMenus();
 });
 </script>
 

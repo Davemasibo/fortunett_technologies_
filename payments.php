@@ -208,7 +208,6 @@ include 'includes/sidebar.php';
     .status-badge.completed { background: rgba(16,185,129,.15);  color: #6ee7b7; border: 1px solid rgba(16,185,129,.25); }
     .status-badge.pending   { background: rgba(245,158,11,.15);  color: #fcd34d; border: 1px solid rgba(245,158,11,.25); }
     .status-badge.failed    { background: rgba(239,68,68,.15);   color: #fca5a5; border: 1px solid rgba(239,68,68,.25); }
-    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
     /* Three-dot dropdown */
     .dot-menu-wrap { position: relative; display: inline-block; }
@@ -467,7 +466,6 @@ include 'includes/sidebar.php';
                         </td>
                         <td>
                             <span class="status-badge <?php echo $badgeClass; ?>">
-                                <span class="status-dot"></span>
                                 <?php echo $badgeLabel; ?>
                             </span>
                         </td>
