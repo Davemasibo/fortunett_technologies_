@@ -134,7 +134,7 @@ include 'includes/sidebar.php';
 <style>
 /* ===================== BILLING PAGE STYLES ===================== */
 .billing-wrapper { background: #141414 !important; }
-.billing-container { padding: 28px 32px; max-width: 1300px; margin: 0 auto; }
+.billing-container { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
 
 .billing-header h2 { font-size: 28px; font-weight: 700; color: #e2e2e0; margin: 0 0 4px 0; }
 .billing-header p  { font-size: 14px; color: #9a9a95; margin: 0 0 24px 0; }
@@ -152,7 +152,19 @@ include 'includes/sidebar.php';
 
 /* History table card */
 .history-card { background: #222221; border-radius: 12px; border: 1px solid rgba(255,255,255,.06); overflow: hidden; box-shadow: 8px 8px 20px rgba(0,0,0,.4), -4px -4px 10px rgba(255,255,255,.03); }
-.history-card-header { padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 16px; font-weight: 700; color: #e2e2e0; }
+.history-card-header { padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 15px; font-weight: 700; color: #e2e2e0; }
+
+/* Dark history table (matching clients.php style) */
+.billing-history-table { width: 100%; min-width: 700px; border-collapse: collapse; }
+.billing-history-table thead { background: rgba(255,255,255,.04); border-bottom: 1px solid rgba(255,255,255,.07); }
+.billing-history-table th { padding: 12px 16px; text-align: left; font-size: 11px; font-weight: 600; color: rgba(255,255,255,.4); text-transform: uppercase; letter-spacing: .05em; }
+.billing-history-table th.text-end { text-align: right; }
+.billing-history-table th.text-center { text-align: center; }
+.billing-history-table td { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.04); font-size: 14px; color: #d4d4d2; }
+.billing-history-table td.text-end { text-align: right; }
+.billing-history-table td.text-center { text-align: center; }
+.billing-history-table tbody tr:hover { background: rgba(255,255,255,.03); }
+.billing-history-table tbody tr:last-child td { border-bottom: none; }
 
 /* ===================== INVOICE MODAL ===================== */
 .inv-overlay {
@@ -381,36 +393,44 @@ include 'includes/sidebar.php';
     <!-- Invoice History -->
     <div class="history-card">
         <div class="history-card-header">Invoice History</div>
-        <div style="overflow-x:auto;">
-            <table class="table table-hover align-middle mb-0" style="font-size:14px;">
-                <thead class="table-light">
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+            <table class="billing-history-table">
+                <thead>
                     <tr>
-                        <th class="py-3 px-4">Period</th>
-                        <th class="py-3 text-end">Revenue Collected</th>
-                        <th class="py-3 text-end">PPPoE Fee</th>
-                        <th class="py-3 text-end">Hotspot 3%</th>
-                        <th class="py-3 text-end fw-bold">Total Due</th>
-                        <th class="py-3 text-center">Status</th>
-                        <th class="py-3 text-end">Action</th>
+                        <th>Period</th>
+                        <th class="text-end">Revenue Collected</th>
+                        <th class="text-end">PPPoE Fee</th>
+                        <th class="text-end">Hotspot Commission</th>
+                        <th class="text-end">Total Due</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-end">Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($bills as $bill):
                         $bTotal = $bill['base_fee'] + $bill['commission_amount'];
+                        $isPaid = $bill['status'] === 'paid';
                     ?>
                     <tr>
-                        <td class="px-4 fw-bold text-dark"><?php echo date('F Y', strtotime($bill['billing_period'])); ?></td>
+                        <td style="font-weight:600; color:#e2e2e0;"><?php echo date('F Y', strtotime($bill['billing_period'])); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['total_collections'], 2); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['base_fee'], 2); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['commission_amount'], 2); ?></td>
-                        <td class="text-end fw-bold text-dark">KES <?php echo number_format($bTotal, 2); ?></td>
+                        <td class="text-end" style="font-weight:700; color:#e2e2e0;">KES <?php echo number_format($bTotal, 2); ?></td>
                         <td class="text-center">
-                            <span class="badge rounded-pill bg-<?php echo $bill['status'] === 'paid' ? 'success' : 'warning text-dark'; ?>">
+                            <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;
+                                background:<?php echo $isPaid ? 'rgba(16,185,129,.15)' : 'rgba(245,158,11,.15)'; ?>;
+                                color:<?php echo $isPaid ? '#6ee7b7' : '#fcd34d'; ?>;
+                                border:1px solid <?php echo $isPaid ? 'rgba(16,185,129,.25)' : 'rgba(245,158,11,.25)'; ?>;">
+                                <?php if ($isPaid): ?><span style="width:6px;height:6px;border-radius:50%;background:#10b981;"></span><?php endif; ?>
                                 <?php echo ucfirst($bill['status']); ?>
                             </span>
                         </td>
-                        <td class="text-end pe-4">
-                            <button class="btn btn-sm btn-outline-secondary" onclick='openInvoiceModal(<?php echo json_encode($bill); ?>)'>View</button>
+                        <td class="text-end" style="padding-right:20px;">
+                            <button style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:#e2e2e0;padding:5px 14px;border-radius:6px;font-size:13px;cursor:pointer;transition:background .15s;"
+                                onmouseover="this.style.background='rgba(255,255,255,.12)'"
+                                onmouseout="this.style.background='rgba(255,255,255,.07)'"
+                                onclick='openInvoiceModal(<?php echo json_encode($bill); ?>)'>View</button>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -688,26 +708,35 @@ function openInvoiceModal(bill) {
     const base  = parseFloat(bill.base_fee || 0);
     const comm  = parseFloat(bill.commission_amount || 0);
     const total = base + comm;
+    const rate  = parseFloat(bill.commission_rate || 3);
 
     document.getElementById('invBaseFee').textContent         = 'KES ' + fmt(base);
+    document.getElementById('invCommRate').textContent        = rate + '%';
     document.getElementById('invCommAmt').textContent         = 'KES ' + fmt(comm);
     document.getElementById('invServiceSubtotal').textContent = 'KES ' + fmt(total);
     document.getElementById('invTotalDue').textContent        = 'KES ' + fmt(total);
     document.getElementById('invPayBarAmt').textContent       = 'KES ' + fmt(total);
     currentInvoiceAmount = total;
 
-    // Period + due date
+    // Period + due date + invoice number
     if (bill.billing_period) {
         const d = new Date(bill.billing_period + 'T00:00:00');
         document.getElementById('invDate').textContent = d.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
         const due = new Date(d); due.setDate(due.getDate() + 14);
-        document.getElementById('invDue').textContent  = due.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+        document.getElementById('invDue').textContent = due.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+
+        // Reconstruct invoice number from billing period (format: INV-ORGSLUG/YYYYMMDD)
+        const y   = d.getFullYear();
+        const mo  = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        document.getElementById('invNumber').textContent = 'INV-<?php echo htmlspecialchars($orgSlug); ?>/' + y + mo + day;
+
         // Header subtitle
         const sub = document.getElementById('invHeaderSub');
-        if (sub) sub.textContent = d.toLocaleDateString('en-GB', {month:'long',year:'numeric'});
+        if (sub) sub.textContent = d.toLocaleDateString('en-GB', {month:'long', year:'numeric'});
     }
 
-    const badge = document.getElementById('invStatusBadge');
+    const badge  = document.getElementById('invStatusBadge');
     const isPaid = bill.status === 'paid';
     badge.textContent = isPaid ? '✅ PAID' : '⏳ PENDING';
     badge.className   = 'inv-status-badge ' + (isPaid ? 'paid' : 'pending');

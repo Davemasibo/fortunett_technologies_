@@ -338,8 +338,6 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
 
         .main-content-wrapper > div {
             width: 100%;
-            max-width: 1350px;
-            padding: 0 40px;
             padding-bottom: 60px; /* Space for footer */
         }
 
