@@ -51,13 +51,26 @@ try {
 } catch (Exception $e) { $currentRevenue = 0; }
 
 // --- Billing Calculation ---
-// PPPoE monthly fee: Ksh 25 per user
-$pppoeRate    = 25.00;
-$pppoeSubtotal = $pppoeCount * $pppoeRate;
+// Fetch rates from the tenant's assigned subscription plan
+$pppoeRate   = 25.00;
+$hotspotRate = 0.03;
+try {
+    $rateStmt = $pdo->prepare("
+        SELECT p.pppoe_fee_per_user, p.hotspot_commission_rate
+        FROM platform_subscription_plans p
+        JOIN tenants t ON t.subscription_plan_id = p.id
+        WHERE t.id = ? LIMIT 1
+    ");
+    $rateStmt->execute([$tenant_id]);
+    $rateRow = $rateStmt->fetch(PDO::FETCH_ASSOC);
+    if ($rateRow) {
+        $pppoeRate   = (float)$rateRow['pppoe_fee_per_user'];
+        $hotspotRate = (float)$rateRow['hotspot_commission_rate'];
+    }
+} catch (Exception $e) {}
 
-// Hotspot service fee: 3% of total monthly revenue
-$hotspotRate  = 0.03;
-$hotspotFee   = $currentRevenue * $hotspotRate;
+$pppoeSubtotal = $pppoeCount * $pppoeRate;
+$hotspotFee    = $currentRevenue * $hotspotRate;
 
 $serviceSubtotal = $pppoeSubtotal + $hotspotFee;
 $totalDue        = $serviceSubtotal;
@@ -424,8 +437,10 @@ include 'includes/sidebar.php';
             'billing_period'    => $currentMonthStart,
             'total_collections' => $currentRevenue,
             'base_fee'          => $pppoeSubtotal,
-            'commission_rate'   => $currentBill['commission_rate'] ?? 3,
+            'commission_rate'   => round($hotspotRate * 100, 4),
             'commission_amount' => $hotspotFee,
+            'pppoe_count'       => $pppoeCount,
+            'pppoe_rate'        => $pppoeRate,
             'status'            => $currentBill['status'] ?? 'pending',
         ];
         ?>
@@ -625,18 +640,18 @@ include 'includes/sidebar.php';
                 <tr>
                     <td>
                         <div class="desc-main">Platform Fee</div>
-                        <div class="desc-sub">Monthly base fee for ISP Management Platform</div>
+                        <div class="desc-sub">Monthly ISP management fee — per active user</div>
                     </td>
-                    <td>—</td>
-                    <td>1</td>
+                    <td id="invPppoeRate">KES <?php echo number_format($pppoeRate, 2); ?>/user</td>
+                    <td id="invPppoeQty"><?php echo $pppoeCount; ?> user<?php echo $pppoeCount !== 1 ? 's' : ''; ?></td>
                     <td id="invBaseFee">KES <?php echo number_format($pppoeSubtotal, 2); ?></td>
                 </tr>
                 <tr>
                     <td>
-                        <div class="desc-main">Transaction Fee</div>
-                        <div class="desc-sub">Commission on collections</div>
+                        <div class="desc-main">Hotspot Commission</div>
+                        <div class="desc-sub">Commission on customer collections this month (KES <?php echo number_format($currentRevenue, 2); ?>)</div>
                     </td>
-                    <td id="invCommRate">3%</td>
+                    <td id="invCommRate"><?php echo round($hotspotRate * 100, 2); ?>%</td>
                     <td>1</td>
                     <td id="invCommAmt">KES <?php echo number_format($hotspotFee, 2); ?></td>
                 </tr>
@@ -819,13 +834,17 @@ const isSandbox          = <?php echo MPESA_ENV === 'sandbox' ? 'true' : 'false'
 // Invoice Modal
 // ════════════════════════════════════════
 function openInvoiceModal(bill) {
-    const base  = parseFloat(bill.base_fee || 0);
-    const comm  = parseFloat(bill.commission_amount || 0);
-    const total = base + comm;
-    const rate  = parseFloat(bill.commission_rate || 3);
+    const base       = parseFloat(bill.base_fee || 0);
+    const comm       = parseFloat(bill.commission_amount || 0);
+    const total      = base + comm;
+    const rate       = parseFloat(bill.commission_rate || 3);
+    const pppoeRate  = parseFloat(bill.pppoe_rate || 25);
+    const pppoeCount = parseInt(bill.pppoe_count || 0);
 
+    document.getElementById('invPppoeRate').textContent       = 'KES ' + fmt(pppoeRate) + '/user';
+    document.getElementById('invPppoeQty').textContent        = pppoeCount + ' user' + (pppoeCount !== 1 ? 's' : '');
     document.getElementById('invBaseFee').textContent         = 'KES ' + fmt(base);
-    document.getElementById('invCommRate').textContent        = rate + '%';
+    document.getElementById('invCommRate').textContent        = rate.toFixed(2) + '%';
     document.getElementById('invCommAmt').textContent         = 'KES ' + fmt(comm);
     document.getElementById('invServiceSubtotal').textContent = 'KES ' + fmt(total);
     document.getElementById('invTotalDue').textContent        = 'KES ' + fmt(total);
@@ -873,13 +892,128 @@ function openMpesaStep(method) {
     currentMpesaMethod = method;
     closeModal('paystackModal');
 
-    const labels = { stk:'Pay with M-PESA', till:'Pay with M-PESA Till', airtel:'Pay with Airtel Money', card:'Pay with Card' };
-    document.getElementById('mpesaMethodLabel').textContent  = labels[method] || 'Pay with M-PESA';
-    document.getElementById('mpesaTopAmt').textContent       = 'Pay KES ' + fmt(currentInvoiceAmount);
-    document.getElementById('mpesaPayBtnAmt').textContent    = fmt(currentInvoiceAmount);
+    const labels = { stk:'Pay with M-PESA', till:'Pay via Paybill', airtel:'Pay with Airtel Money', card:'Pay via Bank/Card' };
+    document.getElementById('mpesaMethodLabel').textContent = labels[method] || 'Pay';
+    document.getElementById('mpesaTopAmt').textContent      = 'Pay KES ' + fmt(currentInvoiceAmount);
+    document.getElementById('mpesaPayBtnAmt').textContent   = fmt(currentInvoiceAmount);
 
-    resetToPhoneInput();
+    document.getElementById('mpesaWaitSection').style.display = 'none';
+    document.getElementById('mpesaFooter').style.display      = 'flex';
+
+    if (method === 'stk') {
+        resetToPhoneInput();
+    } else if (method === 'till') {
+        showTillPayment();
+    } else if (method === 'airtel') {
+        showAirtelPayment();
+    } else if (method === 'card') {
+        showCardPayment();
+    }
     document.getElementById('mpesaModal').style.display = 'flex';
+}
+
+function showTillPayment() {
+    const shortcode = <?php echo json_encode($mpesaConfig['shortcode'] ?: 'Contact support for paybill'); ?>;
+    const invNo = (document.getElementById('invNumber')?.textContent || '').trim() || 'INV-FORTUNETT';
+    document.getElementById('mpesaInputSection').style.display = 'block';
+    document.getElementById('mpesaInputSection').innerHTML = `
+        <div class="mpesa-logo-badge"><span class="m">M</span><span class="dot">-</span><span class="p">PESA</span></div>
+        <h4 style="font-weight:700;color:#111827;margin-bottom:12px;">Pay via M-PESA Paybill</h4>
+        <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:16px;margin-bottom:16px;text-align:left;font-size:13px;line-height:2.1;">
+            1. Open M-PESA → <strong>Lipa na M-PESA → Pay Bill</strong><br>
+            2. Business No: <strong style="font-size:16px;color:#065F46;">${shortcode}</strong><br>
+            3. Account No: <strong>${invNo}</strong><br>
+            4. Amount: <strong>KES ${fmt(currentInvoiceAmount)}</strong><br>
+            5. Enter your M-PESA PIN and confirm
+        </div>
+        <button onclick="promptManualRef('mpesa')" style="width:100%;padding:13px;background:#138a36;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;">
+            <i class="fas fa-check" style="margin-right:6px;"></i>I've Paid — Enter Reference
+        </button>`;
+}
+
+function showAirtelPayment() {
+    document.getElementById('mpesaInputSection').style.display = 'block';
+    document.getElementById('mpesaInputSection').innerHTML = `
+        <div style="text-align:center;margin-bottom:12px;">
+            <div style="width:52px;height:52px;background:rgba(239,68,68,.12);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;font-size:22px;">📱</div>
+        </div>
+        <h4 style="font-weight:700;color:#111827;margin-bottom:12px;">Pay via Airtel Money</h4>
+        <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:16px;margin-bottom:16px;text-align:left;font-size:13px;line-height:2.1;">
+            1. Dial <strong>*334#</strong> on your Airtel line<br>
+            2. Select <strong>Make Payments → Pay Bill</strong><br>
+            3. Business No: <strong>FortuNett Technologies</strong><br>
+            4. Account No: <strong>${(document.getElementById('invNumber')?.textContent || '').trim()}</strong><br>
+            5. Amount: <strong>KES ${fmt(currentInvoiceAmount)}</strong><br>
+            6. Confirm with your Airtel PIN
+        </div>
+        <button onclick="promptManualRef('airtel')" style="width:100%;padding:13px;background:#DC2626;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;">
+            <i class="fas fa-check" style="margin-right:6px;"></i>I've Paid — Enter Reference
+        </button>`;
+}
+
+function showCardPayment() {
+    document.getElementById('mpesaInputSection').style.display = 'block';
+    document.getElementById('mpesaInputSection').innerHTML = `
+        <h4 style="font-weight:700;color:#111827;margin-bottom:12px;"><i class="fas fa-university" style="margin-right:8px;color:#3B82F6;"></i>Pay via Bank Transfer</h4>
+        <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:16px;margin-bottom:16px;text-align:left;font-size:13px;line-height:2.1;">
+            Bank: <strong>Equity Bank Kenya</strong><br>
+            Account Name: <strong>FortuNett Technologies Ltd</strong><br>
+            Account No: <strong>0111234567890</strong><br>
+            Branch: <strong>Upper Hill, Nairobi</strong><br>
+            Amount: <strong>KES ${fmt(currentInvoiceAmount)}</strong><br>
+            Reference: <strong>${(document.getElementById('invNumber')?.textContent || '').trim()}</strong>
+        </div>
+        <button onclick="promptManualRef('bank')" style="width:100%;padding:13px;background:#1E3A8A;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;">
+            <i class="fas fa-check" style="margin-right:6px;"></i>I've Paid — Enter Reference
+        </button>`;
+}
+
+function promptManualRef(method) {
+    const ref = prompt('Enter your payment reference (M-Pesa code, Airtel ref, or bank transaction ID):');
+    if (!ref || ref.trim().length < 4) return;
+    submitManualPayment(ref.trim(), method);
+}
+
+function submitManualPayment(ref, method) {
+    const fd = new FormData();
+    fd.append('bill_id',   currentBillId);
+    fd.append('reference', ref);
+    fd.append('method',    method || currentMpesaMethod);
+    fd.append('amount',    currentInvoiceAmount);
+    fetch('api/billing/mark_bill_paid.php', { method:'POST', body:fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                closeModal('mpesaModal');
+                showBillingToast('Payment recorded! Invoice marked as paid.', 'success');
+                setTimeout(() => location.reload(), 1800);
+            } else {
+                showBillingToast(d.message || 'Could not record payment', 'error');
+            }
+        })
+        .catch(() => showBillingToast('Network error. Please try again.', 'error'));
+}
+
+let stkPollTimer = null;
+function pollInvoicePaid(checkoutId, billId) {
+    let attempts = 0;
+    stkPollTimer = setInterval(() => {
+        attempts++;
+        const fd = new FormData();
+        fd.append('bill_id',     billId);
+        fd.append('checkout_id', checkoutId);
+        fetch('api/billing/check_bill_status.php', { method:'POST', body:fd })
+            .then(r => r.json())
+            .then(d => {
+                if (d.paid) {
+                    clearInterval(stkPollTimer);
+                    showBillingToast('✅ Payment confirmed! Invoice marked as paid.', 'success');
+                    setTimeout(() => location.reload(), 1500);
+                }
+            })
+            .catch(() => {});
+        if (attempts >= 24) clearInterval(stkPollTimer); // 24 × 5s = 2 min
+    }, 5000);
 }
 
 function resetToPhoneInput() {
@@ -998,13 +1132,22 @@ function submitMpesaPayment() {
 
             if (data.success) {
                 if (data.sandbox) {
-                    // Sandbox — show inline warning, do NOT show "check phone"
                     showSandboxWarning();
                 } else {
                     showStkWaiting(phone, data);
+                    if (currentBillId && data.checkout_request_id) {
+                        pollInvoicePaid(data.checkout_request_id, currentBillId);
+                    }
                 }
             } else {
-                showBillingToast((data.message || 'M-Pesa request failed'), 'error');
+                const errMsg = data.message || 'M-Pesa request failed';
+                showBillingToast(errMsg, 'error');
+                // Auto-switch to manual paybill after a short delay
+                setTimeout(() => {
+                    currentMpesaMethod = 'till';
+                    document.getElementById('mpesaMethodLabel').textContent = 'Pay via Paybill';
+                    showTillPayment();
+                }, 2500);
             }
         })
         .catch(() => {
