@@ -33,6 +33,11 @@ if (isLoggedIn()) {
             </a>
         </li>
         <li>
+            <a href="online_customers.php" class="<?php echo isActivePage('online_customers.php'); ?>">
+                <i class="fas fa-wifi"></i> <span>Active Customers</span>
+            </a>
+        </li>
+        <li>
             <a href="packages.php" class="<?php echo isActivePage('packages.php'); ?>">
                 <i class="fas fa-cube"></i> <span>Packages</span>
             </a>
@@ -45,11 +50,6 @@ if (isLoggedIn()) {
         <li>
             <a href="mikrotik.php" class="<?php echo isActivePage('mikrotik.php'); ?>">
                 <i class="fas fa-network-wired"></i> <span>Routers</span>
-            </a>
-        </li>
-        <li>
-            <a href="online_customers.php" class="<?php echo isActivePage('online_customers.php'); ?>">
-                <i class="fas fa-circle" style="color:#34d399;font-size:8px;margin-right:2px;"></i> <span>Online Now</span>
             </a>
         </li>
         <li>

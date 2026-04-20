@@ -219,11 +219,18 @@ include 'includes/sidebar.php';
     .add-customer-btn:hover { opacity:.9; transform:translateY(-1px); color:white; }
 
     .customer-table { width:100%; min-width:820px; border-collapse:collapse; }
-    .customer-table thead { background:rgba(255,255,255,.04); border-bottom:1px solid var(--neu-border); }
-    .customer-table th { padding:12px 16px; text-align:left; font-size:12px; font-weight:600; color:rgba(255,255,255,.4); text-transform:uppercase; letter-spacing:.05em; }
-    .customer-table td { padding:16px; border-bottom:1px solid rgba(255,255,255,.04); font-size:14px; color:#d4d4d2; }
+    .customer-table thead { background:rgba(255,255,255,.03); border-bottom:1px solid var(--neu-border); }
+    .customer-table th { padding:10px 14px; text-align:left; font-size:10px; font-weight:700; color:rgba(255,255,255,.3); text-transform:uppercase; letter-spacing:.06em; white-space:nowrap; }
+    .customer-table td { padding:13px 14px; border-bottom:1px solid rgba(255,255,255,.04); font-size:13px; color:rgba(255,255,255,.7); vertical-align:middle; }
     .customer-table tbody tr { transition:background .15s; }
-    .customer-table tbody tr:hover { background:rgba(255,255,255,.03); }
+    .customer-table tbody tr:hover { background:rgba(255,255,255,.025); }
+    .customer-table tbody tr:last-child td { border-bottom:none; }
+
+    /* Connection type pill — matches online_customers.php .oc-type */
+    .conn-type { display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-top:3px; }
+    .conn-type.pppoe   { background:rgba(96,165,250,.12);  color:#93c5fd;  border:1px solid rgba(96,165,250,.2); }
+    .conn-type.hotspot { background:rgba(167,139,250,.12); color:#c4b5fd;  border:1px solid rgba(167,139,250,.2); }
+    .conn-type.unknown { background:rgba(156,163,175,.1);  color:rgba(255,255,255,.4); border:1px solid rgba(156,163,175,.15); }
 
     .customer-avatar { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,var(--primary-color,#3B6EA5) 0%,var(--primary-dark,#2C5282) 100%); display:flex; align-items:center; justify-content:center; color:white; font-weight:600; font-size:14px; }
     .customer-info { display:flex; align-items:center; gap:12px; }
@@ -468,14 +475,14 @@ include 'includes/sidebar.php';
             <table class="customer-table">
                 <thead>
                     <tr>
-                        <th>CUSTOMER</th>
-                        <th>CONTACT</th>
-                        <th>PACKAGE</th>
-                        <th>STATUS</th>
-                        <th>ONLINE</th>
-                        <th>EXPIRY</th>
-                        <th>PAYMENTS</th>
-                        <th>VIEW</th>
+                        <th>Customer</th>
+                        <th>Contact</th>
+                        <th>Package</th>
+                        <th>Status</th>
+                        <th>Online</th>
+                        <th>Expiry</th>
+                        <th>Payments</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -495,13 +502,14 @@ include 'includes/sidebar.php';
                         $is_expired  = $expiry_date && strtotime($expiry_date) < time();
                         $dispStatus  = $is_expired ? 'expired' : $dbStatus;
 
-                        $statusMeta = [
-                            'active'    => ['bg'=>'#D1FAE5','color'=>'#065F46','label'=>'Active'],
-                            'inactive'  => ['bg'=>'#F3F4F6','color'=>'#6B7280','label'=>'Inactive'],
-                            'suspended' => ['bg'=>'#FEF3C7','color'=>'#92400E','label'=>'Suspended'],
-                            'expired'   => ['bg'=>'#FEE2E2','color'=>'#991B1B','label'=>'Expired'],
+                        $statusLabels = [
+                            'active'    => 'Active',
+                            'inactive'  => 'Inactive',
+                            'suspended' => 'Suspended',
+                            'expired'   => 'Expired',
                         ];
-                        $sm = $statusMeta[$dispStatus] ?? $statusMeta['inactive'];
+                        $statusLabel = $statusLabels[$dispStatus] ?? ucfirst($dispStatus);
+                        $connType    = strtolower($customer['connection_type'] ?? 'pppoe');
 
                         // Prepare JSON for JS
                         $customerJson = htmlspecialchars(json_encode($customer), ENT_QUOTES, 'UTF-8');
@@ -513,28 +521,34 @@ include 'includes/sidebar.php';
                                 <div class="customer-avatar"><?php echo $initials; ?></div>
                                 <div>
                                     <div class="customer-name"><?php echo htmlspecialchars($customer['full_name'] ?? 'N/A'); ?></div>
-                                    <div class="customer-id"><?php
+                                    <div class="customer-id" style="font-family:monospace;">
+                                    <?php
                                         if (!empty($customer['account_number'])) {
                                             echo htmlspecialchars($customer['account_number']);
                                         } else {
                                             $pfx = strtoupper(substr($customer['mikrotik_username'] ?? $customer['full_name'] ?? 'C', 0, 1));
                                             echo $pfx . str_pad($customer['id'], 3, '0', STR_PAD_LEFT);
                                         }
-                                    ?></div>
+                                    ?>
+                                    </div>
                                 </div>
                             </div>
                         </td>
                         <td>
-                            <div class="contact-info">
-                                <div class="contact-phone"><?php echo htmlspecialchars($customer['phone'] ?? '—'); ?></div>
-                                <div class="contact-email"><?php echo htmlspecialchars($customer['email'] ?? ''); ?></div>
-                            </div>
+                            <div class="contact-phone"><?php echo htmlspecialchars($customer['phone'] ?? '—'); ?></div>
+                            <div class="contact-email"><?php echo htmlspecialchars($customer['email'] ?? ''); ?></div>
                         </td>
-                        <td><?php echo htmlspecialchars($customer['package_name'] ?? $customer['subscription_plan'] ?? '—'); ?></td>
                         <td>
-                            <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:<?php echo $sm['bg']; ?>;color:<?php echo $sm['color']; ?>;">
-                                <?php if ($dispStatus === 'active'): ?><span style="width:6px;height:6px;border-radius:50%;background:<?php echo $sm['color']; ?>;flex-shrink:0;"></span><?php endif; ?>
-                                <?php echo $sm['label']; ?>
+                            <div style="font-weight:500;color:#e2e2e0;"><?php echo htmlspecialchars($customer['package_name'] ?? $customer['subscription_plan'] ?? '—'); ?></div>
+                            <span class="conn-type <?php echo in_array($connType, ['pppoe','hotspot']) ? $connType : 'unknown'; ?>">
+                                <i class="fas fa-<?php echo $connType === 'pppoe' ? 'plug' : 'wifi'; ?>" style="font-size:8px;"></i>
+                                <?php echo strtoupper($connType); ?>
+                            </span>
+                        </td>
+                        <td>
+                            <span class="status-badge <?php echo $dispStatus; ?>">
+                                <span class="status-dot"></span>
+                                <?php echo $statusLabel; ?>
                             </span>
                         </td>
                         <!-- ONLINE column — filled by JS after MikroTik fetch -->
@@ -544,23 +558,25 @@ include 'includes/sidebar.php';
                             </span>
                         </td>
                         <td>
-                            <div class="expiry-date <?php echo $is_expired ? 'expiry-warning' : ''; ?>">
-                                <?php echo $expiry_date ? date('d/m/Y', strtotime($expiry_date)) : '—'; ?>
-                                <?php if ($is_expired): ?><br><small style="color:#EF4444;">Expired</small><?php endif; ?>
+                            <div class="expiry-date <?php echo $is_expired ? 'expiry-warning' : ''; ?>" style="font-variant-numeric:tabular-nums;">
+                                <?php echo $expiry_date ? date('M d, Y', strtotime($expiry_date)) : '—'; ?>
+                                <?php if ($is_expired): ?><div style="font-size:10px;color:#f87171;margin-top:2px;">Expired</div><?php endif; ?>
                             </div>
                         </td>
                         <td>
                             <div class="payment-amount">KES <?php echo number_format($customer['package_price'] ?? 0, 0); ?></div>
-                            <div class="payment-period"><?php echo $customer['payments_count'] ?? 0; ?> payments</div>
+                            <div class="payment-period" style="font-size:11px;color:rgba(255,255,255,.3);margin-top:2px;"><?php echo $customer['payments_count'] ?? 0; ?> payment<?php echo ($customer['payments_count'] ?? 0) !== 1 ? 's' : ''; ?></div>
                         </td>
                         <!-- Actions column -->
                         <td onclick="event.stopPropagation()" style="white-space:nowrap;">
-                            <button onclick='viewCustomer(<?php echo $customerJson; ?>)' class="action-btn" title="View Customer" style="color:var(--primary-color,#3B6EA5);">
-                                <i class="fas fa-eye"></i>
-                            </button>
-                            <button onclick='confirmDelete(<?php echo $customer["id"]; ?>,<?php echo json_encode($customer["full_name"] ?? $customer["name"] ?? ""); ?>)' class="action-btn" title="Delete Customer" style="color:#f87171;">
-                                <i class="fas fa-trash"></i>
-                            </button>
+                            <div style="display:flex;gap:6px;align-items:center;">
+                                <button onclick='viewCustomer(<?php echo $customerJson; ?>)' class="action-btn" title="View Customer">
+                                    <i class="fas fa-eye" style="font-size:13px;color:rgba(255,255,255,.55);"></i>
+                                </button>
+                                <button onclick='confirmDelete(<?php echo $customer["id"]; ?>,<?php echo json_encode($customer["full_name"] ?? $customer["name"] ?? ""); ?>)' class="action-btn" title="Delete Customer">
+                                    <i class="fas fa-trash" style="font-size:12px;color:#f87171;"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                     <?php endforeach; ?>
