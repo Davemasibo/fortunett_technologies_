@@ -98,72 +98,75 @@ try {
     $data['pkg_data']   = array_map('intval', array_column($pkgs, 'cnt'));
 
     // ── Router status (live from MikroTik) ────────────────────────
-    // active_users = sum of LIVE sessions across all reachable routers,
-    // NOT the DB subscription count (use subscribed_users for that).
-    require_once '../../classes/MikrotikAPI.php';
-    $rSt = $pdo->prepare("SELECT id, name, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
-    $rSt->execute([$tenant_id]);
-    $routerRows = $rSt->fetchAll(PDO::FETCH_ASSOC);
-
+    // Isolated in its own try-catch so a MikroTik failure never breaks the stats response.
+    // The dashboard also calls api/dashboard/router_status.php independently for this data.
     $routerStatus    = [];
     $totalLiveUsers  = 0;
     $routersOnline   = 0;
     $anyRouterOnline = false;
 
-    foreach ($routerRows as $router) {
-        $port = (int)($router['api_port'] ?: 8728);
-        $rs = [
-            'id'             => $router['id'],
-            'name'           => $router['name'],
-            'ip'             => $router['ip_address'],
-            'online'         => false,
-            'active_clients' => 0,
-            'pppoe_clients'  => 0,
-            'hotspot_clients'=> 0,
-        ];
+    try {
+        require_once '../../classes/MikrotikAPI.php';
+        $rSt = $pdo->prepare("SELECT id, name, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
+        $rSt->execute([$tenant_id]);
+        $routerRows = $rSt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Quick TCP reachability check (2-second timeout) before full API call
-        $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
-        $sock = @fsockopen($connectIp, $port, $tcpErrno, $tcpErrstr, 5);
-        if ($sock) {
-            fclose($sock);
-            try {
-                $mk = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
-                $mk->connect();
+        foreach ($routerRows as $router) {
+            $port = (int)($router['api_port'] ?: 8728);
+            $rs   = [
+                'id'              => $router['id'],
+                'name'            => $router['name'],
+                'ip'              => $router['ip_address'],
+                'online'          => false,
+                'active_clients'  => 0,
+                'pppoe_clients'   => 0,
+                'hotspot_clients' => 0,
+            ];
 
-                // PPPoE active sessions
-                $pppoeSessions   = $mk->getActiveSessions();
-                $pppoeCount      = count($pppoeSessions);
+            $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
+            $sock = @fsockopen($connectIp, $port, $tcpErrno, $tcpErrstr, 4);
+            if ($sock) {
+                fclose($sock);
+                try {
+                    $mk = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
+                    $mk->connect();
 
-                // Hotspot active sessions
-                $hotspotMap      = $mk->getActiveHotspotSessionsMap();
-                $hotspotCount    = count($hotspotMap);
+                    $pppoeCount   = count($mk->getActiveSessions());
+                    $hotspotCount = count($mk->getActiveHotspotSessionsMap());
 
-                $rs['online']          = true;
-                $rs['pppoe_clients']   = $pppoeCount;
-                $rs['hotspot_clients'] = $hotspotCount;
-                $rs['active_clients']  = $pppoeCount + $hotspotCount;
+                    $rs['online']          = true;
+                    $rs['pppoe_clients']   = $pppoeCount;
+                    $rs['hotspot_clients'] = $hotspotCount;
+                    $rs['active_clients']  = $pppoeCount + $hotspotCount;
 
-                $totalLiveUsers += $rs['active_clients'];
-                $anyRouterOnline = true;
-                $routersOnline++;
+                    $totalLiveUsers += $rs['active_clients'];
+                    $anyRouterOnline = true;
+                    $routersOnline++;
 
-                $mk->disconnect();
-            } catch (Exception $mkEx) {
-                $rs['online'] = true; // TCP reachable but API issue — mark online, count stays 0
-                $anyRouterOnline = true;
-                $routersOnline++;
+                    $mk->disconnect();
+                } catch (Exception $mkEx) {
+                    $rs['online'] = true;
+                    $anyRouterOnline = true;
+                    $routersOnline++;
+                }
             }
+            $routerStatus[] = $rs;
         }
-        $routerStatus[] = $rs;
+    } catch (Exception $routerSectionEx) {
+        // MikroTik section failed — return offline stubs so the JS can at least show "Offline"
+        try {
+            $rFallback = $pdo->prepare("SELECT id, name, ip_address FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
+            $rFallback->execute([$tenant_id]);
+            foreach ($rFallback->fetchAll(PDO::FETCH_ASSOC) as $rf) {
+                $routerStatus[] = ['id' => $rf['id'], 'name' => $rf['name'], 'ip' => $rf['ip_address'], 'online' => false, 'active_clients' => 0, 'pppoe_clients' => 0, 'hotspot_clients' => 0];
+            }
+        } catch (Exception $e2) { /* ignore */ }
     }
 
-    // active_users = live connections from router(s).
-    // If no router is reachable at all, fall back to subscribed_users so the card isn't empty.
     $data['active_users']    = $anyRouterOnline ? $totalLiveUsers : $data['subscribed_users'];
     $data['router_online']   = $anyRouterOnline;
     $data['routers_online']  = $routersOnline;
-    $data['routers_total']   = count($routerRows);
+    $data['routers_total']   = count($routerStatus);
     $data['router_status']   = $routerStatus;
 
     // ── SMS stats (last 7 days) ───────────────────────────────────

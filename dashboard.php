@@ -989,7 +989,7 @@ function updateRouterStatus(routers) {
     });
 }
 
-// ── Fetch and refresh everything ──────────────────────────────────────────────
+// ── Fetch chart/metric stats (fast DB queries only) ───────────────────────────
 function refreshDashboard() {
     const refreshIcon = document.getElementById('dash-refresh-icon');
     if (refreshIcon) refreshIcon.classList.add('fa-spin');
@@ -1000,8 +1000,9 @@ function refreshDashboard() {
             if (!s.success) { console.warn('Dashboard stats:', s.message); return; }
             updateStatCards(s);
             buildCharts(s);
-            if(typeof window.__patchChartsDark==='function') window.__patchChartsDark();
-            updateRouterStatus(s.router_status || []);
+            if (typeof window.__patchChartsDark === 'function') window.__patchChartsDark();
+            // Also apply any router_status the stats API returned (may be stale/offline stubs)
+            if (s.router_status && s.router_status.length) updateRouterStatus(s.router_status);
         })
         .catch(err => console.error('Dashboard refresh error:', err))
         .finally(() => {
@@ -1009,13 +1010,40 @@ function refreshDashboard() {
         });
 }
 
-// Initial load
-document.addEventListener('DOMContentLoaded', refreshDashboard);
+// ── Fetch live router status independently (MikroTik may be slow) ─────────────
+function refreshRouterStatus() {
+    fetch('api/dashboard/router_status.php')
+        .then(r => r.json())
+        .then(s => {
+            if (!s.success) return;
+            updateRouterStatus(s.router_status || []);
+            const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            set('stat-routers-online', (s.routers_online ?? '—').toString());
+            const lbl = document.getElementById('stat-routers-label');
+            if (lbl && s.routers_total !== undefined) {
+                lbl.textContent = `of ${s.routers_total} configured`;
+                lbl.style.color = (s.routers_online > 0) ? '#34d399' : '#f87171';
+            }
+            if (s.router_online) {
+                set('stat-active', (s.active_users || 0).toLocaleString());
+                const al = document.getElementById('stat-active-label');
+                if (al) { al.textContent = 'live from router'; al.style.color = '#34d399'; }
+            }
+        })
+        .catch(err => console.warn('Router status fetch error:', err));
+}
+
+// Initial load — stats first, then router status (independent)
+document.addEventListener('DOMContentLoaded', () => {
+    refreshDashboard();
+    refreshRouterStatus();
+});
 // Auto-refresh every 60 seconds
 setInterval(refreshDashboard, 60000);
+setInterval(refreshRouterStatus, 60000);
 
 // Keep old updateDashboardStats function working (called by router sync icon)
-function updateDashboardStats() { refreshDashboard(); }
+function updateDashboardStats() { refreshDashboard(); refreshRouterStatus(); }
 
 // All charts are built by refreshDashboard() — no static initialization needed
 </script>

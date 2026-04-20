@@ -510,7 +510,23 @@ class MikrotikAPI {
         }
         return false;
     }
-    
+
+    /**
+     * Kick an active Hotspot session (forces disconnection)
+     */
+    public function kickHotspotSession(string $username): bool {
+        $response = $this->comm('/ip/hotspot/active/print');
+        foreach ($response as $item) {
+            if (!isset($item['!re'])) continue;
+            $name = $item['user'] ?? '';
+            if (strcasecmp($name, $username) === 0 && isset($item['.id'])) {
+                $r = $this->comm('/ip/hotspot/active/remove', ['=.id=' . $item['.id']]);
+                return !isset($r[0]['!trap']);
+            }
+        }
+        return false;
+    }
+
     /**
      * Get router resources (CPU, memory, uptime)
      */
