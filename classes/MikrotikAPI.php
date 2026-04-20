@@ -436,8 +436,8 @@ class MikrotikAPI {
                 $map[strtolower($name)] = [
                     'uptime'  => $s['uptime']          ?? '',
                     'address' => $s['address']         ?? '',
-                    'rx_byte' => $s['bytes-in']        ?? '0',
-                    'tx_byte' => $s['bytes-out']       ?? '0',
+                    'rx_byte' => $s['rx-byte']   ?? ($s['bytes-in']  ?? '0'),
+                    'tx_byte' => $s['tx-byte']   ?? ($s['bytes-out'] ?? '0'),
                     'caller'  => $s['caller-id']       ?? '',
                 ];
             }
