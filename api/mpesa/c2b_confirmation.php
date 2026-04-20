@@ -19,6 +19,7 @@
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../includes/db_master.php';
+require_once __DIR__ . '/../../includes/auto_provision.php';
 
 $logDir = __DIR__ . '/../../logs';
 if (!is_dir($logDir)) {
@@ -146,6 +147,11 @@ try {
                 VALUES (?, ?, 'payment_success', ?)
             ")->execute([$client_id, $tenant_id, 'C2B payment ' . $transactionId . ' (KSH ' . $amount . ') — active until ' . $expiryDate]);
         }
+    }
+
+    // Auto-provision to router (best-effort — failure never blocks the confirmation response)
+    if ($client['package_id']) {
+        autoProvisionClient($pdo, (int)$client_id, (int)$tenant_id);
     }
 
     file_put_contents($logDir . '/mpesa_c2b.log', date('Y-m-d H:i:s') . " OK: tenant=$tenant_id client=$client_id amount=$amount tx=$transactionId\n", FILE_APPEND | LOCK_EX);

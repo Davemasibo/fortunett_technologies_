@@ -97,6 +97,39 @@ foreach ($bills as $b) {
     }
 }
 
+// --- Platform Collections (payments via FortuNett shared paybill) ---
+$platformCollections = [];
+$platformSummary = ['unreleased_amount' => 0, 'released_amount' => 0, 'unreleased_count' => 0, 'released_count' => 0];
+try {
+    $pdo->exec("ALTER TABLE payments ADD COLUMN released_at DATETIME DEFAULT NULL");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE payments ADD COLUMN release_note VARCHAR(255) DEFAULT NULL");
+} catch (Exception $e) {}
+try {
+    $pcStmt = $pdo->prepare("
+        SELECT id, amount, transaction_id, payment_date, released_at, release_note, notes
+        FROM payments
+        WHERE tenant_id = ? AND collection_type = 'platform' AND status = 'completed'
+        ORDER BY payment_date DESC
+        LIMIT 100
+    ");
+    $pcStmt->execute([$tenant_id]);
+    $platformCollections = $pcStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $pcSumStmt = $pdo->prepare("
+        SELECT
+            COALESCE(SUM(CASE WHEN released_at IS NULL THEN amount END), 0) AS unreleased_amount,
+            COALESCE(SUM(CASE WHEN released_at IS NOT NULL THEN amount END), 0) AS released_amount,
+            COUNT(CASE WHEN released_at IS NULL THEN 1 END) AS unreleased_count,
+            COUNT(CASE WHEN released_at IS NOT NULL THEN 1 END) AS released_count
+        FROM payments
+        WHERE tenant_id = ? AND collection_type = 'platform' AND status = 'completed'
+    ");
+    $pcSumStmt->execute([$tenant_id]);
+    $platformSummary = $pcSumStmt->fetch(PDO::FETCH_ASSOC) ?: $platformSummary;
+} catch (Exception $e) {}
+
 // M-Pesa config — prefer tenant's own gateway, fall back to platform
 $mpesaConfig = ['shortcode' => '', 'env' => 'sandbox', 'using_own' => false];
 try {
@@ -400,6 +433,75 @@ include 'includes/sidebar.php';
             <i class="fas fa-eye"></i> View Invoice
         </button>
     </div>
+
+    <!-- Platform Collections -->
+    <?php if (!empty($platformCollections) || (float)$platformSummary['unreleased_amount'] > 0): ?>
+    <div class="history-card" style="margin-bottom:24px;">
+        <div class="history-card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+            <span><i class="fas fa-building-columns" style="color:#f59e0b;margin-right:8px;"></i>Platform Collections</span>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                <?php if ((float)$platformSummary['unreleased_amount'] > 0): ?>
+                <span style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.25);color:#fcd34d;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+                    <i class="fas fa-clock" style="margin-right:5px;"></i>
+                    Pending: KES <?php echo number_format($platformSummary['unreleased_amount'], 2); ?>
+                </span>
+                <?php endif; ?>
+                <?php if ((float)$platformSummary['released_amount'] > 0): ?>
+                <span style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);color:#6ee7b7;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+                    <i class="fas fa-check-circle" style="margin-right:5px;"></i>
+                    Released: KES <?php echo number_format($platformSummary['released_amount'], 2); ?>
+                </span>
+                <?php endif; ?>
+            </div>
+        </div>
+        <div style="padding:10px 20px;background:rgba(59,130,246,.06);border-bottom:1px solid rgba(59,130,246,.12);font-size:12px;color:#93c5fd;">
+            <i class="fas fa-info-circle" style="margin-right:6px;"></i>
+            These are customer payments collected via the FortuNett shared M-Pesa paybill on your behalf.
+            The net amount (after platform fees) is remitted to your registered M-Pesa account within 1 business day of release.
+        </div>
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+            <table class="billing-history-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Transaction ID</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-center">Status</th>
+                        <th>Note</th>
+                        <th>Released At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($platformCollections as $pc):
+                        $isReleased = !empty($pc['released_at']);
+                    ?>
+                    <tr>
+                        <td style="font-size:13px;color:#9a9a95;"><?php echo date('d M Y H:i', strtotime($pc['payment_date'])); ?></td>
+                        <td style="font-family:monospace;font-size:12px;color:#cbd5e1;"><?php echo htmlspecialchars($pc['transaction_id']); ?></td>
+                        <td class="text-end" style="font-weight:600;color:#e2e2e0;">KES <?php echo number_format($pc['amount'], 2); ?></td>
+                        <td class="text-center">
+                            <?php if ($isReleased): ?>
+                            <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.25);">
+                                <span style="width:5px;height:5px;border-radius:50%;background:#10b981;"></span>Released
+                            </span>
+                            <?php else: ?>
+                            <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.25);">
+                                <span style="width:5px;height:5px;border-radius:50%;background:#f59e0b;animation:pulse-dot 1.5s ease infinite;"></span>Processing
+                            </span>
+                            <?php endif; ?>
+                        </td>
+                        <td style="font-size:12px;color:#6B7280;"><?php echo htmlspecialchars($pc['release_note'] ?: ($pc['notes'] ?: '—')); ?></td>
+                        <td style="font-size:12px;color:#9a9a95;"><?php echo $isReleased ? date('d M Y H:i', strtotime($pc['released_at'])) : '—'; ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <?php if (empty($platformCollections)): ?>
+                    <tr><td colspan="6" style="text-align:center;color:#6B7280;padding:20px;">No platform-collected payments yet.</td></tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <!-- Invoice History -->
     <div class="history-card">

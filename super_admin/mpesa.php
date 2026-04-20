@@ -429,9 +429,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
         <div class="card">
             <div class="card-head">
                 <h3><i class="fas fa-exchange-alt" style="color:#f59e0b;"></i> Pending Settlements by Tenant</h3>
-                <button class="btn-test" onclick="loadSettlements()" style="background:#f59e0b;">
-                    <i class="fas fa-sync" id="settleRefreshIcon" style="margin-right:6px;"></i>Refresh
-                </button>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:4px 10px;font-size:12px;">
+                        <label style="color:#94a3b8;white-space:nowrap;">Auto-release &gt;</label>
+                        <input type="number" id="autoReleaseHours" value="48" min="1" max="720"
+                               style="width:52px;background:transparent;border:none;color:#e2e8f0;font-size:12px;text-align:center;outline:none;">
+                        <span style="color:#94a3b8;">hrs</span>
+                        <button onclick="autoRelease()" style="padding:2px 8px;border:none;background:#6366f1;color:#fff;border-radius:4px;font-size:11px;cursor:pointer;font-weight:600;">Run</button>
+                    </div>
+                    <button class="btn-test" onclick="releaseAll()" style="background:#ef4444;">
+                        <i class="fas fa-bolt" style="margin-right:6px;"></i>Release All
+                    </button>
+                    <button class="btn-test" onclick="loadSettlements()" style="background:#f59e0b;">
+                        <i class="fas fa-sync" id="settleRefreshIcon" style="margin-right:6px;"></i>Refresh
+                    </button>
+                </div>
             </div>
             <div class="card-body" style="padding:0;">
                 <div id="settlementsContent" style="padding:20px;text-align:center;color:#94a3b8;font-size:14px;">
@@ -575,57 +587,67 @@ function loadSettlements() {
     const icon = document.getElementById('settleRefreshIcon');
     icon.classList.add('fa-spin');
 
-    fetch('../api/super_admin/mpesa_settlements.php')
+    const fd = new FormData();
+    fd.append('action', 'summary');
+
+    fetch('../api/super_admin/release_payments.php', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(d => {
             icon.classList.remove('fa-spin');
             const el = document.getElementById('settlementsContent');
             if (!d.success || !d.settlements || d.settlements.length === 0) {
-                el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:14px;"><i class="fas fa-info-circle" style="margin-right:8px;"></i>No M-Pesa transactions recorded yet across any tenant.</div>';
+                el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:14px;"><i class="fas fa-info-circle" style="margin-right:8px;"></i>No platform-collected payments recorded yet.</div>';
                 return;
             }
-            let totalCompleted = 0, totalPlatform = 0;
+            let totalUnreleased = 0, totalReleased = 0;
             d.settlements.forEach(s => {
-                totalCompleted += parseFloat(s.completed_amount);
-                totalPlatform  += parseFloat(s.platform_amount);
+                totalUnreleased += parseFloat(s.unreleased_amount);
+                totalReleased   += parseFloat(s.released_amount);
             });
             const fmt = v => parseFloat(v).toLocaleString('en-KE', {minimumFractionDigits:2});
             let rows = d.settlements.map(s => {
-                const hasPlatform = parseFloat(s.platform_amount) > 0;
-                const lastDate = s.last_payment_date || s.last_created_at;
+                const unrelAmt = parseFloat(s.unreleased_amount);
+                const relAmt   = parseFloat(s.released_amount);
                 return `<tr>
                     <td>
                         <strong style="color:#e2e8f0;">${escH(s.company_name || s.subdomain)}</strong><br>
                         <span style="font-size:11px;color:#6B7280;">${escH(s.subdomain)}.fortunetttech.site</span>
                     </td>
-                    <td style="text-align:center;">
-                        <span style="color:#6ee7b7;font-weight:600;">${s.completed_count}</span>
-                        ${parseInt(s.pending_count) > 0 ? `<br><span style="font-size:11px;color:#fcd34d;">${s.pending_count} pending</span>` : ''}
-                        ${parseInt(s.failed_count)  > 0 ? `<br><span style="font-size:11px;color:#fca5a5;">${s.failed_count} failed/cancelled</span>` : ''}
+                    <td style="text-align:right;">
+                        ${unrelAmt > 0
+                            ? `<span style="color:#fcd34d;font-weight:600;">KSh ${fmt(unrelAmt)}</span><br><span style="font-size:11px;color:#6B7280;">${s.unreleased_count} payment(s)</span>`
+                            : '<span style="color:#6B7280;font-size:12px;">—</span>'}
                     </td>
-                    <td class="amount-cell" style="color:#6ee7b7;">KSh ${fmt(s.completed_amount)}</td>
-                    <td style="text-align:center;">
-                        ${hasPlatform
-                            ? `<span style="color:#fcd34d;font-weight:600;">KSh ${fmt(s.platform_amount)}</span><br><span style="font-size:11px;color:#6B7280;">via platform</span>`
-                            : '<span style="color:#6B7280;font-size:12px;">Own credentials</span>'}
+                    <td style="text-align:right;">
+                        ${relAmt > 0
+                            ? `<span style="color:#6ee7b7;font-weight:600;">KSh ${fmt(relAmt)}</span><br><span style="font-size:11px;color:#6B7280;">${s.released_count} payment(s)</span>`
+                            : '<span style="color:#6B7280;font-size:12px;">—</span>'}
                     </td>
-                    <td style="font-size:12px;color:#6B7280;">${lastDate ? new Date(lastDate).toLocaleDateString('en-KE') : '—'}</td>
-                    <td>${hasPlatform ? `<button onclick="alert('Settlement recording coming soon.')" style="padding:4px 10px;border:none;background:#f59e0b;color:#000;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;">Settle</button>` : '<span style="font-size:11px;color:#6B7280;">—</span>'}</td>
+                    <td style="font-size:12px;color:#6B7280;">
+                        ${s.last_released_at ? new Date(s.last_released_at).toLocaleDateString('en-KE') : '—'}
+                    </td>
+                    <td>
+                        ${unrelAmt > 0
+                            ? `<button onclick="releaseTenant(${s.tenant_id}, ${unrelAmt})"
+                                style="padding:4px 10px;border:none;background:#f59e0b;color:#000;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;">
+                                <i class="fas fa-paper-plane" style="margin-right:4px;"></i>Release KSh ${fmt(unrelAmt)}
+                               </button>`
+                            : '<span style="font-size:11px;color:#6ee7b7;"><i class="fas fa-check-circle" style="margin-right:4px;"></i>All settled</span>'}
+                    </td>
                 </tr>`;
             }).join('');
             el.innerHTML = `
                 <div style="display:flex;gap:16px;padding:12px 16px;background:rgba(245,158,11,.08);border-bottom:1px solid rgba(245,158,11,.2);font-size:13px;flex-wrap:wrap;">
-                    <span style="color:#fcd34d;font-weight:600;"><i class="fas fa-coins" style="margin-right:5px;"></i>Total collected: <strong>KSh ${fmt(totalCompleted)}</strong></span>
-                    <span style="color:#f87171;font-weight:600;"><i class="fas fa-exchange-alt" style="margin-right:5px;"></i>Via platform (owed to tenants): <strong>KSh ${fmt(totalPlatform)}</strong></span>
+                    <span style="color:#fcd34d;font-weight:600;"><i class="fas fa-clock" style="margin-right:5px;"></i>Pending release: <strong>KSh ${fmt(totalUnreleased)}</strong></span>
+                    <span style="color:#6ee7b7;font-weight:600;"><i class="fas fa-check-circle" style="margin-right:5px;"></i>Already released: <strong>KSh ${fmt(totalReleased)}</strong></span>
                 </div>
                 <div style="overflow-x:auto;">
                 <table class="settle-table">
                     <thead><tr>
                         <th>Tenant</th>
-                        <th style="text-align:center;">Transactions</th>
-                        <th>Total Collected</th>
-                        <th style="text-align:center;">Platform Owed</th>
-                        <th>Last Payment</th>
+                        <th style="text-align:right;">Pending Release</th>
+                        <th style="text-align:right;">Released</th>
+                        <th>Last Released</th>
                         <th>Action</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
@@ -636,6 +658,57 @@ function loadSettlements() {
             document.getElementById('settleRefreshIcon').classList.remove('fa-spin');
             document.getElementById('settlementsContent').innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-size:14px;">Failed to load settlement data.</div>';
         });
+}
+
+function releaseTenant(tenantId, amount) {
+    const fmt = v => parseFloat(v).toLocaleString('en-KE', {minimumFractionDigits:2});
+    if (!confirm(`Release KSh ${fmt(amount)} to this tenant?\n\nThis marks the payments as settled and sends the tenant an email notification.`)) return;
+
+    const fd = new FormData();
+    fd.append('action', 'release_tenant');
+    fd.append('tenant_id', tenantId);
+    fd.append('note', 'Released by super admin via settlements panel');
+
+    fetch('../api/super_admin/release_payments.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) { showToast(d.message, 'success'); loadSettlements(); }
+            else showToast(d.message || 'Release failed', 'error');
+        })
+        .catch(() => showToast('Network error. Please try again.', 'error'));
+}
+
+function releaseAll() {
+    if (!confirm('Release ALL pending platform payments across every tenant?\n\nThis sends email notifications to each tenant admin.')) return;
+
+    const fd = new FormData();
+    fd.append('action', 'release_all');
+    fd.append('note', 'Bulk release by super admin');
+
+    fetch('../api/super_admin/release_payments.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) { showToast(d.message, 'success'); loadSettlements(); }
+            else showToast(d.message || 'Release failed', 'error');
+        })
+        .catch(() => showToast('Network error. Please try again.', 'error'));
+}
+
+function autoRelease() {
+    const hours = parseInt(document.getElementById('autoReleaseHours').value) || 48;
+    if (!confirm(`Auto-release all platform payments older than ${hours} hours?\n\nAffected tenants will receive email notifications.`)) return;
+
+    const fd = new FormData();
+    fd.append('action', 'auto_release');
+    fd.append('threshold_hours', hours);
+
+    fetch('../api/super_admin/release_payments.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) { showToast(d.message, 'success'); loadSettlements(); }
+            else showToast(d.message || 'Auto-release failed', 'error');
+        })
+        .catch(() => showToast('Network error. Please try again.', 'error'));
 }
 
 function sendTestStk() {
