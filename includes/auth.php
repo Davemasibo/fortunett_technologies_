@@ -106,6 +106,33 @@ function getSubscriptionDaysLeft($expiry_date) {
     return $interval->days;
 }
 
+/**
+ * Redirect to billing.php if the tenant's platform subscription is suspended.
+ * Call after tenant_id is resolved in header.php.
+ * Exempt pages: billing.php, login.php, logout.php, and all /api/ endpoints.
+ */
+function requireTenantActive(PDO $pdo, $tenant_id) {
+    if (!$tenant_id) return;
+
+    $page = basename($_SERVER['PHP_SELF'] ?? '');
+    $uri  = $_SERVER['REQUEST_URI'] ?? '';
+
+    // Always allow billing, login/logout, and API calls
+    $exempt = ['billing.php', 'login.php', 'logout.php'];
+    if (in_array($page, $exempt, true) || strpos($uri, '/api/') !== false) {
+        return;
+    }
+
+    $stmt = $pdo->prepare("SELECT status FROM tenants WHERE id = ? LIMIT 1");
+    $stmt->execute([$tenant_id]);
+    $status = $stmt->fetchColumn();
+
+    if ($status === 'suspended') {
+        header('Location: billing.php?suspended=1');
+        exit;
+    }
+}
+
 function ensureRole($requiredRole) {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();

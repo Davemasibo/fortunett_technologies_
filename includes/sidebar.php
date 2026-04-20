@@ -48,6 +48,11 @@ if (isLoggedIn()) {
             </a>
         </li>
         <li>
+            <a href="online_customers.php" class="<?php echo isActivePage('online_customers.php'); ?>">
+                <i class="fas fa-circle" style="color:#34d399;font-size:8px;margin-right:2px;"></i> <span>Online Now</span>
+            </a>
+        </li>
+        <li>
             <a href="reports.php" class="<?php echo isActivePage('reports.php'); ?>">
                 <i class="fas fa-chart-line"></i> <span>Reports</span>
             </a>

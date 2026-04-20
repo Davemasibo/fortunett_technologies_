@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/../classes/MikrotikAPI.php';
 $customer = requireCustomerLogin();
 
 $stmt = $pdo->prepare("
@@ -9,6 +10,49 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$customer['id']]);
 $sessions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Fetch live MikroTik connection for this customer
+$mkSession   = null;
+$mkError     = null;
+$mkUsername  = $customer['mikrotik_username'] ?? $customer['username'] ?? null;
+$connType    = strtolower($customer['connection_type'] ?? 'pppoe');
+$cTenantId   = $customer['tenant_id'] ?? null;
+
+if ($mkUsername && $cTenantId) {
+    try {
+        $rSt = $pdo->prepare("SELECT id, name, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ? LIMIT 5");
+        $rSt->execute([$cTenantId]);
+        $routers = $rSt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($routers as $router) {
+            $port      = (int)($router['api_port'] ?: 8728);
+            $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
+            try {
+                $mk = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
+                $mk->connect();
+                $key = strtolower($mkUsername);
+                if ($connType === 'hotspot') {
+                    $map = $mk->getActiveHotspotSessionsMap();
+                } else {
+                    $map = $mk->getActiveSessionsMap();
+                }
+                $mk->disconnect();
+                if (isset($map[$key])) {
+                    $mkSession = array_merge($map[$key], [
+                        'router_name' => $router['name'],
+                        'router_ip'   => $router['ip_address'],
+                        'type'        => strtoupper($connType),
+                    ]);
+                    break;
+                }
+            } catch (Exception $e) {
+                // try next router
+            }
+        }
+    } catch (Exception $e) {
+        $mkError = 'Could not reach routers to check connection status.';
+    }
+}
 
 include 'includes/header.php';
 ?>
@@ -146,11 +190,83 @@ include 'includes/header.php';
 
 <div class="dev-page">
     <h1 class="dev-page-title"><i class="fas fa-laptop" style="color:rgba(255,255,255,.4);margin-right:10px;"></i>Connected Devices</h1>
-    <p class="dev-page-sub">Sessions and devices linked to your account</p>
+    <p class="dev-page-sub">Your live network connection and portal sessions</p>
+
+    <!-- Live MikroTik Connection Card -->
+    <div class="dev-card" style="margin-bottom:24px;">
+        <div class="dev-card-head">
+            <div class="dev-card-head-left">
+                <i class="fas fa-network-wired"></i>
+                Network Connection
+            </div>
+            <?php if ($mkSession): ?>
+            <span class="sb active"><span class="sb-dot"></span> Connected</span>
+            <?php else: ?>
+            <span class="sb expired"><span class="sb-dot"></span> Not Connected</span>
+            <?php endif; ?>
+        </div>
+
+        <?php if ($mkError): ?>
+        <div style="padding:20px 22px;font-size:13px;color:rgba(255,255,255,.4);">
+            <i class="fas fa-exclamation-circle" style="color:#f87171;margin-right:6px;"></i><?php echo htmlspecialchars($mkError); ?>
+        </div>
+        <?php elseif ($mkSession): ?>
+        <div style="padding:20px 22px;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;">
+                <div>
+                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Type</div>
+                    <div style="font-size:13px;font-weight:600;color:#e2e2e0;"><?php echo htmlspecialchars($mkSession['type']); ?></div>
+                </div>
+                <div>
+                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">IP Address</div>
+                    <div style="font-size:13px;font-family:monospace;color:#93c5fd;"><?php echo htmlspecialchars($mkSession['address'] ?? '—'); ?></div>
+                </div>
+                <?php if (!empty($mkSession['caller'])): ?>
+                <div>
+                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">MAC / Caller-ID</div>
+                    <div class="mac"><?php echo htmlspecialchars($mkSession['caller']); ?></div>
+                </div>
+                <?php endif; ?>
+                <div>
+                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Uptime</div>
+                    <div style="font-size:13px;color:#e2e2e0;"><?php echo htmlspecialchars($mkSession['uptime'] ?? '—'); ?></div>
+                </div>
+                <?php
+                $rxBytes = (int)($mkSession['rx_byte'] ?? 0);
+                $txBytes = (int)($mkSession['tx_byte'] ?? 0);
+                function fmtCustBytes(int $b): string {
+                    if ($b < 1024)       return $b . ' B';
+                    if ($b < 1048576)    return round($b / 1024, 1) . ' KB';
+                    if ($b < 1073741824) return round($b / 1048576, 1) . ' MB';
+                    return round($b / 1073741824, 2) . ' GB';
+                }
+                ?>
+                <div>
+                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Downloaded</div>
+                    <div style="font-size:13px;color:#6ee7b7;"><?php echo fmtCustBytes($rxBytes); ?></div>
+                </div>
+                <div>
+                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Uploaded</div>
+                    <div style="font-size:13px;color:#a5b4fc;"><?php echo fmtCustBytes($txBytes); ?></div>
+                </div>
+                <div>
+                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Router</div>
+                    <div style="font-size:13px;color:rgba(255,255,255,.55);"><?php echo htmlspecialchars($mkSession['router_name']); ?></div>
+                </div>
+            </div>
+        </div>
+        <?php else: ?>
+        <div style="text-align:center;padding:40px 24px;">
+            <i class="fas fa-unlink" style="font-size:32px;color:rgba(255,255,255,.15);display:block;margin-bottom:12px;"></i>
+            <div style="font-size:14px;font-weight:600;color:rgba(255,255,255,.35);margin-bottom:4px;">No Active Connection</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.2);">No live session found for your account on any router.</div>
+        </div>
+        <?php endif; ?>
+    </div>
 
     <div class="dev-info-strip">
         <i class="fas fa-info-circle"></i>
-        <span>Each row represents a portal session. Device limits are enforced by your current package.</span>
+        <span>Each row below represents a portal login session. Device limits are enforced by your current package.</span>
     </div>
 
     <div class="dev-card">

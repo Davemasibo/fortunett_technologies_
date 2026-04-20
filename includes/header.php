@@ -12,7 +12,9 @@ if (isLoggedIn()) {
     $stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
     $stmt->execute([$user_id]);
     $tenant_id = $stmt->fetchColumn();
-    
+
+    requireTenantActive($pdo, $tenant_id);
+
     $stmt = $pdo->prepare("SELECT setting_key, setting_value FROM tenant_settings WHERE tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $tSettings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);

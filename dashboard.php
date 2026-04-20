@@ -266,14 +266,42 @@ include 'includes/sidebar.php';
         justify-content: space-between;
         padding: 14px 0;
         border-bottom: 1px solid rgba(255,255,255,.06);
+        gap: 12px;
     }
     .router-item:last-child { border-bottom: none; }
-    .router-info { display:flex;align-items:center;gap:12px; }
-    .router-status-dot { width:10px;height:10px;border-radius:50%;background:#10B981; }
+    .router-info { display:flex;align-items:center;gap:12px;flex:1;min-width:0; }
+    .router-icon {
+        width:38px;height:38px;border-radius:10px;
+        display:flex;align-items:center;justify-content:center;
+        font-size:15px;flex-shrink:0;
+        transition:background .3s,color .3s;
+    }
+    .router-icon.ri-online  { background:rgba(16,185,129,.15);color:#34d399; }
+    .router-icon.ri-offline { background:rgba(239,68,68,.12);color:#f87171; }
+    .router-icon.ri-pending { background:rgba(156,163,175,.1);color:#9ca3af; }
     .router-name { font-weight:500;color:#e2e2e0;font-size:14px; }
-    .router-ip   { font-size:12px;color:rgba(255,255,255,.4); }
-    .router-clients { font-size:13px;color:rgba(255,255,255,.45); }
-    .router-clients strong { color:#e2e2e0;font-weight:600; }
+    .router-ip   { font-size:12px;color:rgba(255,255,255,.4);margin-top:2px; }
+    .router-right { display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0; }
+    .router-counts { display:flex;gap:12px; }
+    .r-count { display:flex;align-items:center;gap:4px;font-size:12px;color:rgba(255,255,255,.4); }
+    .r-count i { font-size:10px; }
+    .r-count strong { color:#d4d4d2;font-weight:600;font-size:13px; }
+    .r-badge {
+        display:inline-flex;align-items:center;gap:5px;
+        padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;
+        letter-spacing:.02em;
+    }
+    .r-badge.rb-online  { background:rgba(16,185,129,.12);color:#6ee7b7;border:1px solid rgba(16,185,129,.25); }
+    .r-badge.rb-offline { background:rgba(239,68,68,.1);color:#fca5a5;border:1px solid rgba(239,68,68,.2); }
+    .r-badge.rb-pending { background:rgba(156,163,175,.1);color:#9ca3af;border:1px solid rgba(156,163,175,.15); }
+    .r-badge-dot { width:5px;height:5px;border-radius:50%;background:currentColor; }
+    .router-footer {
+        margin-top:14px;padding-top:12px;
+        border-top:1px solid rgba(255,255,255,.05);
+        text-align:right;
+    }
+    .router-footer a { font-size:12px;color:rgba(255,255,255,.35);text-decoration:none;transition:color .2s; }
+    .router-footer a:hover { color:var(--primary-light,#93c5fd); }
 
     /* ── System Alerts ──────────────────────────────────────────── */
     .alert-item {
@@ -539,27 +567,41 @@ include 'includes/sidebar.php';
                     <h3 class="card-title">Router Status</h3>
                     <i class="fas fa-sync-alt" id="dash-refresh-icon" style="color: #9CA3AF; cursor: pointer;" title="Refresh dashboard" onclick="refreshDashboard()"></i>
                 </div>
-                <div class="router-list">
+                <div class="router-list" id="router-list">
                     <?php
                     // Fetch configured routers
                     try {
                         $r_stmt = $db->prepare("SELECT * FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
                         $r_stmt->execute([$tenant_id]);
                         $routers = $r_stmt->fetchAll(PDO::FETCH_ASSOC);
-                        
+
                         if (count($routers) > 0) {
                             foreach ($routers as $router) {
                                 ?>
                                 <div class="router-item">
                                     <div class="router-info">
-                                        <div class="router-status-dot" id="router-dot-<?php echo $router['id']; ?>"></div>
+                                        <div class="router-icon ri-pending" id="router-icon-<?php echo $router['id']; ?>">
+                                            <i class="fas fa-server"></i>
+                                        </div>
                                         <div>
                                             <div class="router-name"><?php echo htmlspecialchars($router['name']); ?></div>
                                             <div class="router-ip"><?php echo htmlspecialchars($router['ip_address']); ?></div>
                                         </div>
                                     </div>
-                                    <div class="router-clients">
-                                        <strong id="router-clients-<?php echo $router['id']; ?>">-</strong> Active
+                                    <div class="router-right">
+                                        <div class="router-counts">
+                                            <div class="r-count" title="PPPoE sessions">
+                                                <i class="fas fa-plug"></i>
+                                                <strong id="router-pppoe-<?php echo $router['id']; ?>">—</strong>
+                                            </div>
+                                            <div class="r-count" title="Hotspot sessions">
+                                                <i class="fas fa-wifi"></i>
+                                                <strong id="router-hs-<?php echo $router['id']; ?>">—</strong>
+                                            </div>
+                                        </div>
+                                        <span class="r-badge rb-pending" id="router-badge-<?php echo $router['id']; ?>">
+                                            <span class="r-badge-dot"></span> Checking…
+                                        </span>
                                     </div>
                                 </div>
                                 <?php
@@ -571,6 +613,9 @@ include 'includes/sidebar.php';
                         echo '<div class="p-3 text-center text-danger">Error loading routers.</div>';
                     }
                     ?>
+                </div>
+                <div class="router-footer">
+                    <a href="online_customers.php">View online customers <i class="fas fa-arrow-right" style="font-size:10px;"></i></a>
                 </div>
             </div>
 
@@ -924,19 +969,23 @@ function updateStatCards(s) {
     }
 }
 
-// ── Update router status dots from live MikroTik data ─────────────────────────
+// ── Update router status from live MikroTik data ──────────────────────────────
 function updateRouterStatus(routers) {
     if (!routers || !routers.length) return;
     routers.forEach(r => {
-        const dot = document.getElementById('router-dot-' + r.id);
-        const clients = document.getElementById('router-clients-' + r.id);
-        if (dot) {
-            dot.style.background = r.online ? '#10B981' : '#EF4444';
-            dot.title = r.online ? 'Online' : 'Offline';
+        const icon  = document.getElementById('router-icon-' + r.id);
+        const badge = document.getElementById('router-badge-' + r.id);
+        const pppoe = document.getElementById('router-pppoe-' + r.id);
+        const hs    = document.getElementById('router-hs-' + r.id);
+        if (icon) {
+            icon.className = 'router-icon ' + (r.online ? 'ri-online' : 'ri-offline');
         }
-        if (clients) {
-            clients.textContent = r.online ? r.active_clients : '—';
+        if (badge) {
+            badge.className = 'r-badge ' + (r.online ? 'rb-online' : 'rb-offline');
+            badge.innerHTML = '<span class="r-badge-dot"></span> ' + (r.online ? 'Online' : 'Offline');
         }
+        if (pppoe) pppoe.textContent = r.online ? (r.pppoe_clients ?? 0) : '—';
+        if (hs)    hs.textContent    = r.online ? (r.hotspot_clients ?? 0) : '—';
     });
 }
 

@@ -357,6 +357,17 @@ include 'includes/sidebar.php';
 
 <div class="main-content-wrapper billing-wrapper">
 <div class="billing-container">
+
+    <?php if (!empty($_GET['suspended'])): ?>
+    <div style="margin-bottom:20px;padding:16px 20px;border-radius:10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);display:flex;align-items:flex-start;gap:12px;">
+        <i class="fas fa-ban" style="color:#EF4444;font-size:18px;margin-top:1px;flex-shrink:0;"></i>
+        <div>
+            <div style="font-weight:700;color:#DC2626;margin-bottom:3px;">Account Suspended</div>
+            <div style="font-size:13px;color:#6B7280;">Your platform subscription has been suspended due to an overdue invoice. Please settle your outstanding balance below to restore full access.</div>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- Header -->
     <div class="billing-header">
         <h2>Billing &amp; Invoices</h2>
