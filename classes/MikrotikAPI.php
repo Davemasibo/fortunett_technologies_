@@ -413,9 +413,7 @@ class MikrotikAPI {
      * Get active PPPoE sessions (raw array)
      */
     public function getActiveSessions(): array {
-        // =stats requests byte/packet counters (rx-byte, tx-byte) which RouterOS
-        // omits from the default /ppp/active/print output.
-        $response = $this->comm('/ppp/active/print', ['=stats']);
+        $response = $this->comm('/ppp/active/print');
         $sessions = [];
         foreach ($response as $item) {
             if (isset($item['!re'])) {
