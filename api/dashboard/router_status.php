@@ -26,6 +26,8 @@ $routerRows = $rSt->fetchAll(PDO::FETCH_ASSOC);
 
 $routerStatus    = [];
 $totalLiveUsers  = 0;
+$totalPPPoE      = 0;
+$totalHotspot    = 0;
 $routersOnline   = 0;
 $anyRouterOnline = false;
 
@@ -49,14 +51,18 @@ foreach ($routerRows as $router) {
             $mk = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
             $mk->connect();
 
-            $pppoeCount   = count($mk->getActiveSessions());
-            $hotspotCount = count($mk->getActiveHotspotSessionsMap());
+            $pppoeCount   = 0;
+            $hotspotCount = 0;
+            try { $pppoeCount   = count($mk->getActiveSessions()); }           catch (Exception $e) {}
+            try { $hotspotCount = count($mk->getActiveHotspotSessionsMap()); } catch (Exception $e) {}
 
             $rs['online']          = true;
             $rs['pppoe_clients']   = $pppoeCount;
             $rs['hotspot_clients'] = $hotspotCount;
             $rs['active_clients']  = $pppoeCount + $hotspotCount;
 
+            $totalPPPoE     += $pppoeCount;
+            $totalHotspot   += $hotspotCount;
             $totalLiveUsers += $rs['active_clients'];
             $anyRouterOnline = true;
             $routersOnline++;
@@ -77,5 +83,7 @@ echo json_encode([
     'routers_online' => $routersOnline,
     'routers_total'  => count($routerRows),
     'active_users'   => $totalLiveUsers,
+    'pppoe_online'   => $totalPPPoE,
+    'hotspot_online' => $totalHotspot,
     'router_online'  => $anyRouterOnline,
 ]);

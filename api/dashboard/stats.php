@@ -111,6 +111,9 @@ try {
         $rSt->execute([$tenant_id]);
         $routerRows = $rSt->fetchAll(PDO::FETCH_ASSOC);
 
+        $totalPPPoE   = 0;
+        $totalHotspot = 0;
+
         foreach ($routerRows as $router) {
             $port = (int)($router['api_port'] ?: 8728);
             $rs   = [
@@ -131,14 +134,18 @@ try {
                     $mk = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
                     $mk->connect();
 
-                    $pppoeCount   = count($mk->getActiveSessions());
-                    $hotspotCount = count($mk->getActiveHotspotSessionsMap());
+                    $pppoeCount   = 0;
+                    $hotspotCount = 0;
+                    try { $pppoeCount   = count($mk->getActiveSessions()); }           catch (Exception $e) {}
+                    try { $hotspotCount = count($mk->getActiveHotspotSessionsMap()); } catch (Exception $e) {}
 
                     $rs['online']          = true;
                     $rs['pppoe_clients']   = $pppoeCount;
                     $rs['hotspot_clients'] = $hotspotCount;
                     $rs['active_clients']  = $pppoeCount + $hotspotCount;
 
+                    $totalPPPoE   += $pppoeCount;
+                    $totalHotspot += $hotspotCount;
                     $totalLiveUsers += $rs['active_clients'];
                     $anyRouterOnline = true;
                     $routersOnline++;
@@ -163,10 +170,12 @@ try {
         } catch (Exception $e2) { /* ignore */ }
     }
 
-    // active_users = all DB-active subscriptions (PPPoE + hotspot) — always reflects the full customer base.
-    // online_users = live authenticated sessions from the router (PPPoE + authenticated hotspot).
-    $data['active_users']    = $data['subscribed_users'];
+    // active_users = live MikroTik sessions (PPPoE + hotspot combined).
+    // subscribed_users = DB active subscriptions (billing view, not connection state).
+    $data['active_users']    = $totalLiveUsers;
     $data['online_users']    = $totalLiveUsers;
+    $data['pppoe_online']    = $totalPPPoE   ?? 0;
+    $data['hotspot_online']  = $totalHotspot ?? 0;
     $data['router_online']   = $anyRouterOnline;
     $data['routers_online']  = $routersOnline;
     $data['routers_total']   = count($routerStatus);

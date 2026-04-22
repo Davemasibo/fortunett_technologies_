@@ -512,9 +512,9 @@ include 'includes/sidebar.php';
                             <i class="fas fa-wifi"></i>
                         </div>
                     </div>
-                    <div class="metric-value" id="stat-active"><?php echo number_format($active_users); ?></div>
+                    <div class="metric-value" id="stat-active">—</div>
                     <div class="metric-change">
-                        <span class="metric-period" id="stat-active-label">subscriptions (loading live…)</span>
+                        <span class="metric-period" id="stat-active-label">loading live sessions…</span>
                     </div>
                 </div>
 
@@ -946,16 +946,21 @@ function updateStatCards(s) {
     set('stat-daily',   'KES ' + (s.daily_revenue   || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
     set('stat-monthly', 'KES ' + (s.monthly_revenue || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
     set('stat-yearly',  'KES ' + (s.yearly_revenue  || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
-    // active_users is always the DB subscription count (PPPoE + hotspot combined).
-    set('stat-active',  (s.active_users || 0).toLocaleString());
+    // Live Connections = actual MikroTik online sessions (PPPoE + Hotspot)
+    const liveTotal = s.active_users || 0;
+    set('stat-active', liveTotal.toLocaleString());
     const lbl = document.getElementById('stat-active-label');
     if (lbl) {
-        const onlineNow = s.online_users || 0;
-        if (s.router_online && onlineNow > 0) {
-            lbl.textContent = onlineNow.toLocaleString() + ' online now';
+        if (s.router_online && liveTotal > 0) {
+            const pppoe   = s.pppoe_online   || 0;
+            const hotspot = s.hotspot_online || 0;
+            lbl.textContent = `${pppoe} PPPoE · ${hotspot} Hotspot`;
             lbl.style.color = '#34d399';
+        } else if (s.router_online === false) {
+            lbl.textContent = 'router offline';
+            lbl.style.color = '#f87171';
         } else {
-            lbl.textContent = 'active subscriptions';
+            lbl.textContent = (s.subscribed_users || 0).toLocaleString() + ' active subscriptions';
             lbl.style.color = '';
         }
     }
@@ -1019,21 +1024,26 @@ function refreshRouterStatus() {
             if (!s.success) return;
             updateRouterStatus(s.router_status || []);
             const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            // Update live connections count with authoritative router data
+            const liveTotal = s.active_users || 0;
+            set('stat-active', liveTotal.toLocaleString());
+            const al = document.getElementById('stat-active-label');
+            if (al) {
+                if (s.router_online && liveTotal > 0) {
+                    const pppoe   = s.pppoe_online   || 0;
+                    const hotspot = s.hotspot_online || 0;
+                    al.textContent = `${pppoe} PPPoE · ${hotspot} Hotspot`;
+                    al.style.color = '#34d399';
+                } else if (!s.router_online) {
+                    al.textContent = 'router offline';
+                    al.style.color = '#f87171';
+                }
+            }
             set('stat-routers-online', (s.routers_online ?? '—').toString());
             const lbl = document.getElementById('stat-routers-label');
             if (lbl && s.routers_total !== undefined) {
                 lbl.textContent = `of ${s.routers_total} configured`;
                 lbl.style.color = (s.routers_online > 0) ? '#34d399' : '#f87171';
-            }
-            if (s.router_online) {
-                const al = document.getElementById('stat-active-label');
-                if (al) {
-                    const onlineNow = s.active_users || 0;
-                    if (onlineNow > 0) {
-                        al.textContent = onlineNow.toLocaleString() + ' online now';
-                        al.style.color = '#34d399';
-                    }
-                }
             }
         })
         .catch(err => console.warn('Router status fetch error:', err));
