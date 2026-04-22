@@ -41,23 +41,16 @@ try {
     $mk = new MikrotikAPI($connectIp, $router['ruser'], $router['rpass'], $port);
     $mk->connect();
 
-    if ($type === 'hotspot') {
-        // Disable the hotspot user account so they cannot re-auth, then kick the live session.
-        $mk->disableHotspotUser($username);
-        $kicked = $mk->kickHotspotSession($username);
-    } else {
-        // Disable the PPP secret so the client cannot auto-reconnect, then remove the active session.
-        $mk->disablePPPoEUser($username);
-        $kicked = $mk->kickPPPoESession($username);
-    }
+    $kicked = ($type === 'hotspot')
+        ? $mk->kickHotspotSession($username)
+        : $mk->kickPPPoESession($username);
 
     $mk->disconnect();
 
     if ($kicked) {
-        echo json_encode(['success' => true, 'message' => htmlspecialchars($username) . ' disconnected and account disabled on router']);
+        echo json_encode(['success' => true, 'message' => htmlspecialchars($username) . ' disconnected successfully']);
     } else {
-        // Disabling worked but session may have already dropped — still report success.
-        echo json_encode(['success' => true, 'message' => htmlspecialchars($username) . ' disabled on router (session may have already dropped)']);
+        echo json_encode(['success' => false, 'message' => 'Session not found — may have already disconnected']);
     }
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);

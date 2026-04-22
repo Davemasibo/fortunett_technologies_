@@ -74,16 +74,17 @@ try {
                 );
                 if ($api->connect()) {
                     $uname = $cdata['mikrotik_username'];
+                    $isHotspot = strtolower($cdata['connection_type']) === 'hotspot';
                     if ($action === 'pause') {
-                        // Disable the user on the router
-                        if (strtolower($cdata['connection_type']) === 'hotspot') {
-                            $api->disableHotspotUser($uname);
+                        // Disable prevents reconnect; kick drops the live session immediately
+                        if ($isHotspot) {
+                            $api->disableHotspotUser($uname); // also kicks internally
                         } else {
                             $api->disablePPPoEUser($uname);
+                            $api->kickPPPoESession($uname);
                         }
                     } else {
-                        // Re-enable the user on the router
-                        if (strtolower($cdata['connection_type']) === 'hotspot') {
+                        if ($isHotspot) {
                             $api->enableHotspotUser($uname);
                         } else {
                             $api->enablePPPoEUser($uname);
