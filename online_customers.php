@@ -56,38 +56,48 @@ foreach ($routers as $router) {
         $mk->connect();
         $routerStats[$router['id']]['online'] = true;
 
-        foreach ($mk->getActiveSessionsMap() as $uname => $d) {
-            $uptimeSecs = uptimeToSeconds($d['uptime'] ?? '');
-            $onlineUsers[] = [
-                'username'     => $uname,
-                'type'         => 'pppoe',
-                'ip'           => $d['address'] ?? '—',
-                'mac'          => $d['caller']  ?? '—',
-                'uptime'       => $d['uptime']  ?? '—',
-                'session_start'=> $uptimeSecs > 0 ? date('M d, H:i', time() - $uptimeSecs) : '—',
-                'rx_bytes'     => (int)($d['rx_byte'] ?? 0),
-                'tx_bytes'     => (int)($d['tx_byte'] ?? 0),
-                'router_id'    => $router['id'],
-                'router'       => $router['name'],
-            ];
-            $routerStats[$router['id']]['pppoe']++;
+        // PPPoE sessions — isolated so a hotspot failure cannot hide these
+        try {
+            foreach ($mk->getActiveSessionsMap() as $uname => $d) {
+                $uptimeSecs = uptimeToSeconds($d['uptime'] ?? '');
+                $onlineUsers[] = [
+                    'username'     => $uname,
+                    'type'         => 'pppoe',
+                    'ip'           => $d['address'] ?? '—',
+                    'mac'          => $d['caller']  ?? '—',
+                    'uptime'       => $d['uptime']  ?? '—',
+                    'session_start'=> $uptimeSecs > 0 ? date('M d, H:i', time() - $uptimeSecs) : '—',
+                    'rx_bytes'     => (int)($d['rx_byte'] ?? 0),
+                    'tx_bytes'     => (int)($d['tx_byte'] ?? 0),
+                    'router_id'    => $router['id'],
+                    'router'       => $router['name'],
+                ];
+                $routerStats[$router['id']]['pppoe']++;
+            }
+        } catch (Exception $pppoeEx) {
+            $fetchErrors[] = htmlspecialchars($router['name'] . ' [PPPoE]: ' . $pppoeEx->getMessage());
         }
 
-        foreach ($mk->getActiveHotspotSessionsMap() as $uname => $d) {
-            $uptimeSecs = uptimeToSeconds($d['uptime'] ?? '');
-            $onlineUsers[] = [
-                'username'     => $uname,
-                'type'         => 'hotspot',
-                'ip'           => $d['address'] ?? '—',
-                'mac'          => !empty($d['mac']) ? $d['mac'] : '—',
-                'uptime'       => $d['uptime']  ?? '—',
-                'session_start'=> $uptimeSecs > 0 ? date('M d, H:i', time() - $uptimeSecs) : '—',
-                'rx_bytes'     => (int)($d['rx_byte'] ?? 0),
-                'tx_bytes'     => (int)($d['tx_byte'] ?? 0),
-                'router_id'    => $router['id'],
-                'router'       => $router['name'],
-            ];
-            $routerStats[$router['id']]['hotspot']++;
+        // Hotspot sessions — isolated so a PPPoE failure cannot hide these
+        try {
+            foreach ($mk->getActiveHotspotSessionsMap() as $uname => $d) {
+                $uptimeSecs = uptimeToSeconds($d['uptime'] ?? '');
+                $onlineUsers[] = [
+                    'username'     => $uname,
+                    'type'         => 'hotspot',
+                    'ip'           => $d['address'] ?? '—',
+                    'mac'          => !empty($d['mac']) ? $d['mac'] : '—',
+                    'uptime'       => $d['uptime']  ?? '—',
+                    'session_start'=> $uptimeSecs > 0 ? date('M d, H:i', time() - $uptimeSecs) : '—',
+                    'rx_bytes'     => (int)($d['rx_byte'] ?? 0),
+                    'tx_bytes'     => (int)($d['tx_byte'] ?? 0),
+                    'router_id'    => $router['id'],
+                    'router'       => $router['name'],
+                ];
+                $routerStats[$router['id']]['hotspot']++;
+            }
+        } catch (Exception $hsEx) {
+            $fetchErrors[] = htmlspecialchars($router['name'] . ' [Hotspot]: ' . $hsEx->getMessage());
         }
 
         $mk->disconnect();

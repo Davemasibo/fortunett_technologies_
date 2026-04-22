@@ -504,7 +504,7 @@ class MikrotikAPI {
         $sessions = $this->getActiveSessions();
         foreach ($sessions as $s) {
             $name = $s['name'] ?? ($s['user'] ?? '');
-            if ($name === $username && isset($s['.id'])) {
+            if (strcasecmp($name, $username) === 0 && isset($s['.id'])) {
                 $r = $this->comm('/ppp/active/remove', ['=.id=' . $s['.id']]);
                 return !isset($r[0]['!trap']);
             }
