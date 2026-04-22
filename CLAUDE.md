@@ -98,6 +98,9 @@ Runs daily. Marks overdue invoices (past due_date + 7 grace days), sends 3-day w
 
 # Router status — every 5 minutes
 */5 * * * * php /var/www/html/cron/check_router_status.php
+
+# Client expiry enforcement — every 15 minutes
+*/15 * * * * php /var/www/html/cron/check_expiry.php >> /var/log/fortunett_expiry.log 2>&1
 ```
 
 ### Database Isolation Rules (enforced post-migration)

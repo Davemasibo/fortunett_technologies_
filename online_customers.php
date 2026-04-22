@@ -79,7 +79,7 @@ foreach ($routers as $router) {
                 'username'     => $uname,
                 'type'         => 'hotspot',
                 'ip'           => $d['address'] ?? '—',
-                'mac'          => '—',
+                'mac'          => !empty($d['mac']) ? $d['mac'] : '—',
                 'uptime'       => $d['uptime']  ?? '—',
                 'session_start'=> $uptimeSecs > 0 ? date('M d, H:i', time() - $uptimeSecs) : '—',
                 'rx_bytes'     => (int)($d['rx_byte'] ?? 0),

@@ -413,7 +413,9 @@ class MikrotikAPI {
      * Get active PPPoE sessions (raw array)
      */
     public function getActiveSessions(): array {
-        $response = $this->comm('/ppp/active/print');
+        // =stats requests byte/packet counters (rx-byte, tx-byte) which RouterOS
+        // omits from the default /ppp/active/print output.
+        $response = $this->comm('/ppp/active/print', ['=stats']);
         $sessions = [];
         foreach ($response as $item) {
             if (isset($item['!re'])) {
@@ -457,10 +459,11 @@ class MikrotikAPI {
                 $name = $item['user'] ?? null;
                 if ($name) {
                     $map[strtolower($name)] = [
-                        'uptime'  => $item['uptime']    ?? '',
-                        'address' => $item['address']   ?? '',
-                        'rx_byte' => $item['bytes-in']  ?? '0',
-                        'tx_byte' => $item['bytes-out'] ?? '0',
+                        'uptime'  => $item['uptime']       ?? '',
+                        'address' => $item['address']      ?? '',
+                        'mac'     => $item['mac-address']  ?? '',
+                        'rx_byte' => $item['bytes-in']     ?? '0',
+                        'tx_byte' => $item['bytes-out']    ?? '0',
                     ];
                 }
             }
@@ -595,6 +598,38 @@ class MikrotikAPI {
     }
     
     // ---------------- Hotspot Methods ----------------
+
+    /**
+     * Enable a hotspot user (re-enable after being disabled by expiry/suspension)
+     */
+    public function enableHotspotUser(string $username): bool {
+        $users = $this->getHotspotUsers();
+        foreach ($users as $u) {
+            if (($u['name'] ?? '') === $username) {
+                $r = $this->comm('/ip/hotspot/user/enable', ['=.id=' . $u['.id']]);
+                return !isset($r[0]['!trap']);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Disable a hotspot user (block without deleting) and kick any active session
+     */
+    public function disableHotspotUser(string $username): bool {
+        $users = $this->getHotspotUsers();
+        foreach ($users as $u) {
+            if (($u['name'] ?? '') === $username) {
+                $r = $this->comm('/ip/hotspot/user/disable', ['=.id=' . $u['.id']]);
+                if (!isset($r[0]['!trap'])) {
+                    $this->kickHotspotSession($username);
+                    return true;
+                }
+                return false;
+            }
+        }
+        return false;
+    }
 
     /**
      * Get all Hotspot users

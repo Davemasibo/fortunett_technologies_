@@ -163,7 +163,10 @@ try {
         } catch (Exception $e2) { /* ignore */ }
     }
 
-    $data['active_users']    = $anyRouterOnline ? $totalLiveUsers : $data['subscribed_users'];
+    // active_users = all DB-active subscriptions (PPPoE + hotspot) — always reflects the full customer base.
+    // online_users = live authenticated sessions from the router (PPPoE + authenticated hotspot).
+    $data['active_users']    = $data['subscribed_users'];
+    $data['online_users']    = $totalLiveUsers;
     $data['router_online']   = $anyRouterOnline;
     $data['routers_online']  = $routersOnline;
     $data['routers_total']   = count($routerStatus);

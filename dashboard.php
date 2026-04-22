@@ -946,12 +946,13 @@ function updateStatCards(s) {
     set('stat-daily',   'KES ' + (s.daily_revenue   || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
     set('stat-monthly', 'KES ' + (s.monthly_revenue || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
     set('stat-yearly',  'KES ' + (s.yearly_revenue  || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
-    set('stat-active',  (s.active_users       || 0).toLocaleString());
-    // Update the sub-label: show "live from router" when router is reachable
+    // active_users is always the DB subscription count (PPPoE + hotspot combined).
+    set('stat-active',  (s.active_users || 0).toLocaleString());
     const lbl = document.getElementById('stat-active-label');
     if (lbl) {
-        if (s.router_online) {
-            lbl.textContent = 'live from router';
+        const onlineNow = s.online_users || 0;
+        if (s.router_online && onlineNow > 0) {
+            lbl.textContent = onlineNow.toLocaleString() + ' online now';
             lbl.style.color = '#34d399';
         } else {
             lbl.textContent = 'active subscriptions';
@@ -1025,9 +1026,14 @@ function refreshRouterStatus() {
                 lbl.style.color = (s.routers_online > 0) ? '#34d399' : '#f87171';
             }
             if (s.router_online) {
-                set('stat-active', (s.active_users || 0).toLocaleString());
                 const al = document.getElementById('stat-active-label');
-                if (al) { al.textContent = 'live from router'; al.style.color = '#34d399'; }
+                if (al) {
+                    const onlineNow = s.active_users || 0;
+                    if (onlineNow > 0) {
+                        al.textContent = onlineNow.toLocaleString() + ' online now';
+                        al.style.color = '#34d399';
+                    }
+                }
             }
         })
         .catch(err => console.warn('Router status fetch error:', err));
