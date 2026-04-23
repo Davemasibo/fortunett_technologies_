@@ -59,6 +59,20 @@ try {
     $out['hotspot_user_count']  = count($hsUsers);
     $out['hotspot_user_sample'] = array_slice($hsUsers, 0, 3);
 
+    // --- Hotspot host table: shows ALL connected devices and their status ---
+    // status=authorized means the device is online (via portal login, MAC bypass, or cookie)
+    // status=waiting means the device is connected but not yet authenticated
+    $rawHosts = $mk->comm('/ip/hotspot/host/print');
+    $hosts = [];
+    foreach ($rawHosts as $h) {
+        if (isset($h['!re'])) {
+            unset($h['!re']);
+            $hosts[] = $h;
+        }
+    }
+    $out['hotspot_host_count']  = count($hosts);
+    $out['hotspot_hosts']       = $hosts; // show all so we can see statuses
+
     $mk->disconnect();
 } catch (Exception $e) {
     $out['exception'] = $e->getMessage();
