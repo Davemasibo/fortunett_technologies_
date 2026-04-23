@@ -81,12 +81,16 @@ try {
         $uptime    = $resources['uptime']   ?? '—';
         $cpuLoad   = $resources['cpu-load'] ?? '0';
 
-        // Live sessions: PPPoE + hotspot
-        $pppoeSessions  = $mk->getActiveSessions();
-        $pppoeCount     = count($pppoeSessions);
-        $hotspotMap     = $mk->getActiveHotspotSessionsMap();
-        $hotspotCount   = count($hotspotMap);
-        $totalActive    = $pppoeCount + $hotspotCount;
+        // Live sessions: PPPoE + hotspot (hotspot failure must not kill PPPoE result)
+        $pppoeSessions = $mk->getActiveSessions();
+        $pppoeCount    = count($pppoeSessions);
+        $hotspotCount  = 0;
+        try {
+            $hotspotCount = count($mk->getActiveHotspotSessionsMap());
+        } catch (Exception $hsEx) {
+            error_log("test_connection hotspot error for router $id: " . $hsEx->getMessage());
+        }
+        $totalActive = $pppoeCount + $hotspotCount;
 
         $mk->disconnect();
 

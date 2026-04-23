@@ -136,8 +136,8 @@ try {
 
                     $pppoeCount   = 0;
                     $hotspotCount = 0;
-                    try { $pppoeCount   = count($mk->getActiveSessions()); }           catch (Exception $e) {}
-                    try { $hotspotCount = count($mk->getActiveHotspotSessionsMap()); } catch (Exception $e) {}
+                    try { $pppoeCount   = count($mk->getActiveSessions()); }           catch (Exception $e) { error_log("dashboard/stats PPPoE error router {$router['id']}: " . $e->getMessage()); }
+                    try { $hotspotCount = count($mk->getActiveHotspotSessionsMap()); } catch (Exception $e) { error_log("dashboard/stats hotspot error router {$router['id']}: " . $e->getMessage()); }
 
                     $rs['online']          = true;
                     $rs['pppoe_clients']   = $pppoeCount;

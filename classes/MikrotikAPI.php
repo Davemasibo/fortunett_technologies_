@@ -449,17 +449,19 @@ class MikrotikAPI {
     }
 
     /**
-     * Get active Hotspot sessions map (username → session info)
+     * Get active Hotspot sessions map (username → session info).
+     * Returns empty array if hotspot is not configured on this router.
+     * No proplist is sent — requesting all fields avoids RouterOS version
+     * differences in which proplist entries are recognised.
      */
     public function getActiveHotspotSessionsMap(): array {
-        $response = $this->comm('/ip/hotspot/active/print', [
-            '=.proplist=.id,user,address,mac-address,uptime,bytes-in,bytes-out,packets-in,packets-out,server,comment',
-        ]);
+        $response = $this->comm('/ip/hotspot/active/print');
 
-        // Surface any router-side error so callers can report it instead of silently getting []
         foreach ($response as $item) {
             if (isset($item['!trap'])) {
-                throw new Exception('Hotspot API error: ' . ($item['message'] ?? 'unknown trap'));
+                // Hotspot package not installed or not configured — treat as no sessions
+                error_log('MikrotikAPI getActiveHotspotSessionsMap trap: ' . ($item['message'] ?? 'unknown trap'));
+                return [];
             }
         }
 
@@ -471,11 +473,11 @@ class MikrotikAPI {
                 $name = (!empty($item['user'])) ? $item['user'] : ($item['mac-address'] ?? null);
                 if ($name) {
                     $map[strtolower($name)] = [
-                        'uptime'  => $item['uptime']       ?? '',
-                        'address' => $item['address']      ?? '',
-                        'mac'     => $item['mac-address']  ?? '',
-                        'rx_byte' => $item['bytes-in']     ?? '0',
-                        'tx_byte' => $item['bytes-out']    ?? '0',
+                        'uptime'  => $item['uptime']      ?? '',
+                        'address' => $item['address']     ?? '',
+                        'mac'     => $item['mac-address'] ?? '',
+                        'rx_byte' => $item['bytes-in']    ?? '0',
+                        'tx_byte' => $item['bytes-out']   ?? '0',
                     ];
                 }
             }
