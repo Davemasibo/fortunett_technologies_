@@ -189,7 +189,7 @@ include 'includes/sidebar.php';
 .bill-summary-card { background: #222221; border-radius: 12px; border: 1px solid rgba(255,255,255,.06); padding: 24px 28px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; gap: 20px; box-shadow: 8px 8px 20px rgba(0,0,0,.4), -4px -4px 10px rgba(255,255,255,.03); }
 .bill-icon-wrap { width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, var(--primary-dark, #1E3A8A), var(--primary-color, #3B82F6)); display: flex; align-items: center; justify-content: center; color: white; font-size: 22px; flex-shrink: 0; }
 .bill-info h3 { font-size: 18px; font-weight: 700; color: #e2e2e0; margin: 0 0 4px 0; }
-.bill-info p  { color: #9a9a95; font-size: 14px; margin: 0; }
+.bill-info p  { color: #9a9a95; font-size: 14px; margin: 0; word-break: break-word; }
 .bill-amount-wrap { text-align: right; }
 .bill-amount      { font-size: 32px; font-weight: 800; color: #fff; }
 .bill-amount span { font-size: 16px; font-weight: 500; color: #9a9a95; }
@@ -260,7 +260,7 @@ include 'includes/sidebar.php';
 .inv-brand-details { font-size: 12.5px; color: #9a9a95; line-height: 1.7; }
 .inv-label { font-size: 11px; font-weight: 700; color: #9a9a95; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
 .inv-number-block { text-align: right; }
-.inv-number-block .inv-num { font-size: 18px; font-weight: 800; color: #e2e2e0; }
+.inv-number-block .inv-num { font-size: 18px; font-weight: 800; color: #e2e2e0; word-break: break-all; }
 .inv-number-block .inv-dates { font-size: 12.5px; color: #9a9a95; line-height: 1.8; }
 
 .inv-divider        { border: none; border-top: 1px solid rgba(255,255,255,.08); margin: 0 0 24px 0; }
@@ -295,6 +295,84 @@ include 'includes/sidebar.php';
 .inv-pay-method-icon { font-size: 11px; background: rgba(255,255,255,0.15); color: white; padding: 4px 8px; border-radius: 4px; }
 .inv-pay-now-btn { background: rgba(255,255,255,.92); color: #1E3A5F; border: none; padding: 12px 28px; border-radius: 8px; font-size: 15px; font-weight: 800; cursor: pointer; white-space: nowrap; }
 .inv-pay-now-btn:hover { background: #fff; }
+
+/* ===================== RESPONSIVE ===================== */
+@media (max-width: 768px) {
+    .billing-container { padding: 16px; }
+    .billing-header h2 { font-size: 22px; }
+    .billing-header p  { margin-bottom: 16px; }
+
+    /* Bill summary card: wrap so icon+info stay on one row,
+       amount and button each get their own row */
+    .bill-summary-card {
+        flex-wrap: wrap;
+        padding: 18px;
+        gap: 14px;
+    }
+    .bill-icon-wrap { flex-shrink: 0; }
+    .bill-info      { flex: 1 1 0; min-width: 0; }
+    .bill-info h3   { font-size: 15px; }
+    .bill-info p    { font-size: 13px; white-space: normal; }
+    .bill-amount-wrap {
+        width: 100%;
+        text-align: left;
+        border-top: 1px solid rgba(255,255,255,.06);
+        padding-top: 12px;
+    }
+    .bill-amount      { font-size: 26px; }
+    .view-invoice-btn { width: 100%; justify-content: center; }
+
+    /* Invoice modal */
+    .inv-paper { padding: 20px 16px; }
+    .inv-top {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 14px;
+        margin-bottom: 20px;
+    }
+    .inv-number-block { text-align: left; }
+    .inv-bill-status {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .inv-pay-bar {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 16px;
+        gap: 12px;
+    }
+    .inv-pay-bar > div { display: flex; justify-content: space-between; align-items: center; }
+    .inv-pay-bar-methods { justify-content: flex-end; }
+    .inv-pay-now-btn { width: 100%; padding: 14px; text-align: center; }
+
+    /* M-Pesa + Paystack modals */
+    .mpesa-topbar { padding: 12px 16px; }
+    .mpesa-body   { padding: 20px 16px; }
+    .mpesa-footer { padding: 12px 16px; flex-wrap: wrap; }
+}
+
+@media (max-width: 480px) {
+    .billing-container { padding: 12px; }
+    .billing-header h2 { font-size: 19px; }
+    .bill-amount       { font-size: 22px; }
+    .bill-info h3      { font-size: 14px; }
+
+    /* Invoice modal: hide Price + Qty columns so only Description + Total remain.
+       The elements stay in the DOM for JS; they're just not visible. */
+    .inv-table th:nth-child(2),
+    .inv-table th:nth-child(3),
+    .inv-table td:nth-child(2),
+    .inv-table td:nth-child(3) { display: none; }
+
+    .inv-brand h2 { font-size: 17px; }
+    .inv-brand-details { font-size: 12px; }
+    .inv-num  { font-size: 14px; }
+
+    /* Suspended banner: tighten up */
+    .billing-wrapper [style*="display:flex"] { flex-wrap: wrap; }
+}
 
 /* ===================== PAYSTACK CHECKOUT MODAL ===================== */
 .pst-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1100; align-items: center; justify-content: center; }
