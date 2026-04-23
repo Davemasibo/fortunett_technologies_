@@ -42,6 +42,8 @@ foreach ($routers as $router) {
     try {
         $mk = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
         $mk->connect();
+
+        // PPPoE sessions
         $sessions = $mk->getActiveSessions();
         foreach ($sessions as $sess) {
             $uname = $sess['name'] ?? $sess['user'] ?? '';
@@ -56,6 +58,22 @@ foreach ($routers as $router) {
                 ];
             }
         }
+
+        // Hotspot sessions — fetched separately via /ip/hotspot/active/print
+        try {
+            $hotspotMap = $mk->getActiveHotspotSessionsMap();
+            foreach ($hotspotMap as $uname => $sessData) {
+                $onlineUsernames[] = $uname;
+                $routerDetails[$uname] = [
+                    'uptime'   => $sessData['uptime']   ?? '',
+                    'bytes_in' => $sessData['rx_byte']  ?? '0',
+                    'bytes_out'=> $sessData['tx_byte']  ?? '0',
+                    'address'  => $sessData['address']  ?? '',
+                    'service'  => 'hotspot',
+                ];
+            }
+        } catch (Exception $hsErr) { /* hotspot may not be configured on this router */ }
+
         $mk->disconnect();
     } catch (Exception $e) { /* router unreachable / auth failed */ }
 }

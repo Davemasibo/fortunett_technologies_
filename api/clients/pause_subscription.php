@@ -68,8 +68,9 @@ try {
             $cStmt->execute([$client_id]);
             $cdata = $cStmt->fetch(PDO::FETCH_ASSOC);
             if ($cdata && !empty($cdata['mikrotik_username'])) {
+                $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
                 $api = new MikrotikAPI(
-                    $router['ip_address'], $router['username'],
+                    $connectIp, $router['username'],
                     $router['password'], (int)($router['api_port'] ?? 8728)
                 );
                 if ($api->connect()) {

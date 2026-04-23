@@ -165,11 +165,11 @@ function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, s
         }
     }
 
-    // Upsert PPPoE secret
+    // Upsert PPPoE secret — use case-insensitive match so "User1" ≡ "user1"
     $secrets = $api->comm('/ppp/secret/print', ['?name=' . $username]);
     $secretId = null;
     foreach ($secrets as $s) {
-        if (isset($s['!re']) && ($s['name'] ?? '') === $username) { $secretId = $s['.id']; break; }
+        if (isset($s['!re']) && strcasecmp($s['name'] ?? '', $username) === 0) { $secretId = $s['.id']; break; }
     }
 
     if ($secretId !== null) {
@@ -181,6 +181,11 @@ function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, s
         ]);
         // Re-enable in case it was disabled
         $api->comm('/ppp/secret/enable', ['=.id=' . $secretId]);
+        // Kick any live session so the CPE must re-auth with the new password.
+        // Without this, a connected CPE holds an open session indefinitely despite
+        // the password change, and reconnects immediately after a kick because the
+        // old secret is still cached in the PPP daemon state.
+        $api->kickPPPoESession($username);
     } else {
         $api->comm('/ppp/secret/add', [
             '=name='     . $username,
@@ -222,21 +227,28 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
     }
 
     // ── Upsert hotspot user ───────────────────────────────────────────────────
-    $userId = null;
-    $users  = $api->comm('/ip/hotspot/user/print', ['?name=' . $username]);
+    $userId    = null;
+    $isNewUser = false;
+    $users     = $api->comm('/ip/hotspot/user/print', ['?name=' . $username]);
     foreach ($users as $u) {
-        if (isset($u['!re']) && ($u['name'] ?? '') === $username) { $userId = $u['.id']; break; }
+        if (isset($u['!re']) && strcasecmp($u['name'] ?? '', $username) === 0) { $userId = $u['.id']; break; }
     }
 
     if ($userId !== null) {
+        // Credential update — clear MAC so device must re-auth at the captive portal
+        // with the new password rather than bypassing via MAC auth.
         $api->comm('/ip/hotspot/user/set', [
-            '=.id='      . $userId,
-            '=password=' . $password,
-            '=profile='  . $profileName,
+            '=.id='         . $userId,
+            '=password='    . $password,
+            '=profile='     . $profileName,
+            '=mac-address=',
         ]);
         // Re-enable in case it was disabled by expiry/suspension
         $api->comm('/ip/hotspot/user/enable', ['=.id=' . $userId]);
+        // Kick any live session so the device is redirected to the captive portal
+        $api->kickHotspotSession($username);
     } else {
+        $isNewUser = true;
         $addResp = $api->comm('/ip/hotspot/user/add', [
             '=name='     . $username,
             '=password=' . $password,
@@ -253,73 +265,69 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
         // Fetch the .id of the newly created user
         $newUsers = $api->comm('/ip/hotspot/user/print', ['?name=' . $username]);
         foreach ($newUsers as $u) {
-            if (isset($u['!re']) && ($u['name'] ?? '') === $username) { $userId = $u['.id']; break; }
+            if (isset($u['!re']) && strcasecmp($u['name'] ?? '', $username) === 0) { $userId = $u['.id']; break; }
         }
     }
 
-    // ── MAC Auth + Immediate Reconnect ────────────────────────────────────────
-    // If the customer is currently in an active hotspot session (they were
-    // previously logged in and their session is still alive), grab their MAC,
-    // set it on the user record to enable future MAC-bypass authentication,
-    // then kick the session so their device reconnects and is auto-authenticated.
+    // ── MAC Auth + Immediate Reconnect (new users only) ───────────────────────
+    // For a first-time provisioning, capture the device's MAC from any active
+    // session and bind it to the user record for seamless future reconnections,
+    // then kick so the device re-authenticates via MAC bypass immediately.
     //
-    // If they are NOT in an active session (e.g. blocked at captive-portal wall),
-    // look for them in the unauthenticated host table by trying to match the
-    // comment we just set. When the device next reconnects, MAC auth will fire.
-    try {
-        $activeSessions = $api->comm('/ip/hotspot/active/print');
-        $reconnected    = false;
+    // For credential updates this block is skipped — the MAC was already cleared
+    // above and the session was kicked, so the device must go through the portal.
+    if ($isNewUser) {
+        try {
+            $activeSessions = $api->comm('/ip/hotspot/active/print');
+            $reconnected    = false;
 
-        foreach ($activeSessions as $session) {
-            if (!isset($session['!re'])) continue;
-            if (($session['user'] ?? '') !== $username) continue;
+            foreach ($activeSessions as $session) {
+                if (!isset($session['!re'])) continue;
+                if (strcasecmp($session['user'] ?? '', $username) !== 0) continue;
 
-            $mac       = $session['mac-address'] ?? null;
-            $sessionId = $session['.id']         ?? null;
+                $mac       = $session['mac-address'] ?? null;
+                $sessionId = $session['.id']         ?? null;
 
-            // Set MAC auth on the user record so the device is recognised next time
-            if ($mac && $userId) {
-                $api->comm('/ip/hotspot/user/set', [
-                    '=.id='         . $userId,
-                    '=mac-address=' . $mac,
-                ]);
+                // Bind MAC so the device is recognised on next reconnect
+                if ($mac && $userId) {
+                    $api->comm('/ip/hotspot/user/set', [
+                        '=.id='         . $userId,
+                        '=mac-address=' . $mac,
+                    ]);
+                }
+
+                // Kick → device reconnects → MAC auth grants immediate access
+                if ($sessionId) {
+                    $api->comm('/ip/hotspot/active/remove', ['=.id=' . $sessionId]);
+                    $reconnected = true;
+                }
+                break;
             }
 
-            // Kick the current session → device reconnects → MAC auth grants access
-            if ($sessionId) {
-                $api->comm('/ip/hotspot/active/remove', ['=.id=' . $sessionId]);
-                $reconnected = true;
-            }
-            break;
-        }
-
-        // If not in an active session, scan the host table for an unauthenticated
-        // device.  We can't reliably identify the user without MAC at this point,
-        // but we can remove all hosts whose MAC matches the user's stored mac-address
-        // (if it was previously set).
-        if (!$reconnected) {
-            $updatedUser = null;
-            if ($userId) {
+            // Not in an active session — remove any stale host entry so the device
+            // is forced to re-authenticate (MAC auth fires on next connection).
+            if (!$reconnected && $userId) {
                 $uu = $api->comm('/ip/hotspot/user/print', ['?name=' . $username]);
                 foreach ($uu as $u) {
-                    if (isset($u['!re']) && ($u['name'] ?? '') === $username) { $updatedUser = $u; break; }
-                }
-            }
-            $knownMac = $updatedUser['mac-address'] ?? null;
-            if ($knownMac) {
-                $hosts = $api->comm('/ip/hotspot/host/print');
-                foreach ($hosts as $h) {
-                    if (!isset($h['!re'])) continue;
-                    if (($h['mac-address'] ?? '') === $knownMac && isset($h['.id'])) {
-                        // Remove the host entry → device is forced to re-auth via MAC
-                        $api->comm('/ip/hotspot/host/remove', ['=.id=' . $h['.id']]);
-                        break;
+                    if (!isset($u['!re'])) continue;
+                    if (strcasecmp($u['name'] ?? '', $username) !== 0) continue;
+                    $knownMac = $u['mac-address'] ?? null;
+                    if ($knownMac) {
+                        $hosts = $api->comm('/ip/hotspot/host/print');
+                        foreach ($hosts as $h) {
+                            if (!isset($h['!re'])) continue;
+                            if (($h['mac-address'] ?? '') === $knownMac && isset($h['.id'])) {
+                                $api->comm('/ip/hotspot/host/remove', ['=.id=' . $h['.id']]);
+                                break;
+                            }
+                        }
                     }
+                    break;
                 }
             }
+        } catch (Throwable $e) {
+            error_log('_provisionHotspot MAC reconnect: ' . $e->getMessage());
         }
-    } catch (Throwable $e) {
-        error_log('_provisionHotspot MAC reconnect: ' . $e->getMessage());
     }
 }
 

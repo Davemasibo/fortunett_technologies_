@@ -42,7 +42,7 @@ try {
     $mk->connect();
 
     $kicked = ($type === 'hotspot')
-        ? $mk->kickHotspotSession($username)
+        ? $mk->disconnectHotspotUser($username)  // clears MAC so device can't instantly re-auth
         : $mk->kickPPPoESession($username);
 
     $mk->disconnect();

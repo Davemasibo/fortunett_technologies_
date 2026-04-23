@@ -411,9 +411,12 @@ class MikrotikAPI {
     
     /**
      * Get active PPPoE sessions (raw array)
+     * Requests the stats proplist explicitly so rx-byte/tx-byte are always included.
      */
     public function getActiveSessions(): array {
-        $response = $this->comm('/ppp/active/print');
+        $response = $this->comm('/ppp/active/print', [
+            '=.proplist=.id,name,service,caller-id,address,uptime,rx-byte,tx-byte,rx-packet,tx-packet,encoding,session-id',
+        ]);
         $sessions = [];
         foreach ($response as $item) {
             if (isset($item['!re'])) {
@@ -449,12 +452,23 @@ class MikrotikAPI {
      * Get active Hotspot sessions map (username → session info)
      */
     public function getActiveHotspotSessionsMap(): array {
-        $response = $this->comm('/ip/hotspot/active/print');
+        $response = $this->comm('/ip/hotspot/active/print', [
+            '=.proplist=.id,user,address,mac-address,uptime,bytes-in,bytes-out,packets-in,packets-out,server,comment',
+        ]);
+
+        // Surface any router-side error so callers can report it instead of silently getting []
+        foreach ($response as $item) {
+            if (isset($item['!trap'])) {
+                throw new Exception('Hotspot API error: ' . ($item['message'] ?? 'unknown trap'));
+            }
+        }
+
         $map = [];
         foreach ($response as $item) {
             if (isset($item['!re'])) {
                 unset($item['!re']);
-                $name = $item['user'] ?? null;
+                // Use 'user' if non-empty; fall back to MAC address for MAC-auth sessions
+                $name = (!empty($item['user'])) ? $item['user'] : ($item['mac-address'] ?? null);
                 if ($name) {
                     $map[strtolower($name)] = [
                         'uptime'  => $item['uptime']       ?? '',
@@ -475,7 +489,7 @@ class MikrotikAPI {
     public function enablePPPoEUser(string $username): bool {
         $users = $this->getPPPoEUsers();
         foreach ($users as $u) {
-            if ($u['name'] === $username) {
+            if (strcasecmp($u['name'] ?? '', $username) === 0) {
                 $r = $this->comm('/ppp/secret/enable', ['=.id=' . $u['.id']]);
                 return !isset($r[0]['!trap']);
             }
@@ -489,7 +503,7 @@ class MikrotikAPI {
     public function disablePPPoEUser(string $username): bool {
         $users = $this->getPPPoEUsers();
         foreach ($users as $u) {
-            if ($u['name'] === $username) {
+            if (strcasecmp($u['name'] ?? '', $username) === 0) {
                 $r = $this->comm('/ppp/secret/disable', ['=.id=' . $u['.id']]);
                 return !isset($r[0]['!trap']);
             }
@@ -526,6 +540,23 @@ class MikrotikAPI {
             }
         }
         return false;
+    }
+
+    /**
+     * Admin-initiated disconnect: clear MAC auth binding then kick the active session.
+     * Without clearing the MAC, the device immediately re-authenticates via MAC bypass
+     * and the disconnect appears to have no effect.
+     */
+    public function disconnectHotspotUser(string $username): bool {
+        $users = $this->getHotspotUsers();
+        foreach ($users as $u) {
+            if (strcasecmp($u['name'] ?? '', $username) === 0) {
+                // Clear MAC so device must go back through the captive portal
+                $this->comm('/ip/hotspot/user/set', ['=.id=' . $u['.id'], '=mac-address=']);
+                break;
+            }
+        }
+        return $this->kickHotspotSession($username);
     }
 
     /**
@@ -603,7 +634,7 @@ class MikrotikAPI {
     public function enableHotspotUser(string $username): bool {
         $users = $this->getHotspotUsers();
         foreach ($users as $u) {
-            if (($u['name'] ?? '') === $username) {
+            if (strcasecmp($u['name'] ?? '', $username) === 0) {
                 $r = $this->comm('/ip/hotspot/user/enable', ['=.id=' . $u['.id']]);
                 return !isset($r[0]['!trap']);
             }
@@ -617,7 +648,7 @@ class MikrotikAPI {
     public function disableHotspotUser(string $username): bool {
         $users = $this->getHotspotUsers();
         foreach ($users as $u) {
-            if (($u['name'] ?? '') === $username) {
+            if (strcasecmp($u['name'] ?? '', $username) === 0) {
                 $r = $this->comm('/ip/hotspot/user/disable', ['=.id=' . $u['.id']]);
                 if (!isset($r[0]['!trap'])) {
                     $this->kickHotspotSession($username);
