@@ -200,8 +200,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     /* Footer action buttons */
     .footer-btn { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; transition: all .2s; border: 1px solid var(--neu-border); background: rgba(255,255,255,.06); color: rgba(255,255,255,.65); }
     .footer-btn:hover { background: rgba(255,255,255,.12); }
-    .footer-btn.danger { background: rgba(239,68,68,.12); color: #fca5a5; border-color: rgba(239,68,68,.3); }
+    .footer-btn.danger    { background: rgba(239,68,68,.12); color: #fca5a5; border-color: rgba(239,68,68,.3); }
     .footer-btn.danger:hover { background: rgba(239,68,68,.25); }
+    .footer-btn.terminal  { background: rgba(110,231,183,.08); color: #6ee7b7; border-color: rgba(110,231,183,.25); }
+    .footer-btn.terminal:hover { background: rgba(110,231,183,.18); }
+
+    /* ── Terminal Modal ─────────────────────────────── */
+    #terminalModal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.78); z-index:2000; align-items:center; justify-content:center; }
+    .term-window { background:#0d0d0c; border:1px solid rgba(255,255,255,.12); border-radius:10px; width:92vw; max-width:960px; height:82vh; max-height:720px; display:flex; flex-direction:column; box-shadow:0 28px 90px rgba(0,0,0,.85); overflow:hidden; }
+    .term-header { background:#181817; padding:10px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,.07); flex-shrink:0; }
+    .term-header-left { display:flex; align-items:center; gap:10px; }
+    .term-dots { display:flex; gap:6px; }
+    .term-dot { width:12px; height:12px; border-radius:50%; }
+    .term-dot.r { background:#FF5F57; } .term-dot.y { background:#FEBC2E; } .term-dot.g { background:#28C840; }
+    .term-header-title { font-size:13px; color:rgba(255,255,255,.6); display:flex; align-items:center; gap:8px; }
+    .term-header-title i { color:rgba(255,255,255,.35); }
+    #termRouterIp { font-size:11px; color:rgba(255,255,255,.3); }
+    .term-close { background:none; border:none; color:rgba(255,255,255,.35); font-size:20px; cursor:pointer; padding:0 4px; line-height:1; }
+    .term-close:hover { color:rgba(255,255,255,.7); }
+    .term-quickbar { background:#111110; padding:7px 14px; display:flex; align-items:center; gap:5px; flex-wrap:wrap; border-bottom:1px solid rgba(255,255,255,.05); flex-shrink:0; }
+    .term-ql { font-size:10px; color:rgba(255,255,255,.25); text-transform:uppercase; letter-spacing:.07em; margin-right:4px; white-space:nowrap; }
+    .term-qbtn { padding:3px 8px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); border-radius:4px; color:rgba(255,255,255,.5); font-size:11px; font-family:monospace; cursor:pointer; white-space:nowrap; }
+    .term-qbtn:hover { background:rgba(255,255,255,.13); color:#e2e2e0; }
+    .term-qbtn.clear { background:rgba(239,68,68,.07); color:rgba(239,68,68,.55); border-color:rgba(239,68,68,.15); }
+    .term-qbtn.clear:hover { background:rgba(239,68,68,.18); }
+    .term-output { flex:1; overflow-y:auto; padding:14px 18px; font-family:'JetBrains Mono','Courier New',monospace; font-size:13px; line-height:1.75; color:#c8c8c4; background:#0d0d0c; }
+    .term-output::-webkit-scrollbar { width:5px; }
+    .term-output::-webkit-scrollbar-track { background:rgba(255,255,255,.03); }
+    .term-output::-webkit-scrollbar-thumb { background:rgba(255,255,255,.12); border-radius:3px; }
+    .term-welcome { color:rgba(255,255,255,.3); font-size:12px; margin-bottom:14px; padding-bottom:12px; border-bottom:1px dashed rgba(255,255,255,.07); }
+    .term-line-cmd  { color:#a5f3fc; }
+    .term-line-prompt { color:#6ee7b7; font-weight:700; user-select:none; }
+    .term-line-out  { color:#c8c8c4; white-space:pre-wrap; word-break:break-all; }
+    .term-line-err  { color:#fca5a5; }
+    .term-line-sep  { color:rgba(255,255,255,.08); margin:6px 0; }
+    .term-line-spin { color:rgba(255,255,255,.35); font-size:12px; }
+    .term-input-row { background:#141413; border-top:1px solid rgba(255,255,255,.07); padding:9px 14px; display:flex; align-items:center; gap:8px; flex-shrink:0; }
+    #termPromptLabel { color:#6ee7b7; font-family:monospace; font-size:13px; white-space:nowrap; flex-shrink:0; }
+    #termInput { flex:1; background:transparent; border:none; outline:none; color:#a5f3fc; font-family:'JetBrains Mono','Courier New',monospace; font-size:13px; caret-color:#6ee7b7; }
+    #termInput::placeholder { color:rgba(255,255,255,.18); }
+    .term-run { padding:5px 14px; background:rgba(110,231,183,.12); border:1px solid rgba(110,231,183,.22); color:#6ee7b7; border-radius:5px; font-size:12px; cursor:pointer; flex-shrink:0; }
+    .term-run:hover { background:rgba(110,231,183,.24); }
+    @media(max-width:600px) {
+        .term-window { width:100%; height:100%; border-radius:0; max-height:100%; }
+        .term-quickbar { display:none; }
+        .footer-actions { flex-wrap:wrap; gap:6px; }
+    }
 
     /* Wizard Modal */
     #wizardModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.65); z-index: 1000; align-items: center; justify-content: center; }
@@ -456,6 +500,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="footer-info">Last Seen: <?php echo $router['last_seen'] ? date('d M H:i', strtotime($router['last_seen'])) : 'Never'; ?></div>
                     <div class="footer-actions">
                         <button class="footer-btn secondary" id="rbtn-test-<?php echo $router['id']; ?>" onclick="testConnection(<?php echo $router['id']; ?>, this)"><i class="fas fa-plug"></i> Test</button>
+                        <button class="footer-btn terminal" onclick="openTerminal(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars(addslashes($router['name'])); ?>', '<?php echo htmlspecialchars($router['ip_address']); ?>')"><i class="fas fa-terminal"></i> Terminal</button>
                         <button class="footer-btn secondary" onclick="editRouter(<?php echo htmlspecialchars(json_encode($router)); ?>)"><i class="fas fa-edit"></i> Edit</button>
                         <button class="footer-btn danger" onclick="confirmDeleteRouter(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars($router['name']); ?>')"><i class="fas fa-trash"></i> Delete</button>
                     </div>
@@ -1205,4 +1250,175 @@ if (new URLSearchParams(window.location.search).get('open_modal') === '1') {
 }
 
 </script>
+<!-- ═══════════════════════════════════════════════════════════════
+     Remote Terminal Modal
+     Uses RouterOS API (port 8728) — not SSH. Commands must start with /
+     Example: /ppp/active/print  /system/resource/print  /interface/print
+═══════════════════════════════════════════════════════════════ -->
+<div id="terminalModal">
+    <div class="term-window">
+
+        <!-- Window chrome -->
+        <div class="term-header">
+            <div class="term-header-left">
+                <div class="term-dots">
+                    <span class="term-dot r"></span>
+                    <span class="term-dot y"></span>
+                    <span class="term-dot g"></span>
+                </div>
+                <div class="term-header-title">
+                    <i class="fas fa-terminal"></i>
+                    <span id="termRouterName">Router Terminal</span>
+                    <span id="termRouterIp"></span>
+                </div>
+            </div>
+            <button class="term-close" onclick="closeTerminal()" title="Close">&times;</button>
+        </div>
+
+        <!-- Quick-command shortcuts -->
+        <div class="term-quickbar">
+            <span class="term-ql">Quick:</span>
+            <button class="term-qbtn" onclick="runQuick('/system/resource/print')">sys resource</button>
+            <button class="term-qbtn" onclick="runQuick('/ppp/active/print')">ppp active</button>
+            <button class="term-qbtn" onclick="runQuick('/ip/hotspot/active/print')">hotspot active</button>
+            <button class="term-qbtn" onclick="runQuick('/ppp/secret/print')">ppp secrets</button>
+            <button class="term-qbtn" onclick="runQuick('/ip/hotspot/user/print')">hotspot users</button>
+            <button class="term-qbtn" onclick="runQuick('/interface/print')">interfaces</button>
+            <button class="term-qbtn" onclick="runQuick('/ip/address/print')">ip address</button>
+            <button class="term-qbtn" onclick="runQuick('/system/log/print')">log</button>
+            <button class="term-qbtn" onclick="runQuick('/system/identity/print')">identity</button>
+            <button class="term-qbtn clear" onclick="clearTerminal()"><i class="fas fa-eraser"></i> clear</button>
+        </div>
+
+        <!-- Output -->
+        <div class="term-output" id="termOutput"></div>
+
+        <!-- Input row -->
+        <div class="term-input-row">
+            <span id="termPromptLabel">[router] &gt;</span>
+            <input id="termInput" type="text" placeholder="e.g. /ppp/active/print" autocomplete="off" spellcheck="false">
+            <button class="term-run" onclick="termSubmit()"><i class="fas fa-play" style="font-size:10px;margin-right:4px;"></i>Run</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let termRouterId   = null;
+let termRouterName = '';
+let termHistory    = [];
+let termHistIdx    = -1;
+
+function openTerminal(routerId, name, ip) {
+    termRouterId   = routerId;
+    termRouterName = name;
+    document.getElementById('termRouterName').textContent = name;
+    document.getElementById('termRouterIp').textContent   = ip ? ' — ' + ip : '';
+    document.getElementById('termPromptLabel').textContent = '[' + name + '] >';
+    document.getElementById('terminalModal').style.display = 'flex';
+    clearTerminal();
+    setTimeout(() => document.getElementById('termInput').focus(), 80);
+}
+
+function closeTerminal() {
+    document.getElementById('terminalModal').style.display = 'none';
+    termRouterId = null;
+}
+
+function clearTerminal() {
+    document.getElementById('termOutput').innerHTML =
+        '<div class="term-welcome">' +
+        'Connected to <strong style="color:#a5f3fc;">' + termEsc(termRouterName) + '</strong>. ' +
+        'Enter RouterOS API commands and press Enter.<br>' +
+        '<span style="opacity:.5;">Tip: commands start with / &nbsp;·&nbsp; use Up/Down for history &nbsp;·&nbsp; Esc closes</span>' +
+        '</div>';
+}
+
+function runQuick(cmd) {
+    document.getElementById('termInput').value = cmd;
+    termSubmit();
+}
+
+function termAppend(html) {
+    const out = document.getElementById('termOutput');
+    out.insertAdjacentHTML('beforeend', html);
+    out.scrollTop = out.scrollHeight;
+}
+
+function termEsc(s) {
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function termSubmit() {
+    const input = document.getElementById('termInput');
+    const cmd   = input.value.trim();
+    if (!cmd || !termRouterId) return;
+    input.value = '';
+
+    // History
+    if (termHistory[0] !== cmd) termHistory.unshift(cmd);
+    if (termHistory.length > 60) termHistory.pop();
+    termHistIdx = -1;
+
+    // Echo command
+    termAppend(
+        '<div><span class="term-line-prompt">[' + termEsc(termRouterName) + '] &gt; </span>' +
+        '<span class="term-line-cmd">' + termEsc(cmd) + '</span></div>'
+    );
+
+    // Spinner
+    const spinId = 'sp' + Date.now();
+    termAppend('<div id="' + spinId + '" class="term-line-spin"><i class="fas fa-circle-notch fa-spin"></i> executing…</div>');
+
+    const fd = new FormData();
+    fd.append('router_id', termRouterId);
+    fd.append('command',   cmd);
+
+    fetch('api/mikrotik/terminal.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById(spinId)?.remove();
+            if (data.status === 'success') {
+                termAppend('<div class="term-line-out">' + termEsc(data.output) + '</div>');
+            } else {
+                termAppend('<div class="term-line-err">' + termEsc(data.message || data.output || 'Unknown error') + '</div>');
+            }
+            termAppend('<div class="term-line-sep">─────────────────────────────────────────</div>');
+            document.getElementById('termOutput').scrollTop = 9e9;
+        })
+        .catch(err => {
+            document.getElementById(spinId)?.remove();
+            termAppend('<div class="term-line-err">network error: ' + termEsc(err.message) + '</div>');
+        });
+}
+
+// Keyboard nav
+document.getElementById('termInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        termSubmit();
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (termHistIdx < termHistory.length - 1) {
+            termHistIdx++;
+            this.value = termHistory[termHistIdx];
+            this.setSelectionRange(9999,9999);
+        }
+    } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (termHistIdx > 0) { termHistIdx--; this.value = termHistory[termHistIdx]; }
+        else if (termHistIdx === 0) { termHistIdx = -1; this.value = ''; }
+    } else if (e.key === 'Escape') {
+        closeTerminal();
+    }
+});
+
+// Close on backdrop click
+document.getElementById('terminalModal').addEventListener('click', function(e) {
+    if (e.target === this) closeTerminal();
+});
+</script>
+
 <?php include 'includes/footer.php'; ?>
