@@ -1016,12 +1016,12 @@ include 'includes/sidebar.php';
                 <div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:12px;">Used for both Router (PPPoE/Hotspot) and Customer Portal login. Same credentials work on both.</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                     <div>
-                        <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Username *</label>
-                        <input type="text" name="mikrotik_username" id="formMikrotikUsername" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                        <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Username <span style="font-weight:400;opacity:.55;">(auto-generated if blank)</span></label>
+                        <input type="text" name="mikrotik_username" id="formMikrotikUsername" placeholder="Leave blank to auto-generate" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
                     </div>
                     <div>
-                        <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Password</label>
-                        <input type="password" name="mikrotik_password" id="formMikrotikPassword" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;background:white;" placeholder="Leave blank to keep current" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
+                        <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Password <span style="font-weight:400;opacity:.55;">(auto-generated if blank)</span></label>
+                        <input type="text" name="mikrotik_password" id="formMikrotikPassword" placeholder="Leave blank to auto-generate" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;box-sizing:border-box;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
                     </div>
                 </div>
             </div>
@@ -1534,26 +1534,23 @@ function handleFormSubmit(e) {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            // For new customers, report MikroTik sync result explicitly
             const isNew = !formData.get('id');
-            if (isNew) {
+            if (isNew && (data.auto_gen_username || data.auto_gen_password)) {
+                // Show credentials modal so admin can copy before page reloads
+                showCredentialsResult(data);
+            } else if (isNew) {
                 if (data.mikrotik_synced) {
-                    showToast(
-                        `Customer saved & pushed to router (${data.router_ip}) · Profile: ${data.profile_used} · Credentials work now.`,
-                        'success'
-                    );
+                    showToast(`Customer saved & pushed to router (${data.router_ip}) · Profile: ${data.profile_used}`, 'success');
                 } else if (data.no_router) {
-                    showToast('Customer saved to DB — no active router configured, router sync skipped.', 'warning');
+                    showToast('Customer saved — no active router configured, provision manually later.', 'warning');
                 } else {
-                    showToast(
-                        `Customer saved to DB but router sync failed: ${data.mikrotik_error || 'unknown error'}`,
-                        'warning'
-                    );
+                    showToast(`Customer saved but router sync failed: ${data.mikrotik_error || 'unknown'}`, 'warning');
                 }
+                setTimeout(() => location.reload(), 1800);
             } else {
                 showToast('Customer updated successfully.', 'success');
+                setTimeout(() => location.reload(), 1800);
             }
-            setTimeout(() => location.reload(), 1800);
         } else {
             showToast('Error: ' + data.message, 'error');
         }
@@ -1565,6 +1562,43 @@ function handleFormSubmit(e) {
     .finally(() => {
         if (btn) { btn.textContent = originalText; btn.disabled = false; }
     });
+}
+
+function showCredentialsResult(data) {
+    const synced    = data.mikrotik_synced;
+    const routerTxt = synced ? `Router: <strong style="color:#a5f3fc">${data.router_ip}</strong> &nbsp;·&nbsp; Profile: <strong style="color:#a5f3fc">${data.profile_used}</strong>` : (data.no_router ? 'No active router — provision manually later.' : `Router sync failed: ${data.mikrotik_error || 'unknown'}`);
+    const el = document.createElement('div');
+    el.id = 'credModal';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:3000;display:flex;align-items:center;justify-content:center;';
+    el.innerHTML = `
+        <div style="background:#222221;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:28px 32px;max-width:440px;width:92%;box-shadow:0 24px 60px rgba(0,0,0,.7);">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+                <div style="width:36px;height:36px;border-radius:8px;background:${synced?'rgba(52,211,153,.15)':'rgba(251,191,36,.12)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-${synced?'check':'exclamation-triangle'}" style="color:${synced?'#6ee7b7':'#fbbf24'};font-size:15px;"></i>
+                </div>
+                <h3 style="margin:0;font-size:16px;font-weight:600;color:#e2e2e0;">Customer Created${synced?' & Provisioned':''}</h3>
+            </div>
+            <p style="font-size:12px;color:rgba(255,255,255,.4);margin:0 0 18px;">${routerTxt}</p>
+            <div style="background:#111110;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:16px;margin-bottom:20px;">
+                <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px;">Auto-Generated Credentials — share with customer</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                    <span style="font-size:12px;color:rgba(255,255,255,.45);width:70px;">Username</span>
+                    <div style="display:flex;align-items:center;gap:7px;flex:1;justify-content:flex-end;">
+                        <code style="background:#0d0d0c;padding:5px 11px;border-radius:5px;font-size:13px;color:#a5f3fc;letter-spacing:.03em;">${data.username}</code>
+                        <button onclick="navigator.clipboard.writeText('${data.username}');this.innerHTML='<i class=\\'fas fa-check\\'></i>'" style="padding:4px 9px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:4px;color:rgba(255,255,255,.5);font-size:11px;cursor:pointer;"><i class="fas fa-copy"></i></button>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:12px;color:rgba(255,255,255,.45);width:70px;">Password</span>
+                    <div style="display:flex;align-items:center;gap:7px;flex:1;justify-content:flex-end;">
+                        <code style="background:#0d0d0c;padding:5px 11px;border-radius:5px;font-size:13px;color:#fbbf24;letter-spacing:.03em;">${data.password}</code>
+                        <button onclick="navigator.clipboard.writeText('${data.password}');this.innerHTML='<i class=\\'fas fa-check\\'></i>'" style="padding:4px 9px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:4px;color:rgba(255,255,255,.5);font-size:11px;cursor:pointer;"><i class="fas fa-copy"></i></button>
+                    </div>
+                </div>
+            </div>
+            <button onclick="document.getElementById('credModal').remove();location.reload();" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--primary-dark,#1e3a5f) 0%,var(--primary-color,#3B6EA5) 100%);color:white;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">Done</button>
+        </div>`;
+    document.body.appendChild(el);
 }
 
 function confirmDelete(id, name) {

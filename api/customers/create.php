@@ -33,12 +33,45 @@ $name              = trim($_POST['name']              ?? '');
 $email             = trim($_POST['email']             ?? '');
 $phone             = trim($_POST['phone']             ?? '');
 $mikrotik_username = trim($_POST['mikrotik_username'] ?? '');
-$mikrotik_password = $_POST['mikrotik_password']      ?? '';
-$username          = $mikrotik_username;
-$password          = $mikrotik_password;
+$mikrotik_password = trim($_POST['mikrotik_password'] ?? '');
 $package_id        = (int)($_POST['package_id']       ?? 0);
 $address           = trim($_POST['address']           ?? '');
 $connection_type   = $_POST['connection_type']        ?? 'pppoe';
+
+// Auto-generate username if not provided (from phone number or name slug)
+$autoGenUsername = false;
+if (empty($mikrotik_username)) {
+    $autoGenUsername = true;
+    if (!empty($phone)) {
+        $digits = preg_replace('/\D/', '', $phone);
+        $mikrotik_username = 'u' . substr($digits, -8);
+    } else {
+        $slug = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', strtok($name, ' ')));
+        $mikrotik_username = substr($slug ?: 'user', 0, 8) . rand(100, 999);
+    }
+    // Ensure uniqueness — append suffix if taken
+    $base = $mikrotik_username; $n = 1;
+    while (true) {
+        $chk = $pdo->prepare("SELECT id FROM clients WHERE mikrotik_username = ? LIMIT 1");
+        $chk->execute([$mikrotik_username]);
+        if (!$chk->fetch()) break;
+        $mikrotik_username = $base . $n++;
+    }
+}
+
+// Auto-generate password if not provided
+$autoGenPassword = false;
+if (empty($mikrotik_password)) {
+    $autoGenPassword = true;
+    $chars = 'abcdefghjkmnpqrstuvwxyz23456789'; // no confusable chars (0/O, 1/I/l)
+    $mikrotik_password = '';
+    for ($i = 0; $i < 8; $i++) {
+        $mikrotik_password .= $chars[random_int(0, strlen($chars) - 1)];
+    }
+}
+
+$username = $mikrotik_username;
+$password = $mikrotik_password;
 
 if (empty($name) || empty($package_id)) {
     ob_clean();
@@ -125,15 +158,14 @@ try {
         error_log("Account number generation failed: " . $e->getMessage());
     }
 
-    // 6. Sync to MikroTik (non-fatal, short timeout)
+    // 6. Sync to MikroTik (non-fatal — client is saved regardless)
     $mikrotikSynced = false;
     $mikrotikError  = null;
     $profileUsed    = null;
     $routerIp       = null;
     $noRouter       = false;
 
-    if (!empty($mikrotik_username) && !empty($mikrotik_password)) {
-        try {
+    try {
             $router_stmt = $pdo->prepare(
                 "SELECT id, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ? LIMIT 1"
             );
@@ -217,12 +249,9 @@ try {
                     $mikrotikError = "Could not connect to router $routerIp";
                 }
             }
-        } catch (Exception $e) {
-            $mikrotikError = $e->getMessage();
-            error_log("MikroTik sync on create failed: " . $e->getMessage());
-        }
-    } else {
-        $mikrotikError = 'No username/password provided — skipped router sync';
+    } catch (Exception $e) {
+        $mikrotikError = $e->getMessage();
+        error_log("MikroTik sync on create failed: " . $e->getMessage());
     }
 
     // Mark active if MikroTik user was created (credentials will work immediately)
@@ -232,15 +261,18 @@ try {
 
     ob_clean();
     echo json_encode([
-        'success'          => true,
-        'client_id'        => $client_id,
-        'mikrotik_synced'  => $mikrotikSynced,
-        'mikrotik_error'   => $mikrotikError,
-        'no_router'        => $noRouter,
-        'router_ip'        => $routerIp,
-        'profile_used'     => $profileUsed,
-        'username'         => $mikrotik_username,
-        'connection_type'  => $connection_type,
+        'success'           => true,
+        'client_id'         => $client_id,
+        'mikrotik_synced'   => $mikrotikSynced,
+        'mikrotik_error'    => $mikrotikError,
+        'no_router'         => $noRouter,
+        'router_ip'         => $routerIp,
+        'profile_used'      => $profileUsed,
+        'username'          => $mikrotik_username,
+        'password'          => $mikrotik_password,
+        'auto_gen_username' => $autoGenUsername,
+        'auto_gen_password' => $autoGenPassword,
+        'connection_type'   => $connection_type,
     ]);
 
 } catch (Exception $e) {
