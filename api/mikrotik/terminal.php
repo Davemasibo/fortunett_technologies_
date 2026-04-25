@@ -59,9 +59,12 @@ if ($cmd_path === '') {
     exit;
 }
 
+// Use VPN IP if set (WireGuard tunnel), else fall back to stored IP — same logic as test_connection.php
+$connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
+
 try {
     $mk = new MikrotikAPI(
-        $router['ip_address'],
+        $connectIp,
         $router['username'],
         $router['password'],
         (int)($router['api_port'] ?? 8728)
@@ -77,10 +80,22 @@ try {
     ]);
 
 } catch (Exception $e) {
+    $msg = $e->getMessage();
+
+    // RouterOS closes the API connection when a hotspot command is issued
+    // and the hotspot server is not running or is marked invalid on the router.
+    // Give the admin an actionable message instead of a raw TCP error.
+    $isHotspotCmd = stripos($cmd_path, '/ip/hotspot') !== false;
+    if ($isHotspotCmd && stripos($msg, 'connection closed') !== false) {
+        $msg = "Hotspot server is not running or is marked invalid on this router.\n"
+             . "Run /ip/hotspot/print to check its status, then fix the invalid flag "
+             . "or re-run the hotspot setup wizard on the router.";
+    }
+
     echo json_encode([
         'status'  => 'error',
-        'message' => $e->getMessage(),
-        'output'  => 'Error: ' . $e->getMessage(),
+        'message' => $msg,
+        'output'  => $msg,
     ]);
 }
 
