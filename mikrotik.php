@@ -204,6 +204,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .footer-btn.danger:hover { background: rgba(239,68,68,.25); }
     .footer-btn.terminal  { background: rgba(110,231,183,.08); color: #6ee7b7; border-color: rgba(110,231,183,.25); }
     .footer-btn.terminal:hover { background: rgba(110,231,183,.18); }
+    .footer-btn.deploy    { background: rgba(251,191,36,.08); color: #fbbf24; border-color: rgba(251,191,36,.25); }
+    .footer-btn.deploy:hover { background: rgba(251,191,36,.18); }
 
     /* ── Terminal Modal ─────────────────────────────── */
     #terminalModal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.78); z-index:2000; align-items:center; justify-content:center; backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
@@ -501,6 +503,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="footer-actions">
                         <button class="footer-btn secondary" id="rbtn-test-<?php echo $router['id']; ?>" onclick="testConnection(<?php echo $router['id']; ?>, this)"><i class="fas fa-plug"></i> Test</button>
                         <button class="footer-btn terminal" onclick="openTerminal(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars(addslashes($router['name'])); ?>', '<?php echo htmlspecialchars($router['ip_address']); ?>')"><i class="fas fa-terminal"></i> Terminal</button>
+                        <button class="footer-btn deploy" onclick="deployHotspotLogin(<?php echo $router['id']; ?>, this)" title="Push branded hotspot login page to router"><i class="fas fa-upload"></i> Deploy Login</button>
                         <button class="footer-btn secondary" onclick="editRouter(<?php echo htmlspecialchars(json_encode($router)); ?>)"><i class="fas fa-edit"></i> Edit</button>
                         <button class="footer-btn danger" onclick="confirmDeleteRouter(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars($router['name']); ?>')"><i class="fas fa-trash"></i> Delete</button>
                     </div>
@@ -1317,6 +1320,20 @@ function openTerminal(routerId, name, ip) {
     document.getElementById('terminalModal').style.display = 'flex';
     clearTerminal();
     setTimeout(() => document.getElementById('termInput').focus(), 80);
+}
+
+function deployHotspotLogin(routerId, btn) {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    btn.disabled = true;
+    const fd = new FormData(); fd.append('router_id', routerId);
+    fetch('api/mikrotik/deploy_hotspot_login.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            btn.innerHTML = orig; btn.disabled = false;
+            showToast(d.message || (d.success ? 'Deployed.' : 'Failed.'), d.success ? 'success' : 'error');
+        })
+        .catch(() => { btn.innerHTML = orig; btn.disabled = false; showToast('Network error.', 'error'); });
 }
 
 function closeTerminal() {

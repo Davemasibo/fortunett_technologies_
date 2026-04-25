@@ -27,6 +27,8 @@ if (isLoggedIn()) {
                 <i class="fas fa-th-large"></i> <span>Dashboard</span>
             </a>
         </li>
+
+        <li class="sidebar-section-label"><span>Customers</span></li>
         <li>
             <a href="clients.php" class="<?php echo isActivePage(['clients.php', 'user_detail.php']); ?>">
                 <i class="fas fa-user-friends"></i> <span>Customers</span>
@@ -34,7 +36,19 @@ if (isLoggedIn()) {
         </li>
         <li>
             <a href="online_customers.php" class="<?php echo isActivePage('online_customers.php'); ?>">
-                <i class="fas fa-wifi"></i> <span>Active Customers</span>
+                <i class="fas fa-circle" style="font-size:8px;vertical-align:middle;"></i> <span>Active Sessions</span>
+            </a>
+        </li>
+        <li>
+            <a href="vouchers.php" class="<?php echo isActivePage('vouchers.php'); ?>">
+                <i class="fas fa-ticket-alt"></i> <span>Vouchers</span>
+            </a>
+        </li>
+
+        <li class="sidebar-section-label"><span>Network</span></li>
+        <li>
+            <a href="mikrotik.php" class="<?php echo isActivePage('mikrotik.php'); ?>">
+                <i class="fas fa-network-wired"></i> <span>Routers</span>
             </a>
         </li>
         <li>
@@ -42,14 +56,16 @@ if (isLoggedIn()) {
                 <i class="fas fa-cube"></i> <span>Packages</span>
             </a>
         </li>
+
+        <li class="sidebar-section-label"><span>Finance</span></li>
         <li>
             <a href="payments.php" class="<?php echo isActivePage('payments.php'); ?>">
                 <i class="fas fa-credit-card"></i> <span>Payments</span>
             </a>
         </li>
         <li>
-            <a href="mikrotik.php" class="<?php echo isActivePage('mikrotik.php'); ?>">
-                <i class="fas fa-network-wired"></i> <span>Routers</span>
+            <a href="billing.php" class="<?php echo isActivePage('billing.php'); ?>">
+                <i class="fas fa-file-invoice-dollar"></i> <span>Billing</span>
             </a>
         </li>
         <li>
@@ -57,6 +73,8 @@ if (isLoggedIn()) {
                 <i class="fas fa-chart-line"></i> <span>Reports</span>
             </a>
         </li>
+
+        <li class="sidebar-section-label"><span>Communication</span></li>
         <li>
             <a href="sms.php" class="<?php echo isActivePage('sms.php'); ?>">
                 <i class="fas fa-comment-dots"></i> <span>SMS</span>
@@ -67,11 +85,8 @@ if (isLoggedIn()) {
                 <i class="fas fa-envelope-open"></i> <span>Emails</span>
             </a>
         </li>
-        <li>
-            <a href="billing.php" class="<?php echo isActivePage('billing.php'); ?>">
-                <i class="fas fa-file-invoice-dollar"></i> <span>Billing</span>
-            </a>
-        </li>
+
+        <li class="sidebar-section-label"><span>Settings</span></li>
         <li>
             <a href="settings.php" class="<?php echo isActivePage('settings.php'); ?>">
                 <i class="fas fa-sliders-h"></i> <span>Settings</span>
@@ -356,6 +371,23 @@ if (isLoggedIn()) {
         display: block;
         opacity: 1;
     }
+
+    /* Section labels */
+    .sidebar-section-label {
+        padding: 12px 16px 4px;
+        flex: 0 0 auto;
+    }
+    .sidebar-section-label span {
+        font-size: 9.5px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .1em;
+        color: rgba(255,255,255,.22);
+        display: block;
+        border-top: 1px solid rgba(255,255,255,.06);
+        padding-top: 10px;
+    }
+    .sidebar.collapsed .sidebar-section-label { display: none; }
 
     /* Sidebar profile item — subtle separator above it */
     .sidebar-profile-item {

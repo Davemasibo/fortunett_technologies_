@@ -97,7 +97,12 @@ foreach ($routers as $router) {
                 $routerStats[$router['id']]['hotspot']++;
             }
         } catch (Exception $hsEx) {
-            $fetchErrors[] = htmlspecialchars($router['name'] . ' [Hotspot]: ' . $hsEx->getMessage());
+            $msg = $hsEx->getMessage();
+            // Give an actionable hint for the most common hotspot failure
+            if (stripos($msg, 'connection closed') !== false || stripos($msg, 'no such command') !== false) {
+                $msg .= ' — Hotspot may not be configured on this router. Run /ip/hotspot/print in the Terminal to verify.';
+            }
+            $fetchErrors[] = htmlspecialchars($router['name'] . ' [Hotspot]: ' . $msg);
         }
 
         $mk->disconnect();

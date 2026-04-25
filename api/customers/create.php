@@ -9,7 +9,7 @@ header('Content-Type: application/json');
 
 require_once '../../includes/db_master.php';
 require_once '../../includes/account_number_generator.php';
-require_once '../../classes/MikrotikAPI.php';
+require_once '../../includes/auto_provision.php';
 
 // Auth check first
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -158,101 +158,13 @@ try {
         error_log("Account number generation failed: " . $e->getMessage());
     }
 
-    // 6. Sync to MikroTik (non-fatal — client is saved regardless)
-    $mikrotikSynced = false;
-    $mikrotikError  = null;
+    // 6. Sync to MikroTik via autoProvisionClient (non-fatal — client saved regardless)
+    $provResult     = autoProvisionClient($pdo, $client_id, $tenant_id);
+    $mikrotikSynced = $provResult['success'];
+    $mikrotikError  = $provResult['success'] ? null : ($provResult['message'] ?? 'Provisioning failed');
+    $noRouter       = str_contains($mikrotikError ?? '', 'No active router');
     $profileUsed    = null;
     $routerIp       = null;
-    $noRouter       = false;
-
-    try {
-            $router_stmt = $pdo->prepare(
-                "SELECT id, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ? LIMIT 1"
-            );
-            $router_stmt->execute([$tenant_id]);
-            $router = $router_stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$router) {
-                $noRouter = true;
-            } else {
-                $routerIp  = $router['ip_address'];
-                $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
-                $api = new MikrotikAPI(
-                    $connectIp, $router['username'],
-                    $router['password'], (int)($router['api_port'] ?? 8728)
-                );
-                if ($api->connect()) {
-                    // Derive profile name: package's saved profile → slugified name → 'default'
-                    $profileUsed = !empty($package['mikrotik_profile'])
-                        ? $package['mikrotik_profile']
-                        : preg_replace('/[^a-zA-Z0-9-]/', '', strtolower($package['name']));
-                    if (empty($profileUsed)) $profileUsed = 'default';
-
-                    // Build rate-limit string from package speeds (format: uploadM/downloadM)
-                    $rateLimit = null;
-                    if (!empty($package['rate_limit'])) {
-                        $rateLimit = $package['rate_limit'];
-                    } elseif (!empty($package['upload_speed']) || !empty($package['download_speed'])) {
-                        $up   = (int)($package['upload_speed']   ?? 0);
-                        $down = (int)($package['download_speed'] ?? 0);
-                        if ($up > 0 || $down > 0) {
-                            $rateLimit = $up . 'M/' . $down . 'M';
-                        }
-                    }
-
-                    if ($connection_type === 'hotspot') {
-                        // Ensure hotspot profile exists with bandwidth limits
-                        if ($profileUsed !== 'default') {
-                            $hpExists = false;
-                            foreach ((array)$api->getHotspotUserProfiles() as $p) {
-                                if (($p['name'] ?? '') === $profileUsed) { $hpExists = true; break; }
-                            }
-                            if (!$hpExists) {
-                                try { $api->createHotspotProfile($profileUsed, $rateLimit); } catch (Exception $pe) {}
-                            }
-                        }
-                        $exists = false;
-                        foreach ($api->getHotspotUsers() as $u) {
-                            if (($u['name'] ?? '') === $mikrotik_username) { $exists = true; break; }
-                        }
-                        $exists
-                            ? $api->updateHotspotUser($mikrotik_username, $mikrotik_password, $profileUsed)
-                            : $api->addHotspotUser($mikrotik_username, $mikrotik_password, $profileUsed);
-                    } else {
-                        // Ensure PPPoE profile exists with bandwidth limits before adding user
-                        if ($profileUsed !== 'default') {
-                            $ppExists = false;
-                            foreach ($api->getPPPoEProfiles() as $p) {
-                                if (($p['name'] ?? '') === $profileUsed) { $ppExists = true; break; }
-                            }
-                            if (!$ppExists) {
-                                try {
-                                    $api->createPPPoEProfile($profileUsed, null, null, $rateLimit);
-                                } catch (Exception $pe) {
-                                    error_log("PPPoE profile creation failed, falling back to default: " . $pe->getMessage());
-                                    $profileUsed = 'default';
-                                }
-                            }
-                        }
-                        $exists = false;
-                        foreach ($api->getPPPoEUsers() as $u) {
-                            if (($u['name'] ?? '') === $mikrotik_username) { $exists = true; break; }
-                        }
-                        // Pass rate-limit directly on the secret — enforced even if profile setup is incomplete
-                        $exists
-                            ? $api->updatePPPoEUser($mikrotik_username, $mikrotik_password, $profileUsed)
-                            : $api->addPPPoEUser($mikrotik_username, $mikrotik_password, $profileUsed, 'pppoe', $rateLimit);
-                    }
-                    $api->disconnect();
-                    $mikrotikSynced = true;
-                } else {
-                    $mikrotikError = "Could not connect to router $routerIp";
-                }
-            }
-    } catch (Exception $e) {
-        $mikrotikError = $e->getMessage();
-        error_log("MikroTik sync on create failed: " . $e->getMessage());
-    }
 
     // Mark active if MikroTik user was created (credentials will work immediately)
     if ($mikrotikSynced) {
