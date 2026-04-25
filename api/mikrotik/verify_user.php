@@ -107,10 +107,9 @@ try {
         exit;
     }
 
-    $result['router_ip'] = $router['ip_address'];
-
     // Quick reachability check before attempting full API connection
     $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
+    $result['router_ip'] = $router['ip_address'];
     $port      = (int)($router['api_port'] ?? 8728);
     $fp = @fsockopen($connectIp, $port, $errno, $errstr, 3);
     if (!$fp) {

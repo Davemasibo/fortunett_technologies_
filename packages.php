@@ -298,6 +298,7 @@ include 'includes/sidebar.php';
                         <th>Data Limit</th>
                         <th>Devices</th>
                         <th>Price</th>
+                        <th>Router Profile</th>
                         <th>Status</th>
                         <th style="text-align:center;">Actions</th>
                     </tr>
@@ -344,6 +345,14 @@ include 'includes/sidebar.php';
                         <td><?php echo $data_cap > 0 ? number_format($data_cap / 1073741824, 0) . ' GB' : 'Unlimited'; ?></td>
                         <td><?php echo $devices; ?></td>
                         <td><strong>KES <?php echo number_format($pkg['price'], 0); ?></strong></td>
+                        <td>
+                            <?php $profile = $pkg['mikrotik_profile'] ?? ''; ?>
+                            <?php if ($profile): ?>
+                                <span style="font-family:monospace;font-size:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:3px 8px;color:#a5f3fc;"><?php echo htmlspecialchars($profile); ?></span>
+                            <?php else: ?>
+                                <span style="color:rgba(255,255,255,.2);font-size:12px;">—</span>
+                            <?php endif; ?>
+                        </td>
                         <td>
                             <span class="status-badge <?php echo $status; ?>">
                                 <?php echo ucfirst($status); ?>
@@ -619,6 +628,26 @@ include 'includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- MikroTik Profile -->
+            <div class="pkg-section" style="margin-top:4px;"><i class="fas fa-microchip"></i> MikroTik Profile</div>
+            <div class="pkg-row" style="grid-template-columns:1fr;">
+                <div>
+                    <label class="pkg-label">Profile Name on Router</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="text" name="mikrotik_profile" id="pkgMikrotikProfile" class="pkg-input" placeholder="Auto-generated from package name if left blank" style="flex:1;">
+                        <button type="button" id="loadProfilesBtn" onclick="loadRouterProfiles()" style="padding:9px 13px;background:rgba(165,243,252,.1);border:1px solid rgba(165,243,252,.25);border-radius:9px;color:#a5f3fc;font-size:12px;cursor:pointer;white-space:nowrap;transition:all .15s;" title="Load profiles from router">
+                            <i class="fas fa-sync-alt" id="loadProfilesIcon"></i> Load
+                        </button>
+                    </div>
+                    <div id="profilesDropdownWrap" style="display:none;margin-top:8px;">
+                        <select id="profilesDropdown" class="pkg-select" onchange="document.getElementById('pkgMikrotikProfile').value=this.value">
+                            <option value="">— pick from router profiles —</option>
+                        </select>
+                    </div>
+                    <div class="pkg-input-hint">Leave blank to auto-generate from the package name (e.g. "Home 10Mbps" → "home10mbps"). The profile will be created on the router if it doesn't exist.</div>
+                </div>
+            </div>
+
             <!-- Description -->
             <div class="pkg-section" style="margin-top:4px;"><i class="fas fa-align-left"></i> Description</div>
             <div class="pkg-row" style="grid-template-columns:1fr;">
@@ -661,6 +690,8 @@ function openAddPackageModal() {
     document.getElementById('pkgValidityValue').value = '1';
     document.getElementById('pkgValidityUnit').value = 'months';
     document.getElementById('pkgDeviceLimit').value = '1';
+    document.getElementById('pkgMikrotikProfile').value = '';
+    document.getElementById('profilesDropdownWrap').style.display = 'none';
     setConnType('pppoe');
     updateRatePreview();
     document.getElementById('packageModal').style.display = 'flex';
@@ -679,9 +710,50 @@ function openEditPackageModal(pkg) {
     document.getElementById('pkgValidityValue').value = pkg.validity_value || '1';
     const unit = (pkg.validity_unit || 'months').replace(/s$/, '') + 's';
     document.getElementById('pkgValidityUnit').value = ['hours','days','weeks','months'].includes(unit) ? unit : (pkg.validity_unit || 'months');
+    document.getElementById('pkgMikrotikProfile').value = pkg.mikrotik_profile || '';
+    document.getElementById('profilesDropdownWrap').style.display = 'none';
     setConnType(pkg.connection_type || pkg.type || 'pppoe');
     updateRatePreview();
     document.getElementById('packageModal').style.display = 'flex';
+}
+
+function loadRouterProfiles() {
+    const type = document.getElementById('pkgConnType').value || 'pppoe';
+    const btn  = document.getElementById('loadProfilesBtn');
+    const icon = document.getElementById('loadProfilesIcon');
+    icon.className = 'fas fa-spinner fa-spin';
+    btn.disabled = true;
+
+    const _base = (location.hostname === 'localhost' || /^\d+\.\d+\./.test(location.hostname))
+        ? '/fortunett_technologies_' : '';
+    fetch(_base + '/api/routers/profiles.php?type=' + type)
+        .then(r => r.json())
+        .then(data => {
+            icon.className = 'fas fa-sync-alt';
+            btn.disabled = false;
+            if (!data.success) {
+                showToast('Could not load profiles: ' + (data.message || 'Router unreachable'), 'error');
+                return;
+            }
+            const wrap = document.getElementById('profilesDropdownWrap');
+            const sel  = document.getElementById('profilesDropdown');
+            sel.innerHTML = '<option value="">— pick from router profiles —</option>';
+            (data.profiles || []).forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.name;
+                opt.textContent = p.name + (p.rate_limit ? '  [' + p.rate_limit + ']' : '');
+                sel.appendChild(opt);
+            });
+            wrap.style.display = 'block';
+            if (!data.profiles.length) {
+                showToast('No ' + type.toUpperCase() + ' profiles found on router.', 'error');
+            }
+        })
+        .catch(() => {
+            icon.className = 'fas fa-sync-alt';
+            btn.disabled = false;
+            showToast('Network error loading profiles.', 'error');
+        });
 }
 
 function closePackageModal() {

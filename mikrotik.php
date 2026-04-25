@@ -206,7 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .footer-btn.terminal:hover { background: rgba(110,231,183,.18); }
 
     /* ── Terminal Modal ─────────────────────────────── */
-    #terminalModal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.78); z-index:2000; align-items:center; justify-content:center; }
+    #terminalModal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.78); z-index:2000; align-items:center; justify-content:center; backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
     .term-window { background:#0d0d0c; border:1px solid rgba(255,255,255,.12); border-radius:10px; width:92vw; max-width:960px; height:82vh; max-height:720px; display:flex; flex-direction:column; box-shadow:0 28px 90px rgba(0,0,0,.85); overflow:hidden; }
     .term-header { background:#181817; padding:10px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,.07); flex-shrink:0; }
     .term-header-left { display:flex; align-items:center; gap:10px; }
