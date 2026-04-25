@@ -96,8 +96,9 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
         $api->disconnect();
 
         // ── Upload hotspot login page (hotspot only) ──────────────────────────
+        // Non-fatal during provisioning — failure is reported by the deploy button separately.
         if ($connType === 'hotspot') {
-            _uploadHotspotLoginPage($pdo, $router, $tenantId);
+            try { _uploadHotspotLoginPage($pdo, $router, $tenantId); } catch (Throwable $_e) {}
         }
 
         // ── Persist credentials & service record ──────────────────────────────
@@ -359,12 +360,11 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
         }
 
         // Build the URL that the router will fetch.
-        // Derive server base from HTTP_HOST if available, otherwise use the provisioning
-        // callback URL pattern (MPESA_CALLBACK_URL is set from config/mpesa.php).
+        // The site is deployed at the web-root of each subdomain, so the base is
+        // simply scheme://host — no path component needed.
         if (!empty($_SERVER['HTTP_HOST'])) {
-            $proto    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-            $basePath = rtrim(dirname(dirname($_SERVER['SCRIPT_NAME'])), '/\\');
-            $baseUrl  = $proto . '://' . $_SERVER['HTTP_HOST'] . $basePath;
+            $proto   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $baseUrl = $proto . '://' . $_SERVER['HTTP_HOST'];
         } elseif (defined('MPESA_CALLBACK_URL')) {
             // e.g. https://demo.fortunetttech.site/api/mpesa/callback.php → strip 3 segments
             $baseUrl = dirname(dirname(dirname(MPESA_CALLBACK_URL)));
@@ -374,7 +374,7 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
         }
 
         $serveUrl = $baseUrl . '/hotspot/login_serve.php?token=' . urlencode($provToken);
-        $mode     = (str_starts_with($serveUrl, 'https://')) ? 'https' : 'http';
+        $mode     = (strpos($serveUrl, 'https://') === 0) ? 'https' : 'http';
 
         // Connect to router via API and issue /tool/fetch
         $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
@@ -399,17 +399,20 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
             '=mode='     . $mode,
         ]);
 
-        $api->disconnect();
+        try { $api->disconnect(); } catch (Throwable $_e) {}
 
-        // Log any trap (error) from the router
+        // Surface any trap (error) from the router
         foreach ($result as $r) {
             if (isset($r['!trap'])) {
-                error_log('_uploadHotspotLoginPage: router fetch error: ' . ($r['message'] ?? 'unknown'));
+                $msg = $r['message'] ?? 'unknown router error';
+                error_log('_uploadHotspotLoginPage: router fetch error: ' . $msg);
+                throw new Exception('Router fetch error: ' . $msg);
             }
         }
 
     } catch (Throwable $e) {
         error_log('_uploadHotspotLoginPage: ' . $e->getMessage());
+        throw $e;   // re-throw so deploy_hotspot_login.php can report it
     }
 }
 

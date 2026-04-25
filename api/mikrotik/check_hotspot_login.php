@@ -46,18 +46,21 @@ try {
 
     $api->connect();
 
-    // List files matching the target path
-    $files = $api->comm('/file/print', ['?name=hotspot/login.html']);
+    // Fetch all files from flash — filter client-side to avoid RouterOS query
+    // filter format ambiguity across firmware versions.
+    $files = $api->comm('/file/print');
 
-    $api->disconnect();
+    try { $api->disconnect(); } catch (Throwable $_e) {}
 
     $found   = false;
     $modTime = null;
     $size    = null;
     foreach ($files as $f) {
-        if (isset($f['name']) && $f['name'] === 'hotspot/login.html') {
+        $fname = $f['name'] ?? '';
+        // Match both 'hotspot/login.html' and 'flash/hotspot/login.html'
+        if ($fname === 'hotspot/login.html' || substr($fname, -strlen('hotspot/login.html')) === 'hotspot/login.html') {
             $found   = true;
-            $modTime = $f['creation-time'] ?? ($f['modified'] ?? null);
+            $modTime = $f['creation-time'] ?? ($f['last-modified'] ?? null);
             $size    = $f['size'] ?? null;
             break;
         }
