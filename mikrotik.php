@@ -182,7 +182,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .router-name { font-weight: 600; font-size: 14px; color: #e2e2e0; }
     .router-ip   { font-size: 12px; color: rgba(255,255,255,.4); }
     .router-card-body { padding: 20px; }
-    .router-card-footer { padding: 12px 20px; border-top: 1px solid var(--neu-border); display: flex; align-items: center; justify-content: space-between; }
+    /* router-card-footer overridden below with better button layout */
     .footer-info { font-size: 12px; color: rgba(255,255,255,.3); }
 
     /* Router Metrics */
@@ -198,14 +198,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .progress-fill.danger  { background: linear-gradient(90deg, #EF4444 0%, #DC2626 100%); }
 
     /* Footer action buttons */
-    .footer-btn { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; transition: all .2s; border: 1px solid var(--neu-border); background: rgba(255,255,255,.06); color: rgba(255,255,255,.65); }
-    .footer-btn:hover { background: rgba(255,255,255,.12); }
-    .footer-btn.danger    { background: rgba(239,68,68,.12); color: #fca5a5; border-color: rgba(239,68,68,.3); }
-    .footer-btn.danger:hover { background: rgba(239,68,68,.25); }
-    .footer-btn.terminal  { background: rgba(110,231,183,.08); color: #6ee7b7; border-color: rgba(110,231,183,.25); }
-    .footer-btn.terminal:hover { background: rgba(110,231,183,.18); }
-    .footer-btn.deploy    { background: rgba(251,191,36,.08); color: #fbbf24; border-color: rgba(251,191,36,.25); }
-    .footer-btn.deploy:hover { background: rgba(251,191,36,.18); }
+    .footer-btn {
+        padding: 7px 13px; border-radius: 8px; font-size: 12px; font-weight: 600;
+        cursor: pointer; text-decoration: none; display: inline-flex; align-items: center;
+        gap: 6px; transition: all .18s; border: 1px solid rgba(255,255,255,.1);
+        background: rgba(255,255,255,.06); color: rgba(255,255,255,.6);
+        box-shadow: 0 1px 4px rgba(0,0,0,.3);
+    }
+    .footer-btn:hover { background: rgba(255,255,255,.12); color: #fff; border-color: rgba(255,255,255,.2); transform: translateY(-1px); }
+    .footer-btn:active { transform: translateY(0); }
+    .footer-btn i { font-size: 11px; opacity: .85; }
+
+    /* Test — subtle outline */
+    .footer-btn.test { border-color: rgba(148,163,184,.25); color: rgba(148,163,184,.9); }
+    .footer-btn.test:hover { background: rgba(148,163,184,.12); color: #cbd5e1; border-color: rgba(148,163,184,.4); }
+
+    /* Terminal — green */
+    .footer-btn.terminal { background: rgba(16,185,129,.1); color: #34d399; border-color: rgba(16,185,129,.3); }
+    .footer-btn.terminal:hover { background: rgba(16,185,129,.2); color: #6ee7b7; border-color: rgba(16,185,129,.5); }
+
+    /* Deploy — amber */
+    .footer-btn.deploy { background: rgba(245,158,11,.1); color: #fbbf24; border-color: rgba(245,158,11,.3); }
+    .footer-btn.deploy:hover { background: rgba(245,158,11,.2); color: #fcd34d; border-color: rgba(245,158,11,.5); }
+
+    /* Edit — blue-grey */
+    .footer-btn.edit { background: rgba(99,102,241,.1); color: #a5b4fc; border-color: rgba(99,102,241,.3); }
+    .footer-btn.edit:hover { background: rgba(99,102,241,.2); color: #c7d2fe; border-color: rgba(99,102,241,.5); }
+
+    /* Delete — red, icon-only pill */
+    .footer-btn.danger { background: rgba(239,68,68,.08); color: #f87171; border-color: rgba(239,68,68,.25); padding: 7px 10px; }
+    .footer-btn.danger:hover { background: rgba(239,68,68,.18); color: #fca5a5; border-color: rgba(239,68,68,.5); }
+
+    /* Hotspot login deploy status dot */
+    .login-status-dot {
+        display: inline-flex; align-items: center; gap: 5px;
+        font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+        padding: 3px 7px; border-radius: 20px; border: 1px solid;
+        white-space: nowrap; transition: opacity .3s;
+    }
+    .login-status-dot.deployed  { color: #34d399; border-color: rgba(52,211,153,.3); background: rgba(52,211,153,.08); }
+    .login-status-dot.missing   { color: #fbbf24; border-color: rgba(251,191,36,.3);  background: rgba(251,191,36,.08);  }
+    .login-status-dot.checking  { color: rgba(255,255,255,.3); border-color: rgba(255,255,255,.1); background: transparent; }
+    .login-status-dot i { font-size: 9px; }
+
+    /* Card footer layout */
+    .router-card-footer {
+        padding: 12px 16px;
+        border-top: 1px solid rgba(255,255,255,.06);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+        background: rgba(0,0,0,.12);
+    }
+    .footer-info { font-size: 11px; color: rgba(255,255,255,.28); }
+    .footer-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .footer-actions-group { display: flex; gap: 4px; align-items: center; }
 
     /* ── Terminal Modal ─────────────────────────────── */
     #terminalModal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.78); z-index:2000; align-items:center; justify-content:center; backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
@@ -499,13 +548,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
                 <div class="router-card-footer">
-                    <div class="footer-info">Last Seen: <?php echo $router['last_seen'] ? date('d M H:i', strtotime($router['last_seen'])) : 'Never'; ?></div>
+                    <div class="footer-info"><i class="fas fa-clock" style="opacity:.5;margin-right:4px;"></i>Last seen: <?php echo $router['last_seen'] ? date('d M H:i', strtotime($router['last_seen'])) : 'Never'; ?></div>
                     <div class="footer-actions">
-                        <button class="footer-btn secondary" id="rbtn-test-<?php echo $router['id']; ?>" onclick="testConnection(<?php echo $router['id']; ?>, this)"><i class="fas fa-plug"></i> Test</button>
-                        <button class="footer-btn terminal" onclick="openTerminal(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars(addslashes($router['name'])); ?>', '<?php echo htmlspecialchars($router['ip_address']); ?>')"><i class="fas fa-terminal"></i> Terminal</button>
-                        <button class="footer-btn deploy" onclick="deployHotspotLogin(<?php echo $router['id']; ?>, this)" title="Push branded hotspot login page to router"><i class="fas fa-upload"></i> Deploy Login</button>
-                        <button class="footer-btn secondary" onclick="editRouter(<?php echo htmlspecialchars(json_encode($router)); ?>)"><i class="fas fa-edit"></i> Edit</button>
-                        <button class="footer-btn danger" onclick="confirmDeleteRouter(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars($router['name']); ?>')"><i class="fas fa-trash"></i> Delete</button>
+                        <!-- Primary tools -->
+                        <div class="footer-actions-group">
+                            <button class="footer-btn test" id="rbtn-test-<?php echo $router['id']; ?>" onclick="testConnection(<?php echo $router['id']; ?>, this)" title="Test connection"><i class="fas fa-plug"></i> Test</button>
+                            <button class="footer-btn terminal" onclick="openTerminal(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars(addslashes($router['name'])); ?>', '<?php echo htmlspecialchars($router['ip_address']); ?>')" title="Open remote terminal"><i class="fas fa-terminal"></i> Terminal</button>
+                        </div>
+                        <!-- Hotspot tools -->
+                        <div class="footer-actions-group" style="align-items:center;gap:6px;">
+                            <button class="footer-btn deploy" id="rdeploy-<?php echo $router['id']; ?>" onclick="deployHotspotLogin(<?php echo $router['id']; ?>, this)" title="Push branded hotspot login page to this router's flash"><i class="fas fa-cloud-upload-alt"></i> Deploy Login</button>
+                            <span class="login-status-dot checking" id="rlogin-status-<?php echo $router['id']; ?>" title="Checking deploy status…"><i class="fas fa-circle-notch fa-spin"></i> …</span>
+                        </div>
+                        <!-- Management -->
+                        <div class="footer-actions-group">
+                            <button class="footer-btn edit" onclick="editRouter(<?php echo htmlspecialchars(json_encode($router)); ?>)" title="Edit router settings"><i class="fas fa-sliders-h"></i> Edit</button>
+                            <button class="footer-btn danger" onclick="confirmDeleteRouter(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars($router['name']); ?>')" title="Remove this router"><i class="fas fa-trash-alt"></i></button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1332,9 +1391,57 @@ function deployHotspotLogin(routerId, btn) {
         .then(d => {
             btn.innerHTML = orig; btn.disabled = false;
             showToast(d.message || (d.success ? 'Deployed.' : 'Failed.'), d.success ? 'success' : 'error');
+            if (d.success) {
+                // Re-check status after a brief delay (router needs a moment to pull the file)
+                setTimeout(() => checkHotspotLoginStatus(routerId), 3000);
+            }
         })
         .catch(() => { btn.innerHTML = orig; btn.disabled = false; showToast('Network error.', 'error'); });
 }
+
+function checkHotspotLoginStatus(routerId) {
+    const dot = document.getElementById('rlogin-status-' + routerId);
+    if (!dot) return;
+    dot.className = 'login-status-dot checking';
+    dot.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> …';
+    dot.title = 'Checking…';
+
+    const fd = new FormData(); fd.append('router_id', routerId);
+    fetch('api/mikrotik/check_hotspot_login.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) {
+                dot.className = 'login-status-dot missing';
+                dot.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Unreachable';
+                dot.title = d.message || 'Could not reach router';
+                return;
+            }
+            if (d.deployed) {
+                dot.className = 'login-status-dot deployed';
+                const label = d.mod_time ? 'Deployed ' + d.mod_time : 'Deployed';
+                dot.innerHTML = '<i class="fas fa-check-circle"></i> Deployed';
+                dot.title = label + (d.size ? ' · ' + d.size + ' bytes' : '');
+            } else {
+                dot.className = 'login-status-dot missing';
+                dot.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Not deployed';
+                dot.title = 'hotspot/login.html not found on this router';
+            }
+        })
+        .catch(() => {
+            dot.className = 'login-status-dot missing';
+            dot.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error';
+            dot.title = 'Network error';
+        });
+}
+
+function checkAllLoginStatuses() {
+    document.querySelectorAll('[id^="rlogin-status-"]').forEach(dot => {
+        const routerId = dot.id.replace('rlogin-status-', '');
+        checkHotspotLoginStatus(routerId);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', checkAllLoginStatuses);
 
 function closeTerminal() {
     document.getElementById('terminalModal').style.display = 'none';

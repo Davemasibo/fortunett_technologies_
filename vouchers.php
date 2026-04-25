@@ -24,10 +24,26 @@ try {
     }
 } catch (Throwable $_e) {}
 
+// Ensure optional package columns exist
+try { $pdo->exec("ALTER TABLE packages ADD COLUMN connection_type VARCHAR(20) DEFAULT 'pppoe'"); } catch (Throwable $_e) {}
+try { $pdo->exec("ALTER TABLE packages ADD COLUMN mikrotik_profile VARCHAR(100) DEFAULT NULL"); } catch (Throwable $_e) {}
+
 // Packages for form
-$pkgSt = $pdo->prepare("SELECT id, name, type, connection_type, mikrotik_profile FROM packages WHERE tenant_id = ? AND status = 'active' ORDER BY name");
-$pkgSt->execute([$tenant_id]);
-$packages = $pkgSt->fetchAll(PDO::FETCH_ASSOC);
+$packages = [];
+try {
+    $pkgSt = $pdo->prepare("SELECT id, name,
+        COALESCE(NULLIF(connection_type,''), type, 'pppoe') AS connection_type,
+        COALESCE(mikrotik_profile,'') AS mikrotik_profile
+        FROM packages WHERE tenant_id = ? AND status = 'active' ORDER BY name");
+    $pkgSt->execute([$tenant_id]);
+    $packages = $pkgSt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $_e) {
+    try {
+        $pkgSt = $pdo->prepare("SELECT id, name, type AS connection_type FROM packages WHERE tenant_id = ? AND status = 'active' ORDER BY name");
+        $pkgSt->execute([$tenant_id]);
+        $packages = $pkgSt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $_e2) {}
+}
 
 include 'includes/header.php';
 include 'includes/sidebar.php';

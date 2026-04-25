@@ -162,7 +162,7 @@ try {
     $provResult     = autoProvisionClient($pdo, $client_id, $tenant_id);
     $mikrotikSynced = $provResult['success'];
     $mikrotikError  = $provResult['success'] ? null : ($provResult['message'] ?? 'Provisioning failed');
-    $noRouter       = str_contains($mikrotikError ?? '', 'No active router');
+    $noRouter       = (strpos($mikrotikError ?? '', 'No active router') !== false);
     $profileUsed    = null;
     $routerIp       = null;
 

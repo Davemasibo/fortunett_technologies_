@@ -25,7 +25,7 @@ try {
         exit('Invalid token');
     }
 
-    $stmt = $pdo->prepare("SELECT brand_color, company_name FROM tenants WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT id, brand_color, company_name FROM tenants WHERE id = ?");
     $stmt->execute([$tenantId]);
     $tenant = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -41,6 +41,42 @@ try {
         max(0, hexdec(substr($hex, 4, 2)) - 40)
     );
 
+    // Fetch hotspot packages for this tenant
+    $packagesHtml = '';
+    try {
+        $pkgStmt = $pdo->prepare("
+            SELECT name, price, download_speed, upload_speed, validity_value, validity_unit,
+                   COALESCE(NULLIF(description,''), '') AS description
+            FROM packages
+            WHERE tenant_id = ? AND status = 'active'
+              AND COALESCE(NULLIF(connection_type,''), type, 'hotspot') = 'hotspot'
+            ORDER BY price ASC
+            LIMIT 8
+        ");
+        $pkgStmt->execute([$tenantId]);
+        $pkgs = $pkgStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if ($pkgs) {
+            $rows = '';
+            foreach ($pkgs as $p) {
+                $dur  = ($p['validity_value'] ?? 1) . ' ' . ucfirst($p['validity_unit'] ?? 'days');
+                $speed = '';
+                if (!empty($p['download_speed'])) {
+                    $speed = $p['download_speed'] . ' Mbps';
+                }
+                $rows .= '<div class="pkg-row">'
+                    . '<span class="pkg-name">' . htmlspecialchars($p['name']) . '</span>'
+                    . '<span class="pkg-meta">' . ($speed ? $speed . ' &bull; ' : '') . $dur . '</span>'
+                    . '<span class="pkg-price">KES ' . number_format((float)$p['price'], 0) . '</span>'
+                    . '</div>';
+            }
+            $packagesHtml = '<div class="pkg-section">'
+                . '<div class="pkg-title">Available Plans</div>'
+                . $rows
+                . '</div>';
+        }
+    } catch (Throwable $_e) {}
+
     $templatePath = __DIR__ . '/login.html';
     if (!file_exists($templatePath)) {
         http_response_code(500);
@@ -49,8 +85,8 @@ try {
 
     $html = file_get_contents($templatePath);
     $html = str_replace(
-        ['{{BRAND_COLOR}}', '{{BRAND_DARK}}', '{{COMPANY_NAME}}'],
-        [$brandColor, $brandDark, htmlspecialchars($companyName, ENT_QUOTES)],
+        ['{{BRAND_COLOR}}', '{{BRAND_DARK}}', '{{COMPANY_NAME}}', '{{PACKAGES_SECTION}}'],
+        [$brandColor, $brandDark, htmlspecialchars($companyName, ENT_QUOTES), $packagesHtml],
         $html
     );
 

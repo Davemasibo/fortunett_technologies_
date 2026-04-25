@@ -33,18 +33,17 @@ $expires_at     = !empty($_POST['expires_at']) ? date('Y-m-d H:i:s', strtotime($
 $conn_type      = ($_POST['connection_type'] ?? 'hotspot') === 'pppoe' ? 'pppoe' : 'hotspot';
 $prefix         = preg_replace('/[^A-Z0-9]/', '', strtoupper($_POST['prefix'] ?? ''));
 
-// Duration → seconds (for RouterOS limit-uptime)
-$durationSecs = match($duration_unit) {
-    'hours'  => $duration_value * 3600,
-    'months' => $duration_value * 30 * 86400,
-    default  => $duration_value * 86400, // days
-};
-$limitUptime = $duration_value . match($duration_unit) {
-    'hours'  => 'h',
-    'months' => 'd', // RouterOS doesn't have months — convert to days
-    default  => 'd',
-};
-if ($duration_unit === 'months') $limitUptime = ($duration_value * 30) . 'd';
+// Duration → seconds / RouterOS uptime string (PHP 7.4-compatible)
+if ($duration_unit === 'hours') {
+    $durationSecs = $duration_value * 3600;
+    $limitUptime  = $duration_value . 'h';
+} elseif ($duration_unit === 'months') {
+    $durationSecs = $duration_value * 30 * 86400;
+    $limitUptime  = ($duration_value * 30) . 'd';
+} else {
+    $durationSecs = $duration_value * 86400;
+    $limitUptime  = $duration_value . 'd';
+}
 $duration_days = (int)ceil($durationSecs / 86400);
 
 // Validate package

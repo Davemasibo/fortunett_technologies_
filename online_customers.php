@@ -59,6 +59,9 @@ foreach ($routers as $router) {
         // PPPoE sessions — isolated so a hotspot failure cannot hide these
         try {
             foreach ($mk->getActiveSessionsMap() as $uname => $d) {
+                // Note: RouterOS may close the TCP connection after !done.
+                // We catch this in MikrotikAPI::read(), but the socket is then
+                // dead for subsequent calls — hotspot uses a fresh connection below.
                 $uptimeSecs = uptimeToSeconds($d['uptime'] ?? '');
                 $onlineUsers[] = [
                     'username'     => $uname,
@@ -78,9 +81,13 @@ foreach ($routers as $router) {
             $fetchErrors[] = htmlspecialchars($router['name'] . ' [PPPoE]: ' . $pppoeEx->getMessage());
         }
 
-        // Hotspot sessions — isolated so a PPPoE failure cannot hide these
+        // Hotspot sessions — use a FRESH connection.
+        // RouterOS may silently close TCP after the PPPoE !done response,
+        // leaving $mk's socket dead. A new instance guarantees a live socket.
         try {
-            foreach ($mk->getActiveHotspotSessionsMap() as $uname => $d) {
+            $mkHs = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
+            $mkHs->connect();
+            foreach ($mkHs->getActiveHotspotSessionsMap() as $uname => $d) {
                 $uptimeSecs = uptimeToSeconds($d['uptime'] ?? '');
                 $onlineUsers[] = [
                     'username'     => $uname,
@@ -96,11 +103,11 @@ foreach ($routers as $router) {
                 ];
                 $routerStats[$router['id']]['hotspot']++;
             }
+            try { $mkHs->disconnect(); } catch (Exception $_e) {}
         } catch (Exception $hsEx) {
             $msg = $hsEx->getMessage();
-            // Give an actionable hint for the most common hotspot failure
             if (stripos($msg, 'connection closed') !== false || stripos($msg, 'no such command') !== false) {
-                $msg .= ' — Hotspot may not be configured on this router. Run /ip/hotspot/print in the Terminal to verify.';
+                $msg .= ' — Hotspot may not be running on this router. Run /ip/hotspot/print in Terminal to check.';
             }
             $fetchErrors[] = htmlspecialchars($router['name'] . ' [Hotspot]: ' . $msg);
         }
