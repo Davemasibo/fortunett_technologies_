@@ -264,9 +264,11 @@ class TenantManager {
      */
     public function validateProvisioningToken($token) {
         try {
+            // No status restriction — the token itself is the credential.
+            // The login page is just HTML and should serve regardless of billing status.
             $stmt = $this->db->prepare("
-                SELECT id FROM tenants 
-                WHERE provisioning_token = ? AND status IN ('active', 'trial')
+                SELECT id FROM tenants
+                WHERE provisioning_token = ?
             ");
             $stmt->execute([$token]);
             $result = $stmt->fetch(PDO::FETCH_ASSOC);

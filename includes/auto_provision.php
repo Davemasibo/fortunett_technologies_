@@ -428,10 +428,13 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
         } catch (Throwable $_e) {}
 
         // ── Pull the branded login page to the router's flash ─────────────────
+        // check-certificate=no avoids failures on routers that don't have the
+        // CA bundle for Let's Encrypt (common on older RouterOS firmware).
         $result = $api->comm('/tool/fetch', [
-            '=url='      . $serveUrl,
-            '=dst-path=' . $dstPath,
-            '=mode='     . $mode,
+            '=url='               . $serveUrl,
+            '=dst-path='          . $dstPath,
+            '=mode='              . $mode,
+            '=check-certificate=no',
         ]);
 
         try { $api->disconnect(); } catch (Throwable $_e) {}

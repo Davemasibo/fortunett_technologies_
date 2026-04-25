@@ -7,6 +7,9 @@
  * URL: /hotspot/login_serve.php?token={provisioning_token}
  * No session auth — secured by the provisioning token.
  */
+ob_start();
+ini_set('display_errors', 0);
+error_reporting(0);
 require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/../includes/tenant.php';
 
@@ -90,12 +93,16 @@ try {
         $html
     );
 
+    ob_clean();
     header('Content-Type: text/html; charset=utf-8');
     header('Cache-Control: no-store');
     echo $html;
 
 } catch (Throwable $e) {
+    ob_clean();
     http_response_code(500);
-    exit('Error: ' . $e->getMessage());
+    // Return the error in the body — visible when visiting the URL in a browser,
+    // and in the router log if it captures fetch response bodies.
+    exit('500 Error: ' . $e->getMessage() . ' in ' . basename($e->getFile()) . ':' . $e->getLine());
 }
 ?>
