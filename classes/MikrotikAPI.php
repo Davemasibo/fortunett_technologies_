@@ -165,7 +165,18 @@ class MikrotikAPI {
         $done     = false;
 
         while (true) {
-            $word = $this->readWord();
+            try {
+                $word = $this->readWord();
+            } catch (Exception $e) {
+                // Some RouterOS versions close the TCP connection immediately after
+                // sending !done / !fatal without sending the trailing empty word.
+                // If we already have data (or saw !done), return what we have
+                // rather than surfacing a misleading "connection closed" error.
+                if ($done || !empty($response)) {
+                    break;
+                }
+                throw $e;
+            }
 
             if ($word === '') {
                 // Empty word = end of one sentence.
