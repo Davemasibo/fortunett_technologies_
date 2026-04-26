@@ -390,51 +390,56 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
             return;
         }
 
-        $api->connect();
+        // RouterOS 7.x closes TCP after every !done response, so each command
+        // needs its own fresh connection — reusing a socket after the first
+        // comm() call silently fails on the write.
+        $mkArgs = [$connectIp, $router['username'], $router['password'], $port];
 
-        // flash/hotspot is the canonical RouterOS hotspot HTML directory.
-        // Never read this from the profile — if the profile has a doubled/wrong
-        // path (flash/flash/hotspot) reading it would compound the mistake.
         $dstPath = 'flash/hotspot/login.html';
 
-        // ── Fix hotspot profiles: correct html-directory + ensure PAP allowed ──
-        // Our login page sends passwords in plain text (PAP); CHAP-only profiles
-        // reject every login. We also force html-directory=flash/hotspot so the
-        // router always looks in the right folder for the login page.
+        // ── Step 1: read profiles (connection #1) ────────────────────────────
+        $profiles = [];
         try {
-            $profiles = $api->comm('/ip/hotspot/profile/print');
-            foreach ($profiles as $p) {
-                if (empty($p['.id'])) continue;
-                $dir     = trim($p['html-directory'] ?? '');
-                $loginBy = $p['login-by'] ?? '';
-
-                // Skip the built-in default profile (no html-directory set)
-                if ($dir === '') continue;
-
-                $updates = ['=.id=' . $p['.id']];
-                if ($dir !== 'flash/hotspot') {
-                    $updates[] = '=html-directory=flash/hotspot';
-                }
-                if (strpos($loginBy, 'http-pap') === false) {
-                    $updates[] = '=login-by=' . $loginBy . ',http-pap';
-                }
-                if (count($updates) > 1) {
-                    $api->comm('/ip/hotspot/profile/set', $updates);
-                }
-            }
+            $mk1 = new MikrotikAPI(...$mkArgs);
+            $mk1->connect();
+            $profiles = $mk1->comm('/ip/hotspot/profile/print');
+            try { $mk1->disconnect(); } catch (Throwable $_e) {}
         } catch (Throwable $_e) {}
 
-        // ── Pull the branded login page to the router's flash ─────────────────
-        // check-certificate=no avoids failures on routers that don't have the
-        // CA bundle for Let's Encrypt (common on older RouterOS firmware).
-        $result = $api->comm('/tool/fetch', [
+        // ── Step 2: fix each profile that needs it (one fresh connection each) ─
+        foreach ($profiles as $p) {
+            if (empty($p['.id'])) continue;
+            $dir     = trim($p['html-directory'] ?? '');
+            $loginBy = $p['login-by'] ?? '';
+            if ($dir === '') continue;   // skip built-in default (no html-directory)
+
+            $updates = ['=.id=' . $p['.id']];
+            if ($dir !== 'flash/hotspot') {
+                $updates[] = '=html-directory=flash/hotspot';
+            }
+            if (strpos($loginBy, 'http-pap') === false) {
+                $updates[] = '=login-by=' . $loginBy . ',http-pap';
+            }
+            if (count($updates) < 2) continue;
+
+            try {
+                $mk2 = new MikrotikAPI(...$mkArgs);
+                $mk2->connect();
+                $mk2->comm('/ip/hotspot/profile/set', $updates);
+                try { $mk2->disconnect(); } catch (Throwable $_e) {}
+            } catch (Throwable $_e) {}
+        }
+
+        // ── Step 3: pull the branded login page (fresh connection) ───────────
+        $mk3 = new MikrotikAPI(...$mkArgs);
+        $mk3->connect();
+        $result = $mk3->comm('/tool/fetch', [
             '=url='               . $serveUrl,
             '=dst-path='          . $dstPath,
             '=mode='              . $mode,
             '=check-certificate=no',
         ]);
-
-        try { $api->disconnect(); } catch (Throwable $_e) {}
+        try { $mk3->disconnect(); } catch (Throwable $_e) {}
 
         // Surface any trap (error) from the router
         foreach ($result as $r) {
