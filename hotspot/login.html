@@ -107,18 +107,24 @@ h1{color:#e8e8e6;font-size:19px;font-weight:700;text-align:center;margin-bottom:
   </div>
   $(endif)
 
-  <form name="login" action="$(link-login-only)" method="post" accept-charset="UTF-8">
-    <!-- After auth the router redirects here; we auto-log them into the customer portal -->
-    <input type="hidden" name="dst" value="{{PORTAL_URL}}/customer/hotspot_landing.php?mac=$(mac-esc)">
+  <form name="login" id="hs-form" action="$(link-login-only)" method="post" accept-charset="UTF-8">
+    <!-- After MikroTik authenticates, the router redirects to dst.
+         We embed the typed username so hotspot_landing.php can look up the
+         customer directly in the DB without re-querying the router API. -->
+    <input type="hidden" name="dst" id="hs-dst"
+           value="{{PORTAL_URL}}/customer/hotspot_landing.php?mac=$(mac-esc)">
 
     <div class="form-group">
       <label>Username / Voucher Code</label>
-      <input type="text" name="username" value="$(username)" placeholder="Enter your username" autocomplete="username" required>
+      <input type="text" name="username" id="hs-user"
+             value="$(username)" placeholder="Enter your username"
+             autocomplete="username" required>
     </div>
 
     <div class="form-group">
       <label>Password</label>
-      <input type="password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
+      <input type="password" name="password" placeholder="Enter your password"
+             autocomplete="current-password" required>
     </div>
 
     <button type="submit" class="btn-login">Connect to Internet</button>
@@ -134,5 +140,16 @@ h1{color:#e8e8e6;font-size:19px;font-weight:700;text-align:center;margin-bottom:
     <a href="status">My Status</a>
   </div>
 </div>
+<script>
+// Append the typed username to the dst redirect URL so hotspot_landing.php
+// can look up the customer directly without needing to call the router API.
+document.getElementById('hs-form').addEventListener('submit', function() {
+  var user = (document.getElementById('hs-user').value || '').trim();
+  if (user) {
+    var dst = document.getElementById('hs-dst');
+    dst.value = dst.value + '&user=' + encodeURIComponent(user);
+  }
+});
+</script>
 </body>
 </html>

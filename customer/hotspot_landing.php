@@ -38,15 +38,34 @@ try {
     }
 } catch (Exception $_e) {}
 
-$mac = trim($_GET['mac'] ?? '');
+$mac      = trim($_GET['mac']  ?? '');
+$username = trim($_GET['user'] ?? '');   // appended by hotspot login.html JS before submit
 
-// ── Attempt auto-login by MAC ──────────────────────────────────────────────────
+// ── Attempt auto-login ─────────────────────────────────────────────────────────
 $client    = null;
 $loginDone = false;
 
-if ($tenantId && $mac) {
+// ── Strategy 1: direct DB lookup by mikrotik_username (fast, no router API) ───
+// The hotspot login.html appends &user=<username> to the dst URL via JS just
+// before form submission, so we can resolve the customer without a round-trip
+// to the router's API — which may not be reachable from the web server.
+if ($tenantId && $username) {
     try {
-        // Fetch all active routers for this tenant
+        $cSt = $pdo->prepare(
+            "SELECT * FROM clients WHERE mikrotik_username = ? AND tenant_id = ? LIMIT 1"
+        );
+        $cSt->execute([$username, $tenantId]);
+        $client = $cSt->fetch(PDO::FETCH_ASSOC) ?: null;
+    } catch (Exception $_e) {
+        error_log('[hotspot_landing] username lookup: ' . $_e->getMessage());
+    }
+}
+
+// ── Strategy 2: fallback — MAC lookup via router API ──────────────────────────
+// Used when the username wasn't passed (e.g. old login.html still on router)
+// or wasn't found in the DB. Requires the router API to be reachable.
+if (!$client && $tenantId && $mac) {
+    try {
         $rSt = $pdo->prepare(
             "SELECT id, ip_address, vpn_ip, username, password, api_port
              FROM mikrotik_routers
@@ -60,7 +79,6 @@ if ($tenantId && $mac) {
             $port      = (int)($router['api_port'] ?: 8728);
             $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
 
-            // Quick reachability probe before full API handshake
             $fp = @fsockopen($connectIp, $port, $errno, $errstr, 2);
             if (!$fp) continue;
             fclose($fp);
@@ -83,46 +101,41 @@ if ($tenantId && $mac) {
                 }
 
                 if ($hotspotUser) {
-                    // Find the client record by their MikroTik username
                     $cSt = $pdo->prepare(
                         "SELECT * FROM clients WHERE mikrotik_username = ? AND tenant_id = ? LIMIT 1"
                     );
                     $cSt->execute([$hotspotUser, $tenantId]);
-                    $client = $cSt->fetch(PDO::FETCH_ASSOC);
-                    break;
+                    $client = $cSt->fetch(PDO::FETCH_ASSOC) ?: null;
+                    if ($client) break;
                 }
             } catch (Exception $_apiEx) {
                 error_log('[hotspot_landing] router ' . $router['id'] . ': ' . $_apiEx->getMessage());
             }
         }
+    } catch (Exception $_e) {
+        error_log('[hotspot_landing] MAC fallback: ' . $_e->getMessage());
+    }
+}
 
-        // Create a short-lived auto-login token and use it to build a portal session
-        if ($client) {
-            $token = bin2hex(random_bytes(16));
-            try {
-                $pdo->prepare(
-                    "INSERT INTO payment_auto_logins (client_id, login_token, expires_at, status)
-                     VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 90 SECOND), 'pending')"
-                )->execute([$client['id'], $token]);
-            } catch (Exception $_e) {
-                // Table may have extra columns — try minimal insert
-                $pdo->prepare(
-                    "INSERT INTO payment_auto_logins (client_id, login_token, expires_at, status)
-                     VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 90 SECOND), 'pending')"
-                )->execute([$client['id'], $token]);
-            }
+// ── Build portal session if a client was resolved ─────────────────────────────
+if ($client) {
+    try {
+        $token = bin2hex(random_bytes(16));
+        $pdo->prepare(
+            "INSERT INTO payment_auto_logins (client_id, login_token, expires_at, status)
+             VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 90 SECOND), 'pending')"
+        )->execute([$client['id'], $token]);
 
-            $auth   = new CustomerAuth($pdo);
-            $result = $auth->autoLogin($token, $_SERVER['REMOTE_ADDR'] ?? null, $mac);
+        $auth   = new CustomerAuth($pdo);
+        $result = $auth->autoLogin($token, $_SERVER['REMOTE_ADDR'] ?? null, $mac ?: null);
 
-            if ($result['success']) {
-                $_SESSION['customer_token'] = $result['session_token'];
-                $_SESSION['customer_data']  = $result['client'] ?? [];
-                $loginDone = true;
-            }
+        if ($result['success']) {
+            $_SESSION['customer_token'] = $result['session_token'];
+            $_SESSION['customer_data']  = $result['client'] ?? [];
+            $loginDone = true;
         }
     } catch (Exception $_e) {
-        error_log('[hotspot_landing] ' . $_e->getMessage());
+        error_log('[hotspot_landing] auto-login: ' . $_e->getMessage());
     }
 }
 

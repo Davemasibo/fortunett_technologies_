@@ -410,18 +410,21 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
         } catch (Throwable $_e) {}
 
         // ── Step 2: fix each profile that needs it (one fresh connection each) ─
+        // We update ALL profiles, including those with an empty html-directory
+        // (fresh/default routers). Skipping them was the reason auto-deploy
+        // had no effect on newly provisioned routers.
         foreach ($profiles as $p) {
             if (empty($p['.id'])) continue;
             $dir     = trim($p['html-directory'] ?? '');
-            $loginBy = $p['login-by'] ?? '';
-            if ($dir === '') continue;   // skip built-in default (no html-directory)
+            $loginBy = trim($p['login-by']        ?? '');
 
             $updates = ['=.id=' . $p['.id']];
             if ($dir !== 'flash/hotspot') {
                 $updates[] = '=html-directory=flash/hotspot';
             }
             if (strpos($loginBy, 'http-pap') === false) {
-                $updates[] = '=login-by=' . $loginBy . ',http-pap';
+                // Append http-pap; handle the empty-string case gracefully
+                $updates[] = '=login-by=' . ($loginBy ? $loginBy . ',http-pap' : 'http-pap');
             }
             if (count($updates) < 2) continue;
 

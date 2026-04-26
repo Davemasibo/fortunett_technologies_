@@ -51,70 +51,68 @@ foreach ($routers as $router) {
         'hotspot' => 0,
     ];
 
+    // Quick TCP probe — if the port is closed we skip both queries
+    $fp = @fsockopen($connectIp, $port, $errno, $errstr, 2);
+    if (!$fp) continue;
+    fclose($fp);
+    $routerStats[$router['id']]['online'] = true;
+
+    // PPPoE sessions — fresh connection.
+    // RouterOS 7.x closes TCP after every !done (including after login's !done),
+    // so any socket reused for a second command silently writes to a dead pipe
+    // and returns nothing. Using a dedicated connection for each service type
+    // guarantees a live socket for each query.
     try {
-        $mk = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
-        $mk->connect();
-        $routerStats[$router['id']]['online'] = true;
-
-        // PPPoE sessions — isolated so a hotspot failure cannot hide these
-        try {
-            foreach ($mk->getActiveSessionsMap() as $uname => $d) {
-                // Note: RouterOS may close the TCP connection after !done.
-                // We catch this in MikrotikAPI::read(), but the socket is then
-                // dead for subsequent calls — hotspot uses a fresh connection below.
-                $uptimeSecs = uptimeToSeconds($d['uptime'] ?? '');
-                $onlineUsers[] = [
-                    'username'     => $uname,
-                    'type'         => 'pppoe',
-                    'ip'           => $d['address'] ?? '—',
-                    'mac'          => $d['caller']  ?? '—',
-                    'uptime'       => $d['uptime']  ?? '—',
-                    'session_start'=> $uptimeSecs > 0 ? date('M d, H:i', time() - $uptimeSecs) : '—',
-                    'rx_bytes'     => (int)($d['rx_byte'] ?? 0),
-                    'tx_bytes'     => (int)($d['tx_byte'] ?? 0),
-                    'router_id'    => $router['id'],
-                    'router'       => $router['name'],
-                ];
-                $routerStats[$router['id']]['pppoe']++;
-            }
-        } catch (Exception $pppoeEx) {
-            $fetchErrors[] = htmlspecialchars($router['name'] . ' [PPPoE]: ' . $pppoeEx->getMessage());
+        $mkPpp = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
+        $mkPpp->connect();
+        foreach ($mkPpp->getActiveSessionsMap() as $uname => $d) {
+            $uptimeSecs = uptimeToSeconds($d['uptime'] ?? '');
+            $onlineUsers[] = [
+                'username'     => $uname,
+                'type'         => 'pppoe',
+                'ip'           => $d['address'] ?? '—',
+                'mac'          => $d['caller']  ?? '—',
+                'uptime'       => $d['uptime']  ?? '—',
+                'session_start'=> $uptimeSecs > 0 ? date('M d, H:i', time() - $uptimeSecs) : '—',
+                'rx_bytes'     => (int)($d['rx_byte'] ?? 0),
+                'tx_bytes'     => (int)($d['tx_byte'] ?? 0),
+                'router_id'    => $router['id'],
+                'router'       => $router['name'],
+            ];
+            $routerStats[$router['id']]['pppoe']++;
         }
+        try { $mkPpp->disconnect(); } catch (Exception $_e) {}
+    } catch (Exception $pppoeEx) {
+        $fetchErrors[] = htmlspecialchars($router['name'] . ' [PPPoE]: ' . $pppoeEx->getMessage());
+    }
 
-        // Hotspot sessions — use a FRESH connection.
-        // RouterOS may silently close TCP after the PPPoE !done response,
-        // leaving $mk's socket dead. A new instance guarantees a live socket.
-        try {
-            $mkHs = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
-            $mkHs->connect();
-            foreach ($mkHs->getActiveHotspotSessionsMap() as $uname => $d) {
-                $uptimeSecs = uptimeToSeconds($d['uptime'] ?? '');
-                $onlineUsers[] = [
-                    'username'     => $uname,
-                    'type'         => 'hotspot',
-                    'ip'           => $d['address'] ?? '—',
-                    'mac'          => !empty($d['mac']) ? $d['mac'] : '—',
-                    'uptime'       => $d['uptime']  ?? '—',
-                    'session_start'=> $uptimeSecs > 0 ? date('M d, H:i', time() - $uptimeSecs) : '—',
-                    'rx_bytes'     => (int)($d['rx_byte'] ?? 0),
-                    'tx_bytes'     => (int)($d['tx_byte'] ?? 0),
-                    'router_id'    => $router['id'],
-                    'router'       => $router['name'],
-                ];
-                $routerStats[$router['id']]['hotspot']++;
-            }
-            try { $mkHs->disconnect(); } catch (Exception $_e) {}
-        } catch (Exception $hsEx) {
-            $msg = $hsEx->getMessage();
-            if (stripos($msg, 'connection closed') !== false || stripos($msg, 'no such command') !== false) {
-                $msg .= ' — Hotspot may not be running on this router. Run /ip/hotspot/print in Terminal to check.';
-            }
-            $fetchErrors[] = htmlspecialchars($router['name'] . ' [Hotspot]: ' . $msg);
+    // Hotspot sessions — separate fresh connection (same reason as PPPoE above)
+    try {
+        $mkHs = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
+        $mkHs->connect();
+        foreach ($mkHs->getActiveHotspotSessionsMap() as $uname => $d) {
+            $uptimeSecs = uptimeToSeconds($d['uptime'] ?? '');
+            $onlineUsers[] = [
+                'username'     => $uname,
+                'type'         => 'hotspot',
+                'ip'           => $d['address'] ?? '—',
+                'mac'          => !empty($d['mac']) ? $d['mac'] : '—',
+                'uptime'       => $d['uptime']  ?? '—',
+                'session_start'=> $uptimeSecs > 0 ? date('M d, H:i', time() - $uptimeSecs) : '—',
+                'rx_bytes'     => (int)($d['rx_byte'] ?? 0),
+                'tx_bytes'     => (int)($d['tx_byte'] ?? 0),
+                'router_id'    => $router['id'],
+                'router'       => $router['name'],
+            ];
+            $routerStats[$router['id']]['hotspot']++;
         }
-
-        $mk->disconnect();
-    } catch (Exception $e) {
-        $fetchErrors[] = htmlspecialchars($router['name'] . ': ' . $e->getMessage());
+        try { $mkHs->disconnect(); } catch (Exception $_e) {}
+    } catch (Exception $hsEx) {
+        $msg = $hsEx->getMessage();
+        if (stripos($msg, 'connection closed') !== false || stripos($msg, 'no such command') !== false) {
+            $msg .= ' — Hotspot may not be running on this router. Run /ip/hotspot/print in Terminal to check.';
+        }
+        $fetchErrors[] = htmlspecialchars($router['name'] . ' [Hotspot]: ' . $msg);
     }
 }
 
