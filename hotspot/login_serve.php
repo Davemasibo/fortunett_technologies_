@@ -1,41 +1,38 @@
 <?php
 /**
  * Serves a tenant-branded hotspot login page.
- * Called by the RouterOS API (/tool/fetch) during client provisioning so the
- * router can download the branded page directly to its flash filesystem.
+ * Called by RouterOS /tool/fetch so the router can pull the branded page
+ * directly to its flash. No session auth — token is the credential.
  *
  * URL: /hotspot/login_serve.php?token={provisioning_token}
- * No session auth — secured by the provisioning token.
  */
 ob_start();
 ini_set('display_errors', 0);
 error_reporting(0);
 require_once __DIR__ . '/../includes/db_master.php';
-require_once __DIR__ . '/../includes/tenant.php';
 
-$token = $_GET['token'] ?? '';
+$token = trim($_GET['token'] ?? '');
 if (!$token) {
     http_response_code(400);
     exit('Token required');
 }
 
 try {
-    $tenantManager = TenantManager::getInstance($pdo);
-    $tenantId = $tenantManager->validateProvisioningToken($token);
+    // SELECT * so missing optional columns (brand_color, company_name) never cause a 500
+    $stmt = $pdo->prepare("SELECT * FROM tenants WHERE provisioning_token = ?");
+    $stmt->execute([$token]);
+    $tenant = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$tenantId) {
+    if (!$tenant) {
         http_response_code(403);
         exit('Invalid token');
     }
 
-    $stmt = $pdo->prepare("SELECT id, brand_color, company_name FROM tenants WHERE id = ?");
-    $stmt->execute([$tenantId]);
-    $tenant = $stmt->fetch(PDO::FETCH_ASSOC);
+    $tenantId    = (int)$tenant['id'];
+    $brandColor  = $tenant['brand_color']  ?: '#0f3460';
+    $companyName = $tenant['company_name'] ?: 'FortuNett Technologies';
 
-    $brandColor  = $tenant['brand_color']  ?? '#0f3460';
-    $companyName = $tenant['company_name'] ?? 'FortuNett Technologies';
-
-    // Darken brand colour for gradient
+    // Darken brand colour for gradient stop
     $hex = ltrim($brandColor, '#');
     if (strlen($hex) === 3) $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
     $brandDark = sprintf('#%02x%02x%02x',
@@ -44,15 +41,17 @@ try {
         max(0, hexdec(substr($hex, 4, 2)) - 40)
     );
 
-    // Fetch hotspot packages for this tenant
+    // Fetch active hotspot packages — wrapped so a missing column never breaks the page
     $packagesHtml = '';
     try {
+        // Ensure connection_type column exists before querying it
+        try { $pdo->exec("ALTER TABLE packages ADD COLUMN connection_type VARCHAR(20) DEFAULT NULL"); } catch (Exception $_e) {}
+
         $pkgStmt = $pdo->prepare("
-            SELECT name, price, download_speed, upload_speed, validity_value, validity_unit,
-                   COALESCE(NULLIF(description,''), '') AS description
+            SELECT name, price, download_speed, validity_value, validity_unit
             FROM packages
             WHERE tenant_id = ? AND status = 'active'
-              AND COALESCE(NULLIF(connection_type,''), type, 'hotspot') = 'hotspot'
+              AND COALESCE(NULLIF(connection_type,''), 'hotspot') = 'hotspot'
             ORDER BY price ASC
             LIMIT 8
         ");
@@ -62,28 +61,25 @@ try {
         if ($pkgs) {
             $rows = '';
             foreach ($pkgs as $p) {
-                $dur  = ($p['validity_value'] ?? 1) . ' ' . ucfirst($p['validity_unit'] ?? 'days');
-                $speed = '';
-                if (!empty($p['download_speed'])) {
-                    $speed = $p['download_speed'] . ' Mbps';
-                }
+                $dur   = ($p['validity_value'] ?? 1) . ' ' . ucfirst($p['validity_unit'] ?? 'days');
+                $speed = !empty($p['download_speed']) ? $p['download_speed'] . ' Mbps · ' : '';
                 $rows .= '<div class="pkg-row">'
                     . '<span class="pkg-name">' . htmlspecialchars($p['name']) . '</span>'
-                    . '<span class="pkg-meta">' . ($speed ? $speed . ' &bull; ' : '') . $dur . '</span>'
+                    . '<span class="pkg-meta">' . $speed . $dur . '</span>'
                     . '<span class="pkg-price">KES ' . number_format((float)$p['price'], 0) . '</span>'
                     . '</div>';
             }
-            $packagesHtml = '<div class="pkg-section">'
-                . '<div class="pkg-title">Available Plans</div>'
-                . $rows
-                . '</div>';
+            $packagesHtml = '<div class="pkg-section"><div class="pkg-title">Available Plans</div>'
+                . $rows . '</div>';
         }
-    } catch (Throwable $_e) {}
+    } catch (Throwable $_e) {
+        // Packages are optional — never let this break the login page
+    }
 
     $templatePath = __DIR__ . '/login.html';
     if (!file_exists($templatePath)) {
         http_response_code(500);
-        exit('Template not found');
+        exit('Login template not found on server');
     }
 
     $html = file_get_contents($templatePath);
@@ -101,8 +97,5 @@ try {
 } catch (Throwable $e) {
     ob_clean();
     http_response_code(500);
-    // Return the error in the body — visible when visiting the URL in a browser,
-    // and in the router log if it captures fetch response bodies.
-    exit('500 Error: ' . $e->getMessage() . ' in ' . basename($e->getFile()) . ':' . $e->getLine());
+    exit('Error: ' . $e->getMessage() . ' [' . basename($e->getFile()) . ':' . $e->getLine() . ']');
 }
-?>
