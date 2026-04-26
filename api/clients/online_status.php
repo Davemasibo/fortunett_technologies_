@@ -59,22 +59,30 @@ foreach ($routers as $router) {
             }
         }
 
-        // Hotspot sessions — fetched separately via /ip/hotspot/active/print
-        try {
-            $hotspotMap = $mk->getActiveHotspotSessionsMap();
-            foreach ($hotspotMap as $uname => $sessData) {
-                $onlineUsernames[] = $uname;
-                $routerDetails[$uname] = [
-                    'uptime'   => $sessData['uptime']   ?? '',
-                    'bytes_in' => $sessData['rx_byte']  ?? '0',
-                    'bytes_out'=> $sessData['tx_byte']  ?? '0',
-                    'address'  => $sessData['address']  ?? '',
-                    'service'  => 'hotspot',
-                ];
-            }
-        } catch (Exception $hsErr) { /* hotspot may not be configured on this router */ }
-
         $mk->disconnect();
+
+        // Hotspot sessions — fresh connection because RouterOS 7.x closes TCP
+        // after each !done, so the socket above is dead after getActiveSessions().
+        try {
+            $sock2 = @fsockopen($connectIp, $port, $e2, $s2, 2);
+            if ($sock2) {
+                fclose($sock2);
+                $mk2 = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
+                $mk2->connect();
+                $hotspotMap = $mk2->getActiveHotspotSessionsMap();
+                $mk2->disconnect();
+                foreach ($hotspotMap as $uname => $sessData) {
+                    $onlineUsernames[] = $uname;
+                    $routerDetails[$uname] = [
+                        'uptime'   => $sessData['uptime']   ?? '',
+                        'bytes_in' => $sessData['rx_byte']  ?? '0',
+                        'bytes_out'=> $sessData['tx_byte']  ?? '0',
+                        'address'  => $sessData['address']  ?? '',
+                        'service'  => 'hotspot',
+                    ];
+                }
+            }
+        } catch (Exception $hsErr) { /* hotspot not configured on this router */ }
     } catch (Exception $e) { /* router unreachable / auth failed */ }
 }
 

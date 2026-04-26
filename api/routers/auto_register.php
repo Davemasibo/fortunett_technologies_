@@ -109,6 +109,8 @@ try {
         $existingRouter = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
     
+    $savedRouterId = null;
+
     if ($existingRouter) {
         // Update existing router — also store MAC and VPN IP if available
         $stmt = $pdo->prepare("
@@ -133,17 +135,18 @@ try {
             $vpn_ip,
             $existingRouter['id'],
         ]);
-        
+        $savedRouterId = $existingRouter['id'];
+
         echo json_encode([
             'status' => 'success',
             'message' => 'Router updated successfully',
-            'router_id' => $existingRouter['id'],
+            'router_id' => $savedRouterId,
             'action' => 'updated'
         ]);
     } else {
         // Insert new router
         $routerName = $router_identity ?: "Router-" . substr($router_mac, -8);
-        
+
         $stmt = $pdo->prepare("
             INSERT INTO mikrotik_routers (
                 tenant_id, name, ip_address, mac_address,
@@ -155,15 +158,30 @@ try {
             $tenantId, $routerName, $router_ip, $router_mac,
             $router_identity, $router_username, $router_password, $vpn_ip,
         ]);
-        
-        $routerId = $pdo->lastInsertId();
-        
+        $savedRouterId = (int)$pdo->lastInsertId();
+
         echo json_encode([
             'status' => 'success',
             'message' => 'Router registered successfully',
-            'router_id' => $routerId,
+            'router_id' => $savedRouterId,
             'action' => 'created'
         ]);
+    }
+
+    // Auto-deploy hotspot login page whenever the router checks in with a VPN IP.
+    // Only attempt when the VPN tunnel is confirmed (vpn_ip set) so the API is reachable.
+    if ($savedRouterId && $vpn_ip) {
+        try {
+            require_once __DIR__ . '/../../includes/auto_provision.php';
+            $rSt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE id = ? AND tenant_id = ?");
+            $rSt->execute([$savedRouterId, $tenantId]);
+            $fullRouter = $rSt->fetch(PDO::FETCH_ASSOC);
+            if ($fullRouter) {
+                _uploadHotspotLoginPage($pdo, $fullRouter, $tenantId);
+            }
+        } catch (Throwable $_deployEx) {
+            error_log('[auto_register] hotspot deploy failed: ' . $_deployEx->getMessage());
+        }
     }
     
 } catch (PDOException $e) {

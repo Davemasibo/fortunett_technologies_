@@ -82,10 +82,15 @@ try {
         exit('Login template not found on server');
     }
 
+    // Build the tenant's portal base URL (used for signup link + post-auth redirect)
+    $proto     = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $portalUrl = $proto . '://' . ($_SERVER['HTTP_HOST'] ?? '');
+    $signupUrl = $portalUrl . '/customer/register.php';
+
     $html = file_get_contents($templatePath);
     $html = str_replace(
-        ['{{BRAND_COLOR}}', '{{BRAND_DARK}}', '{{COMPANY_NAME}}', '{{PACKAGES_SECTION}}'],
-        [$brandColor, $brandDark, htmlspecialchars($companyName, ENT_QUOTES), $packagesHtml],
+        ['{{BRAND_COLOR}}', '{{BRAND_DARK}}', '{{COMPANY_NAME}}', '{{PACKAGES_SECTION}}', '{{PORTAL_URL}}', '{{SIGNUP_URL}}'],
+        [$brandColor, $brandDark, htmlspecialchars($companyName, ENT_QUOTES), $packagesHtml, $portalUrl, $signupUrl],
         $html
     );
 

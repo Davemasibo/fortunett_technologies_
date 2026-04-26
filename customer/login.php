@@ -154,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </form>
 
             <div class="auth-link">
-                New customer? Contact your ISP to get an account.
+                New customer? <a href="register.php" style="color:var(--brand);font-weight:600;">Create an account</a>
             </div>
         </div>
     </div>

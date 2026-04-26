@@ -395,7 +395,8 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
         // RouterOS 7.x closes TCP after every !done response, so each command
         // needs its own fresh connection — reusing a socket after the first
         // comm() call silently fails on the write.
-        $mkArgs = [$connectIp, $router['username'], $router['password'], $port];
+        $apiPort = (int)($router['api_port'] ?? 8728);
+        $mkArgs  = [$connectIp, $router['username'], $router['password'], $apiPort];
 
         $dstPath = 'flash/hotspot/login.html';
 
