@@ -87,10 +87,12 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
         // hotspot_shared_users: 0 = unlimited, 1 = one active session per user
         $sharedUsers = ((int)($router['hotspot_shared_users'] ?? 0) === 1) ? '1' : 'unlimited';
 
+        $hotspotServer = !empty($package['hotspot_server']) ? $package['hotspot_server'] : 'all';
+
         if ($connType === 'pppoe') {
             _provisionPPPoE($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '');
         } else {
-            _provisionHotspot($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '', $sharedUsers);
+            _provisionHotspot($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '', $sharedUsers, $hotspotServer);
         }
 
         $api->disconnect();
@@ -207,7 +209,7 @@ function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, s
  *
  * @param string $sharedUsers  RouterOS shared-users value: '1' (no sharing) or 'unlimited'
  */
-function _provisionHotspot(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment, string $sharedUsers = 'unlimited'): void
+function _provisionHotspot(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment, string $sharedUsers = 'unlimited', string $hotspotServer = 'all'): void
 {
     // ── Ensure package profile exists ─────────────────────────────────────────
     // We create it if missing (e.g. router was offline when the package was saved),
@@ -255,7 +257,7 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
             '=password=' . $password,
             '=profile='  . $profileName,
             '=comment='  . $comment,
-            '=server=all',
+            '=server='   . $hotspotServer,
         ]);
         // Check for RouterOS trap (error) — e.g. hotspot not configured on router
         foreach ($addResp as $r) {

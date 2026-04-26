@@ -21,9 +21,9 @@ $t_stmt->execute([$_SESSION['user_id']]);
 $tenant_id = (int)$t_stmt->fetchColumn();
 
 $type = strtolower(trim($_GET['type'] ?? 'pppoe'));
-if (!in_array($type, ['pppoe', 'hotspot'])) {
+if (!in_array($type, ['pppoe', 'hotspot', 'hotspot_server'])) {
     ob_clean();
-    echo json_encode(['success' => false, 'message' => 'type must be pppoe or hotspot']);
+    echo json_encode(['success' => false, 'message' => 'type must be pppoe, hotspot, or hotspot_server']);
     exit;
 }
 
@@ -46,23 +46,35 @@ try {
     $api = new MikrotikAPI($connectIp, $router['username'], $router['password'], (int)($router['api_port'] ?? 8728));
     $api->connect();
 
-    if ($type === 'hotspot') {
-        $raw = $api->getHotspotUserProfiles();
-    } else {
-        $raw = $api->getPPPoEProfiles();
-    }
-    $api->disconnect();
-
     $profiles = [];
-    foreach ($raw as $item) {
-        if (!isset($item['!re'])) continue;
-        $name = $item['name'] ?? null;
-        if ($name === null) continue;
-        $profiles[] = [
-            'name'       => $name,
-            'rate_limit' => $item['rate-limit'] ?? ($item['rate_limit'] ?? ''),
-        ];
+
+    if ($type === 'hotspot_server') {
+        // Return actual hotspot server names (used as the =server= param when adding users)
+        $raw = $api->getHotspotServers();
+        foreach ($raw as $item) {
+            $name = $item['name'] ?? null;
+            if ($name === null) continue;
+            $profiles[] = [
+                'name'      => $name,
+                'profile'   => $item['profile']   ?? '',
+                'interface' => $item['interface'] ?? '',
+            ];
+        }
+    } else {
+        // PPPoE or hotspot user profiles (rate-limit profiles)
+        $raw = $type === 'hotspot' ? $api->getHotspotUserProfiles() : $api->getPPPoEProfiles();
+        // Helper methods already strip !re; just check name exists
+        foreach ($raw as $item) {
+            $name = $item['name'] ?? null;
+            if ($name === null) continue;
+            $profiles[] = [
+                'name'       => $name,
+                'rate_limit' => $item['rate-limit'] ?? ($item['rate_limit'] ?? ''),
+            ];
+        }
     }
+
+    $api->disconnect();
 
     ob_clean();
     echo json_encode(['success' => true, 'profiles' => $profiles, 'router_ip' => $router['ip_address']]);

@@ -1160,9 +1160,13 @@ window.onclick = function(event) {
                 <label style="display:block; margin-bottom:8px; font-weight:500; color:rgba(255,255,255,.6); font-size:13px;">Username</label>
                 <input type="text" name="username" id="edit_username" style="width:100%; padding:8px; border:1px solid rgba(255,255,255,.07); border-radius:6px; background:#1c1c1b; color:#e2e2e0; box-shadow:inset 3px 3px 7px rgba(0,0,0,.3); box-sizing:border-box;">
             </div>
-            <div style="margin-bottom:20px;">
+            <div style="margin-bottom:16px;">
                 <label style="display:block; margin-bottom:8px; font-weight:500; color:rgba(255,255,255,.6); font-size:13px;">Password</label>
                 <input type="password" name="password" id="edit_password" placeholder="Leave blank to keep unchanged" style="width:100%; padding:8px; border:1px solid rgba(255,255,255,.07); border-radius:6px; background:#1c1c1b; color:#e2e2e0; box-shadow:inset 3px 3px 7px rgba(0,0,0,.3); box-sizing:border-box;">
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="display:block; margin-bottom:8px; font-weight:500; color:rgba(255,255,255,.6); font-size:13px;">VPN IP <span style="font-weight:400; color:rgba(255,255,255,.3); font-size:11px;">(WireGuard — leave blank if not using VPN)</span></label>
+                <input type="text" name="vpn_ip" id="edit_vpn_ip" placeholder="e.g. 10.200.200.7 or leave blank" style="width:100%; padding:8px; border:1px solid rgba(255,255,255,.07); border-radius:6px; background:#1c1c1b; color:#e2e2e0; box-shadow:inset 3px 3px 7px rgba(0,0,0,.3); box-sizing:border-box;">
             </div>
             <div style="display:flex; justify-content:flex-end; gap:8px;">
                 <button type="button" onclick="document.getElementById('editRouterModal').style.display='none'" style="padding:8px 16px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.07); border-radius:6px; cursor:pointer; color:rgba(255,255,255,.6);">Cancel</button>
@@ -1178,7 +1182,8 @@ function editRouter(router) {
     document.getElementById('edit_name').value = router.name;
     document.getElementById('edit_ip').value = router.ip_address;
     document.getElementById('edit_username').value = router.username || 'admin';
-    document.getElementById('edit_password').value = ''; // Don't show password
+    document.getElementById('edit_password').value = '';
+    document.getElementById('edit_vpn_ip').value = router.vpn_ip || '';
     document.getElementById('editRouterModal').style.display = 'flex';
 }
 

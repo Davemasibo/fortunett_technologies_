@@ -806,15 +806,27 @@ class MikrotikAPI {
     public function getHotspotUserProfiles() {
         $response = $this->comm('/ip/hotspot/user/profile/print');
         $profiles = [];
-        
+
         foreach ($response as $item) {
             if (isset($item['!re'])) {
                 unset($item['!re']);
                 $profiles[] = $item;
             }
         }
-        
+
         return $profiles;
+    }
+
+    public function getHotspotServers() {
+        $response = $this->comm('/ip/hotspot/print');
+        $servers = [];
+        foreach ($response as $item) {
+            if (isset($item['!re'])) {
+                unset($item['!re']);
+                $servers[] = $item;
+            }
+        }
+        return $servers;
     }
 
     public function __destruct() {

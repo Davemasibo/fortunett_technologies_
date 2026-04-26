@@ -648,6 +648,28 @@ include 'includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- Hotspot Server (hotspot packages only) -->
+            <div id="hotspotServerSection" style="display:none;">
+                <div class="pkg-section" style="margin-top:4px;"><i class="fas fa-server"></i> Hotspot Server</div>
+                <div class="pkg-row" style="grid-template-columns:1fr;">
+                    <div>
+                        <label class="pkg-label">Server Name on Router</label>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <input type="text" name="hotspot_server" id="pkgHotspotServer" class="pkg-input" placeholder="Leave blank for 'all' (any server)" style="flex:1;">
+                            <button type="button" id="loadServersBtn" onclick="loadHotspotServers()" style="padding:9px 13px;background:rgba(165,243,252,.1);border:1px solid rgba(165,243,252,.25);border-radius:9px;color:#a5f3fc;font-size:12px;cursor:pointer;white-space:nowrap;transition:all .15s;" title="Load hotspot servers from router">
+                                <i class="fas fa-sync-alt" id="loadServersIcon"></i> Load
+                            </button>
+                        </div>
+                        <div id="serversDropdownWrap" style="display:none;margin-top:8px;">
+                            <select id="serversDropdown" class="pkg-select" onchange="document.getElementById('pkgHotspotServer').value=this.value">
+                                <option value="">— pick a hotspot server —</option>
+                            </select>
+                        </div>
+                        <div class="pkg-input-hint">Restrict users to a specific hotspot server (e.g. <code>hs1</code>). Leave blank to allow any server.</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Description -->
             <div class="pkg-section" style="margin-top:4px;"><i class="fas fa-align-left"></i> Description</div>
             <div class="pkg-row" style="grid-template-columns:1fr;">
@@ -673,6 +695,7 @@ function setConnType(type) {
     document.getElementById('pkgConnType').value = type;
     document.getElementById('pill-pppoe').classList.toggle('active', type === 'pppoe');
     document.getElementById('pill-hotspot').classList.toggle('active', type === 'hotspot');
+    document.getElementById('hotspotServerSection').style.display = type === 'hotspot' ? '' : 'none';
 }
 
 /* ── Rate limit preview ── */
@@ -692,6 +715,8 @@ function openAddPackageModal() {
     document.getElementById('pkgDeviceLimit').value = '1';
     document.getElementById('pkgMikrotikProfile').value = '';
     document.getElementById('profilesDropdownWrap').style.display = 'none';
+    document.getElementById('pkgHotspotServer').value = '';
+    document.getElementById('serversDropdownWrap').style.display = 'none';
     setConnType('pppoe');
     updateRatePreview();
     document.getElementById('packageModal').style.display = 'flex';
@@ -712,6 +737,8 @@ function openEditPackageModal(pkg) {
     document.getElementById('pkgValidityUnit').value = ['hours','days','weeks','months'].includes(unit) ? unit : (pkg.validity_unit || 'months');
     document.getElementById('pkgMikrotikProfile').value = pkg.mikrotik_profile || '';
     document.getElementById('profilesDropdownWrap').style.display = 'none';
+    document.getElementById('pkgHotspotServer').value = pkg.hotspot_server || '';
+    document.getElementById('serversDropdownWrap').style.display = 'none';
     setConnType(pkg.connection_type || pkg.type || 'pppoe');
     updateRatePreview();
     document.getElementById('packageModal').style.display = 'flex';
@@ -753,6 +780,44 @@ function loadRouterProfiles() {
             icon.className = 'fas fa-sync-alt';
             btn.disabled = false;
             showToast('Network error loading profiles.', 'error');
+        });
+}
+
+function loadHotspotServers() {
+    const btn  = document.getElementById('loadServersBtn');
+    const icon = document.getElementById('loadServersIcon');
+    icon.className = 'fas fa-spinner fa-spin';
+    btn.disabled = true;
+
+    const _base = (location.hostname === 'localhost' || /^\d+\.\d+\./.test(location.hostname))
+        ? '/fortunett_technologies_' : '';
+    fetch(_base + '/api/routers/profiles.php?type=hotspot_server')
+        .then(r => r.json())
+        .then(data => {
+            icon.className = 'fas fa-sync-alt';
+            btn.disabled = false;
+            if (!data.success) {
+                showToast('Could not load hotspot servers: ' + (data.message || 'Router unreachable'), 'error');
+                return;
+            }
+            const wrap = document.getElementById('serversDropdownWrap');
+            const sel  = document.getElementById('serversDropdown');
+            sel.innerHTML = '<option value="">— pick a hotspot server —</option>';
+            (data.profiles || []).forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.name;
+                opt.textContent = s.name + (s.interface ? '  [' + s.interface + ']' : '') + (s.profile ? '  (' + s.profile + ')' : '');
+                sel.appendChild(opt);
+            });
+            wrap.style.display = 'block';
+            if (!data.profiles.length) {
+                showToast('No hotspot servers found on router.', 'error');
+            }
+        })
+        .catch(() => {
+            icon.className = 'fas fa-sync-alt';
+            btn.disabled = false;
+            showToast('Network error loading hotspot servers.', 'error');
         });
 }
 

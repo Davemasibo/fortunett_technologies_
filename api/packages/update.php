@@ -27,6 +27,7 @@ $description = $_POST['description'] ?? '';
 $mikrotik_profile = $_POST['mikrotik_profile'] ?? '';
 $rate_limit = $_POST['rate_limit'] ?? ($upload_speed . 'M/' . $download_speed . 'M');
 $connection_type = $_POST['connection_type'] ?? 'pppoe';
+$hotspot_server = trim($_POST['hotspot_server'] ?? '');
 $speed_display = $download_speed . "Mbps / " . $upload_speed . "Mbps";
 
 if (empty($id) || empty($name)) {
@@ -74,6 +75,7 @@ try {
     if (isset($colCache['validity_value']))    { $setCols[] = 'validity_value=?';    $setVals[] = isset($_POST['validity_value']) && $_POST['validity_value'] !== '' ? (int)$_POST['validity_value'] : 30; }
     if (isset($colCache['validity_unit']))     { $setCols[] = 'validity_unit=?';     $setVals[] = $_POST['validity_unit'] ?? 'days'; }
     if (isset($colCache['device_limit']))      { $setCols[] = 'device_limit=?';      $setVals[] = isset($_POST['device_limit']) && $_POST['device_limit'] !== '' ? (int)$_POST['device_limit'] : 1; }
+    if (isset($colCache['hotspot_server']))   { $setCols[] = 'hotspot_server=?';   $setVals[] = $hotspot_server ?: null; }
 
     $setVals[] = $id;
     $stmt = $pdo->prepare("UPDATE packages SET " . implode(',', $setCols) . " WHERE id = ?");

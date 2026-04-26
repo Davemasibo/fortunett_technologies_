@@ -27,8 +27,9 @@ $data_limit = isset($_POST['data_limit']) && $_POST['data_limit'] !== '' ? (int)
 $speed_display = $download_speed . "Mbps / " . $upload_speed . "Mbps"; // Construct display string
 $description = $_POST['description'] ?? '';
 $mikrotik_profile = $_POST['mikrotik_profile'] ?? preg_replace('/[^a-zA-Z0-9-]/', '', strtolower($name));
-$rate_limit = $_POST['rate_limit'] ?? ($upload_speed . 'M/' . $download_speed . 'M'); 
+$rate_limit = $_POST['rate_limit'] ?? ($upload_speed . 'M/' . $download_speed . 'M');
 $connection_type = $_POST['connection_type'] ?? 'pppoe';
+$hotspot_server = trim($_POST['hotspot_server'] ?? '');
 
 if (empty($name) || empty($price)) {
     ob_clean(); echo json_encode(['success' => false, 'message' => 'Name and Price are required']);
@@ -78,6 +79,7 @@ try {
     if (isset($colCache['validity_value']))    { $cols[] = 'validity_value';    $vals[] = isset($_POST['validity_value']) && $_POST['validity_value'] !== '' ? (int)$_POST['validity_value'] : 30; }
     if (isset($colCache['validity_unit']))     { $cols[] = 'validity_unit';     $vals[] = $_POST['validity_unit'] ?? 'days'; }
     if (isset($colCache['device_limit']))      { $cols[] = 'device_limit';      $vals[] = isset($_POST['device_limit']) && $_POST['device_limit'] !== '' ? (int)$_POST['device_limit'] : 1; }
+    if (isset($colCache['hotspot_server']))   { $cols[] = 'hotspot_server';   $vals[] = $hotspot_server ?: null; }
 
     $placeholders = implode(',', array_fill(0, count($cols), '?'));
     $colList      = implode(',', $cols);

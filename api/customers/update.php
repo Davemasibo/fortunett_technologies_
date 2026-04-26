@@ -137,28 +137,24 @@ if (empty($id) || empty($name)) {
             $api = new MikrotikAPI($connectIp, $router['username'], $router['password'], $router['api_port']);
             if ($api->connect()) {
                 $profile = null;
-                if ($package_id) {
-                     $profile = $package['mikrotik_profile'] ?? 'default';
+                $hotspot_server = 'all';
+                if ($package_id && !empty($package)) {
+                    $profile = $package['mikrotik_profile'] ?? 'default';
+                    $hotspot_server = !empty($package['hotspot_server']) ? $package['hotspot_server'] : 'all';
                 }
-                
+
                 $pass = !empty($mikrotik_password) ? $mikrotik_password : null;
-                
-                // We use the OLD username to find the user in case it changed, 
-                // but MikroTik API usually keys by name. Updating name is tricky if we don't know internal ID.
-                // Our class uses `getPPPoEUsers` to find ID by name.
-                // If username changed, we might fail to find old one.
-                // Creating a new user if not found is safer?
-                
+
                 $targetUser = $oldClient['mikrotik_username']; // The name currently on router
-                
+
                 if ($connection_type === 'hotspot') {
-                     try {
+                    try {
                         $api->updateHotspotUser($targetUser, $pass, $profile);
                     } catch (Exception $e) {
-                         // Try adding if update failed
-                         if (!empty($mikrotik_password)) {
-                             $api->addHotspotUser($mikrotik_username, $mikrotik_password, $profile ?? 'default');
-                         }
+                        // Try adding if update failed
+                        if (!empty($mikrotik_password)) {
+                            $api->addHotspotUser($mikrotik_username, $mikrotik_password, $profile ?? 'default', $hotspot_server);
+                        }
                     }
                 } else {
                     // PPPoE
