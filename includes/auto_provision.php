@@ -392,38 +392,35 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
 
         $api->connect();
 
-        // ── Discover where the active hotspot profile stores its HTML ─────────
-        // Default to flash/hotspot; override if the profile says otherwise.
-        $htmlDir = 'flash/hotspot';
-        try {
-            $profiles = $api->comm('/ip/hotspot/profile/print');
-            foreach ($profiles as $p) {
-                $dir = trim($p['html-directory'] ?? '');
-                // Use the first non-empty, non-default html-directory we find
-                if ($dir !== '' && $dir !== 'hotspot') {
-                    $htmlDir = rtrim($dir, '/');
-                    break;
-                }
-            }
-        } catch (Throwable $_e) {}
+        // flash/hotspot is the canonical RouterOS hotspot HTML directory.
+        // Never read this from the profile — if the profile has a doubled/wrong
+        // path (flash/flash/hotspot) reading it would compound the mistake.
+        $dstPath = 'flash/hotspot/login.html';
 
-        $dstPath = $htmlDir . '/login.html';
-
-        // ── Ensure hotspot profiles allow PAP (plain-text passwords) ─────────
-        // Our login page POSTs the password in plain text; CHAP-only profiles
-        // will reject every login even with correct credentials.
+        // ── Fix hotspot profiles: correct html-directory + ensure PAP allowed ──
+        // Our login page sends passwords in plain text (PAP); CHAP-only profiles
+        // reject every login. We also force html-directory=flash/hotspot so the
+        // router always looks in the right folder for the login page.
         try {
             $profiles = $api->comm('/ip/hotspot/profile/print');
             foreach ($profiles as $p) {
                 if (empty($p['.id'])) continue;
-                $dir      = trim($p['html-directory'] ?? '');
-                $loginBy  = $p['login-by'] ?? '';
-                // Only touch profiles that actually serve a hotspot login page
-                if ($dir === '' || strpos($loginBy, 'http-pap') !== false) continue;
-                $api->comm('/ip/hotspot/profile/set', [
-                    '=.id='      . $p['.id'],
-                    '=login-by=' . $loginBy . ',http-pap',
-                ]);
+                $dir     = trim($p['html-directory'] ?? '');
+                $loginBy = $p['login-by'] ?? '';
+
+                // Skip the built-in default profile (no html-directory set)
+                if ($dir === '') continue;
+
+                $updates = ['=.id=' . $p['.id']];
+                if ($dir !== 'flash/hotspot') {
+                    $updates[] = '=html-directory=flash/hotspot';
+                }
+                if (strpos($loginBy, 'http-pap') === false) {
+                    $updates[] = '=login-by=' . $loginBy . ',http-pap';
+                }
+                if (count($updates) > 1) {
+                    $api->comm('/ip/hotspot/profile/set', $updates);
+                }
             }
         } catch (Throwable $_e) {}
 
