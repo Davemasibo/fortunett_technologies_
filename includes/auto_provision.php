@@ -89,7 +89,20 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
 
         $hotspotServer = !empty($package['hotspot_server']) ? $package['hotspot_server'] : 'all';
 
+        // Fetch server IP for captive portal setup
+        $serverIp = '';
+        try {
+            $ipSt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='server_external_ip' LIMIT 1");
+            $serverIp = $ipSt ? ($ipSt->fetchColumn() ?: '') : '';
+        } catch (Throwable $_e) {}
+
         if ($connType === 'pppoe') {
+            // Ensure captive-portal infrastructure exists before provisioning the real profile
+            if ($serverIp) {
+                try { _setupPPPoECaptivePortal($api, $serverIp); } catch (Throwable $_e) {
+                    error_log('PPPoE captive portal setup: ' . $_e->getMessage());
+                }
+            }
             _provisionPPPoE($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '');
         } else {
             _provisionHotspot($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '', $sharedUsers, $hotspotServer);
@@ -331,6 +344,209 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
         } catch (Throwable $e) {
             error_log('_provisionHotspot MAC reconnect: ' . $e->getMessage());
         }
+    }
+}
+
+/**
+ * One-time idempotent setup of PPPoE captive portal infrastructure on a router.
+ *
+ * Creates:
+ *  - fortunett-limited-pool  (10.88.0.2–10.88.0.253)  — IP pool for unactivated customers
+ *  - fortunett-limited        PPP profile using that pool, DNS via router
+ *  - FortuNett-PPPoE-Allow    filter rule: allow limited → portal server
+ *  - FortuNett-PPPoE-Block    filter rule: reject all other traffic from limited subnet
+ *  - FortuNett-PPPoE-Portal   NAT dstnat: redirect port 80 from limited subnet → portal server
+ *  - /ip dns allow-remote-requests=yes  (so clients can resolve hostnames via router)
+ *
+ * All operations check for existence first — safe to call multiple times.
+ * No hotspot package required — uses only core RouterOS (firewall + PPP).
+ */
+function _setupPPPoECaptivePortal(MikrotikAPI $api, string $serverIp): void
+{
+    $poolName    = 'fortunett-limited-pool';
+    $poolRanges  = '10.88.0.2-10.88.0.253';
+    $localAddr   = '10.88.0.1';  // PPP tunnel local end (router side)
+    $limitedNet  = '10.88.0.0/24';
+    $profileName = 'fortunett-limited';
+    $natComment  = 'FortuNett-PPPoE-Portal';
+    $allowComment = 'FortuNett-PPPoE-Allow';
+    $blockComment = 'FortuNett-PPPoE-Block';
+
+    // ── Enable DNS so limited clients can resolve hostnames ───────────────────
+    try {
+        $api->comm('/ip/dns/set', ['=allow-remote-requests=yes']);
+    } catch (Throwable $_e) {}
+
+    // ── 1. Address pool ───────────────────────────────────────────────────────
+    $pools = $api->comm('/ip/pool/print');
+    $poolExists = false;
+    foreach ($pools as $p) {
+        if (($p['name'] ?? '') === $poolName) { $poolExists = true; break; }
+    }
+    if (!$poolExists) {
+        $api->comm('/ip/pool/add', [
+            '=name='   . $poolName,
+            '=ranges=' . $poolRanges,
+            '=comment=FortuNett Captive Portal - Unactivated PPPoE',
+        ]);
+    }
+
+    // ── 2. PPP profile ────────────────────────────────────────────────────────
+    $profiles = $api->comm('/ppp/profile/print');
+    $profileExists = false;
+    foreach ($profiles as $p) {
+        if (($p['name'] ?? '') === $profileName) { $profileExists = true; break; }
+    }
+    if (!$profileExists) {
+        $api->comm('/ppp/profile/add', [
+            '=name='           . $profileName,
+            '=local-address='  . $localAddr,
+            '=remote-address=' . $poolName,
+            '=rate-limit=512k/512k',
+            '=dns-server='     . $localAddr,   // router answers DNS queries
+            '=session-timeout=24h',
+            '=comment=FortuNett Unactivated - redirected to captive portal',
+        ]);
+    }
+
+    // ── 3. NAT: redirect port 80 from limited subnet → captive portal ─────────
+    $natRules = $api->comm('/ip/firewall/nat/print');
+    $natExists = false;
+    foreach ($natRules as $r) {
+        if (($r['comment'] ?? '') === $natComment) { $natExists = true; break; }
+    }
+    if (!$natExists) {
+        $api->comm('/ip/firewall/nat/add', [
+            '=chain=dstnat',
+            '=protocol=tcp',
+            '=dst-port=80',
+            '=src-address=' . $limitedNet,
+            '=action=dst-nat',
+            '=to-addresses=' . $serverIp,
+            '=to-ports=80',
+            '=comment=' . $natComment,
+        ]);
+    }
+
+    // ── 4a. Filter: allow limited → portal server ─────────────────────────────
+    $filterRules = $api->comm('/ip/firewall/filter/print');
+    $allowExists = false;
+    $blockExists = false;
+    foreach ($filterRules as $r) {
+        if (($r['comment'] ?? '') === $allowComment) { $allowExists = true; }
+        if (($r['comment'] ?? '') === $blockComment)  { $blockExists = true; }
+    }
+    if (!$allowExists) {
+        $api->comm('/ip/firewall/filter/add', [
+            '=chain=forward',
+            '=src-address=' . $limitedNet,
+            '=dst-address=' . $serverIp . '/32',
+            '=action=accept',
+            '=comment=' . $allowComment,
+        ]);
+    }
+
+    // ── 4b. Filter: block all other forward traffic from limited subnet ────────
+    if (!$blockExists) {
+        $api->comm('/ip/firewall/filter/add', [
+            '=chain=forward',
+            '=src-address=' . $limitedNet,
+            '=action=reject',
+            '=reject-with=tcp-reset',
+            '=comment=' . $blockComment,
+        ]);
+    }
+}
+
+/**
+ * Pre-provision a new PPPoE client with the limited captive-portal profile
+ * BEFORE they have paid. The customer connects PPPoE, gets an IP from the
+ * limited pool, and every HTTP request is redirected to the FortuNett renewal
+ * page. After payment autoProvisionClient() moves them to their real profile.
+ *
+ * Called from api/clients.php when admin creates a new PPPoE client.
+ *
+ * @return array ['success'=>bool, 'username'=>string, 'password'=>string, ...]
+ */
+function preProvisionPPPoEClient(PDO $pdo, int $clientId, int $tenantId): array
+{
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM clients WHERE id = ? AND tenant_id = ?");
+        $stmt->execute([$clientId, $tenantId]);
+        $client = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$client) return ['success' => false, 'message' => 'Client not found'];
+
+        $stmt = $pdo->prepare("
+            SELECT * FROM mikrotik_routers
+            WHERE tenant_id = ? AND status = 'active' ORDER BY id ASC LIMIT 1
+        ");
+        $stmt->execute([$tenantId]);
+        $router = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$router) return ['success' => false, 'message' => 'No active router found'];
+
+        $username = $client['mikrotik_username']
+            ?: ('user_' . substr(preg_replace('/\D/', '', $client['phone'] ?? ''), -8));
+        $password = $client['mikrotik_password'] ?: bin2hex(random_bytes(4));
+
+        $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
+        $apiPort   = (int)($router['api_port'] ?? 8728);
+        $api = new MikrotikAPI($connectIp, $router['username'], $router['password'], $apiPort);
+
+        if (!$api->isReachable(4)) {
+            return ['success' => false, 'message' => 'Router not reachable: ' . $connectIp];
+        }
+        $api->connect();
+
+        // Get server IP and ensure captive portal infrastructure exists
+        $serverIp = '';
+        try {
+            $ipSt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='server_external_ip' LIMIT 1");
+            $serverIp = $ipSt ? ($ipSt->fetchColumn() ?: '') : '';
+        } catch (Throwable $_e) {}
+
+        if ($serverIp) {
+            _setupPPPoECaptivePortal($api, $serverIp);
+        }
+
+        // Create or update PPPoE secret with limited profile
+        $secrets  = $api->comm('/ppp/secret/print', ['?name=' . $username]);
+        $secretId = null;
+        foreach ($secrets as $s) {
+            if (strcasecmp($s['name'] ?? '', $username) === 0) { $secretId = $s['.id']; break; }
+        }
+
+        if ($secretId !== null) {
+            $api->comm('/ppp/secret/set', [
+                '=.id='      . $secretId,
+                '=password=' . $password,
+                '=profile=fortunett-limited',
+                '=service=pppoe',
+            ]);
+            $api->comm('/ppp/secret/enable', ['=.id=' . $secretId]);
+        } else {
+            $api->comm('/ppp/secret/add', [
+                '=name='     . $username,
+                '=password=' . $password,
+                '=profile=fortunett-limited',
+                '=service=pppoe',
+                '=comment='  . ($client['full_name'] ?? ''),
+            ]);
+        }
+        $api->disconnect();
+
+        // Persist credentials so autoProvisionClient() can reuse them
+        $pdo->prepare("UPDATE clients SET mikrotik_username = ?, mikrotik_password = ? WHERE id = ? AND tenant_id = ?")
+            ->execute([$username, $password, $clientId, $tenantId]);
+
+        return [
+            'success'  => true,
+            'username' => $username,
+            'password' => $password,
+            'message'  => 'Pre-provisioned with limited profile. Customer connects PPPoE → gets captive portal.',
+        ];
+    } catch (Throwable $e) {
+        error_log("preProvisionPPPoEClient($clientId): " . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
     }
 }
 

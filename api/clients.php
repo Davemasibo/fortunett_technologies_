@@ -8,6 +8,7 @@ require_once '../includes/db_master.php';
 require_once '../includes/auth.php';
 require_once '../includes/account_number_generator.php';
 require_once '../classes/MikrotikAPI.php';
+require_once '../includes/auto_provision.php';
 
 // Require authentication for all client operations
 session_start();
@@ -117,16 +118,16 @@ switch($method) {
                     $router = $routerStmt->fetch(PDO::FETCH_ASSOC);
                     
                     if ($router) {
-                        $api = new MikrotikAPI($router['ip_address'], $router['username'], $router['password'], $router['api_port']);
-                        if ($api->connect()) {
-                            if ($userType === 'pppoe') {
-                                // Add PPPoE User
-                                $api->addPPPoEUser($portalUsername, $plainPassword, 'default', 'pppoe');
-                            } else {
-                                // Add Hotspot User
+                        if ($userType === 'pppoe') {
+                            // Pre-provision with limited captive-portal profile.
+                            // Sets up pool/NAT/filter rules on the router too.
+                            preProvisionPPPoEClient($db, (int)$clientId, (int)$tenantId);
+                        } else {
+                            $api = new MikrotikAPI($router['ip_address'], $router['username'], $router['password'], $router['api_port'] ?? 8728);
+                            if ($api->connect()) {
                                 $api->addHotspotUser($portalUsername, $plainPassword, 'default');
+                                $api->disconnect();
                             }
-                            $api->disconnect();
                         }
                     }
                 } catch (Exception $e) {
