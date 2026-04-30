@@ -73,12 +73,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 1. Platform Identity
     if ($action === 'save_identity') {
         $activeTab = 'identity';
-        platformSet($pdo, 'platform_name',     trim($_POST['platform_name'] ?? 'FortuNett Technologies'));
-        platformSet($pdo, 'platform_tagline',  trim($_POST['platform_tagline'] ?? ''));
-        platformSet($pdo, 'platform_domain',   trim($_POST['platform_domain'] ?? ''));
-        platformSet($pdo, 'support_email',     trim($_POST['support_email'] ?? ''));
-        platformSet($pdo, 'support_phone',     trim($_POST['support_phone'] ?? ''));
-        platformSet($pdo, 'platform_logo_url', trim($_POST['platform_logo_url'] ?? ''));
+        platformSet($pdo, 'platform_name',       trim($_POST['platform_name'] ?? 'FortuNett Technologies'));
+        platformSet($pdo, 'platform_tagline',    trim($_POST['platform_tagline'] ?? ''));
+        platformSet($pdo, 'platform_domain',     trim($_POST['platform_domain'] ?? ''));
+        platformSet($pdo, 'support_email',       trim($_POST['support_email'] ?? ''));
+        platformSet($pdo, 'support_phone',       trim($_POST['support_phone'] ?? ''));
+        platformSet($pdo, 'platform_logo_url',   trim($_POST['platform_logo_url'] ?? ''));
+        platformSet($pdo, 'server_external_ip',  trim($_POST['server_external_ip'] ?? ''));
         $flash = 'success|Platform identity updated.';
     }
 
@@ -144,12 +145,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ── Load current values ───────────────────────────────────────────────────────
 $identity = [
-    'platform_name'    => platformGet($pdo, 'platform_name', 'FortuNett Technologies'),
-    'platform_tagline' => platformGet($pdo, 'platform_tagline', 'Multi-Tenant ISP Management'),
-    'platform_domain'  => platformGet($pdo, 'platform_domain', 'fortunetttech.site'),
-    'support_email'    => platformGet($pdo, 'support_email', 'support@fortunetttech.site'),
-    'support_phone'    => platformGet($pdo, 'support_phone', ''),
-    'platform_logo_url'=> platformGet($pdo, 'platform_logo_url', ''),
+    'platform_name'     => platformGet($pdo, 'platform_name', 'FortuNett Technologies'),
+    'platform_tagline'  => platformGet($pdo, 'platform_tagline', 'Multi-Tenant ISP Management'),
+    'platform_domain'   => platformGet($pdo, 'platform_domain', 'fortunetttech.site'),
+    'support_email'     => platformGet($pdo, 'support_email', 'support@fortunetttech.site'),
+    'support_phone'     => platformGet($pdo, 'support_phone', ''),
+    'platform_logo_url' => platformGet($pdo, 'platform_logo_url', ''),
+    'server_external_ip'=> platformGet($pdo, 'server_external_ip', ''),
 ];
 
 $emailCfg = $pdo->query("SELECT * FROM platform_email_config WHERE id=1")->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -358,6 +360,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                                 <label>Support Phone</label>
                                 <input type="text" name="support_phone" value="<?= htmlspecialchars($identity['support_phone']) ?>" placeholder="+254 700 000 000" maxlength="50">
                                 <div class="hint">Optional — shown in billing emails and support pages</div>
+                            </div>
+                            <div class="form-group full">
+                                <label>Server External IP <span style="color:#e94560;">*</span></label>
+                                <input type="text" name="server_external_ip" value="<?= htmlspecialchars($identity['server_external_ip']) ?>" placeholder="212.95.34.211" maxlength="45">
+                                <div class="hint">Public IP of this server — added to MikroTik walled-garden so hotspot clients can reach the captive portal before authenticating</div>
                             </div>
                         </div>
                         <div class="form-actions">

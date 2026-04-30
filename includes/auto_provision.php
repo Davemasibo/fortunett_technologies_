@@ -335,72 +335,87 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
 }
 
 /**
- * Upload a tenant-branded hotspot login page to the router.
+ * Configure the router to redirect to the external FortuNett captive portal
+ * and ensure the server IP is in the hotspot walled garden.
  *
- * Strategy: use the RouterOS API to instruct the router to pull the branded
- * login page from this server via /tool/fetch.  This is more reliable than
- * FTP because:
- *   • The server is already publicly reachable (it hosts the customer portal).
- *   • The RouterOS API connection is already proven to work (provisioning used it).
- *   • FTP requires a separate service to be enabled on the router.
+ * Strategy (in order):
+ *   1. Read all hotspot profiles on the router.
+ *   2. For each profile, set login-page → external customer/login.php URL,
+ *      enable http-pap + http-cookie login methods, and set html-directory
+ *      as a fallback in case login-page ever fails.
+ *   3. Add the server's external IP (212.95.34.211) to /ip hotspot walled-garden-ip
+ *      so unauthenticated devices can always reach the portal.
+ *   4. Also fetch the branded flash page as a last-resort fallback.
  *
- * The branded page is served by /hotspot/login_serve.php?token={provisioning_token}.
- *
- * Silent on failure — provisioning must not be blocked by upload issues.
+ * Silent on failure — provisioning must not be blocked by portal config issues.
  */
 function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
 {
     try {
-        // Get the tenant's provisioning token (used to authenticate the serve endpoint)
-        $stmt = $pdo->prepare("SELECT provisioning_token FROM tenants WHERE id = ?");
+        // ── Resolve base URL for this tenant ──────────────────────────────────
+        $stmt = $pdo->prepare("SELECT provisioning_token, subdomain FROM tenants WHERE id = ?");
         $stmt->execute([$tenantId]);
-        $provToken = $stmt->fetchColumn();
+        $tenantRow = $stmt->fetch(PDO::FETCH_ASSOC);
+        $provToken = $tenantRow['provisioning_token'] ?? '';
+        $subdomain = $tenantRow['subdomain'] ?? '';
 
         if (!$provToken) {
             error_log('_uploadHotspotLoginPage: no provisioning token for tenant ' . $tenantId);
             return;
         }
 
-        // Build the URL that the router will fetch.
-        // The site is deployed at the web-root of each subdomain, so the base is
-        // simply scheme://host — no path component needed.
+        // Prefer the HTTP_HOST from a live web request; fall back to the tenant
+        // subdomain + platform domain when running from cron / CLI.
         if (!empty($_SERVER['HTTP_HOST'])) {
             $proto   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
             $baseUrl = $proto . '://' . $_SERVER['HTTP_HOST'];
-        } elseif (defined('MPESA_CALLBACK_URL')) {
-            // e.g. https://demo.fortunetttech.site/api/mpesa/callback.php → strip 3 segments
-            $baseUrl = dirname(dirname(dirname(MPESA_CALLBACK_URL)));
         } else {
-            error_log('_uploadHotspotLoginPage: cannot determine server URL');
-            return;
+            // Resolve platform domain from settings
+            $platformDomain = 'fortunetttech.site';
+            try {
+                $pdSt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='platform_domain' LIMIT 1");
+                $pd = $pdSt ? $pdSt->fetchColumn() : null;
+                if ($pd) $platformDomain = $pd;
+            } catch (Throwable $_e) {}
+            $baseUrl = 'https://' . ($subdomain ? $subdomain . '.' : '') . $platformDomain;
         }
 
-        $serveUrl = $baseUrl . '/hotspot/login_serve.php?token=' . urlencode($provToken);
-        $mode     = (strpos($serveUrl, 'https://') === 0) ? 'https' : 'http';
+        // ── Detect server external IP for walled garden ───────────────────────
+        // Priority: platform_settings.server_external_ip → DNS resolve → skip
+        $serverIp = '';
+        try {
+            $ipSt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='server_external_ip' LIMIT 1");
+            $serverIp = $ipSt ? ($ipSt->fetchColumn() ?: '') : '';
+        } catch (Throwable $_e) {}
+        if (!$serverIp) {
+            $hostname = parse_url($baseUrl, PHP_URL_HOST) ?: '';
+            if ($hostname) {
+                $resolved = @gethostbyname($hostname);
+                if ($resolved && $resolved !== $hostname && filter_var($resolved, FILTER_VALIDATE_IP)) {
+                    $serverIp = $resolved;
+                }
+            }
+        }
 
-        // Connect to router via API and issue /tool/fetch
+        // External login page URL — the comprehensive captive portal
+        $externalLoginUrl = $baseUrl . '/customer/login.php';
+        $serveUrl         = $baseUrl . '/hotspot/login_serve.php?token=' . urlencode($provToken);
+        $mode             = str_starts_with($serveUrl, 'https://') ? 'https' : 'http';
+
+        // ── Connect to router ─────────────────────────────────────────────────
         $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
-        $api = new MikrotikAPI(
-            $connectIp,
-            $router['username'],
-            $router['password'],
-            (int)($router['api_port'] ?? 8728)
-        );
+        $apiPort   = (int)($router['api_port'] ?? 8728);
+        $mkArgs    = [$connectIp, $router['username'], $router['password'], $apiPort];
 
-        if (!$api->isReachable(4)) {
-            error_log('_uploadHotspotLoginPage: router not reachable: ' . $connectIp);
+        // Verify TCP is up before opening the real API connection
+        $sock = @fsockopen($connectIp, $apiPort, $errno, $errstr, 5);
+        if (!$sock) {
+            error_log("_uploadHotspotLoginPage: router {$connectIp}:{$apiPort} unreachable");
             return;
         }
+        fclose($sock);
 
-        // RouterOS 7.x closes TCP after every !done response, so each command
-        // needs its own fresh connection — reusing a socket after the first
-        // comm() call silently fails on the write.
-        $apiPort = (int)($router['api_port'] ?? 8728);
-        $mkArgs  = [$connectIp, $router['username'], $router['password'], $apiPort];
-
-        $dstPath = 'flash/hotspot/login.html';
-
-        // ── Step 1: read profiles (connection #1) ────────────────────────────
+        // ── Step 1: read hotspot profiles ─────────────────────────────────────
         $profiles = [];
         try {
             $mk1 = new MikrotikAPI(...$mkArgs);
@@ -409,23 +424,35 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
             try { $mk1->disconnect(); } catch (Throwable $_e) {}
         } catch (Throwable $_e) {}
 
-        // ── Step 2: fix each profile that needs it (one fresh connection each) ─
-        // We update ALL profiles, including those with an empty html-directory
-        // (fresh/default routers). Skipping them was the reason auto-deploy
-        // had no effect on newly provisioned routers.
+        // ── Step 2: update every profile — set external login-page + methods ──
         foreach ($profiles as $p) {
             if (empty($p['.id'])) continue;
-            $dir     = trim($p['html-directory'] ?? '');
-            $loginBy = trim($p['login-by']        ?? '');
+
+            $curLoginPage = trim($p['login-page']     ?? '');
+            $curLoginBy   = trim($p['login-by']        ?? '');
+            $curDir       = trim($p['html-directory']  ?? '');
 
             $updates = ['=.id=' . $p['.id']];
-            if ($dir !== 'flash/hotspot') {
+
+            // Set external login page (the comprehensive captive portal)
+            if ($curLoginPage !== $externalLoginUrl) {
+                $updates[] = '=login-page=' . $externalLoginUrl;
+            }
+            // Keep flash/hotspot as fallback html-directory
+            if ($curDir !== 'flash/hotspot') {
                 $updates[] = '=html-directory=flash/hotspot';
             }
-            if (strpos($loginBy, 'http-pap') === false) {
-                // Append http-pap; handle the empty-string case gracefully
-                $updates[] = '=login-by=' . ($loginBy ? $loginBy . ',http-pap' : 'http-pap');
+            // Ensure http-pap and http-cookie are enabled for login
+            $needPap    = strpos($curLoginBy, 'http-pap')    === false;
+            $needCookie = strpos($curLoginBy, 'http-cookie') === false;
+            if ($needPap || $needCookie) {
+                // Build from existing methods then append only what's missing
+                $methodParts = $curLoginBy ? array_map('trim', explode(',', $curLoginBy)) : [];
+                if ($needPap)    $methodParts[] = 'http-pap';
+                if ($needCookie) $methodParts[] = 'http-cookie';
+                $updates[] = '=login-by=' . implode(',', array_unique($methodParts));
             }
+
             if (count($updates) < 2) continue;
 
             try {
@@ -436,24 +463,57 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
             } catch (Throwable $_e) {}
         }
 
-        // ── Step 3: pull the branded login page (fresh connection) ───────────
-        $mk3 = new MikrotikAPI(...$mkArgs);
-        $mk3->connect();
-        $result = $mk3->comm('/tool/fetch', [
-            '=url='               . $serveUrl,
-            '=dst-path='          . $dstPath,
-            '=mode='              . $mode,
-            '=check-certificate=no',
-        ]);
-        try { $mk3->disconnect(); } catch (Throwable $_e) {}
-
-        // Surface any trap (error) from the router
-        foreach ($result as $r) {
-            if (isset($r['!trap'])) {
-                $msg = $r['message'] ?? 'unknown router error';
-                error_log('_uploadHotspotLoginPage: router fetch error: ' . $msg);
-                throw new Exception('Router fetch error: ' . $msg);
+        // ── Step 3: walled garden — allow server IP before authentication ──────
+        // Unauthenticated hotspot devices must be able to reach our portal server.
+        if ($serverIp) {
+            try {
+                $mk3 = new MikrotikAPI(...$mkArgs);
+                $mk3->connect();
+                // Check if already present (avoid duplicates).
+                // RouterOS stores addresses with /32 so check both forms.
+                $wgList    = $mk3->comm('/ip/hotspot/walled-garden-ip/print');
+                $wgExists  = false;
+                $ipWithCidr = $serverIp . '/32';
+                foreach ($wgList as $wg) {
+                    $stored = $wg['dst-address'] ?? '';
+                    if ($stored === $serverIp || $stored === $ipWithCidr) {
+                        $wgExists = true;
+                        break;
+                    }
+                }
+                if (!$wgExists) {
+                    $mk3->comm('/ip/hotspot/walled-garden-ip/add', [
+                        '=dst-address=' . $ipWithCidr,
+                        '=action=accept',
+                        '=comment=FortuNett Portal (' . parse_url($baseUrl, PHP_URL_HOST) . ')',
+                    ]);
+                }
+                try { $mk3->disconnect(); } catch (Throwable $_e) {}
+            } catch (Throwable $wgEx) {
+                error_log('_uploadHotspotLoginPage walled-garden: ' . $wgEx->getMessage());
             }
+        }
+
+        // ── Step 4: also fetch branded flash page as last-resort fallback ─────
+        try {
+            $mk4 = new MikrotikAPI(...$mkArgs);
+            $mk4->connect();
+            $fetchResult = $mk4->comm('/tool/fetch', [
+                '=url='              . $serveUrl,
+                '=dst-path=flash/hotspot/login.html',
+                '=mode='             . $mode,
+                '=check-certificate=no',
+            ]);
+            try { $mk4->disconnect(); } catch (Throwable $_e) {}
+
+            foreach ($fetchResult as $fr) {
+                if (isset($fr['!trap'])) {
+                    error_log('_uploadHotspotLoginPage fetch trap: ' . ($fr['message'] ?? '?'));
+                }
+            }
+        } catch (Throwable $_e) {
+            // Flash upload is best-effort — login-page redirect is the primary mechanism
+            error_log('_uploadHotspotLoginPage flash fallback: ' . $_e->getMessage());
         }
 
     } catch (Throwable $e) {
