@@ -15,6 +15,7 @@ chdir(dirname(__DIR__));
 
 require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/../classes/MikrotikAPI.php';
+require_once __DIR__ . '/../classes/SMSHelper.php';
 
 $log = function(string $msg) {
     echo '[' . date('Y-m-d H:i:s') . '] ' . $msg . PHP_EOL;
@@ -25,14 +26,26 @@ $log("=== Expiry Check: " . date('Y-m-d H:i:s') . " ===");
 // ── Find expired-but-still-active clients ─────────────────────────────────────
 $stmt = $pdo->prepare("
     SELECT c.id, c.full_name, c.mikrotik_username, c.connection_type, c.tenant_id,
-           c.expiry_date, c.router_id
+           c.expiry_date, c.router_id, c.phone, c.account_number,
+           p.name AS pkg_name, p.price AS pkg_price,
+           t.company_name AS tenant_name, t.subdomain
     FROM clients c
+    LEFT JOIN packages p ON p.id = c.package_id
+    LEFT JOIN tenants t ON t.id = c.tenant_id
     WHERE c.status = 'active'
       AND c.expiry_date IS NOT NULL
       AND c.expiry_date < NOW()
 ");
 $stmt->execute();
 $expired = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Fetch platform domain once
+$platformDomain = 'fortunetttech.site';
+try {
+    $pdStmt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key = 'platform_domain' LIMIT 1");
+    $pd = $pdStmt ? $pdStmt->fetchColumn() : null;
+    if ($pd) $platformDomain = $pd;
+} catch (Throwable $_e) {}
 
 $log("Found " . count($expired) . " expired active client(s).");
 
@@ -95,13 +108,14 @@ foreach ($byTenant as $tenantId => $clients) {
         $upd->execute([$clientId, $tenantId]);
         $log("  [{$tenantId}] #{$clientId} {$name} — DB set to inactive (was active, expired {$client['expiry_date']})");
 
-        // 2. Disable on router
+        // 2. Disable on router + kick active session
         if ($api && !empty($uname)) {
             try {
                 if ($connType === 'pppoe') {
                     $disabled = $api->disablePPPoEUser($uname);
                     $api->kickPPPoESession($uname);
                 } else {
+                    // disableHotspotUser already calls kickHotspotSession internally
                     $disabled = $api->disableHotspotUser($uname);
                 }
                 $log("  [{$tenantId}] #{$clientId} {$name} — router disable " . ($disabled ? 'OK' : 'FAILED (user not found)') . " ({$connType}: {$uname})");
@@ -110,6 +124,49 @@ foreach ($byTenant as $tenantId => $clients) {
             }
         } elseif (empty($uname)) {
             $log("  [{$tenantId}] #{$clientId} {$name} — no mikrotik_username, skipping router step");
+        }
+
+        // 3. Send SMS notification to customer
+        $clientPhone = $client['phone'] ?? '';
+        if ($clientPhone) {
+            try {
+                $sms = new SMSHelper($pdo, $tenantId);
+                if ($sms->hasConfig()) {
+                    $renewUrl = 'https://' . ($client['subdomain'] ?? '') . '.' . $platformDomain . '/customer/renew.php';
+                    $accNo    = $client['account_number'] ?? '';
+                    $pkgPrice = isset($client['pkg_price']) ? 'KES ' . number_format((float)$client['pkg_price'], 0) : '';
+                    $company  = $client['tenant_name'] ?? 'Your ISP';
+                    $firstName = explode(' ', $name)[0];
+
+                    // Fetch M-Pesa paybill for this tenant (for SMS instructions)
+                    $paybill = '';
+                    try {
+                        $gwSt = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1 LIMIT 1");
+                        $gwSt->execute([$tenantId]);
+                        $gwRow = $gwSt->fetch(PDO::FETCH_ASSOC);
+                        if ($gwRow) {
+                            $gwCreds = json_decode($gwRow['credentials'], true) ?? [];
+                            $paybill = $gwCreds['shortcode'] ?? '';
+                        }
+                    } catch (Throwable $_e) {}
+
+                    if ($paybill && $accNo && $pkgPrice) {
+                        $msg = "Hi {$firstName}, your {$company} internet has expired. Renew: M-Pesa Paybill {$paybill} Acc {$accNo} {$pkgPrice}. Or visit {$renewUrl}";
+                    } else {
+                        $msg = "Hi {$firstName}, your {$company} internet subscription has expired. Visit {$renewUrl} to renew and get back online.";
+                    }
+
+                    // Trim to 160 chars
+                    if (strlen($msg) > 160) $msg = substr($msg, 0, 157) . '...';
+
+                    $smsResult = $sms->send($clientPhone, $msg, $clientId);
+                    $log("  [{$tenantId}] #{$clientId} {$name} — SMS " . ($smsResult['success'] ? 'sent' : 'failed: ' . ($smsResult['message'] ?? '?')));
+                } else {
+                    $log("  [{$tenantId}] #{$clientId} {$name} — SMS skipped (not configured)");
+                }
+            } catch (Throwable $smsEx) {
+                $log("  [{$tenantId}] #{$clientId} {$name} — SMS error: " . $smsEx->getMessage());
+            }
         }
     }
 

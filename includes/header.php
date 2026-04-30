@@ -18,7 +18,15 @@ if (isLoggedIn()) {
     $stmt = $pdo->prepare("SELECT setting_key, setting_value FROM tenant_settings WHERE tenant_id = ?");
     $stmt->execute([$tenant_id]);
     $tSettings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
-    
+
+    // Fetch company_name directly from tenants table (reliable across all pages)
+    $tenantCompanyName = null;
+    try {
+        $tcStmt = $pdo->prepare("SELECT company_name FROM tenants WHERE id = ?");
+        $tcStmt->execute([$tenant_id]);
+        $tenantCompanyName = $tcStmt->fetchColumn() ?: null;
+    } catch (Throwable $_e) {}
+
     $current_theme = $tSettings['app_theme'] ?? 'light';
     $brand_color = $tSettings['brand_color'] ?? '#0f3460';
     $brand_font = $tSettings['brand_font'] ?? '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -387,7 +395,7 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
             <?php else: ?>
                 <i class="fas fa-wifi me-2"></i>
             <?php endif; ?>
-            <?php echo htmlspecialchars($tSettings['company_name'] ?? $tenant['company_name'] ?? $profile['business_name'] ?? 'ISP Management'); ?>
+            <?php echo htmlspecialchars($tSettings['company_name'] ?? $tenantCompanyName ?? $profile['business_name'] ?? 'ISP Management'); ?>
         </a>
         
         <div class="collapse navbar-collapse" id="navbarNav">

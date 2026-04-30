@@ -2,6 +2,16 @@
 require_once __DIR__ . '/includes/auth.php';
 $customer = requireCustomerLogin();
 
+// Redirect expired customers to renewal page (allow re-check after renew)
+if (!isset($_GET['just_renewed'])) {
+    $isSubExpired = ($customer['status'] ?? '') === 'inactive'
+        || (!empty($customer['expiry_date']) && strtotime($customer['expiry_date']) < time());
+    if ($isSubExpired) {
+        header('Location: renew.php?account=' . urlencode($customer['account_number'] ?? $customer['phone'] ?? ''));
+        exit;
+    }
+}
+
 // Get package details
 $package = null;
 if ($customer['package_id']) {

@@ -316,6 +316,22 @@ body.auth-page::before {
   background: rgba(255,255,255,0.08);
 }
 
+/* ── Browser autofill override (prevents white bg on some inputs) ─── */
+.form-control-auth:-webkit-autofill,
+.form-control-auth:-webkit-autofill:hover,
+.form-control-auth:-webkit-autofill:focus,
+.form-control-auth:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px rgb(27, 27, 26) inset,
+                      inset 4px 4px 8px rgb(10, 10, 9),
+                      inset -2px -2px 5px rgb(42, 42, 40) !important;
+  box-shadow: 0 0 0 1000px rgb(27, 27, 26) inset,
+              inset 4px 4px 8px rgb(10, 10, 9),
+              inset -2px -2px 5px rgb(42, 42, 40) !important;
+  -webkit-text-fill-color: #e8e8e6 !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 480px) {
   body.auth-page {
