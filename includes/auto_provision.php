@@ -640,77 +640,124 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
             try { $mk1->disconnect(); } catch (Throwable $_e) {}
         } catch (Throwable $_e) {}
 
-        // ── Step 2: update every profile — set external login-page + methods ──
+        // ── Step 2: update every profile — html-directory + login methods ────────
+        // NOTE: RouterOS 7 removed the 'login-page' profile parameter. The primary
+        // redirect mechanism is now the login.html uploaded in Step 4.
+        // 'login-page' is attempted separately and silently ignored on RouterOS 7.
         foreach ($profiles as $p) {
             if (empty($p['.id'])) continue;
 
-            $curLoginPage = trim($p['login-page']     ?? '');
-            $curLoginBy   = trim($p['login-by']        ?? '');
-            $curDir       = trim($p['html-directory']  ?? '');
+            $curLoginBy = trim($p['login-by']       ?? '');
+            $curDir     = trim($p['html-directory'] ?? '');
 
             $updates = ['=.id=' . $p['.id']];
 
-            // Set external login page (the comprehensive captive portal)
-            if ($curLoginPage !== $externalLoginUrl) {
-                $updates[] = '=login-page=' . $externalLoginUrl;
-            }
-            // Keep flash/hotspot as fallback html-directory
-            if ($curDir !== 'flash/hotspot') {
+            // html-directory for the redirect login.html (RouterOS 7 prepends flash/ in display,
+            // so accept both flash/hotspot and flash/flash/hotspot as already correct).
+            if ($curDir !== 'flash/hotspot' && $curDir !== 'flash/flash/hotspot') {
                 $updates[] = '=html-directory=flash/hotspot';
             }
-            // Ensure http-pap and http-cookie are enabled for login
-            $needPap    = strpos($curLoginBy, 'http-pap')    === false;
-            $needCookie = strpos($curLoginBy, 'http-cookie') === false;
+
+            // login-by: RouterOS 7 uses 'cookie' (was 'http-cookie' in RouterOS 6).
+            // We check for both so existing 'http-cookie' entries are not re-added.
+            $methodParts = $curLoginBy ? array_map('trim', explode(',', $curLoginBy)) : [];
+            $needPap    = !in_array('http-pap', $methodParts);
+            $needCookie = !in_array('cookie', $methodParts) && !in_array('http-cookie', $methodParts);
             if ($needPap || $needCookie) {
-                // Build from existing methods then append only what's missing
-                $methodParts = $curLoginBy ? array_map('trim', explode(',', $curLoginBy)) : [];
                 if ($needPap)    $methodParts[] = 'http-pap';
-                if ($needCookie) $methodParts[] = 'http-cookie';
+                if ($needCookie) $methodParts[] = 'cookie';   // RouterOS 7 value
                 $updates[] = '=login-by=' . implode(',', array_unique($methodParts));
             }
 
-            if (count($updates) < 2) continue;
+            if (count($updates) >= 2) {
+                try {
+                    $mk2 = new MikrotikAPI(...$mkArgs);
+                    $mk2->connect();
+                    $mk2->comm('/ip/hotspot/profile/set', $updates);
+                    try { $mk2->disconnect(); } catch (Throwable $_e) {}
+                } catch (Throwable $_e) {
+                    error_log('_uploadHotspotLoginPage profile set: ' . $_e->getMessage());
+                }
+            }
 
+            // RouterOS 6 only: set login-page on profile (silently fails on RouterOS 7).
             try {
-                $mk2 = new MikrotikAPI(...$mkArgs);
-                $mk2->connect();
-                $mk2->comm('/ip/hotspot/profile/set', $updates);
-                try { $mk2->disconnect(); } catch (Throwable $_e) {}
-            } catch (Throwable $_e) {}
+                $curLoginPage = trim($p['login-page'] ?? '');
+                if ($curLoginPage !== $externalLoginUrl) {
+                    $mk2r = new MikrotikAPI(...$mkArgs);
+                    $mk2r->connect();
+                    $mk2r->comm('/ip/hotspot/profile/set', [
+                        '=.id='        . $p['.id'],
+                        '=login-page=' . $externalLoginUrl,
+                    ]);
+                    try { $mk2r->disconnect(); } catch (Throwable $_e) {}
+                }
+            } catch (Throwable $_e) { /* RouterOS 7 — expected, login.html handles redirect */ }
         }
 
-        // ── Step 3: walled garden — allow server IP before authentication ──────
-        // Unauthenticated hotspot devices must be able to reach our portal server.
-        if ($serverIp) {
-            try {
-                $mk3 = new MikrotikAPI(...$mkArgs);
-                $mk3->connect();
-                // Check if already present (avoid duplicates).
-                // RouterOS stores addresses with /32 so check both forms.
-                $wgList    = $mk3->comm('/ip/hotspot/walled-garden-ip/print');
-                $wgExists  = false;
-                $ipWithCidr = $serverIp . '/32';
-                foreach ($wgList as $wg) {
-                    $stored = $wg['dst-address'] ?? '';
-                    if ($stored === $serverIp || $stored === $ipWithCidr) {
-                        $wgExists = true;
-                        break;
-                    }
-                }
-                if (!$wgExists) {
-                    $mk3->comm('/ip/hotspot/walled-garden-ip/add', [
-                        '=dst-address=' . $ipWithCidr,
-                        '=action=accept',
-                        '=comment=FortuNett Portal (' . parse_url($baseUrl, PHP_URL_HOST) . ')',
+        // ── Step 3: walled garden — allow portal server before authentication ───
+        // RouterOS 7: uses /ip/hotspot/walled-garden/ (domain/host-based).
+        // RouterOS 6: uses /ip/hotspot/walled-garden-ip/ (IP-based) as fallback.
+        $portalHost = parse_url($baseUrl, PHP_URL_HOST) ?: '';
+        try {
+            $mk3 = new MikrotikAPI(...$mkArgs);
+            $mk3->connect();
+            $wgList = $mk3->comm('/ip/hotspot/walled-garden/print');
+
+            // Collect already-present hosts to avoid duplicates
+            $existingHosts = [];
+            foreach ($wgList as $wg) {
+                $existingHosts[] = $wg['dst-host'] ?? '';
+            }
+
+            // Add portal hostname (e.g. demo.fortunetttech.site)
+            if ($portalHost && !in_array($portalHost, $existingHosts)) {
+                $mk3->comm('/ip/hotspot/walled-garden/add', [
+                    '=dst-host=' . $portalHost,
+                    '=comment=FortuNett Portal ' . $portalHost,
+                ]);
+            }
+            // Also add server IP directly as a dst-host entry (RouterOS 7 accepts IPs here)
+            if ($serverIp && !in_array($serverIp, $existingHosts)) {
+                try {
+                    $mk3->comm('/ip/hotspot/walled-garden/add', [
+                        '=dst-host=' . $serverIp,
+                        '=comment=FortuNett Portal IP',
                     ]);
+                } catch (Throwable $_e) { /* non-fatal */ }
+            }
+            try { $mk3->disconnect(); } catch (Throwable $_e) {}
+        } catch (Throwable $wgEx7) {
+            // RouterOS 6 fallback: IP-based walled-garden-ip
+            error_log('_uploadHotspotLoginPage walled-garden (v7): ' . $wgEx7->getMessage());
+            if ($serverIp) {
+                try {
+                    $mk3b = new MikrotikAPI(...$mkArgs);
+                    $mk3b->connect();
+                    $wgList     = $mk3b->comm('/ip/hotspot/walled-garden-ip/print');
+                    $ipWithCidr = $serverIp . '/32';
+                    $wgExists   = false;
+                    foreach ($wgList as $wg) {
+                        $s = $wg['dst-address'] ?? '';
+                        if ($s === $serverIp || $s === $ipWithCidr) { $wgExists = true; break; }
+                    }
+                    if (!$wgExists) {
+                        $mk3b->comm('/ip/hotspot/walled-garden-ip/add', [
+                            '=dst-address=' . $ipWithCidr,
+                            '=action=accept',
+                            '=comment=FortuNett Portal',
+                        ]);
+                    }
+                    try { $mk3b->disconnect(); } catch (Throwable $_e) {}
+                } catch (Throwable $wgEx6) {
+                    error_log('_uploadHotspotLoginPage walled-garden-ip (v6): ' . $wgEx6->getMessage());
                 }
-                try { $mk3->disconnect(); } catch (Throwable $_e) {}
-            } catch (Throwable $wgEx) {
-                error_log('_uploadHotspotLoginPage walled-garden: ' . $wgEx->getMessage());
             }
         }
 
-        // ── Step 4: also fetch branded flash page as last-resort fallback ─────
+        // ── Step 4: upload redirect login.html to router flash ────────────────
+        // PRIMARY mechanism for RouterOS 7. The login.html JS-redirects the browser
+        // to customer/login.php, passing MikroTik's URL params (mac, ip, link-login…).
         try {
             $mk4 = new MikrotikAPI(...$mkArgs);
             $mk4->connect();
@@ -728,8 +775,7 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
                 }
             }
         } catch (Throwable $_e) {
-            // Flash upload is best-effort — login-page redirect is the primary mechanism
-            error_log('_uploadHotspotLoginPage flash fallback: ' . $_e->getMessage());
+            error_log('_uploadHotspotLoginPage flash upload: ' . $_e->getMessage());
         }
 
     } catch (Throwable $e) {

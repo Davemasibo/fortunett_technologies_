@@ -515,10 +515,17 @@ body.auth-page { padding: 16px; }
 </div>
 
 <script>
-var TENANT_ID   = <?php echo (int)($tenantId ?? 0); ?>;
-var LINK_LOGIN  = <?php echo json_encode($linkLogin); ?>;
-var LINK_ORIG   = <?php echo json_encode($linkOrig); ?>;
-var MAC_ADDRESS = <?php echo json_encode($macAddress); ?>;
+var TENANT_ID    = <?php echo (int)($tenantId ?? 0); ?>;
+var LINK_LOGIN   = <?php echo json_encode($linkLogin); ?>;
+var LINK_ORIG    = <?php echo json_encode($linkOrig); ?>;
+var MAC_ADDRESS  = <?php echo json_encode($macAddress); ?>;
+// Absolute URL to auto_login.php on THIS server (not the MikroTik hotspot IP).
+// window.location.origin would resolve to the router's hotspot address when the
+// browser is on the captive portal — use the PHP-generated server origin instead.
+var SERVER_ORIGIN = <?php
+    $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    echo json_encode($proto . '://' . ($_SERVER['HTTP_HOST'] ?? ''));
+?>;
 var SEL_PKG     = null;
 var pollTimer   = null;
 var pollCount   = 0;
@@ -628,7 +635,7 @@ function doConnect(username, password, portalToken) {
     if (!LINK_LOGIN) return;
     var dst = '';
     if (portalToken) {
-        dst = window.location.origin + '/customer/auto_login.php?token=' + encodeURIComponent(portalToken);
+        dst = SERVER_ORIGIN + '/customer/auto_login.php?token=' + encodeURIComponent(portalToken);
     } else if (LINK_ORIG) {
         dst = LINK_ORIG;
     }
