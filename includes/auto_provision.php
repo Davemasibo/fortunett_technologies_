@@ -666,10 +666,11 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
 
             $updates = ['=.id=' . $p['.id']];
 
-            // Set html-directory to flash/hotspot. RouterOS 7 will store/display this
-            // as flash/flash/hotspot — both paths get login.html written in Step 4.
+            // RouterOS 7 prepends flash/ to whatever you set, so set just "hotspot"
+            // (no flash/ prefix) and RouterOS stores it as flash/hotspot.
+            // Accept flash/hotspot or flash/flash/hotspot as already-correct displays.
             if ($curDir !== 'flash/hotspot' && $curDir !== 'flash/flash/hotspot') {
-                $updates[] = '=html-directory=flash/hotspot';
+                $updates[] = '=html-directory=hotspot';
             }
 
             // login-by: RouterOS 7 uses 'cookie' (was 'http-cookie' in RouterOS 6).

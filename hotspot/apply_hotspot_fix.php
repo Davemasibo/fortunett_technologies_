@@ -75,8 +75,9 @@ try {
         }
         $curLB  = trim($p['login-by'] ?? '');
 
+        // RouterOS 7 prepends flash/ automatically — set "hotspot" not "flash/hotspot"
         if ($curDir !== 'flash/hotspot' && $curDir !== 'flash/flash/hotspot') {
-            $updates[] = '=html-directory=flash/hotspot';
+            $updates[] = '=html-directory=hotspot';
         }
         $parts = $curLB ? array_map('trim', explode(',', $curLB)) : [];
         if (!in_array('http-pap', $parts)) $parts[] = 'http-pap';
