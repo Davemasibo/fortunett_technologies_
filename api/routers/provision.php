@@ -179,6 +179,16 @@ try {
         echo "&router_username=fortunett_admin&router_password=$adminPassword\"";
         echo " keep-result=no;\n\n";
 
+        // 6. Download branded hotspot login page + set up a daily refresh scheduler
+        $loginServeBase = $protocol . $_SERVER['HTTP_HOST'];
+        $loginServeUrl  = $loginServeBase . '/hotspot/login_serve.php?token=' . urlencode($t);
+        echo "# ── Hotspot login page ────────────────────────────────────────────────────\n";
+        echo ":do { /file remove [find name=\"flash/hotspot/login.html\"] } on-error={};\n";
+        echo "/tool fetch $mode url=\"$loginServeUrl\" dst-path=flash/hotspot/login.html check-certificate=no;\n";
+        echo ":do { /system scheduler remove [find name=\"fortunett_login_refresh\"] } on-error={};\n";
+        $loginCmd = "/tool fetch $mode url=\\\"$loginServeUrl\\\" dst-path=flash/hotspot/login.html check-certificate=no";
+        echo "/system scheduler add name=\"fortunett_login_refresh\" interval=24h start-time=startup on-event=\"$loginCmd\";\n\n";
+
         echo ":log info \"[Fortunett] Provisioning complete — VPN IP: $vpnIp\";\n";
         exit;
     }

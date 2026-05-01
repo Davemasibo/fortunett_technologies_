@@ -168,9 +168,10 @@ try {
         ]);
     }
 
-    // Auto-deploy hotspot login page whenever the router checks in with a VPN IP.
-    // Only attempt when the VPN tunnel is confirmed (vpn_ip set) so the API is reachable.
-    if ($savedRouterId && $vpn_ip) {
+    // Auto-deploy hotspot login page whenever the router checks in.
+    // _uploadHotspotLoginPage does its own TCP reachability check internally,
+    // so it is safe to attempt even without a VPN IP (falls back to public IP).
+    if ($savedRouterId) {
         try {
             require_once __DIR__ . '/../../includes/auto_provision.php';
             $rSt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE id = ? AND tenant_id = ?");
