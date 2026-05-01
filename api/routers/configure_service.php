@@ -80,8 +80,9 @@ try {
             $sub        = $tRow['subdomain'] ?: '';
             $portalHost = $sub ? "$sub.$platformDomain" : $platformDomain;
             if (!empty($tRow['provisioning_token'])) {
-                $loginServeUrl = 'https://' . $portalHost . '/hotspot/login_serve.php?token='
-                    . urlencode($tRow['provisioning_token']);
+                // Path form — no = in URL so RouterOS /tool/fetch parses it correctly
+                $loginServeUrl = 'https://' . $portalHost . '/hotspot/login_serve.php/'
+                    . rawurlencode($tRow['provisioning_token']);
             }
         }
     } catch (Throwable $_e) {}

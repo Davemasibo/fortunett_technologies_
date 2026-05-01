@@ -11,7 +11,12 @@ ini_set('display_errors', 0);
 error_reporting(0);
 require_once __DIR__ . '/../includes/db_master.php';
 
+// Accept token from ?token= query param OR from URL path segment
+// Path form: /hotspot/login_serve.php/TOKEN  (no = in URL — required by RouterOS /tool/fetch)
 $token = trim($_GET['token'] ?? '');
+if (!$token && !empty($_SERVER['PATH_INFO'])) {
+    $token = trim(ltrim($_SERVER['PATH_INFO'], '/'));
+}
 if (!$token) {
     http_response_code(400);
     exit('Token required');
