@@ -4,6 +4,8 @@
 // VPS: Uses .env file values if present (loaded by env.php)
 require_once __DIR__ . '/env.php';
 
+date_default_timezone_set('Africa/Nairobi');
+
 $DB_HOST = get_env_var('DB_HOST', 'localhost');
 $DB_NAME = get_env_var('DB_NAME', 'fortunnet_technologies');
 $DB_USER = get_env_var('DB_USER', 'root');
@@ -21,8 +23,9 @@ class Database {
                 $DB_USER,
                 $DB_PASS,
                 [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+                    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    PDO::MYSQL_ATTR_INIT_COMMAND => "SET time_zone = '+03:00'",
                 ]
             );
         } catch (PDOException $e) {

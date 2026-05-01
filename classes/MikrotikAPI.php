@@ -425,10 +425,12 @@ class MikrotikAPI {
      * Requests the stats proplist explicitly so rx-byte/tx-byte are always included.
      */
     public function getActiveSessions(): array {
-        // No .proplist — some RouterOS versions reject unknown properties (encoding,
-        // session-id) and return an empty response rather than skipping them.
-        // We parse whatever fields the router sends and pick what we need downstream.
-        $response = $this->comm('/ppp/active/print');
+        // .proplist explicitly requests rx-byte/tx-byte which RouterOS omits from the
+        // default /ppp/active/print response (they only appear in "print stats").
+        // All properties listed here have existed since RouterOS 6.x, so this is safe.
+        $response = $this->comm('/ppp/active/print', [
+            '=.proplist=.id,name,service,caller-id,address,uptime,rx-byte,tx-byte',
+        ]);
         $sessions = [];
         foreach ($response as $item) {
             if (isset($item['!re'])) {

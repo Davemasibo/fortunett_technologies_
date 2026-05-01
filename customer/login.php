@@ -305,7 +305,22 @@ body.auth-page { padding: 16px; }
     <div class="p-panel active" id="panel-signin">
 
         <?php if ($loggedInClient): ?>
-        <!-- Successful login → auto-connect to MikroTik -->
+        <?php
+        // Create a portal auto-login token so the customer gets a dashboard session after MikroTik auth
+        $_signinToken = null;
+        try {
+            $_signinToken = bin2hex(random_bytes(16));
+            $pdo->prepare("INSERT INTO payment_auto_logins (client_id, login_token, expires_at, status) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE), 'pending')")
+                ->execute([$loggedInClient['id'], $_signinToken]);
+        } catch (Exception $_e) { $_signinToken = null; }
+
+        // Direct portal visit (no MikroTik link-login) — go straight to dashboard via auto_login
+        if (!$linkLogin && $_signinToken) {
+            header('Location: auto_login.php?token=' . rawurlencode($_signinToken));
+            exit;
+        }
+        ?>
+        <!-- Successful login → auto-connect to MikroTik then redirect to dashboard -->
         <div class="connected-banner">
             <i class="fas fa-check-circle"></i>
             <h3>Welcome, <?php echo htmlspecialchars(explode(' ', $loggedInClient['full_name'] ?? $loggedInClient['username'])[0]); ?>!</h3>
@@ -316,9 +331,17 @@ body.auth-page { padding: 16px; }
             var ll = <?php echo json_encode($linkLogin); ?>;
             var u  = <?php echo json_encode($loggedInClient['mikrotik_username'] ?? $loggedInClient['username']); ?>;
             var p  = <?php echo json_encode($loggedInClient['mikrotik_password'] ?? ''); ?>;
+            var tok = <?php echo json_encode($_signinToken); ?>;
+            var origin = <?php
+                $__proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                echo json_encode($__proto . '://' . ($_SERVER['HTTP_HOST'] ?? ''));
+            ?>;
             if (ll && u && p) {
                 setTimeout(function(){
-                    window.location.href = ll + '?username=' + encodeURIComponent(u) + '&password=' + encodeURIComponent(p);
+                    var dst = tok ? (origin + '/customer/auto_login.php?token=' + encodeURIComponent(tok)) : '';
+                    var url = ll + '?username=' + encodeURIComponent(u) + '&password=' + encodeURIComponent(p);
+                    if (dst) url += '&dst=' + encodeURIComponent(dst);
+                    window.location.href = url;
                 }, 900);
             }
         })();
