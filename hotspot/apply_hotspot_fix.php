@@ -62,11 +62,17 @@ try {
     // ── Fix 1: hotspot profile — html-directory + login-by ───────────────────
     echo "── Fix 1: hotspot profile html-directory + login-by ────────────────\n";
     $profiles = $mk->comm('/ip/hotspot/profile/print');
+    $effectiveDirs = ['flash/hotspot', 'flash/flash/hotspot'];
     $fixed = 0;
     foreach ($profiles as $p) {
         if (empty($p['.id'])) continue;
         $updates = ['=.id=' . $p['.id']];
-        $curDir = trim($p['html-directory'] ?? '');
+        $curDir      = trim($p['html-directory']          ?? '');
+        $overrideDir = trim($p['html-directory-override'] ?? '');
+        $effectiveDir = $overrideDir ?: $curDir;
+        if ($effectiveDir && !in_array($effectiveDir, $effectiveDirs)) {
+            $effectiveDirs[] = $effectiveDir;
+        }
         $curLB  = trim($p['login-by'] ?? '');
 
         if ($curDir !== 'flash/hotspot' && $curDir !== 'flash/flash/hotspot') {
@@ -132,26 +138,29 @@ try {
         echo "  [!!] Walled garden error: " . $wgEx->getMessage() . "\n";
     }
 
-    // ── Fix 4: download correct login.html ────────────────────────────────────
-    echo "\n── Fix 4: fetch branded login.html to flash/hotspot/ ───────────────\n";
+    // ── Fix 4: download login.html to ALL effective html-directory paths ────────
+    echo "\n── Fix 4: fetch branded login.html to all hotspot html-directory paths ──\n";
     if ($token) {
-        try {
-            $fetchResp = $mk->comm('/tool/fetch', [
-                '=url='              . $loginServeUrl,
-                '=dst-path=flash/hotspot/login.html',
-                '=mode=https',
-                '=check-certificate=no',
-            ]);
-            $trapped = false;
-            foreach ($fetchResp as $fr) {
-                if (isset($fr['!trap'])) {
-                    echo "  [!!] Fetch error: " . ($fr['message'] ?? '?') . "\n";
-                    $trapped = true;
+        foreach (array_unique($effectiveDirs) as $htmlDir) {
+            $dstPath = rtrim($htmlDir, '/') . '/login.html';
+            try {
+                $fetchResp = $mk->comm('/tool/fetch', [
+                    '=url='              . $loginServeUrl,
+                    '=dst-path='         . $dstPath,
+                    '=mode=https',
+                    '=check-certificate=no',
+                ]);
+                $trapped = false;
+                foreach ($fetchResp as $fr) {
+                    if (isset($fr['!trap'])) {
+                        echo "  [!!] $dstPath — fetch error: " . ($fr['message'] ?? '?') . "\n";
+                        $trapped = true;
+                    }
                 }
+                if (!$trapped) echo "  [OK] $dstPath downloaded\n";
+            } catch (Throwable $fetchEx) {
+                echo "  [!!] $dstPath — " . $fetchEx->getMessage() . "\n";
             }
-            if (!$trapped) echo "  [OK] login.html downloaded from $loginServeUrl\n";
-        } catch (Throwable $fetchEx) {
-            echo "  [!!] Fetch exception: " . $fetchEx->getMessage() . "\n";
         }
     } else {
         echo "  [!!] No provisioning token — skipped\n";

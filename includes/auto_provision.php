@@ -768,27 +768,31 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
             }
         }
 
-        // ── Step 4: upload redirect login.html to router flash ────────────────
-        // PRIMARY mechanism for RouterOS 7. The login.html JS-redirects the browser
-        // to customer/login.php, passing MikroTik's URL params (mac, ip, link-login…).
-        try {
-            $mk4 = new MikrotikAPI(...$mkArgs);
-            $mk4->connect();
-            $fetchResult = $mk4->comm('/tool/fetch', [
-                '=url='              . $serveUrl,
-                '=dst-path=flash/hotspot/login.html',
-                '=mode='             . $mode,
-                '=check-certificate=no',
-            ]);
-            try { $mk4->disconnect(); } catch (Throwable $_e) {}
+        // ── Step 4: upload redirect login.html to every effective html-directory ──
+        // Write to all directories collected in Step 2 (flash/hotspot AND
+        // flash/flash/hotspot). RouterOS 7 sometimes stores the path differently
+        // from what /file/print shows, so we cover both to be safe.
+        foreach (array_unique($effectiveDirs) as $htmlDir) {
+            $dstPath = rtrim($htmlDir, '/') . '/login.html';
+            try {
+                $mk4 = new MikrotikAPI(...$mkArgs);
+                $mk4->connect();
+                $fetchResult = $mk4->comm('/tool/fetch', [
+                    '=url='              . $serveUrl,
+                    '=dst-path='         . $dstPath,
+                    '=mode='             . $mode,
+                    '=check-certificate=no',
+                ]);
+                try { $mk4->disconnect(); } catch (Throwable $_e) {}
 
-            foreach ($fetchResult as $fr) {
-                if (isset($fr['!trap'])) {
-                    error_log('_uploadHotspotLoginPage fetch trap: ' . ($fr['message'] ?? '?'));
+                foreach ($fetchResult as $fr) {
+                    if (isset($fr['!trap'])) {
+                        error_log("_uploadHotspotLoginPage fetch trap ($dstPath): " . ($fr['message'] ?? '?'));
+                    }
                 }
+            } catch (Throwable $_e) {
+                error_log("_uploadHotspotLoginPage flash upload ($dstPath): " . $_e->getMessage());
             }
-        } catch (Throwable $_e) {
-            error_log('_uploadHotspotLoginPage flash upload: ' . $_e->getMessage());
         }
 
     } catch (Throwable $e) {
