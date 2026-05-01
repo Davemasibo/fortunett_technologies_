@@ -106,16 +106,19 @@ try { $pdo->exec("ALTER TABLE packages ADD COLUMN mikrotik_profile VARCHAR(100) 
 try {
     $pdo->beginTransaction();
 
-    // 1. Get Package Details
-    $stmt = $pdo->prepare("SELECT *, COALESCE(NULLIF(type,''), 'pppoe') AS pkg_type FROM packages WHERE id = ? AND tenant_id = ?");
+    // Sync connection_type from type for packages (fix migration default 'pppoe' bug)
+    try { $pdo->exec("UPDATE packages SET connection_type = type WHERE type IS NOT NULL AND type != ''"); } catch (Throwable $_e) {}
+
+    // 1. Get Package Details — check both type and connection_type columns
+    $stmt = $pdo->prepare("SELECT *, COALESCE(NULLIF(connection_type,''), NULLIF(type,''), 'hotspot') AS pkg_type FROM packages WHERE id = ? AND tenant_id = ?");
     $stmt->execute([$package_id, $tenant_id]);
     $package = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$package) throw new Exception("Invalid package selected or access denied");
     // Validate package type matches customer connection type
-    $pkgType  = strtolower($package['pkg_type'] ?? 'pppoe');
+    $pkgType  = strtolower($package['pkg_type'] ?? 'hotspot');
     $custType = strtolower($connection_type);
     if ($custType !== 'static' && $pkgType !== $custType) {
-        throw new Exception("Package type mismatch: cannot assign a " . strtoupper($pkgType) . " package to a " . strtoupper($custType) . " customer.");
+        throw new Exception("Package type mismatch: cannot assign a " . strtoupper($pkgType) . " package to a " . strtoupper($custType) . " customer. Please select a matching package or update the package type.");
     }
 
     // 2. Calculate Expiry
@@ -129,19 +132,20 @@ try {
         $expiry_date = date('Y-m-d H:i:s', strtotime('+1 month'));
     }
 
-    // 3. Insert client
+    // 3. Insert client — status 'active' immediately so the customer can log in.
+    //    MikroTik provisioning (step 6) is best-effort; failure only means the admin
+    //    needs to provision the router manually, but the account itself is valid.
     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
     $stmt = $pdo->prepare("INSERT INTO clients
         (tenant_id, full_name, name, email, phone, address, username, auth_password,
          mikrotik_username, mikrotik_password, package_id, subscription_plan,
          expiry_date, status, connection_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inactive', ?)");
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)");
     $stmt->execute([
         $tenant_id, $name, $name, $email, $phone, $address,
         $username, $hashed_password, $mikrotik_username, $mikrotik_password,
         $package_id, $package['name'], $expiry_date, $connection_type
     ]);
-    // Note: status is 'inactive' until MikroTik sync succeeds; updated below.
     $client_id = $pdo->lastInsertId();
 
     // 4. Commit the main transaction BEFORE account number generation

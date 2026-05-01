@@ -29,15 +29,23 @@ try {
     }
 
     if ($tx['status'] === 'completed') {
-        // Fetch client credentials (set by autoProvisionClient in callback)
+        // Fetch client credentials
         $clSt = $pdo->prepare("SELECT mikrotik_username, mikrotik_password, status, account_number FROM clients WHERE id = ? LIMIT 1");
         $clSt->execute([$clientId]);
         $client = $clSt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$client || $client['status'] !== 'active') {
-            // Provisioning may still be in progress — return pending
+        if (!$client) {
             echo json_encode(['status' => 'pending']);
             exit;
+        }
+
+        // If client is still pending/inactive (e.g. callback hasn't fired yet),
+        // activate it now so the customer is not stuck waiting.
+        if ($client['status'] === 'pending' || $client['status'] === 'inactive') {
+            try {
+                $pdo->prepare("UPDATE clients SET status = 'active' WHERE id = ?")->execute([$clientId]);
+                $client['status'] = 'active';
+            } catch (Throwable $_e) {}
         }
 
         // Create auto-login token for customer portal

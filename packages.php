@@ -555,7 +555,7 @@ include 'includes/sidebar.php';
     <div class="pkg-modal-body">
         <form id="packageForm" onsubmit="handlePackageSubmit(event)">
             <input type="hidden" name="id" id="packageId">
-            <input type="hidden" name="connection_type" id="pkgConnType" value="pppoe">
+            <input type="hidden" name="connection_type" id="pkgConnType" value="hotspot">
 
             <!-- Basic Info -->
             <div class="pkg-section"><i class="fas fa-tag"></i> Basic Info</div>
@@ -717,7 +717,7 @@ function openAddPackageModal() {
     document.getElementById('profilesDropdownWrap').style.display = 'none';
     document.getElementById('pkgHotspotServer').value = '';
     document.getElementById('serversDropdownWrap').style.display = 'none';
-    setConnType('pppoe');
+    setConnType('hotspot');
     updateRatePreview();
     document.getElementById('packageModal').style.display = 'flex';
 }

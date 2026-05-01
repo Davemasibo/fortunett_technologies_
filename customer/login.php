@@ -69,13 +69,17 @@ if (!in_array($subdomain, ['localhost', 'www']) && !filter_var($host, FILTER_VAL
 // ── Fetch active hotspot packages ─────────────────────────────────────────────
 $packages = [];
 if ($tenantId) {
+    // Ensure connection_type column exists (may be missing on older installs).
+    // Then unconditionally sync connection_type = type so any wrong migration defaults are fixed.
+    try { $pdo->exec("ALTER TABLE packages ADD COLUMN connection_type VARCHAR(20) DEFAULT NULL"); } catch (Throwable $_e) {}
+    try { $pdo->exec("UPDATE packages SET connection_type = type WHERE type IS NOT NULL AND type != ''"); } catch (Throwable $_e) {}
     try {
         $pkgSt = $pdo->prepare("
             SELECT id, name, price, download_speed, upload_speed, validity_value, validity_unit,
-                   COALESCE(connection_type, 'hotspot') AS connection_type
+                   COALESCE(NULLIF(connection_type,''), NULLIF(type,''), 'hotspot') AS connection_type
             FROM packages
             WHERE tenant_id = ? AND status = 'active'
-              AND COALESCE(NULLIF(connection_type,''), 'hotspot') = 'hotspot'
+              AND COALESCE(NULLIF(connection_type,''), NULLIF(type,''), 'hotspot') = 'hotspot'
             ORDER BY price ASC, name ASC
         ");
         $pkgSt->execute([$tenantId]);
@@ -155,6 +159,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 $hex = ltrim($branding['color'], '#');
 if (strlen($hex) === 3) $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
 $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr($hex,4,2));
+
+// PHP controls which tab is active — avoids unreliable JS cookie detection in captive portal browsers.
+// Show "Get Connected" only on a fresh first-time MikroTik visit with nothing to show yet;
+// always show "Sign In" after any form interaction so errors/success are visible.
+$defaultPanel = ($isMikrotikPortal && !$loggedInClient && !$expiredClient && empty($error) && empty($success))
+    ? 'connect' : 'signin';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -293,16 +303,16 @@ body.auth-page { padding: 16px; }
 
     <!-- Tabs -->
     <div class="portal-tabs">
-        <button class="p-tab active" id="tab-signin" onclick="switchTab('signin')">
+        <button class="p-tab <?php echo $defaultPanel==='signin'?'active':''; ?>" id="tab-signin" onclick="switchTab('signin')">
             <i class="fas fa-sign-in-alt"></i> Sign In
         </button>
-        <button class="p-tab" id="tab-connect" onclick="switchTab('connect')">
+        <button class="p-tab <?php echo $defaultPanel==='connect'?'active':''; ?>" id="tab-connect" onclick="switchTab('connect')">
             <i class="fas fa-bolt"></i> Get Connected
         </button>
     </div>
 
     <!-- ── TAB: SIGN IN ──────────────────────────────────────────────────── -->
-    <div class="p-panel active" id="panel-signin">
+    <div class="p-panel <?php echo $defaultPanel==='signin'?'active':''; ?>" id="panel-signin">
 
         <?php if ($loggedInClient): ?>
         <?php
@@ -339,26 +349,43 @@ body.auth-page { padding: 16px; }
             if (ll && u && p) {
                 setTimeout(function(){
                     var dst = tok ? (origin + '/customer/auto_login.php?token=' + encodeURIComponent(tok)) : '';
-                    var url = ll + '?username=' + encodeURIComponent(u) + '&password=' + encodeURIComponent(p);
+                    var sep = ll.indexOf('?') === -1 ? '?' : '&';
+                    var url = ll + sep + 'username=' + encodeURIComponent(u) + '&password=' + encodeURIComponent(p);
                     if (dst) url += '&dst=' + encodeURIComponent(dst);
                     window.location.href = url;
+                }, 900);
+            } else if (ll && u && !p) {
+                // Password missing in DB — redirect to portal dashboard directly
+                setTimeout(function(){
+                    if (tok) window.location.href = origin + '/customer/auto_login.php?token=' + encodeURIComponent(tok);
                 }, 900);
             }
         })();
         </script>
 
         <?php elseif ($expiredClient): ?>
-        <!-- Expired account -->
+        <?php
+        $_isInactive = ($expiredClient['status'] === 'inactive');
+        $_firstName  = htmlspecialchars(explode(' ', $expiredClient['full_name'] ?? '')[0]);
+        ?>
+        <!-- Expired / inactive account -->
         <div class="expired-banner">
-            <i class="fas fa-clock"></i>
-            <h3>Subscription Expired</h3>
-            <p>Hi <?php echo htmlspecialchars(explode(' ', $expiredClient['full_name'] ?? '')[0]); ?>, your internet package expired on
-               <?php echo date('d M Y', strtotime($expiredClient['expiry_date'] ?? 'now')); ?>.</p>
+            <i class="fas fa-<?php echo $_isInactive ? 'hourglass-half' : 'clock'; ?>"></i>
+            <?php if ($_isInactive): ?>
+                <h3>Account Not Yet Active</h3>
+                <p>Hi <?php echo $_firstName; ?>, your account exists but hasn't been activated yet. Contact your ISP to activate your service.</p>
+            <?php else: ?>
+                <h3>Subscription Expired</h3>
+                <p>Hi <?php echo $_firstName; ?>, your internet package expired on
+                   <?php echo date('d M Y', strtotime($expiredClient['expiry_date'] ?? 'now')); ?>.</p>
+            <?php endif; ?>
         </div>
+        <?php if (!$_isInactive): ?>
         <a href="renew.php?account=<?php echo urlencode($expiredClient['account_number'] ?? $expiredClient['phone'] ?? ''); ?>"
            class="btn-auth" style="text-decoration:none;display:flex;margin-bottom:14px;">
             <i class="fas fa-sync-alt"></i><span>Renew Subscription</span>
         </a>
+        <?php endif; ?>
         <div class="auth-link">
             <button class="lnk" onclick="document.getElementById('login-inner').style.display='block';this.closest('div').remove();">Sign in again</button>
         </div>
@@ -423,7 +450,7 @@ body.auth-page { padding: 16px; }
     </div>
 
     <!-- ── TAB: GET CONNECTED ────────────────────────────────────────────── -->
-    <div class="p-panel" id="panel-connect">
+    <div class="p-panel <?php echo $defaultPanel==='connect'?'active':''; ?>" id="panel-connect">
         <div class="sec-title">Choose a Package</div>
         <div class="sec-sub">Pick a plan and get online in minutes</div>
 
@@ -662,7 +689,8 @@ function doConnect(username, password, portalToken) {
     } else if (LINK_ORIG) {
         dst = LINK_ORIG;
     }
-    var url = LINK_LOGIN + '?username=' + encodeURIComponent(username) + '&password=' + encodeURIComponent(password);
+    var sep = LINK_LOGIN.indexOf('?') === -1 ? '?' : '&';
+    var url = LINK_LOGIN + sep + 'username=' + encodeURIComponent(username) + '&password=' + encodeURIComponent(password);
     if (dst) url += '&dst=' + encodeURIComponent(dst);
     window.location.href = url;
 }
@@ -715,13 +743,7 @@ function togglePw(id, icon) {
     icon.classList.toggle('fa-eye-slash', show);
 }
 
-<?php if ($isMikrotikPortal): ?>
-// Auto-open "Get Connected" tab when first-time user reaches the portal
-if (!document.cookie.match(/portal_visited/)) {
-    document.cookie = 'portal_visited=1;path=/;max-age=3600';
-    switchTab('connect');
-}
-<?php endif; ?>
+// Default panel is set server-side via PHP ($defaultPanel) — no client-side cookie needed.
 </script>
 </body>
 </html>
