@@ -644,16 +644,29 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
         // NOTE: RouterOS 7 removed the 'login-page' profile parameter. The primary
         // redirect mechanism is now the login.html uploaded in Step 4.
         // 'login-page' is attempted separately and silently ignored on RouterOS 7.
+        //
+        // RouterOS 7 path quirk: setting html-directory=flash/hotspot causes RouterOS
+        // to store and display it as flash/flash/hotspot (it prepends flash/ internally).
+        // html-directory-override, when set, takes precedence over html-directory.
+        // We collect the effective directory each profile resolves to so Step 4 can
+        // write login.html to all of them.
+        $effectiveDirs = ['flash/hotspot', 'flash/flash/hotspot']; // always cover both
         foreach ($profiles as $p) {
             if (empty($p['.id'])) continue;
 
             $curLoginBy = trim($p['login-by']       ?? '');
             $curDir     = trim($p['html-directory'] ?? '');
+            // html-directory-override takes precedence when set
+            $overrideDir = trim($p['html-directory-override'] ?? '');
+            $effectiveDir = $overrideDir ?: $curDir;
+            if ($effectiveDir && !in_array($effectiveDir, $effectiveDirs)) {
+                $effectiveDirs[] = $effectiveDir;
+            }
 
             $updates = ['=.id=' . $p['.id']];
 
-            // html-directory for the redirect login.html (RouterOS 7 prepends flash/ in display,
-            // so accept both flash/hotspot and flash/flash/hotspot as already correct).
+            // Set html-directory to flash/hotspot. RouterOS 7 will store/display this
+            // as flash/flash/hotspot — both paths get login.html written in Step 4.
             if ($curDir !== 'flash/hotspot' && $curDir !== 'flash/flash/hotspot') {
                 $updates[] = '=html-directory=flash/hotspot';
             }
