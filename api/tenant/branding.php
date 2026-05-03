@@ -16,12 +16,13 @@ $branding = [
     'company_name' => 'FortuNett Technologies',
     'brand_color'  => '#0f3460',
     'gradient'     => 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+    'tenant_id'    => 0,
 ];
 
 if (!in_array($subdomain, ['localhost', 'www']) && !filter_var($host, FILTER_VALIDATE_IP)) {
     try {
         $st = $pdo->prepare(
-            "SELECT t.company_name, ts.setting_key, ts.setting_value
+            "SELECT t.id, t.company_name, ts.setting_key, ts.setting_value
              FROM tenants t
              LEFT JOIN tenant_settings ts ON ts.tenant_id = t.id
              WHERE t.subdomain = ?
@@ -31,6 +32,7 @@ if (!in_array($subdomain, ['localhost', 'www']) && !filter_var($host, FILTER_VAL
         $rows = $st->fetchAll(PDO::FETCH_ASSOC);
         if ($rows) {
             $branding['company_name'] = $rows[0]['company_name'];
+            $branding['tenant_id']    = (int)$rows[0]['id'];
             foreach ($rows as $r) {
                 if ($r['setting_key'] === 'brand_color' && !empty($r['setting_value'])) {
                     $c = $r['setting_value'];

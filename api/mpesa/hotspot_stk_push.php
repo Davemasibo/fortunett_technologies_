@@ -258,8 +258,8 @@ try {
         $checkoutId = $response->CheckoutRequestID ?? ('STK-' . time());
         try {
             $pdo->prepare("INSERT INTO mpesa_transactions
-                (client_id, tenant_id, phone_number, amount, merchant_request_id, checkout_request_id, result_code, result_desc, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 'pending', 'Hotspot STK Push', NOW(), NOW())"
+                (client_id, tenant_id, phone_number, amount, merchant_request_id, checkout_request_id, status, result_code, result_desc, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, 'Hotspot STK Push', NOW(), NOW())"
             )->execute([$clientId, $tenantId, $phone, $amount, $response->MerchantRequestID ?? 'N/A', $checkoutId]);
         } catch (Exception $_e) {}
 
@@ -343,7 +343,7 @@ try {
         }
         $checkoutId = $response->CheckoutRequestID ?? ('STK-' . time());
         try {
-            $pdo->prepare("INSERT INTO mpesa_transactions (client_id, tenant_id, phone_number, amount, merchant_request_id, checkout_request_id, result_code, result_desc, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'Renewal STK Push', NOW(), NOW())")
+            $pdo->prepare("INSERT INTO mpesa_transactions (client_id, tenant_id, phone_number, amount, merchant_request_id, checkout_request_id, status, result_code, result_desc, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, 'Renewal STK Push', NOW(), NOW())")
                 ->execute([$clientId, $tenantId, $renewPhone, $amount, $response->MerchantRequestID ?? 'N/A', $checkoutId]);
         } catch (Exception $_e) {}
         try {

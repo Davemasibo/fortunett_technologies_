@@ -1,317 +1,361 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Customer Login — FortuNett Technologies</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="../css/auth.css?v=3">
-    <script>
-        // Apply tenant branding before paint to avoid flash
-        (function () {
-            var host = window.location.hostname;
-            var sub  = host.split('.')[0];
-            if (sub !== 'localhost' && !/^\d+\.\d+\./.test(host)) {
-                fetch('/fortunett_technologies_/api/tenant/branding.php')
-                    .then(function(r){ return r.json(); })
-                    .then(function(b){
-                        var root = document.documentElement;
-                        root.style.setProperty('--brand',          b.brand_color);
-                        root.style.setProperty('--brand-gradient', b.gradient);
-                        var h = b.brand_color.replace('#','');
-                        var rv = parseInt(h.substr(0,2),16);
-                        var gv = parseInt(h.substr(2,2),16);
-                        var bv = parseInt(h.substr(4,2),16);
-                        root.style.setProperty('--brand-glow', 'rgba('+rv+','+gv+','+bv+',0.25)');
-                        var h1 = document.querySelector('.auth-header h1');
-                        if (h1) h1.textContent = b.company_name;
-                        document.title = b.company_name + ' — Customer Login';
-                    }).catch(function(){});
-            }
-        })();
-    </script>
-    <style>
-        /* Navy defaults — matches FortuNett / super admin palette */
-        :root {
-            --brand:          #0f3460;
-            --brand-glow:     rgba(15, 52, 96, 0.25);
-            --brand-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign In — Internet Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="../css/auth.css?v=5">
+<style>
+:root{
+    --brand:#0f3460;
+    --brand-glow:rgba(15,52,96,0.38);
+    --brand-gradient:linear-gradient(135deg,#1a1a2e 0%,#0f3460 100%);
+}
 
-        /* Tab toggle bar */
-        .tab-bar {
-            display: flex;
-            gap: 6px;
-            background: #f3f4f6;
-            border-radius: 10px;
-            padding: 4px;
-            margin-bottom: 28px;
-        }
+/* Tab bar */
+.portal-tabs{display:flex;background:rgb(26,26,25);border-bottom:1px solid rgba(255,255,255,.07);}
+.p-tab{flex:1;padding:14px 16px;font-size:13px;font-weight:600;color:rgba(255,255,255,.48);
+    cursor:pointer;text-align:center;border:none;background:transparent;
+    transition:all .2s;border-bottom:3px solid transparent;font-family:inherit;}
+.p-tab.active{color:#fff;border-bottom-color:var(--brand);background:rgba(255,255,255,.04);}
+.p-tab:hover:not(.active){color:rgba(255,255,255,.75);}
 
-        .tab-btn {
-            flex: 1;
-            padding: 10px 12px;
-            border: none;
-            background: transparent;
-            border-radius: 7px;
-            font-size: 13px;
-            font-weight: 600;
-            color: #6b7280;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-family: inherit;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-        }
+/* Tab panels */
+.p-panel{display:none;padding:28px 30px;}
+.p-panel.active{display:block;}
+@media(max-width:480px){.p-panel{padding:20px 18px;}}
 
-        .tab-btn.active {
-            background: #fff;
-            color: var(--brand);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
+/* Inline alerts */
+.p-alert{display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border-radius:9px;
+    font-size:13px;line-height:1.5;margin-bottom:14px;}
+.p-alert-err{background:rgba(239,68,68,.12);border-left:4px solid #ef4444;color:#fca5a5;}
+.p-alert-ok{background:rgba(34,197,94,.12);border-left:4px solid #22c55e;color:#86efac;}
+.p-alert-warn{background:rgba(251,191,36,.1);border-left:4px solid #fbbf24;color:#fde68a;}
+.p-alert-info{background:rgba(96,165,250,.1);border-left:4px solid #60a5fa;color:#bfdbfe;}
+.p-alert i{flex-shrink:0;margin-top:2px;}
 
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
+/* Expired banner */
+.expired-banner{text-align:center;padding:22px;background:rgba(248,113,113,.08);
+    border:1px solid rgba(248,113,113,.25);border-radius:14px;margin-bottom:16px;}
+.expired-banner i{font-size:30px;color:#f87171;margin-bottom:10px;display:block;}
+.expired-banner h3{font-size:16px;font-weight:700;color:#fca5a5;margin-bottom:6px;}
+.expired-banner p{font-size:13px;color:rgba(255,255,255,.45);margin-bottom:14px;}
 
-        /* Loading spinner */
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 24px 0;
-        }
-        .loading.show { display: block; }
+/* Small link button */
+.lnk{background:none;border:none;color:var(--brand);filter:brightness(1.5);font-size:13px;
+    font-weight:600;cursor:pointer;padding:0;text-decoration:underline;font-family:inherit;}
 
-        .spinner {
-            border: 3px solid #e5e7eb;
-            border-top-color: var(--brand);
-            border-radius: 50%;
-            width: 38px;
-            height: 38px;
-            animation: spin 0.85s linear infinite;
-            margin: 0 auto 12px;
-        }
+/* Disabled submit state */
+.btn-auth:disabled,.btn-loading{opacity:.6;cursor:not-allowed;pointer-events:none;}
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .loading p { font-size: 13px; color: #6b7280; }
-
-        /* Register link row */
-        .register-row {
-            text-align: center;
-            margin-bottom: 20px;
-            font-size: 13px;
-            color: #6b7280;
-        }
-        .register-row a {
-            color: var(--brand);
-            text-decoration: none;
-            font-weight: 600;
-        }
-        .register-row a:hover { opacity: 0.75; }
-
-        /* Support footer inside card body */
-        .support-note {
-            text-align: center;
-            margin-top: 18px;
-            font-size: 12px;
-            color: #9ca3af;
-        }
-    </style>
+/* Section headings */
+.sec-title{font-size:16px;font-weight:700;color:#e8e8e6;margin-bottom:4px;}
+.sec-sub{font-size:12px;color:rgba(255,255,255,.4);margin-bottom:20px;}
+</style>
 </head>
 <body class="auth-page">
-    <div class="auth-container">
-        <div class="auth-header">
-            <div class="auth-icon-wrap">
-                <i class="fas fa-wifi"></i>
+
+<div class="auth-container" style="max-width:440px;">
+
+    <!-- Header -->
+    <div class="auth-header">
+        <div class="auth-icon-wrap"><i class="fas fa-wifi"></i></div>
+        <h1 id="companyName">Internet Portal</h1>
+        <p>Sign in to access the internet</p>
+    </div>
+
+    <!-- Tab bar -->
+    <div class="portal-tabs">
+        <button class="p-tab active" id="tab-cred" onclick="switchTab('cred')">
+            <i class="fas fa-user"></i> Sign In
+        </button>
+        <button class="p-tab" id="tab-vouch" onclick="switchTab('vouch')">
+            <i class="fas fa-ticket-alt"></i> Voucher
+        </button>
+    </div>
+
+    <!-- Sign In Panel -->
+    <div class="p-panel active" id="panel-cred">
+        <div id="cred-alert" style="display:none;"></div>
+
+        <div class="sec-title">Welcome Back</div>
+        <div class="sec-sub">Sign in with your account credentials</div>
+
+        <form id="formCred" onsubmit="doLogin(event)">
+            <div class="form-group">
+                <label>Username / Phone / Account No. <span class="required">*</span></label>
+                <input type="text" id="cred-user" class="form-control-auth" required autofocus
+                       placeholder="e.g. john or 0712345678">
             </div>
-            <h1>FortuNett Technologies</h1>
-            <p>Customer Self-Service Portal</p>
-        </div>
-
-        <div class="auth-body">
-            <div id="alertBox" class="alert" style="display:none;"></div>
-
-            <div class="tab-bar">
-                <button class="tab-btn active" onclick="switchTab('credentials', this)">
-                    <i class="fas fa-user"></i> Login
-                </button>
-                <button class="tab-btn" onclick="switchTab('voucher', this)">
-                    <i class="fas fa-ticket-alt"></i> Voucher
-                </button>
+            <div class="form-group">
+                <label>Password <span class="required">*</span></label>
+                <div class="input-wrapper">
+                    <input type="password" id="cred-pwd" class="form-control-auth"
+                           required placeholder="Your password" style="padding-right:44px;">
+                    <i class="fas fa-eye password-toggle" onclick="togglePw('cred-pwd',this)"></i>
+                </div>
             </div>
+            <button type="submit" class="btn-auth" id="cred-btn">
+                <span>Sign In</span><i class="fas fa-arrow-right"></i>
+            </button>
+        </form>
 
-            <div class="register-row">
-                <a href="register.html"><i class="fas fa-user-plus"></i> New customer? Register here</a>
-            </div>
-
-            <!-- Credentials Login -->
-            <div id="credentials-tab" class="tab-content active">
-                <form id="credentialsForm" onsubmit="handleCredentialsLogin(event)">
-                    <div class="form-group">
-                        <label>Username / Phone / Email</label>
-                        <input type="text" name="username" class="form-control-auth"
-                               placeholder="Enter your username or phone" required autofocus>
-                    </div>
-                    <div class="form-group">
-                        <label>Password</label>
-                        <div class="input-wrapper">
-                            <input type="password" name="password" id="password" class="form-control-auth"
-                                   placeholder="Enter your password" required style="padding-right:44px;">
-                            <i class="fas fa-eye password-toggle" onclick="togglePw('password', this)"></i>
-                        </div>
-                    </div>
-                    <button type="submit" class="btn-auth">
-                        <i class="fas fa-sign-in-alt"></i>
-                        <span>Login to Internet</span>
-                    </button>
-                </form>
-            </div>
-
-            <!-- Voucher Login -->
-            <div id="voucher-tab" class="tab-content">
-                <form id="voucherForm" onsubmit="handleVoucherLogin(event)">
-                    <div class="form-group">
-                        <label>Voucher Code</label>
-                        <input type="text" name="voucher" class="form-control-auth"
-                               placeholder="Enter your voucher code" required>
-                    </div>
-                    <button type="submit" class="btn-auth">
-                        <i class="fas fa-check-circle"></i>
-                        <span>Activate Voucher</span>
-                    </button>
-                </form>
-            </div>
-
-            <div id="loadingBox" class="loading">
-                <div class="spinner"></div>
-                <p>Connecting…</p>
-            </div>
-
-            <div class="support-note">Need help? Contact support at <strong>+254729909387</strong></div>
+        <div class="auth-link" style="margin-top:18px;text-align:center;">
+            New here? <a id="link-register-cred" href="register.html" class="lnk">Get a package &rarr;</a>
         </div>
     </div>
 
-    <script>
-        // Resolve base path: /fortunett_technologies_ on localhost, '' on production
-        const _base = (location.hostname === 'localhost' || /^\d+\.\d+\./.test(location.hostname))
-            ? '/fortunett_technologies_' : '';
-        const API_BASE = _base + '/api/customer';
+    <!-- Voucher Panel -->
+    <div class="p-panel" id="panel-vouch">
+        <div id="vouch-alert" style="display:none;"></div>
 
-        // Auto-login via token in URL
-        window.addEventListener('DOMContentLoaded', () => {
-            const token = new URLSearchParams(window.location.search).get('token');
-            if (token) handleAutoLogin(token);
+        <div class="sec-title">Voucher Login</div>
+        <div class="sec-sub">Enter your voucher code to get connected</div>
+
+        <form id="formVouch" onsubmit="doVoucher(event)">
+            <div class="form-group">
+                <label>Voucher Code <span class="required">*</span></label>
+                <input type="text" id="vouch-code" class="form-control-auth"
+                       required placeholder="e.g. ABCD-1234-EFGH"
+                       style="letter-spacing:2px;text-transform:uppercase;">
+            </div>
+            <button type="submit" class="btn-auth" id="vouch-btn">
+                <span>Activate Voucher</span><i class="fas fa-check-circle"></i>
+            </button>
+        </form>
+
+        <div class="auth-link" style="margin-top:18px;text-align:center;">
+            Buy a package? <a id="link-register-vouch" href="register.html" class="lnk">Get a package &rarr;</a>
+        </div>
+    </div>
+
+</div><!-- /.auth-container -->
+
+<script>
+var _base = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? '/fortunett_technologies_' : '';
+var _params     = new URLSearchParams(location.search);
+var LINK_LOGIN  = _params.get('link-login') || '';
+var LINK_ORIG   = _params.get('link-orig')  || '';
+var MAC_ADDRESS = (_params.get('mac') || '').toUpperCase().replace(/[^A-F0-9:]/g, '');
+var MK_ERROR    = _params.get('error') || '';
+var TENANT_ID   = 0;
+
+/* ── On load ─────────────────────────────────────────────────────────────── */
+window.addEventListener('DOMContentLoaded', function() {
+    loadBranding();
+    updateRegisterLinks();
+    if (MK_ERROR) showMikrotikError(MK_ERROR);
+});
+
+/* ── Load tenant branding ─────────────────────────────────────────────────── */
+function loadBranding() {
+    var url = _base + '/api/tenant/branding.php';
+    fetch(url)
+        .then(function(r){ return r.json(); })
+        .then(function(b) {
+            var root = document.documentElement;
+            root.style.setProperty('--brand', b.brand_color);
+            root.style.setProperty('--brand-gradient', b.gradient);
+            var h  = b.brand_color.replace('#', '');
+            var rv = parseInt(h.substr(0,2),16);
+            var gv = parseInt(h.substr(2,2),16);
+            var bv = parseInt(h.substr(4,2),16);
+            root.style.setProperty('--brand-glow', 'rgba('+rv+','+gv+','+bv+',0.38)');
+            var nm = document.getElementById('companyName');
+            if (nm) nm.textContent = b.company_name;
+            document.title = b.company_name + ' — Sign In';
+            TENANT_ID = b.tenant_id || 0;
+        })
+        .catch(function(){});
+}
+
+/* ── Update register links to carry MikroTik params ────────────────────────── */
+function updateRegisterLinks() {
+    var ids = ['link-register-cred', 'link-register-vouch'];
+    for (var i = 0; i < ids.length; i++) {
+        var el = document.getElementById(ids[i]);
+        if (!el) continue;
+        var qs = [];
+        if (LINK_LOGIN)  qs.push('link-login=' + encodeURIComponent(LINK_LOGIN));
+        if (LINK_ORIG)   qs.push('link-orig='  + encodeURIComponent(LINK_ORIG));
+        if (MAC_ADDRESS) qs.push('mac='        + encodeURIComponent(MAC_ADDRESS));
+        el.href = 'register.html' + (qs.length ? '?' + qs.join('&') : '');
+    }
+}
+
+/* ── Show MikroTik error codes ───────────────────────────────────────────── */
+function showMikrotikError(code) {
+    var msgs = {
+        'ip-already-bound':  'Your device is already connected. Try refreshing the page.',
+        'unknown-username':  'Account not found. Please check your username.',
+        'wrong-password':    'Incorrect password. Please try again.'
+    };
+    var msg = msgs[code] || ('Connection error: ' + code);
+    showAlert('cred-alert', msg, 'err');
+}
+
+/* ── Tab switching ───────────────────────────────────────────────────────── */
+function switchTab(tab) {
+    var tabs   = ['cred', 'vouch'];
+    for (var i = 0; i < tabs.length; i++) {
+        var t = tabs[i];
+        document.getElementById('panel-' + t).classList.toggle('active', t === tab);
+        document.getElementById('tab-'   + t).classList.toggle('active', t === tab);
+    }
+}
+
+/* ── Credentials login ───────────────────────────────────────────────────── */
+function doLogin(e) {
+    e.preventDefault();
+    var username = document.getElementById('cred-user').value.trim();
+    var password = document.getElementById('cred-pwd').value.trim();
+    if (!username || !password) {
+        showAlert('cred-alert', 'Please enter your username and password.', 'err');
+        return;
+    }
+    clearAlert('cred-alert');
+    setLoading('cred-btn', true);
+
+    var body = new URLSearchParams({
+        username:    username,
+        password:    password,
+        tenant_id:   TENANT_ID,
+        mac_address: MAC_ADDRESS
+    });
+
+    fetch(_base + '/api/customer/hotspot_login.php', {method:'POST', body:body})
+        .then(function(r){ return r.json(); })
+        .then(function(d) {
+            setLoading('cred-btn', false);
+            if (d.success) {
+                connectToInternet(d.mikrotik_username, d.mikrotik_password, d.portal_token);
+            } else if (d.expired) {
+                showExpired('cred-alert', d.account_number);
+            } else {
+                showAlert('cred-alert', d.message || 'Login failed. Please try again.', 'err');
+            }
+        })
+        .catch(function() {
+            setLoading('cred-btn', false);
+            showAlert('cred-alert', 'Connection error. Please try again.', 'err');
         });
+}
 
-        function switchTab(tab, btn) {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            document.getElementById(tab + '-tab').classList.add('active');
-            hideAlert();
-        }
+/* ── Voucher login ───────────────────────────────────────────────────────── */
+function doVoucher(e) {
+    e.preventDefault();
+    var code = document.getElementById('vouch-code').value.trim();
+    if (!code) {
+        showAlert('vouch-alert', 'Please enter your voucher code.', 'err');
+        return;
+    }
+    clearAlert('vouch-alert');
+    setLoading('vouch-btn', true);
 
-        function showAlert(message, type = 'error') {
-            const box = document.getElementById('alertBox');
-            box.className = 'alert alert-' + (type === 'error' ? 'danger' : 'success');
-            box.innerHTML = '<i class="fas fa-' + (type === 'error' ? 'exclamation-circle' : 'check-circle') + '"></i> <span>' + message + '</span>';
-            box.style.display = 'flex';
-        }
+    var body = new URLSearchParams({
+        voucher:   code,
+        tenant_id: TENANT_ID
+    });
 
-        function hideAlert() {
-            const box = document.getElementById('alertBox');
-            box.style.display = 'none';
-        }
-
-        function showLoading() {
-            document.getElementById('loadingBox').classList.add('show');
-            document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
-        }
-
-        function hideLoading() {
-            document.getElementById('loadingBox').classList.remove('show');
-            document.querySelectorAll('.tab-content').forEach(el => el.style.display = '');
-            // Re-show only the active tab
-            document.querySelectorAll('.tab-content.active').forEach(el => el.style.display = 'block');
-        }
-
-        function togglePw(id, icon) {
-            const inp = document.getElementById(id);
-            const show = inp.type === 'password';
-            inp.type = show ? 'text' : 'password';
-            icon.classList.toggle('fa-eye', !show);
-            icon.classList.toggle('fa-eye-slash', show);
-        }
-
-        async function handleCredentialsLogin(e) {
-            e.preventDefault();
-            hideAlert();
-            showLoading();
-            try {
-                const res  = await fetch(API_BASE + '/login.php', { method: 'POST', body: new FormData(e.target) });
-                const data = await res.json();
-                if (data.success) {
-                    showAlert('Login successful! Connecting…', 'success');
-                    setTimeout(() => { window.location.href = _base + '/customer/dashboard.php'; }, 1000);
-                } else {
-                    hideLoading();
-                    showAlert(data.message || 'Login failed. Please check your credentials.');
-                }
-            } catch {
-                hideLoading();
-                showAlert('Connection error. Please try again.');
+    fetch(_base + '/api/customer/login.php', {method:'POST', body:body})
+        .then(function(r){ return r.json(); })
+        .then(function(d) {
+            setLoading('vouch-btn', false);
+            if (d.success) {
+                connectToInternet(d.mikrotik_username || '', d.mikrotik_password || '', d.portal_token || null);
+            } else {
+                showAlert('vouch-alert', d.message || 'Invalid voucher code.', 'err');
             }
-        }
+        })
+        .catch(function() {
+            setLoading('vouch-btn', false);
+            showAlert('vouch-alert', 'Connection error. Please try again.', 'err');
+        });
+}
 
-        async function handleVoucherLogin(e) {
-            e.preventDefault();
-            hideAlert();
-            showLoading();
-            try {
-                const res  = await fetch(API_BASE + '/login.php', { method: 'POST', body: new FormData(e.target) });
-                const data = await res.json();
-                if (data.success) {
-                    showAlert('Voucher activated! Connecting…', 'success');
-                    setTimeout(() => { window.location.href = _base + '/customer/dashboard.php'; }, 1000);
-                } else {
-                    hideLoading();
-                    showAlert(data.message || 'Invalid voucher code.');
-                }
-            } catch {
-                hideLoading();
-                showAlert('Connection error. Please try again.');
-            }
-        }
+/* ── Connect to internet via MikroTik ────────────────────────────────────── */
+function connectToInternet(mikUser, mikPwd, portalToken) {
+    var portalUrl = location.origin + _base + '/customer/auto_login.php'
+        + (portalToken ? '?token=' + encodeURIComponent(portalToken) : '');
 
-        async function handleAutoLogin(token) {
-            showLoading();
-            const isDemo = new URLSearchParams(window.location.search).get('demo') === '1';
-            try {
-                const fd = new FormData();
-                fd.append('auto_login_token', token);
-                const res  = await fetch(API_BASE + '/login.php', { method: 'POST', body: fd });
-                const data = await res.json();
-                if (data.success) {
-                    const msg = isDemo ? 'Demo session ready! Opening portal…' : 'Payment successful! Connecting…';
-                    showAlert(msg, 'success');
-                    const dest = _base + '/customer/dashboard.php' + (isDemo ? '?demo=1' : '');
-                    setTimeout(() => { window.location.href = dest; }, 1000);
-                } else {
-                    hideLoading();
-                    showAlert(data.message || 'Auto-login failed.');
-                }
-            } catch {
-                hideLoading();
-                showAlert('Connection error. Please try again.');
-            }
-        }
-    </script>
+    if (LINK_LOGIN && mikUser && mikPwd) {
+        var sep = LINK_LOGIN.indexOf('?') === -1 ? '?' : '&';
+        var url = LINK_LOGIN + sep
+            + 'username=' + encodeURIComponent(mikUser)
+            + '&password=' + encodeURIComponent(mikPwd);
+        if (portalToken) url += '&dst=' + encodeURIComponent(portalUrl);
+        window.location.href = url;
+    } else if (portalToken) {
+        window.location.href = _base + '/customer/auto_login.php?token=' + encodeURIComponent(portalToken);
+    } else {
+        window.location.href = _base + '/customer/dashboard.php';
+    }
+}
+
+/* ── Show expired subscription banner ────────────────────────────────────── */
+function showExpired(alertDivId, accountNumber) {
+    var qs = [];
+    if (accountNumber) qs.push('account=' + encodeURIComponent(accountNumber));
+    if (LINK_LOGIN)    qs.push('link-login=' + encodeURIComponent(LINK_LOGIN));
+    if (MAC_ADDRESS)   qs.push('mac=' + encodeURIComponent(MAC_ADDRESS));
+    var renewHref = 'register.html' + (qs.length ? '?' + qs.join('&') : '');
+
+    var el = document.getElementById(alertDivId);
+    if (!el) return;
+    el.style.display = 'block';
+    el.innerHTML =
+        '<div class="expired-banner">' +
+            '<i class="fas fa-clock"></i>' +
+            '<h3>Subscription Expired</h3>' +
+            '<p>Your internet package has expired. Renew to get back online.</p>' +
+            '<a href="' + renewHref + '" class="btn-auth" style="text-decoration:none;display:inline-flex;max-width:240px;">' +
+                '<i class="fas fa-sync-alt"></i><span>Renew Subscription</span>' +
+            '</a>' +
+        '</div>';
+}
+
+/* ── Alert helpers ───────────────────────────────────────────────────────── */
+function showAlert(divId, msg, type) {
+    var el = document.getElementById(divId);
+    if (!el) return;
+    var icons = {err:'exclamation-circle', ok:'check-circle', warn:'exclamation-triangle', info:'info-circle'};
+    var cls   = {err:'p-alert-err', ok:'p-alert-ok', warn:'p-alert-warn', info:'p-alert-info'};
+    el.className = 'p-alert ' + (cls[type] || 'p-alert-err');
+    el.innerHTML = '<i class="fas fa-' + (icons[type] || 'exclamation-circle') + '"></i><span>' + escHtml(msg) + '</span>';
+    el.style.display = 'flex';
+}
+function clearAlert(divId) {
+    var el = document.getElementById(divId);
+    if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+}
+
+/* ── Loading state ───────────────────────────────────────────────────────── */
+function setLoading(btnId, loading) {
+    var btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.disabled = loading;
+    if (loading) btn.classList.add('btn-loading');
+    else btn.classList.remove('btn-loading');
+}
+
+/* ── Password toggle ─────────────────────────────────────────────────────── */
+function togglePw(id, icon) {
+    var inp  = document.getElementById(id);
+    var show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    icon.classList.toggle('fa-eye',       !show);
+    icon.classList.toggle('fa-eye-slash', show);
+}
+
+/* ── HTML escape ─────────────────────────────────────────────────────────── */
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
 </body>
 </html>

@@ -24,15 +24,27 @@ if (!$tenant || $tenant['status'] === 'suspended') {
 
 $tenantId = (int)$tenant['id'];
 
-$stmt = $pdo->prepare("
+$typeFilter = trim($_GET['type'] ?? '');
+
+$sql = "
     SELECT id, name, type, price, duration, description, features,
            download_speed, upload_speed, data_limit,
-           validity_value, validity_unit, status
+           validity_value, validity_unit, status,
+           COALESCE(NULLIF(connection_type,''), NULLIF(type,''), 'hotspot') AS connection_type
     FROM packages
     WHERE tenant_id = ? AND status = 'active'
-    ORDER BY price ASC
-");
-$stmt->execute([$tenantId]);
+";
+$params = [$tenantId];
+
+if ($typeFilter !== '') {
+    $sql .= " AND COALESCE(NULLIF(connection_type,''), NULLIF(type,''), 'hotspot') = ?";
+    $params[] = $typeFilter;
+}
+
+$sql .= " ORDER BY price ASC";
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
 $packages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-echo json_encode(['success' => true, 'packages' => $packages]);
+echo json_encode(['success' => true, 'packages' => $packages, 'tenant_id' => $tenantId]);
