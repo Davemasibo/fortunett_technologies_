@@ -39,13 +39,13 @@ if (!$subdomain) {
 }
 
 // ── Files to upload (local → FTP path on router) ──────────────────────────────
-// FTP root on MikroTik = flash storage root, so paths are WITHOUT the flash/ prefix.
-// RouterOS shows them as flash/hotspot/... in /file/print — that's just the display prefix.
+// FTP root on MikroTik = the root of the filesystem.
+// The hotspot profile uses html-directory=flash/hotspot, so files must land at flash/hotspot/.
 $baseDir = dirname(__DIR__);
 $filesToUpload = [
-    $baseDir . '/customer/login.html'    => 'hotspot/login.html',
-    $baseDir . '/customer/register.html' => 'hotspot/register.html',
-    $baseDir . '/css/auth.css'           => 'hotspot/css/auth.css',
+    $baseDir . '/customer/login.html'    => 'flash/hotspot/login.html',
+    $baseDir . '/customer/register.html' => 'flash/hotspot/register.html',
+    $baseDir . '/css/auth.css'           => 'flash/hotspot/css/auth.css',
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -122,8 +122,9 @@ ftp_pasv($ftp, true);
 ok("FTP connected as $routerUser");
 
 // Create directories (errors silently ignored — dirs may already exist)
-@ftp_mkdir($ftp, 'hotspot');
-@ftp_mkdir($ftp, 'hotspot/css');
+@ftp_mkdir($ftp, 'flash');
+@ftp_mkdir($ftp, 'flash/hotspot');
+@ftp_mkdir($ftp, 'flash/hotspot/css');
 ok("Directories ready");
 
 $uploadOk = 0;
