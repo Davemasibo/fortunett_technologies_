@@ -248,8 +248,12 @@
 </div>
 
 <script>
-var _base = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-    ? '/fortunett_technologies_' : '';
+// _apiBase is replaced by tools/deploy_hotspot.php when uploaded to the router.
+// On the ISP server the placeholder remains and relative URLs are used instead.
+var _apiBase = 'FORTUNETT_API_BASE';
+var _base = (_apiBase.indexOf('://') !== -1) ? _apiBase
+          : (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+            ? '/fortunett_technologies_' : '';
 var _params     = new URLSearchParams(location.search);
 var LINK_LOGIN  = _params.get('link-login') || '';
 var LINK_ORIG   = _params.get('link-orig')  || '';
@@ -553,7 +557,8 @@ function startPolling(checkoutId, clientId) {
 
 /* ── Connect to internet (MikroTik redirect) ───────────────────────────────── */
 function connectToInternet(mikUser, mikPwd, portalToken) {
-    var portalUrl = location.origin + _base + '/customer/auto_login.php'
+    var _portalOrigin = (_base.indexOf('://') !== -1) ? _base : location.origin;
+    var portalUrl = _portalOrigin + '/customer/auto_login.php'
         + (portalToken ? '?token=' + encodeURIComponent(portalToken) : '');
 
     if (LINK_LOGIN && mikUser && mikPwd) {

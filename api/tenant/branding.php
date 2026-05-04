@@ -6,7 +6,10 @@
 require_once __DIR__ . '/../../includes/db_master.php';
 
 header('Content-Type: application/json');
-header('Cache-Control: public, max-age=300'); // cache 5 minutes
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Cache-Control: public, max-age=300');
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
 $host      = $_SERVER['HTTP_HOST'];
 $parts     = explode('.', $host);
