@@ -16,10 +16,10 @@ if (!$token) {
     exit;
 }
 
-// If already logged in, go to dashboard
+// Clear any existing session so new credentials take effect (prevents stale-credential bug)
 if (!empty($_SESSION['customer_token'])) {
-    header('Location: dashboard.php');
-    exit;
+    $_SESSION = [];
+    session_regenerate_id(true);
 }
 
 $auth   = new CustomerAuth($pdo);

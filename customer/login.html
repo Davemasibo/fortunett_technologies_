@@ -149,6 +149,12 @@ var MAC_ADDRESS = (_params.get('mac') || '').toUpperCase().replace(/[^A-F0-9:]/g
 var MK_ERROR    = _params.get('error') || '';
 var TENANT_ID   = 0;
 
+// When the page is served from the router (private IP, no link-login param yet),
+// derive the MikroTik login endpoint from the current hostname.
+if (!LINK_LOGIN && /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname)) {
+    LINK_LOGIN = 'http://' + location.hostname + '/login';
+}
+
 /* ── On load ─────────────────────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', function() {
     loadBranding();
