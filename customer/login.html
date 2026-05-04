@@ -253,33 +253,19 @@ function doLogin(e) {
 /* ── Voucher login ───────────────────────────────────────────────────────── */
 function doVoucher(e) {
     e.preventDefault();
-    var code = document.getElementById('vouch-code').value.trim();
+    var code = document.getElementById('vouch-code').value.trim().toUpperCase();
     if (!code) {
         showAlert('vouch-alert', 'Please enter your voucher code.', 'err');
         return;
     }
+    if (!LINK_LOGIN) {
+        showAlert('vouch-alert', 'Voucher login only works on the hotspot captive portal.', 'warn');
+        return;
+    }
     clearAlert('vouch-alert');
-    setLoading('vouch-btn', true);
-
-    var body = new URLSearchParams({
-        voucher:   code,
-        tenant_id: TENANT_ID
-    });
-
-    fetch(_base + '/api/customer/login.php', {method:'POST', body:body})
-        .then(function(r){ return r.json(); })
-        .then(function(d) {
-            setLoading('vouch-btn', false);
-            if (d.success) {
-                connectToInternet(d.mikrotik_username || '', d.mikrotik_password || '', d.portal_token || null);
-            } else {
-                showAlert('vouch-alert', d.message || 'Invalid voucher code.', 'err');
-            }
-        })
-        .catch(function() {
-            setLoading('vouch-btn', false);
-            showAlert('vouch-alert', 'Connection error. Please try again.', 'err');
-        });
+    // MikroTik vouchers use the code as both username and password.
+    // Send directly to MikroTik — no server API call needed.
+    connectToInternet(code, code, null);
 }
 
 /* ── Connect to internet via MikroTik ────────────────────────────────────── */
