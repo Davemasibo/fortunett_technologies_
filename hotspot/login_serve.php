@@ -81,10 +81,12 @@ try {
         // Packages are optional — never let this break the login page
     }
 
-    // Build the external captive portal URL for this tenant.
-    // RouterOS downloads this page to flash/hotspot/login.html.
-    // When a hotspot client connects, the router serves this HTML which
-    // JS-redirects the browser to the full portal (with MikroTik's URL params).
+    // Build the external captive portal base URL for this tenant.
+    // RouterOS downloads this page to flash/hotspot/login.html via /tool/fetch.
+    // When a hotspot client connects, RouterOS serves this HTML — substituting
+    // $(link-login-only), $(mac-esc), $(error) etc. before sending to the browser.
+    // The form then posts credentials directly to RouterOS which grants internet access,
+    // and redirects the device to hotspot_landing.php to create a web portal session.
     $platformDomain = 'fortunetttech.site';
     try {
         $pdSt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='platform_domain' LIMIT 1");
@@ -94,46 +96,29 @@ try {
 
     $subdomain  = $tenant['subdomain'] ?? '';
     $portalBase = 'https://' . ($subdomain ? $subdomain . '.' : '') . $platformDomain;
-    $portalUrl  = $portalBase . '/customer/login.php';
+    $signupUrl  = $portalBase . '/customer/register.php';
 
     $safeCompany = htmlspecialchars($companyName, ENT_QUOTES);
 
-    $jsPortalUrl = json_encode($portalUrl);
+    // Load the branded hotspot login template and fill in PHP-side placeholders.
+    // MikroTik template vars like $(link-login-only) and $(mac-esc) are left
+    // intact — RouterOS substitutes them at serve time.
+    $templatePath = __DIR__ . '/login.html';
+    $template = file_get_contents($templatePath);
+    if (!$template) {
+        throw new \RuntimeException('Hotspot login template not found: ' . $templatePath);
+    }
+
+    $html = str_replace(
+        ['{{COMPANY_NAME}}', '{{BRAND_COLOR}}', '{{BRAND_DARK}}', '{{PORTAL_URL}}', '{{SIGNUP_URL}}', '{{PACKAGES_SECTION}}'],
+        [$safeCompany, $brandColor, $brandDark, $portalBase, $signupUrl, $packagesHtml],
+        $template
+    );
 
     ob_clean();
     header('Content-Type: text/html; charset=utf-8');
     header('Cache-Control: no-store');
-    echo '<!DOCTYPE html>'
-       . '<html lang="en"><head>'
-       . '<meta charset="UTF-8">'
-       . '<meta name="viewport" content="width=device-width,initial-scale=1">'
-       . '<title>' . $safeCompany . '</title>'
-       . '<style>'
-       . '*{box-sizing:border-box;margin:0;padding:0}'
-       . 'body{background:#0e0e0d;color:#e8e8e6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;'
-       . 'display:flex;align-items:center;justify-content:center;min-height:100vh}'
-       . '.wrap{text-align:center;padding:32px 24px}'
-       . '.spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,.12);border-top-color:' . $brandColor . ';'
-       . 'border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 20px}'
-       . '@keyframes spin{to{transform:rotate(360deg)}}'
-       . 'h2{font-size:20px;font-weight:700;margin-bottom:6px}'
-       . 'p{color:#6b7280;font-size:14px;margin-bottom:18px}'
-       . 'a{color:' . $brandColor . ';text-decoration:none;font-size:14px;font-weight:600}'
-       . '</style>'
-       . '<script>'
-       . '(function(){'
-       . 'var portal=' . $jsPortalUrl . ';'
-       . 'var qs=window.location.search||"";'
-       . 'window.location.replace(portal+qs);'
-       . '})();'
-       . '</script>'
-       . '</head><body>'
-       . '<div class="wrap">'
-       . '<div class="spinner"></div>'
-       . '<h2>' . $safeCompany . '</h2>'
-       . '<p>Connecting to network...</p>'
-       . '<a href="' . htmlspecialchars($portalUrl, ENT_QUOTES) . '">Tap here if not redirected</a>'
-       . '</div></body></html>';
+    echo $html;
 
 } catch (Throwable $e) {
     ob_clean();

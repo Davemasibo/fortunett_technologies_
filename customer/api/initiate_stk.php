@@ -40,8 +40,9 @@ $phone     = trim($_POST['phone'] ?? '');
 $amount    = (float)($_POST['amount'] ?? 0);
 $type      = ($_POST['type'] ?? 'package') === 'topup' ? 'topup' : 'package';
 
-if (!$gatewayId || !$phone || $amount <= 0) {
-    echo json_encode(['success' => false, 'message' => 'Gateway, phone and amount are required.']);
+// gateway_id=0 is valid (platform paybill); only reject negative values
+if ($gatewayId < 0 || !$phone || $amount <= 0) {
+    echo json_encode(['success' => false, 'message' => 'Phone and amount are required.']);
     exit;
 }
 
