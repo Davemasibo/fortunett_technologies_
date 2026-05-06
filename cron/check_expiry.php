@@ -17,6 +17,10 @@ require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/../classes/MikrotikAPI.php';
 require_once __DIR__ . '/../classes/SMSHelper.php';
 
+// Add missing columns silently (safe to run repeatedly)
+try { $pdo->exec("ALTER TABLE mikrotik_routers ADD COLUMN vpn_ip VARCHAR(45) NULL DEFAULT NULL"); } catch (Throwable $_) {}
+try { $pdo->exec("ALTER TABLE clients ADD COLUMN last_seen DATETIME NULL DEFAULT NULL"); } catch (Throwable $_) {}
+
 $log = function(string $msg) {
     echo '[' . date('Y-m-d H:i:s') . '] ' . $msg . PHP_EOL;
 };
