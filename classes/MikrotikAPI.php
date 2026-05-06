@@ -421,16 +421,13 @@ class MikrotikAPI {
     }
     
     /**
-     * Get active PPPoE sessions (raw array)
-     * Requests the stats proplist explicitly so rx-byte/tx-byte are always included.
+     * Get active PPPoE sessions (raw array).
+     * No proplist — RouterOS 7.x returns all fields including rx-byte/tx-byte by
+     * default when no filter is applied. Using proplist causes RouterOS to omit stats
+     * fields (they require "print stats" in CLI), so we avoid it here.
      */
     public function getActiveSessions(): array {
-        // .proplist explicitly requests rx-byte/tx-byte which RouterOS omits from the
-        // default /ppp/active/print response (they only appear in "print stats").
-        // All properties listed here have existed since RouterOS 6.x, so this is safe.
-        $response = $this->comm('/ppp/active/print', [
-            '=.proplist=.id,name,service,caller-id,address,uptime,rx-byte,tx-byte',
-        ]);
+        $response = $this->comm('/ppp/active/print');
         $sessions = [];
         foreach ($response as $item) {
             if (isset($item['!re'])) {
@@ -451,11 +448,11 @@ class MikrotikAPI {
             $name = $s['name'] ?? ($s['user'] ?? null);
             if ($name) {
                 $map[strtolower($name)] = [
-                    'uptime'  => $s['uptime']          ?? '',
-                    'address' => $s['address']         ?? '',
-                    'rx_byte' => $s['rx-byte']   ?? ($s['bytes-in']  ?? '0'),
-                    'tx_byte' => $s['tx-byte']   ?? ($s['bytes-out'] ?? '0'),
-                    'caller'  => $s['caller-id']       ?? '',
+                    'uptime'  => $s['uptime']    ?? '',
+                    'address' => $s['address']   ?? '',
+                    'rx_byte' => (string)(int)(($s['rx-byte']   ?? '') !== '' ? $s['rx-byte']   : ($s['bytes-in']  ?? '0')),
+                    'tx_byte' => (string)(int)(($s['tx-byte']   ?? '') !== '' ? $s['tx-byte']   : ($s['bytes-out'] ?? '0')),
+                    'caller'  => $s['caller-id'] ?? '',
                 ];
             }
         }
