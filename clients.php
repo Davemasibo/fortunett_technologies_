@@ -12,6 +12,9 @@ $stmt = $db->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
 $tenant_id = $stmt->fetchColumn();
 
+// Lazy-add last_seen column (silent if already exists)
+try { $db->exec("ALTER TABLE clients ADD COLUMN last_seen DATETIME NULL DEFAULT NULL"); } catch (Exception $_e) {}
+
 // Export CSV Logic
 if (isset($_GET['export']) && $_GET['export'] == 'csv') {
     $database = new Database();
@@ -115,10 +118,9 @@ try {
     $status_filter = $_GET['status'] ?? '';
     $package_filter = $_GET['package'] ?? '';
     
-    $query = "SELECT c.*, 
+    $query = "SELECT c.*,
               COALESCE((SELECT name FROM packages WHERE id = c.package_id LIMIT 1), c.subscription_plan) AS package_name,
-              COALESCE((SELECT price FROM packages WHERE id = c.package_id LIMIT 1), 0) AS package_price,
-              (SELECT COUNT(*) FROM mpesa_transactions WHERE client_id = c.id) AS payments_count
+              COALESCE((SELECT price FROM packages WHERE id = c.package_id LIMIT 1), 0) AS package_price
               FROM clients c WHERE c.tenant_id = ?";
               
     $params = [$tenant_id];
@@ -452,17 +454,9 @@ include 'includes/sidebar.php';
                         <i class="fas fa-satellite-dish" id="syncIcon"></i>
                         <span id="syncLabel">Sync Router</span>
                     </button>
-                    <button class="export-btn" id="importRouterBtn" onclick="openImportRouterModal()" title="Import PPPoE/Hotspot users created on the router into the dashboard">
-                        <i class="fas fa-cloud-download-alt"></i>
-                        Import Router Users
-                    </button>
-                    <button class="export-btn" onclick="exportCSV()">
-                        <i class="fas fa-download"></i>
-                        Export CSV
-                    </button>
-                    <button class="export-btn" onclick="openImportModal('clients')">
-                        <i class="fas fa-upload"></i>
-                        Import CSV
+                    <button class="export-btn" onclick="openImportOptionsModal()">
+                        <i class="fas fa-file-import"></i>
+                        Import
                     </button>
                     <button class="add-customer-btn" onclick="openAddModal()">
                         <i class="fas fa-plus"></i>
@@ -471,17 +465,29 @@ include 'includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- Bulk Operations Bar (hidden until rows are selected) -->
+            <div id="bulkOpsBar" style="display:none;padding:10px 16px;background:rgba(59,110,165,.15);border-bottom:1px solid rgba(59,110,165,.3);display:none;align-items:center;gap:10px;flex-wrap:wrap;">
+                <span id="bulkCount" style="font-size:13px;font-weight:600;color:#93c5fd;white-space:nowrap;"></span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-left:auto;">
+                    <button onclick="openBulkSMSModal()" style="padding:7px 14px;border-radius:7px;border:1px solid rgba(96,165,250,.3);background:rgba(96,165,250,.1);color:#93c5fd;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;"><i class="fas fa-comment-dots"></i> Send SMS</button>
+                    <button onclick="openBulkPackageModal()" style="padding:7px 14px;border-radius:7px;border:1px solid rgba(167,139,250,.3);background:rgba(167,139,250,.1);color:#c4b5fd;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;"><i class="fas fa-box"></i> Change Package</button>
+                    <button onclick="bulkExport()" style="padding:7px 14px;border-radius:7px;border:1px solid rgba(52,211,153,.3);background:rgba(52,211,153,.1);color:#6ee7b7;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;"><i class="fas fa-download"></i> Export</button>
+                    <button onclick="bulkDelete()" style="padding:7px 14px;border-radius:7px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.1);color:#fca5a5;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;"><i class="fas fa-trash"></i> Delete</button>
+                    <button onclick="deselectAll()" style="padding:7px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);font-size:12px;cursor:pointer;"><i class="fas fa-times"></i> Deselect All</button>
+                </div>
+            </div>
+
             <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
             <table class="customer-table">
                 <thead>
                     <tr>
+                        <th style="width:38px;padding:10px 8px 10px 16px;"><input type="checkbox" id="selectAllCheck" onclick="toggleSelectAll(this)" style="cursor:pointer;accent-color:var(--primary-color,#3B6EA5);width:15px;height:15px;"></th>
                         <th>Customer</th>
                         <th>Contact</th>
                         <th>Package</th>
-                        <th>Status</th>
                         <th>Online</th>
+                        <th>Last Seen</th>
                         <th>Expiry</th>
-                        <th>Payments</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -515,7 +521,16 @@ include 'includes/sidebar.php';
                         $customerJson = htmlspecialchars(json_encode($customer), ENT_QUOTES, 'UTF-8');
                         $mikrotikUser = htmlspecialchars($customer['mikrotik_username'] ?? '', ENT_QUOTES, 'UTF-8');
                     ?>
+                    <?php
+                        $lastSeen = $customer['last_seen'] ?? null;
+                        $lastSeenFmt = $lastSeen ? date('M d, g:ia', strtotime($lastSeen)) : '';
+                    ?>
                     <tr onclick='viewCustomer(<?php echo $customerJson; ?>)' style="cursor:pointer;" data-username="<?php echo $mikrotikUser; ?>" data-client-id="<?php echo $customer['id']; ?>">
+                        <!-- Checkbox -->
+                        <td onclick="event.stopPropagation()" style="padding:13px 8px 13px 16px;">
+                            <input type="checkbox" class="row-check" value="<?php echo $customer['id']; ?>"
+                                   onclick="updateBulkBar()" style="cursor:pointer;accent-color:var(--primary-color,#3B6EA5);width:15px;height:15px;">
+                        </td>
                         <td>
                             <div class="customer-info">
                                 <div class="customer-avatar"><?php echo $initials; ?></div>
@@ -545,27 +560,25 @@ include 'includes/sidebar.php';
                                 <?php echo strtoupper($connType); ?>
                             </span>
                         </td>
-                        <td>
-                            <span class="status-badge <?php echo $dispStatus; ?>">
-                                <span class="status-dot"></span>
-                                <?php echo $statusLabel; ?>
-                            </span>
-                        </td>
                         <!-- ONLINE column — filled by JS after MikroTik fetch -->
                         <td class="online-badge-cell">
                             <span class="online-badge" title="Checking…">
                                 <span style="font-size:11px;color:#D1D5DB;">—</span>
                             </span>
                         </td>
+                        <!-- LAST SEEN column — updated by JS on online sync -->
+                        <td class="last-seen-cell" data-ts="<?php echo htmlspecialchars($lastSeen ?? ''); ?>">
+                            <?php if ($lastSeenFmt): ?>
+                                <span style="font-size:12px;color:rgba(255,255,255,.55);"><?php echo $lastSeenFmt; ?></span>
+                            <?php else: ?>
+                                <span style="font-size:11px;color:rgba(255,255,255,.25);">—</span>
+                            <?php endif; ?>
+                        </td>
                         <td>
                             <div class="expiry-date <?php echo $is_expired ? 'expiry-warning' : ''; ?>" style="font-variant-numeric:tabular-nums;">
                                 <?php echo $expiry_date ? date('M d, Y', strtotime($expiry_date)) : '—'; ?>
                                 <?php if ($is_expired): ?><div style="font-size:10px;color:#f87171;margin-top:2px;">Expired</div><?php endif; ?>
                             </div>
-                        </td>
-                        <td>
-                            <div class="payment-amount">KES <?php echo number_format($customer['package_price'] ?? 0, 0); ?></div>
-                            <div class="payment-period" style="font-size:11px;color:rgba(255,255,255,.3);margin-top:2px;"><?php echo $customer['payments_count'] ?? 0; ?> payment<?php echo ($customer['payments_count'] ?? 0) !== 1 ? 's' : ''; ?></div>
                         </td>
                         <!-- Actions column -->
                         <td onclick="event.stopPropagation()" style="white-space:nowrap;">
@@ -2135,14 +2148,17 @@ function loadOnlineStatus() {
             const onlineSet = new Set((d.online || []).map(u => u.toLowerCase()));
             onlineStatusCache = { set: onlineSet, details: d.details || {} };
 
-            // Update ONLINE column cells in table
+            // Update ONLINE + LAST SEEN columns
+            const nowStr = new Date().toLocaleString('en-KE', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
             document.querySelectorAll('tr[data-username]').forEach(row => {
                 const uname = (row.getAttribute('data-username') || '').toLowerCase();
                 const badge = row.querySelector('.online-badge');
+                const lsCell = row.querySelector('.last-seen-cell');
                 if (!badge) return;
                 if (uname && onlineSet.has(uname)) {
                     badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;background:#D1FAE5;color:#065F46;font-size:11px;font-weight:600;">' +
                         '<span style="width:6px;height:6px;border-radius:50%;background:#10B981;flex-shrink:0;animation:pulseDot 1.5s ease-in-out infinite;"></span>Online</span>';
+                    if (lsCell) lsCell.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#10b981;font-weight:600;"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;animation:pulseDot 1.5s ease-in-out infinite;"></span>Now</span>';
                 } else if (uname) {
                     badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;background:#F3F4F6;color:#9CA3AF;font-size:11px;font-weight:500;">Offline</span>';
                 } else {
@@ -2213,6 +2229,135 @@ setInterval(loadOnlineStatus, 45000);
 // Auto-open add customer modal when navigated from quick actions
 if (new URLSearchParams(window.location.search).get('open_modal') === '1') {
     openAddModal();
+}
+
+/* ── Bulk selection ────────────────────────────────────────── */
+function toggleSelectAll(masterCb) {
+    document.querySelectorAll('.row-check').forEach(cb => { cb.checked = masterCb.checked; });
+    updateBulkBar();
+}
+
+function deselectAll() {
+    document.querySelectorAll('.row-check, #selectAllCheck').forEach(cb => { cb.checked = false; });
+    updateBulkBar();
+}
+
+function getSelectedIds() {
+    return Array.from(document.querySelectorAll('.row-check:checked')).map(cb => cb.value);
+}
+
+function updateBulkBar() {
+    const ids = getSelectedIds();
+    const bar = document.getElementById('bulkOpsBar');
+    const cnt = document.getElementById('bulkCount');
+    if (ids.length > 0) {
+        bar.style.display = 'flex';
+        cnt.textContent = ids.length + ' customer' + (ids.length !== 1 ? 's' : '') + ' selected';
+    } else {
+        bar.style.display = 'none';
+    }
+    // Sync master checkbox
+    const all  = document.querySelectorAll('.row-check').length;
+    const chk  = document.getElementById('selectAllCheck');
+    if (chk) { chk.checked = (ids.length > 0 && ids.length === all); chk.indeterminate = (ids.length > 0 && ids.length < all); }
+}
+
+/* ── Bulk delete ───────────────────────────────────────────── */
+function bulkDelete() {
+    const ids = getSelectedIds();
+    if (!ids.length) return;
+    if (!confirm('Delete ' + ids.length + ' selected customer(s)?\n\nThis is permanent and cannot be undone.')) return;
+    const fd = new FormData();
+    fd.append('action', 'delete');
+    ids.forEach(id => fd.append('ids[]', id));
+    fetch('api/clients/bulk_action.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) { showToast(d.message, 'success'); setTimeout(() => location.reload(), 800); }
+            else showToast('Error: ' + d.message, 'error');
+        })
+        .catch(() => showToast('Network error.', 'error'));
+}
+
+/* ── Bulk SMS ──────────────────────────────────────────────── */
+function openBulkSMSModal() {
+    const ids = getSelectedIds();
+    if (!ids.length) return;
+    document.getElementById('bulkSmsCount').textContent = ids.length + ' customer(s)';
+    document.getElementById('bulkSmsMsg').value = '';
+    document.getElementById('bulkSmsModal').style.display = 'flex';
+}
+function closeBulkSMSModal() { document.getElementById('bulkSmsModal').style.display = 'none'; }
+function submitBulkSMS() {
+    const msg = document.getElementById('bulkSmsMsg').value.trim();
+    if (!msg) { showToast('Please enter a message.', 'warning'); return; }
+    const ids = getSelectedIds();
+    const fd  = new FormData();
+    fd.append('action', 'send_sms');
+    fd.append('message', msg);
+    ids.forEach(id => fd.append('ids[]', id));
+    const btn = document.getElementById('bulkSmsSendBtn');
+    btn.disabled = true; btn.textContent = 'Sending…';
+    fetch('api/clients/bulk_action.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) { showToast(d.message, 'success'); closeBulkSMSModal(); }
+            else showToast('Error: ' + d.message, 'error');
+        })
+        .catch(() => showToast('Network error.', 'error'))
+        .finally(() => { btn.disabled = false; btn.textContent = 'Send SMS'; });
+}
+
+/* ── Bulk change package ───────────────────────────────────── */
+function openBulkPackageModal() {
+    const ids = getSelectedIds();
+    if (!ids.length) return;
+    document.getElementById('bulkPkgCount').textContent = ids.length + ' customer(s)';
+    document.getElementById('bulkPkgModal').style.display = 'flex';
+}
+function closeBulkPackageModal() { document.getElementById('bulkPkgModal').style.display = 'none'; }
+function submitBulkPackage() {
+    const pkgId = document.getElementById('bulkPkgSelect').value;
+    if (!pkgId) { showToast('Please select a package.', 'warning'); return; }
+    const ids = getSelectedIds();
+    const fd  = new FormData();
+    fd.append('action', 'change_package');
+    fd.append('package_id', pkgId);
+    ids.forEach(id => fd.append('ids[]', id));
+    const btn = document.getElementById('bulkPkgApplyBtn');
+    btn.disabled = true; btn.textContent = 'Applying…';
+    fetch('api/clients/bulk_action.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) { showToast(d.message, 'success'); closeBulkPackageModal(); setTimeout(() => location.reload(), 800); }
+            else showToast('Error: ' + d.message, 'error');
+        })
+        .catch(() => showToast('Network error.', 'error'))
+        .finally(() => { btn.disabled = false; btn.textContent = 'Apply'; });
+}
+
+/* ── Bulk export ───────────────────────────────────────────── */
+function bulkExport() {
+    const ids = getSelectedIds();
+    if (!ids.length) { exportCSV(); return; }
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'api/clients/bulk_action.php';
+    form.style.display = 'none';
+    const addInput = (name, val) => { const i = document.createElement('input'); i.type='hidden'; i.name=name; i.value=val; form.appendChild(i); };
+    addInput('action', 'export');
+    ids.forEach(id => addInput('ids[]', id));
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+}
+
+/* ── Import options modal ──────────────────────────────────── */
+function openImportOptionsModal() {
+    document.getElementById('importOptionsModal').style.display = 'flex';
+}
+function closeImportOptionsModal() {
+    document.getElementById('importOptionsModal').style.display = 'none';
 }
 
 function exportCSV() {
@@ -2289,6 +2434,76 @@ function showImportResult(html, type) {
     el.innerHTML = html;
 }
 </script>
+
+<!-- ── Import Options Modal ──────────────────────────────────────────────────── -->
+<div id="importOptionsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10001;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+<div style="background:#222221;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:28px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <h3 style="margin:0;color:#e2e2e0;font-size:17px;font-weight:600;">Import Customers</h3>
+        <button onclick="closeImportOptionsModal()" style="background:none;border:none;color:rgba(255,255,255,.5);font-size:20px;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <p style="color:rgba(255,255,255,.45);font-size:13px;margin:0 0 18px;">Choose how you want to import customers:</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div onclick="closeImportOptionsModal();openImportModal('clients');" style="background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.2);border-radius:12px;padding:20px 16px;cursor:pointer;transition:all .2s;text-align:center;" onmouseover="this.style.background='rgba(96,165,250,.15)'" onmouseout="this.style.background='rgba(96,165,250,.08)'">
+            <div style="font-size:28px;margin-bottom:10px;">📄</div>
+            <div style="font-size:14px;font-weight:700;color:#93c5fd;margin-bottom:4px;">From CSV</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.4);line-height:1.4;">Upload a spreadsheet file with customer data</div>
+        </div>
+        <div onclick="closeImportOptionsModal();openImportRouterModal();" style="background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:12px;padding:20px 16px;cursor:pointer;transition:all .2s;text-align:center;" onmouseover="this.style.background='rgba(167,139,250,.15)'" onmouseout="this.style.background='rgba(167,139,250,.08)'">
+            <div style="font-size:28px;margin-bottom:10px;">📡</div>
+            <div style="font-size:14px;font-weight:700;color:#c4b5fd;margin-bottom:4px;">From MikroTik</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.4);line-height:1.4;">Pull existing users from your router directly</div>
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- ── Bulk SMS Modal ──────────────────────────────────────────────────────── -->
+<div id="bulkSmsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10001;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+<div style="background:#222221;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h3 style="margin:0;color:#e2e2e0;font-size:16px;font-weight:600;">Send Bulk SMS</h3>
+        <button onclick="closeBulkSMSModal()" style="background:none;border:none;color:rgba(255,255,255,.5);font-size:20px;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <p style="color:#93c5fd;font-size:13px;margin:0 0 14px;">Sending to: <strong id="bulkSmsCount"></strong></p>
+    <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:12px;font-weight:500;color:rgba(255,255,255,.55);margin-bottom:6px;">Message *</label>
+        <textarea id="bulkSmsMsg" rows="4" style="width:100%;padding:10px 12px;background:#1c1c1b;border:1px solid rgba(255,255,255,.1);border-radius:8px;font-size:13px;color:#e2e2e0;font-family:inherit;resize:vertical;box-sizing:border-box;" placeholder="Type your message here…"></textarea>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeBulkSMSModal()" style="padding:9px 18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;font-size:13px;color:rgba(255,255,255,.6);cursor:pointer;">Cancel</button>
+        <button id="bulkSmsSendBtn" onclick="submitBulkSMS()" style="padding:9px 22px;background:linear-gradient(135deg,var(--primary-dark,#2a5a8f),var(--primary-color,#3B6EA5));color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Send SMS</button>
+    </div>
+</div>
+</div>
+
+<!-- ── Bulk Change Package Modal ───────────────────────────────────────────── -->
+<div id="bulkPkgModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10001;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+<div style="background:#222221;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h3 style="margin:0;color:#e2e2e0;font-size:16px;font-weight:600;">Change Package</h3>
+        <button onclick="closeBulkPackageModal()" style="background:none;border:none;color:rgba(255,255,255,.5);font-size:20px;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <p style="color:#93c5fd;font-size:13px;margin:0 0 14px;">Changing package for: <strong id="bulkPkgCount"></strong></p>
+    <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:12px;font-weight:500;color:rgba(255,255,255,.55);margin-bottom:6px;">Select New Package *</label>
+        <select id="bulkPkgSelect" style="width:100%;padding:10px 12px;background:#1c1c1b;border:1px solid rgba(255,255,255,.1);border-radius:8px;font-size:13px;color:#e2e2e0;box-sizing:border-box;">
+            <option value="">— Select Package —</option>
+            <?php foreach ($packages as $pkg): ?>
+            <option value="<?php echo $pkg['id']; ?>"><?php echo htmlspecialchars($pkg['name']); ?> — KES <?php echo number_format($pkg['price']); ?></option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    <div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#fcd34d;">
+        <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
+        This changes the package assignment only. Expiry and router profile changes are not applied automatically.
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeBulkPackageModal()" style="padding:9px 18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;font-size:13px;color:rgba(255,255,255,.6);cursor:pointer;">Cancel</button>
+        <button id="bulkPkgApplyBtn" onclick="submitBulkPackage()" style="padding:9px 22px;background:#059669;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Apply</button>
+    </div>
+</div>
+</div>
 
 <!-- ── Import CSV Modal ─────────────────────────────────────────────────────── -->
 <div id="importModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10000;align-items:center;justify-content:center;">

@@ -88,6 +88,19 @@ foreach ($routers as $router) {
 
 $_SESSION[$cacheKey] = ['ts' => $now, 'data' => $onlineUsernames, 'details' => $routerDetails];
 
+// Update last_seen for currently online users
+if (!empty($onlineUsernames)) {
+    try {
+        // Ensure column exists (silent if already there)
+        try { $pdo->exec("ALTER TABLE clients ADD COLUMN last_seen DATETIME NULL DEFAULT NULL"); } catch (Throwable $_ce) {}
+        $uniqNames = array_unique(array_map('strtolower', $onlineUsernames));
+        $lsPh = implode(',', array_fill(0, count($uniqNames), 'LOWER(?)'));
+        $lsParams = array_merge($uniqNames, [$tenant_id]);
+        $pdo->prepare("UPDATE clients SET last_seen = NOW() WHERE LOWER(mikrotik_username) IN ($lsPh) AND tenant_id = ?")
+            ->execute($lsParams);
+    } catch (Throwable $_lse) {}
+}
+
 echo json_encode([
     'success' => true,
     'online'  => $onlineUsernames,

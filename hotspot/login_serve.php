@@ -53,7 +53,7 @@ try {
         try { $pdo->exec("ALTER TABLE packages ADD COLUMN connection_type VARCHAR(20) DEFAULT NULL"); } catch (Exception $_e) {}
 
         $pkgStmt = $pdo->prepare("
-            SELECT name, price, download_speed, validity_value, validity_unit
+            SELECT id, name, price, download_speed, validity_value, validity_unit
             FROM packages
             WHERE tenant_id = ? AND status = 'active'
               AND COALESCE(NULLIF(connection_type,''), 'hotspot') = 'hotspot'
@@ -65,21 +65,36 @@ try {
 
         if ($pkgs) {
             $rows = '';
-            foreach ($pkgs as $p) {
+            foreach ($pkgs as $idx => $p) {
                 $dur   = ($p['validity_value'] ?? 1) . ' ' . ucfirst($p['validity_unit'] ?? 'days');
-                $speed = !empty($p['download_speed']) ? $p['download_speed'] . ' Mbps · ' : '';
-                $rows .= '<div class="pkg-row">'
+                $speed = !empty($p['download_speed']) ? htmlspecialchars($p['download_speed']) . ' Mbps · ' : '';
+                $pkgId = (int)$p['id'];
+                $rows .= '<div class="pkg-row' . ($idx === 0 ? ' selected' : '') . '" onclick="(function(r){document.querySelectorAll(\'.pkg-row\').forEach(function(x){x.classList.remove(\'selected\')});r.classList.add(\'selected\');r.querySelector(\'input\').checked=true;})(this)">'
+                    . '<input type="radio" name="buy_package" value="' . $pkgId . '"' . ($idx === 0 ? ' checked' : '') . '>'
                     . '<span class="pkg-name">' . htmlspecialchars($p['name']) . '</span>'
                     . '<span class="pkg-meta">' . $speed . $dur . '</span>'
                     . '<span class="pkg-price">KES ' . number_format((float)$p['price'], 0) . '</span>'
+                    . '<span class="pkg-check">' . ($idx === 0 ? '&#10003;' : '') . '</span>'
                     . '</div>';
             }
-            $packagesHtml = '<div class="pkg-section"><div class="pkg-title">Available Plans</div>'
+            $packagesHtml = '<div class="pkg-section"><div class="pkg-section-title">Available Plans</div>'
                 . $rows . '</div>';
         }
     } catch (Throwable $_e) {
         // Packages are optional — never let this break the login page
     }
+
+    // Fetch M-Pesa paybill for this tenant
+    $paybill = 'N/A';
+    try {
+        $gwSt = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1 LIMIT 1");
+        $gwSt->execute([$tenantId]);
+        $gwRow = $gwSt->fetch(PDO::FETCH_ASSOC);
+        if ($gwRow) {
+            $gwCreds = json_decode($gwRow['credentials'], true) ?? [];
+            $paybill = $gwCreds['shortcode'] ?? $gwCreds['paybill'] ?? 'N/A';
+        }
+    } catch (Throwable $_e) {}
 
     // Build the external captive portal base URL for this tenant.
     // RouterOS downloads this page to flash/hotspot/login.html via /tool/fetch.
@@ -110,8 +125,8 @@ try {
     }
 
     $html = str_replace(
-        ['{{COMPANY_NAME}}', '{{BRAND_COLOR}}', '{{BRAND_DARK}}', '{{PORTAL_URL}}', '{{SIGNUP_URL}}', '{{PACKAGES_SECTION}}'],
-        [$safeCompany, $brandColor, $brandDark, $portalBase, $signupUrl, $packagesHtml],
+        ['{{COMPANY_NAME}}', '{{BRAND_COLOR}}', '{{BRAND_DARK}}', '{{PORTAL_URL}}', '{{SIGNUP_URL}}', '{{PACKAGES_SECTION}}', '{{PAYBILL}}', '{{TENANT_ID}}'],
+        [$safeCompany, $brandColor, $brandDark, $portalBase, $signupUrl, $packagesHtml, htmlspecialchars($paybill), (string)$tenantId],
         $template
     );
 

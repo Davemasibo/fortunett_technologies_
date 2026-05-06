@@ -695,8 +695,8 @@ include 'includes/sidebar.php';
                 <div class="status-card">
                     <div class="card-header">
                         <div>
-                            <h3 class="card-title">Data Usage</h3>
-                            <p class="card-subtitle">Data usage trend for PPPoE and Hotspot users</p>
+                            <h3 class="card-title">Active Users — PPPoE vs Hotspot</h3>
+                            <p class="card-subtitle">Active subscriber counts by connection type (last 7 days)</p>
                         </div>
                     </div>
                     <div style="padding: 20px; height: 250px;">
@@ -758,7 +758,7 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">Network Data Usage</h3>
-                            <p class="card-subtitle">Total Download &amp; Upload this week</p>
+                            <p class="card-subtitle">Download &amp; Upload (GB) from live PPPoE sessions</p>
                         </div>
                         <select class="dash-period-select">
                             <option>This week</option>
@@ -794,16 +794,16 @@ include 'includes/sidebar.php';
                 <div class="status-card">
                     <div class="card-header">
                         <div>
-                            <h3 class="card-title">Most Active Users</h3>
-                            <p class="card-subtitle">The most active users in the last 30 days</p>
+                            <h3 class="card-title">Top Paying Customers</h3>
+                            <p class="card-subtitle">Highest revenue customers in the last 30 days</p>
                         </div>
                     </div>
                     <div style="padding: 20px;">
                         <table class="dash-inner-table">
                             <thead>
                                 <tr>
-                                    <th>Username</th>
-                                    <th style="text-align:right;">Data Used</th>
+                                    <th>Name / Username</th>
+                                    <th style="text-align:right;">Revenue (30d)</th>
                                     <th style="text-align:right;">Phone</th>
                                 </tr>
                             </thead>
@@ -825,7 +825,8 @@ include 'includes/sidebar.php';
 
 <script>
 // ── Chart instances (kept global for live refresh) ────────────────────────────
-let chartPayments, chartRegistrations, chartMonthly, chartPackage, chartSMS;
+let chartPayments, chartRegistrations, chartMonthly, chartPackage, chartSMS,
+    chartRetention, chartDataUsage, chartForecast, chartNetwork;
 
 const PRIMARY = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#3B6EA5';
 const PRIMARY_DARK = getComputedStyle(document.documentElement).getPropertyValue('--primary-dark').trim() || '#2C5282';
@@ -938,6 +939,100 @@ function buildCharts(s) {
             }
         });
     }
+
+    // Customer Retention (stacked bar, 6 months)
+    const retCtx = document.getElementById('retentionChart');
+    if (retCtx) {
+        if (chartRetention) chartRetention.destroy();
+        chartRetention = new Chart(retCtx, {
+            type: 'bar',
+            data: {
+                labels: s.retention_labels || [],
+                datasets: [
+                    { label: 'Active',  data: s.retention_active  || [], backgroundColor: '#10B981', borderRadius: 3, stack: 'r' },
+                    { label: 'New',     data: s.retention_new     || [], backgroundColor: primary,   borderRadius: 3, stack: 'r' },
+                    { label: 'Expired', data: s.retention_churned || [], backgroundColor: '#EF4444', borderRadius: 3, stack: 'c' }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } },
+                scales: { y: { beginAtZero: true, stacked: true }, x: { stacked: true } }
+            }
+        });
+    }
+
+    // Active Users by Type — PPPoE vs Hotspot (last 7 days)
+    const duCtx = document.getElementById('dataUsageChart');
+    if (duCtx) {
+        if (chartDataUsage) chartDataUsage.destroy();
+        chartDataUsage = new Chart(duCtx, {
+            type: 'bar',
+            data: {
+                labels: s.du_labels || [],
+                datasets: [
+                    { label: 'PPPoE',    data: s.du_pppoe   || [], backgroundColor: primary,   borderRadius: 4 },
+                    { label: 'Hotspot',  data: s.du_hotspot || [], backgroundColor: '#F59E0B', borderRadius: 4 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            }
+        });
+    }
+
+    // Revenue Forecast (6 historical + 3 projected)
+    const fcCtx = document.getElementById('revenueForecastChart');
+    if (fcCtx) {
+        if (chartForecast) chartForecast.destroy();
+        const safeP = primary.startsWith('var(') ? '#3B6EA5' : primary;
+        chartForecast = new Chart(fcCtx, {
+            type: 'line',
+            data: {
+                labels: s.forecast_labels || [],
+                datasets: [
+                    {
+                        label: 'Actual Revenue', data: s.forecast_historical || [],
+                        borderColor: safeP, backgroundColor: hexAlpha(safeP, 0.1),
+                        fill: true, tension: 0.4, pointRadius: 4, spanGaps: false
+                    },
+                    {
+                        label: '3-Month Forecast', data: s.forecast_projected || [],
+                        borderColor: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.08)',
+                        borderDash: [6, 4], fill: true, tension: 0.4, pointRadius: 4, spanGaps: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } },
+                scales: { y: { beginAtZero: true, ticks: { callback: v => 'KES '+v.toLocaleString() } } }
+            }
+        });
+    }
+
+    // Network Data Usage — live session bytes (Download / Upload in GB)
+    const netCtx = document.getElementById('networkDataChart');
+    if (netCtx) {
+        if (chartNetwork) chartNetwork.destroy();
+        chartNetwork = new Chart(netCtx, {
+            type: 'bar',
+            data: {
+                labels: s.net_labels || [],
+                datasets: [
+                    { label: 'Download (GB)', data: s.net_download || [], backgroundColor: '#06B6D4', borderRadius: 4 },
+                    { label: 'Upload (GB)',   data: s.net_upload   || [], backgroundColor: '#8B5CF6', borderRadius: 4 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } },
+                scales: { y: { beginAtZero: true, ticks: { callback: v => v + ' GB' } } }
+            }
+        });
+    }
 }
 
 // ── Update stat cards ─────────────────────────────────────────────────────────
@@ -972,6 +1067,40 @@ function updateStatCards(s) {
     if (routerLbl && s.routers_total !== undefined) {
         routerLbl.textContent = `of ${s.routers_total} configured`;
         routerLbl.style.color = (s.routers_online > 0) ? '#34d399' : '#f87171';
+    }
+
+    // System Alerts
+    if (s.alerts && s.alerts.length) {
+        const alertsList = document.querySelector('.alerts-list');
+        if (alertsList) {
+            alertsList.innerHTML = s.alerts.map(a => `
+                <div class="alert-item ${a.type}">
+                    <div class="alert-icon">
+                        <i class="fas fa-${a.type === 'warning' ? 'exclamation-triangle' : 'check-circle'}"></i>
+                    </div>
+                    <div class="alert-content">
+                        <div class="alert-title">${a.title}</div>
+                        <div class="alert-message">${a.message}</div>
+                        <div class="alert-time">${a.time}</div>
+                    </div>
+                </div>`).join('');
+        }
+    }
+
+    // Most Active Users table
+    if (s.most_active && s.most_active.length) {
+        const tbody = document.querySelector('.dash-inner-table tbody');
+        if (tbody) {
+            const rows = s.most_active.filter(u => parseFloat(u.total_paid) > 0);
+            if (rows.length) {
+                tbody.innerHTML = rows.map(u => `
+                    <tr>
+                        <td>${u.full_name || u.mikrotik_username || '—'}</td>
+                        <td style="text-align:right;">KES ${parseFloat(u.total_paid||0).toLocaleString('en-KE',{minimumFractionDigits:0})}</td>
+                        <td style="text-align:right;">${u.phone || '—'}</td>
+                    </tr>`).join('');
+            }
+        }
     }
 }
 
