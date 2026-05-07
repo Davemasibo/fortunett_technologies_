@@ -774,26 +774,64 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
         // Write to all directories collected in Step 2 (flash/hotspot AND
         // flash/flash/hotspot). RouterOS 7 sometimes stores the path differently
         // from what /file/print shows, so we cover both to be safe.
+        //
+        // IMPORTANT: Do NOT pass =mode= when $url already contains a scheme
+        // (https:// or http://) — RouterOS returns "Conflicting modes" if both
+        // the URL scheme and the mode= parameter are present simultaneously.
+        $httpFallbackUrl = str_replace('https://', 'http://', $serveUrl);
+
         foreach (array_unique($effectiveDirs) as $htmlDir) {
-            $dstPath = rtrim($htmlDir, '/') . '/login.html';
+            $dstPath  = rtrim($htmlDir, '/') . '/login.html';
+            $fetched  = false;
+
+            // Try 1: HTTPS (scheme in URL, no mode= param, cert check off)
             try {
                 $mk4 = new MikrotikAPI(...$mkArgs);
                 $mk4->connect();
                 $fetchResult = $mk4->comm('/tool/fetch', [
                     '=url='              . $serveUrl,
                     '=dst-path='         . $dstPath,
-                    '=mode='             . $mode,
                     '=check-certificate=no',
                 ]);
                 try { $mk4->disconnect(); } catch (Throwable $_e) {}
 
+                $hasTrap = false;
                 foreach ($fetchResult as $fr) {
                     if (isset($fr['!trap'])) {
-                        error_log("_uploadHotspotLoginPage fetch trap ($dstPath): " . ($fr['message'] ?? '?'));
+                        $hasTrap = true;
+                        error_log("_uploadHotspotLoginPage fetch trap HTTPS ($dstPath): " . ($fr['message'] ?? '?'));
                     }
                 }
+                if (!$hasTrap) $fetched = true;
             } catch (Throwable $_e) {
-                error_log("_uploadHotspotLoginPage flash upload ($dstPath): " . $_e->getMessage());
+                error_log("_uploadHotspotLoginPage HTTPS upload ($dstPath): " . $_e->getMessage());
+            }
+
+            // Try 2: HTTP fallback (requires nginx to NOT redirect /hotspot/ on port 80)
+            if (!$fetched) {
+                try {
+                    $mk4h = new MikrotikAPI(...$mkArgs);
+                    $mk4h->connect();
+                    $fetchResult = $mk4h->comm('/tool/fetch', [
+                        '=url='      . $httpFallbackUrl,
+                        '=dst-path=' . $dstPath,
+                    ]);
+                    try { $mk4h->disconnect(); } catch (Throwable $_e) {}
+
+                    foreach ($fetchResult as $fr) {
+                        if (isset($fr['!trap'])) {
+                            error_log("_uploadHotspotLoginPage fetch trap HTTP ($dstPath): " . ($fr['message'] ?? '?'));
+                        } else {
+                            $fetched = true;
+                        }
+                    }
+                } catch (Throwable $_e) {
+                    error_log("_uploadHotspotLoginPage HTTP upload ($dstPath): " . $_e->getMessage());
+                }
+            }
+
+            if (!$fetched) {
+                error_log("_uploadHotspotLoginPage: both HTTPS and HTTP fetch failed for $dstPath");
             }
         }
 
