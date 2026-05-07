@@ -567,11 +567,11 @@ include 'includes/sidebar.php';
                             </span>
                         </td>
                         <!-- LAST SEEN column — updated by JS on online sync -->
-                        <td class="last-seen-cell" data-ts="<?php echo htmlspecialchars($lastSeen ?? ''); ?>">
-                            <?php if ($lastSeenFmt): ?>
+                        <td class="last-seen-cell" data-ts="<?php echo htmlspecialchars($lastSeen ?? ''); ?>" data-online="0">
+                            <?php if ($lastSeen): ?>
                                 <span style="font-size:12px;color:rgba(255,255,255,.55);"><?php echo $lastSeenFmt; ?></span>
                             <?php else: ?>
-                                <span style="font-size:11px;color:rgba(255,255,255,.25);">—</span>
+                                <span style="font-size:11px;color:rgba(255,255,255,.25);">Never</span>
                             <?php endif; ?>
                         </td>
                         <td>
@@ -2158,9 +2158,14 @@ function loadOnlineStatus() {
                 if (uname && onlineSet.has(uname)) {
                     badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;background:#D1FAE5;color:#065F46;font-size:11px;font-weight:600;">' +
                         '<span style="width:6px;height:6px;border-radius:50%;background:#10B981;flex-shrink:0;animation:pulseDot 1.5s ease-in-out infinite;"></span>Online</span>';
-                    if (lsCell) lsCell.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#10b981;font-weight:600;"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;animation:pulseDot 1.5s ease-in-out infinite;"></span>Now</span>';
+                    if (lsCell) {
+                        lsCell.dataset.online = '1';
+                        lsCell.dataset.ts = new Date().toISOString().replace('T',' ').slice(0,19);
+                        lsCell.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#10b981;font-weight:600;"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;animation:pulseDot 1.5s ease-in-out infinite;"></span>Now</span>';
+                    }
                 } else if (uname) {
                     badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;background:#F3F4F6;color:#9CA3AF;font-size:11px;font-weight:500;">Offline</span>';
+                    if (lsCell) { lsCell.dataset.online = '0'; _lsRefreshCell(lsCell); }
                 } else {
                     badge.innerHTML = '<span style="font-size:11px;color:#D1D5DB;">—</span>';
                 }
@@ -2222,9 +2227,29 @@ function updateModalOnlineStatus(onlineSet, details) {
     }
 }
 
+// ── Last-seen relative time helpers ──────────────────────────────────────────
+function _lsRelText(ts) {
+    if (!ts) return '<span style="font-size:11px;color:rgba(255,255,255,.25);">Never</span>';
+    const diff = Math.floor((Date.now() - new Date(ts.replace(' ','T')).getTime()) / 1000);
+    if (diff <  10)   return '<span style="font-size:12px;color:#10b981;font-weight:600;">Just now</span>';
+    if (diff <  60)   return '<span style="font-size:12px;color:rgba(255,255,255,.6);">'  + diff                  + 's ago</span>';
+    if (diff <  3600) return '<span style="font-size:12px;color:rgba(255,255,255,.55);">' + Math.floor(diff/60)  + ' min ago</span>';
+    if (diff < 86400) return '<span style="font-size:12px;color:rgba(255,255,255,.4);">'  + Math.floor(diff/3600)+ ' hr ago</span>';
+    return                   '<span style="font-size:12px;color:rgba(255,255,255,.3);">'  + Math.floor(diff/86400)+ ' d ago</span>';
+}
+function _lsRefreshCell(cell) {
+    cell.innerHTML = _lsRelText(cell.dataset.ts || '');
+}
+function refreshLastSeenCells() {
+    document.querySelectorAll('.last-seen-cell[data-online="0"]').forEach(_lsRefreshCell);
+}
+
 // Load online status on page load, then every 45 seconds
 loadOnlineStatus();
 setInterval(loadOnlineStatus, 45000);
+// Refresh relative timestamps every 60s; initial run after online-status settles
+setTimeout(refreshLastSeenCells, 2000);
+setInterval(refreshLastSeenCells, 60000);
 
 // Auto-open add customer modal when navigated from quick actions
 if (new URLSearchParams(window.location.search).get('open_modal') === '1') {
