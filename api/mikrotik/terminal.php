@@ -155,6 +155,7 @@ function parseCmd(string $input): array {
         $t = $tokens[$i];
         if ($t === 'where' || $t === 'find') break;
         if (strpos($t, '=') !== false)       break; // key=value → start of params
+        if ($t !== '' && $t[0] === '[')      break; // [find] expression — not a path component
         $pathParts[] = $t;
         $i++;
     }
@@ -178,6 +179,14 @@ function parseCmd(string $input): array {
                 }
                 $i++;
             }
+            continue;
+        }
+
+        if ($t !== '' && $t[0] === '[') {
+            // [find] and similar RouterOS console expressions are not valid in the
+            // API protocol. Skip them — if you need to target specific records,
+            // use explicit =.id= (e.g. get the ID from print first).
+            $i++;
             continue;
         }
 

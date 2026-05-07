@@ -441,20 +441,53 @@ class MikrotikAPI {
     /**
      * Get map of username → session info for fast online-status lookups.
      * Returns [ 'username' => ['uptime'=>'...','address'=>'...'], ... ]
+     *
+     * RouterOS 7.x does not include rx-byte/tx-byte in /ppp/active/print (they
+     * are "stats" fields omitted from the standard API response). As a fallback,
+     * each active PPPoE session creates an interface named after the username, so
+     * we also fetch /interface/print which always carries rx-byte/tx-byte.
      */
     public function getActiveSessionsMap(): array {
-        $map = [];
-        foreach ($this->getActiveSessions() as $s) {
-            $name = $s['name'] ?? ($s['user'] ?? null);
-            if ($name) {
-                $map[strtolower($name)] = [
-                    'uptime'  => $s['uptime']    ?? '',
-                    'address' => $s['address']   ?? '',
-                    'rx_byte' => (string)(int)(($s['rx-byte']   ?? '') !== '' ? $s['rx-byte']   : ($s['bytes-in']  ?? '0')),
-                    'tx_byte' => (string)(int)(($s['tx-byte']   ?? '') !== '' ? $s['tx-byte']   : ($s['bytes-out'] ?? '0')),
-                    'caller'  => $s['caller-id'] ?? '',
+        $sessions = $this->getActiveSessions();
+
+        // Pre-load interface byte counters keyed by interface name (= PPPoE username).
+        $ifBytes = [];
+        try {
+            $ifResp = $this->comm('/interface/print');
+            foreach ($ifResp as $item) {
+                if (!isset($item['!re'], $item['name'])) continue;
+                $ifBytes[strtolower($item['name'])] = [
+                    'rx' => (string)(int)($item['rx-byte'] ?? '0'),
+                    'tx' => (string)(int)($item['tx-byte'] ?? '0'),
                 ];
             }
+        } catch (Throwable $_e) {}
+
+        $map = [];
+        foreach ($sessions as $s) {
+            $name = $s['name'] ?? ($s['user'] ?? null);
+            if (!$name) continue;
+
+            $key = strtolower($name);
+
+            // Priority: session-level counters → interface counters
+            $rxRaw = $s['rx-byte']   ?? '';
+            $txRaw = $s['tx-byte']   ?? '';
+            $rxAlt = $s['bytes-in']  ?? '';
+            $txAlt = $s['bytes-out'] ?? '';
+
+            $rx = $rxRaw !== '' ? $rxRaw
+                : ($rxAlt !== '' ? $rxAlt : ($ifBytes[$key]['rx'] ?? '0'));
+            $tx = $txRaw !== '' ? $txRaw
+                : ($txAlt !== '' ? $txAlt : ($ifBytes[$key]['tx'] ?? '0'));
+
+            $map[$key] = [
+                'uptime'  => $s['uptime']    ?? '',
+                'address' => $s['address']   ?? '',
+                'rx_byte' => (string)(int)$rx,
+                'tx_byte' => (string)(int)$tx,
+                'caller'  => $s['caller-id'] ?? '',
+            ];
         }
         return $map;
     }
