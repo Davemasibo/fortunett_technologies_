@@ -474,14 +474,23 @@ class MikrotikAPI {
 
                 $entry = ['rx' => $rx, 'tx' => $tx];
 
-                // Index by queue name (often = PPPoE username)
+                // Index by queue name — strip RouterOS dynamic-queue wrapping.
+                // RouterOS names PPPoE queues "<pppoe-USERNAME>" (angle brackets +
+                // pppoe- prefix). We extract just the username so it matches the
+                // name field returned by /ppp/active/print.
                 if (!empty($item['name'])) {
-                    $stats[strtolower($item['name'])] = $entry;
+                    $raw  = (string)$item['name'];
+                    $bare = trim($raw, '<>');               // "<pppoe-shaa>" → "pppoe-shaa"
+                    $ukey = preg_replace('/^pppoe-/i', '', $bare); // "pppoe-shaa" → "shaa"
+                    $stats[strtolower($ukey)] = $entry;    // primary key = plain username
+                    $stats[strtolower($raw)]  = $entry;    // fallback = full "<pppoe-shaa>"
+                    $stats[strtolower($bare)] = $entry;    // fallback = "pppoe-shaa"
                 }
 
-                // Index by bare target IP (for IP-named queues like "10.0.0.5/32")
+                // Also index by bare target IP if the target IS an IP (some setups)
                 $target = $item['target'] ?? $item['target-addresses'] ?? '';
-                $bareIP = rtrim(preg_replace('/\/\d+$/', '', trim((string)$target)), '/');
+                $bareIP = preg_replace('/\/\d+$/', '', trim((string)$target));
+                $bareIP = trim($bareIP, '<>');
                 if ($bareIP && filter_var($bareIP, FILTER_VALIDATE_IP)) {
                     $stats[$bareIP] = $entry;
                 }
