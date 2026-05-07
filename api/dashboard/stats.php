@@ -141,14 +141,22 @@ try {
                     $rBytesIn     = 0;
                     $rBytesOut    = 0;
                     try {
-                        $ppoeSessions = $mk->getActiveSessions();
-                        $pppoeCount   = count($ppoeSessions);
-                        foreach ($ppoeSessions as $ps) {
-                            $rBytesIn  += (int)($ps['bytes-in']  ?? $ps['bytes_in']  ?? 0);
-                            $rBytesOut += (int)($ps['bytes-out'] ?? $ps['bytes_out'] ?? 0);
+                        // getActiveSessionsMap() resolves byte stats via queue fallback
+                        $pppoeSessions = $mk->getActiveSessionsMap();
+                        $pppoeCount    = count($pppoeSessions);
+                        foreach ($pppoeSessions as $ps) {
+                            $rBytesIn  += (int)($ps['rx_byte'] ?? 0);
+                            $rBytesOut += (int)($ps['tx_byte'] ?? 0);
                         }
                     } catch (Exception $e) { error_log("dashboard/stats PPPoE error router {$router['id']}: " . $e->getMessage()); }
-                    try { $hotspotCount = count($mk->getActiveHotspotSessionsMap()); } catch (Exception $e) { error_log("dashboard/stats hotspot error router {$router['id']}: " . $e->getMessage()); }
+                    try {
+                        $hsSessions   = $mk->getActiveHotspotSessionsMap();
+                        $hotspotCount = count($hsSessions);
+                        foreach ($hsSessions as $hs) {
+                            $rBytesIn  += (int)($hs['rx_byte'] ?? 0);
+                            $rBytesOut += (int)($hs['tx_byte'] ?? 0);
+                        }
+                    } catch (Exception $e) { error_log("dashboard/stats hotspot error router {$router['id']}: " . $e->getMessage()); }
 
                     $rs['online']          = true;
                     $rs['pppoe_clients']   = $pppoeCount;

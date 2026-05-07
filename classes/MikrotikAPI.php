@@ -439,53 +439,100 @@ class MikrotikAPI {
     }
 
     /**
-     * Get map of username → session info for fast online-status lookups.
-     * Returns [ 'username' => ['uptime'=>'...','address'=>'...'], ... ]
+     * Fetch simple-queue byte stats keyed by BOTH queue name AND target IP.
      *
-     * RouterOS 7.x does not include rx-byte/tx-byte in /ppp/active/print (they
-     * are "stats" fields omitted from the standard API response). As a fallback,
-     * each active PPPoE session creates an interface named after the username, so
-     * we also fetch /interface/print which always carries rx-byte/tx-byte.
+     * RouterOS /ppp/active/print and /interface/print do NOT expose per-session
+     * byte counters via the API. Queue statistics are the only reliable source:
+     * when a PPPoE profile has a rate-limit, RouterOS auto-creates a simple queue
+     * per session with the bytes it has forwarded.
+     *
+     * Returns [ 'key' => ['rx' => int, 'tx' => int], ... ]
+     * where key is lowercase queue name OR bare assigned IP (no CIDR suffix).
+     */
+    public function getPPPoEQueueStats(): array {
+        $stats = [];
+        try {
+            $qResp = $this->comm('/queue/simple/print');
+            foreach ($qResp as $item) {
+                if (!isset($item['!re'])) continue;
+
+                // ── byte extraction ───────────────────────────────────────────
+                // RouterOS may return bytes as separate fields OR as "X/Y" string.
+                $rxRaw = $item['bytes-in']  ?? null;
+                $txRaw = $item['bytes-out'] ?? null;
+
+                if ($rxRaw === null && isset($item['bytes'])) {
+                    // "upload/download" string — first=upload(tx), second=download(rx)
+                    $parts = explode('/', (string)$item['bytes'], 2);
+                    $txRaw = $parts[0] ?? '0';
+                    $rxRaw = $parts[1] ?? '0';
+                }
+
+                $rx = (int)($rxRaw ?? 0);
+                $tx = (int)($txRaw ?? 0);
+                if ($rx === 0 && $tx === 0) continue; // skip empty/unused queues
+
+                $entry = ['rx' => $rx, 'tx' => $tx];
+
+                // Index by queue name (often = PPPoE username)
+                if (!empty($item['name'])) {
+                    $stats[strtolower($item['name'])] = $entry;
+                }
+
+                // Index by bare target IP (for IP-named queues like "10.0.0.5/32")
+                $target = $item['target'] ?? $item['target-addresses'] ?? '';
+                $bareIP = rtrim(preg_replace('/\/\d+$/', '', trim((string)$target)), '/');
+                if ($bareIP && filter_var($bareIP, FILTER_VALIDATE_IP)) {
+                    $stats[$bareIP] = $entry;
+                }
+            }
+        } catch (Throwable $_e) {}
+        return $stats;
+    }
+
+    /**
+     * Get map of username → session info for fast online-status lookups.
+     * Returns [ 'username' => ['uptime'=>'...','address'=>'...','rx_byte'=>'...'], ... ]
+     *
+     * Byte-count priority:
+     *   1. Fields directly on the session (rx-byte / tx-byte / bytes-in / bytes-out)
+     *      — rarely present; RouterOS omits them from /ppp/active/print API responses.
+     *   2. Simple-queue stats matched by username (queue name = username is common).
+     *   3. Simple-queue stats matched by assigned IP (target = "x.x.x.x/32").
      */
     public function getActiveSessionsMap(): array {
         $sessions = $this->getActiveSessions();
-
-        // Pre-load interface byte counters keyed by interface name (= PPPoE username).
-        $ifBytes = [];
-        try {
-            $ifResp = $this->comm('/interface/print');
-            foreach ($ifResp as $item) {
-                if (!isset($item['!re'], $item['name'])) continue;
-                $ifBytes[strtolower($item['name'])] = [
-                    'rx' => (string)(int)($item['rx-byte'] ?? '0'),
-                    'tx' => (string)(int)($item['tx-byte'] ?? '0'),
-                ];
-            }
-        } catch (Throwable $_e) {}
+        $qStats   = $this->getPPPoEQueueStats();
 
         $map = [];
         foreach ($sessions as $s) {
             $name = $s['name'] ?? ($s['user'] ?? null);
             if (!$name) continue;
 
-            $key = strtolower($name);
+            $key    = strtolower($name);
+            $bareIP = preg_replace('/\/\d+$/', '', trim((string)($s['address'] ?? '')));
 
-            // Priority: session-level counters → interface counters
-            $rxRaw = $s['rx-byte']   ?? '';
-            $txRaw = $s['tx-byte']   ?? '';
-            $rxAlt = $s['bytes-in']  ?? '';
-            $txAlt = $s['bytes-out'] ?? '';
+            // 1 — session-level fields (usually absent for PPPoE via API)
+            $rx = (int)($s['rx-byte'] ?? $s['bytes-in']  ?? 0);
+            $tx = (int)($s['tx-byte'] ?? $s['bytes-out'] ?? 0);
 
-            $rx = $rxRaw !== '' ? $rxRaw
-                : ($rxAlt !== '' ? $rxAlt : ($ifBytes[$key]['rx'] ?? '0'));
-            $tx = $txRaw !== '' ? $txRaw
-                : ($txAlt !== '' ? $txAlt : ($ifBytes[$key]['tx'] ?? '0'));
+            // 2 — queue matched by username
+            if ($rx === 0 && $tx === 0 && isset($qStats[$key])) {
+                $rx = $qStats[$key]['rx'];
+                $tx = $qStats[$key]['tx'];
+            }
+
+            // 3 — queue matched by assigned IP
+            if ($rx === 0 && $tx === 0 && $bareIP && isset($qStats[$bareIP])) {
+                $rx = $qStats[$bareIP]['rx'];
+                $tx = $qStats[$bareIP]['tx'];
+            }
 
             $map[$key] = [
                 'uptime'  => $s['uptime']    ?? '',
                 'address' => $s['address']   ?? '',
-                'rx_byte' => (string)(int)$rx,
-                'tx_byte' => (string)(int)$tx,
+                'rx_byte' => (string)$rx,
+                'tx_byte' => (string)$tx,
                 'caller'  => $s['caller-id'] ?? '',
             ];
         }
