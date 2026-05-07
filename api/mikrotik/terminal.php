@@ -100,22 +100,70 @@ try {
 }
 
 // ── Command parser ────────────────────────────────────────────────────────────
-// Accepts RouterOS-style input:
+// Accepts RouterOS-style input where spaces separate path components AND params:
+//   /tool fetch url="https://example.com" dst-path=flash/hotspot/login.html
+//   /system script add name=fh source={/tool fetch url="..." dst-path=...}
+//   /ip hotspot user print where name=john
 //   /ppp/active/print
-//   /ppp/active/print where name=john
 //   /ip/hotspot/user/set =.id=*1 disabled=yes
 // Returns [cmdPath, params[]]
 function parseCmd(string $input): array {
-    $tokens = preg_split('/\s+/', trim($input), -1, PREG_SPLIT_NO_EMPTY);
+    // ── Step 1: tokenize respecting quoted strings and braced blocks ──────────
+    $tokens = [];
+    $cur    = '';
+    $depth  = 0;  // brace depth
+    $inQ    = null; // current quote char or null
+    $len    = strlen($input);
+
+    for ($i = 0; $i < $len; $i++) {
+        $c = $input[$i];
+        if ($inQ !== null) {
+            $cur .= $c;
+            if ($c === $inQ) $inQ = null;
+        } elseif ($c === '"' || $c === "'") {
+            $inQ = $c;
+            $cur .= $c;
+        } elseif ($c === '{') {
+            $depth++;
+            $cur .= $c;
+        } elseif ($c === '}') {
+            $depth--;
+            $cur .= $c;
+        } elseif (($c === ' ' || $c === "\t") && $depth === 0) {
+            if ($cur !== '') { $tokens[] = $cur; $cur = ''; }
+        } else {
+            $cur .= $c;
+        }
+    }
+    if ($cur !== '') $tokens[] = $cur;
+
     if (empty($tokens)) return ['', []];
 
-    $cmd = $tokens[0];
-    if ($cmd[0] !== '/') $cmd = '/' . $cmd;
+    // ── Step 2: build command path ────────────────────────────────────────────
+    // A token is a path component if it contains no '=' (and is not 'where'/'find').
+    // Spaces are used as path separators in RouterOS CLI (e.g. "/tool fetch" = /tool/fetch).
+    $pathParts = [];
 
-    $params = [];
+    // First token: split on '/' to get initial path components
+    foreach (array_filter(explode('/', $tokens[0]), fn($p) => $p !== '') as $p) {
+        $pathParts[] = $p;
+    }
+
     $i = 1;
     $n = count($tokens);
+    while ($i < $n) {
+        $t = $tokens[$i];
+        if ($t === 'where' || $t === 'find') break;
+        if (strpos($t, '=') !== false)       break; // key=value → start of params
+        $pathParts[] = $t;
+        $i++;
+    }
 
+    $cmd = '/' . implode('/', $pathParts);
+    $cmd = preg_replace('#/+#', '/', $cmd);
+
+    // ── Step 3: parse remaining tokens as key=value parameters ───────────────
+    $params = [];
     while ($i < $n) {
         $t = $tokens[$i];
 
@@ -125,7 +173,8 @@ function parseCmd(string $input): array {
                 $f = $tokens[$i];
                 if (strpos($f, '=') !== false) {
                     [$k, $v] = explode('=', $f, 2);
-                    $params[] = '?' . $k . '=' . $v;
+                    $k = ltrim($k, '=');
+                    $params[] = '?' . $k . '=' . trim($v, '"\'');
                 }
                 $i++;
             }
@@ -133,11 +182,31 @@ function parseCmd(string $input): array {
         }
 
         if (strpos($t, '=') !== false) {
-            $params[] = ($t[0] === '=') ? $t : '=' . $t;
-            $i++;
-            continue;
-        }
+            if ($t[0] === '=') {
+                // Already API-prefixed (e.g. =.id=*1) — pass through unchanged
+                $params[] = $t;
+            } else {
+                $eqPos = strpos($t, '=');
+                $key   = substr($t, 0, $eqPos);
+                $val   = substr($t, $eqPos + 1);
 
+                // Strip surrounding quotes: url="https://..." → url=https://...
+                if (strlen($val) >= 2
+                    && ($val[0] === '"' || $val[0] === "'")
+                    && $val[-1] === $val[0]
+                ) {
+                    $val = substr($val, 1, -1);
+                }
+
+                // Strip surrounding braces from script source: source={...} → source=...
+                // The braces are RouterOS console syntax; RouterOS API takes raw script text.
+                if (strlen($val) >= 2 && $val[0] === '{' && $val[-1] === '}') {
+                    $val = substr($val, 1, -1);
+                }
+
+                $params[] = '=' . $key . '=' . $val;
+            }
+        }
         $i++;
     }
 

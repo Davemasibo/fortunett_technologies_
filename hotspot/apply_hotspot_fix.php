@@ -39,7 +39,7 @@ try {
 $sub        = $tenant['subdomain'] ?? '';
 $portalHost = $sub ? "$sub.$platformDomain" : $platformDomain;
 $token      = $tenant['provisioning_token'] ?? '';
-$loginServeUrl = 'https://' . $portalHost . '/hotspot/login_serve.php/' . rawurlencode($token);
+$loginServeUrl = 'https://' . $portalHost . '/hotspot/login_serve.php?token=' . rawurlencode($token);
 
 require_once __DIR__ . '/../classes/RouterOSAPI.php';
 require_once __DIR__ . '/../classes/MikrotikAPI.php';

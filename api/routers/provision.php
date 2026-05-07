@@ -183,8 +183,7 @@ try {
         // RouterOS 7 sometimes stores html-directory=flash/hotspot but serves from
         // flash/flash/hotspot — writing to both paths ensures it always finds login.html.
         $loginServeBase = $protocol . $_SERVER['HTTP_HOST'];
-        // Path form — no = in URL so RouterOS /tool/fetch parses it correctly
-        $loginServeUrl  = $loginServeBase . '/hotspot/login_serve.php/' . rawurlencode($t);
+        $loginServeUrl  = $loginServeBase . '/hotspot/login_serve.php?token=' . rawurlencode($t);
         echo "# ── Hotspot login page (both paths for RouterOS 7 compatibility) ─────────\n";
         foreach (['flash/hotspot/login.html', 'flash/flash/hotspot/login.html'] as $dst) {
             echo ":do { /file remove [find name=\"$dst\"] } on-error={};\n";

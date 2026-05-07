@@ -80,8 +80,7 @@ try {
             $sub        = $tRow['subdomain'] ?: '';
             $portalHost = $sub ? "$sub.$platformDomain" : $platformDomain;
             if (!empty($tRow['provisioning_token'])) {
-                // Path form — no = in URL so RouterOS /tool/fetch parses it correctly
-                $loginServeUrl = 'https://' . $portalHost . '/hotspot/login_serve.php/'
+                $loginServeUrl = 'https://' . $portalHost . '/hotspot/login_serve.php?token='
                     . rawurlencode($tRow['provisioning_token']);
             }
         }

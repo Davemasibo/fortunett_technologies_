@@ -615,9 +615,7 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
 
         // External login page URL — the comprehensive captive portal
         $externalLoginUrl = $baseUrl . '/customer/login.php';
-        // Use path form (no = in URL) so RouterOS /tool/fetch can fetch it without parser issues
-        $serveUrl         = $baseUrl . '/hotspot/login_serve.php/' . rawurlencode($provToken);
-        $mode             = str_starts_with($serveUrl, 'https://') ? 'https' : 'http';
+        $serveUrl         = $baseUrl . '/hotspot/login_serve.php?token=' . rawurlencode($provToken);
 
         // ── Connect to router ─────────────────────────────────────────────────
         $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
