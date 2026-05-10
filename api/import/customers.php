@@ -53,6 +53,9 @@ $tStmt->execute([$tenantId]);
 $subdomain = $tStmt->fetchColumn() ?: 'ISP';
 $prefix    = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $subdomain), 0, 4));
 
+$defaultConnType = strtolower(trim($_POST['default_connection_type'] ?? 'hotspot'));
+if (!in_array($defaultConnType, ['pppoe', 'hotspot'])) $defaultConnType = 'hotspot';
+
 $imported = 0; $updated = 0; $errors = [];
 
 while (($row = fgetcsv($fh)) !== false) {
@@ -68,7 +71,7 @@ while (($row = fgetcsv($fh)) !== false) {
     $address        = trim($data['address'] ?? '');
     $username       = trim($data['username'] ?? '');
     $password       = trim($data['password'] ?? '');
-    $connType       = strtolower(trim($data['connection_type'] ?? 'hotspot'));
+    $connType       = strtolower(trim($data['connection_type'] ?? $defaultConnType));
     $notes          = trim($data['notes'] ?? '');
     $expiryDate     = trim($data['expiry_date'] ?? '');
     $statusRaw      = strtolower(trim($data['status'] ?? 'active'));

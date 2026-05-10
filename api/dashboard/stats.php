@@ -288,16 +288,16 @@ try {
     $alerts = [];
     $st = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE expiry_date < NOW() AND status='active' AND tenant_id=?");
     $st->execute([$tenant_id]); $expiredNow = (int)$st->fetchColumn();
-    if ($expiredNow > 0) $alerts[] = ['type'=>'warning','title'=>"$expiredNow expired account(s) still active",'message'=>'These accounts have passed their expiry date but are still marked active. Run expiry check to disable them.','time'=>'Now'];
+    if ($expiredNow > 0) $alerts[] = ['type'=>'warning','title'=>"$expiredNow expired account(s) still active",'message'=>'These accounts have passed their expiry date but are still marked active. Click to view and run expiry check.','time'=>'Now','link'=>'/clients.php?status=active'];
     $st = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE expiry_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 3 DAY) AND status='active' AND tenant_id=?");
     $st->execute([$tenant_id]); $soonExp = (int)$st->fetchColumn();
-    if ($soonExp > 0) $alerts[] = ['type'=>'warning','title'=>"$soonExp account(s) expiring within 3 days",'message'=>'Consider sending renewal SMS reminders to keep these customers active.','time'=>'Next 3 days'];
+    if ($soonExp > 0) $alerts[] = ['type'=>'warning','title'=>"$soonExp account(s) expiring within 3 days",'message'=>'Consider sending renewal SMS reminders to keep these customers active. Click to view them.','time'=>'Next 3 days','link'=>'/clients.php?status=active'];
     $offlineRs = array_values(array_filter($routerStatus, function($r){ return !$r['online']; }));
     if (count($offlineRs) > 0) {
         $offNames = implode(', ', array_column($offlineRs, 'name'));
-        $alerts[] = ['type'=>'warning','title'=>count($offlineRs).' router(s) unreachable','message'=>"Cannot reach: $offNames. Check power and network connectivity.",'time'=>'Now'];
+        $alerts[] = ['type'=>'warning','title'=>count($offlineRs).' router(s) unreachable','message'=>"Cannot reach: $offNames. Click to open Router Management.","time"=>'Now','link'=>'/mikrotik.php'];
     }
-    if (empty($alerts)) $alerts[] = ['type'=>'info','title'=>'All systems normal','message'=>'No issues detected. Routers are online and accounts are up to date.','time'=>'Now'];
+    if (empty($alerts)) $alerts[] = ['type'=>'info','title'=>'All systems normal','message'=>'No issues detected. Routers are online and accounts are up to date.','time'=>'Now','link'=>''];
     $data['alerts'] = $alerts;
 
     // ── Most Active Users (top 5 by payments, last 30 days) ─────────────────
