@@ -379,7 +379,7 @@ function doBuyPlan() {
   document.getElementById('buy-status-title').textContent = 'Sending request…';
   document.getElementById('buy-status-msg').textContent   = 'Check your phone in a few seconds';
 
-  fetch(PORTAL + '/api/mpesa/hotspot_stk_push.php', {
+  fetch(PORTAL + '/api/payment/hotspot_stk_push.php', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     body: 'action=paid&phone=' + encodeURIComponent(phone) +
@@ -404,7 +404,7 @@ function doBuyPlan() {
 
 function pollBuyStatus() {
   if (!_buyReqId) return;
-  fetch(PORTAL + '/api/mpesa/hotspot_payment_status.php?checkout_request_id=' + encodeURIComponent(_buyReqId) + '&tenant_id=' + encodeURIComponent(TID))
+  fetch(PORTAL + '/api/payment/hotspot_payment_status.php?checkout_request_id=' + encodeURIComponent(_buyReqId) + '&tenant_id=' + encodeURIComponent(TID))
     .then(function(r) { return r.json(); })
     .then(function(d) {
       if (d.status === 'completed') {

@@ -89,7 +89,7 @@ class MpesaAPI {
         // Auto-detect from current server host
         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
         $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $url = $scheme . '://' . $host . '/api/mpesa/callback.php';
+        $url = $scheme . '://' . $host . '/api/payment/callback.php';
         $this->resolved_callback_url = $url;
         return $url;
     }

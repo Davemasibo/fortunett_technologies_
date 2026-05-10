@@ -45,8 +45,8 @@ Raw PDO — no ORM. Global `$pdo` is established in `includes/db_master.php` and
 - `EmailHelper.php` / `SMSHelper.php` — Email (PHPMailer/SMTP) and SMS (TalkSasa) dispatch with DB logging.
 
 ### Payment Flow
-1. STK Push initiated via `/api/mpesa/stk_push.php`
-2. M-Pesa calls back to `/api/mpesa/callback.php`
+1. STK Push initiated via `/api/payment/stk_push.php`
+2. M-Pesa calls back to `/api/payment/callback.php`
 3. Payment written to `payments` and `mpesa_transactions` tables
 4. Client expiry extended based on package validity
 

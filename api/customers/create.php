@@ -167,8 +167,8 @@ try {
     $mikrotikSynced = $provResult['success'];
     $mikrotikError  = $provResult['success'] ? null : ($provResult['message'] ?? 'Provisioning failed');
     $noRouter       = (strpos($mikrotikError ?? '', 'No active router') !== false);
-    $profileUsed    = null;
-    $routerIp       = null;
+    $profileUsed    = $provResult['profile'] ?? $provResult['service'] ?? null;
+    $routerIp       = $provResult['router']  ?? null;
 
     // Mark active if MikroTik user was created (credentials will work immediately)
     if ($mikrotikSynced) {

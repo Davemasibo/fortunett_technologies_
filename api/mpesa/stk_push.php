@@ -103,7 +103,7 @@ try {
                 if (empty($platCreds['callback_url'])) {
                     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
                     $host   = explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0];
-                    $platCreds['callback_url'] = $scheme . '://' . $host . '/api/mpesa/callback.php';
+                    $platCreds['callback_url'] = $scheme . '://' . $host . '/api/payment/callback.php';
                 }
                 $mpesa->loadFromArray($platCreds);
                 $usingPlatform = true;

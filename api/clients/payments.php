@@ -24,6 +24,15 @@ $chk->execute([$client_id, $tenant_id]);
 if (!$chk->fetchColumn()) { echo json_encode(['success'=>false,'message'=>'Not found']); exit; }
 
 try {
+    // Detect whether the payments table has a notes column (may not exist on older schemas)
+    $hasNotes = false;
+    try {
+        $colCheck = $pdo->query("SHOW COLUMNS FROM payments LIKE 'notes'");
+        $hasNotes = (bool)$colCheck->fetch();
+    } catch (Throwable $_e) {}
+
+    $notesCol = $hasNotes ? 'p.notes' : "'' AS notes";
+
     // Fetch from payments table (includes manual records)
     $st = $pdo->prepare("
         SELECT
@@ -33,7 +42,7 @@ try {
             p.transaction_id  AS reference,
             p.status,
             p.payment_date    AS paid_at,
-            p.notes,
+            {$notesCol},
             c.phone           AS phone
         FROM payments p
         LEFT JOIN clients c ON c.id = p.client_id
@@ -48,11 +57,11 @@ try {
     $mtSt = $pdo->prepare("
         SELECT phone_number, checkout_request_id, transaction_id, result_code, amount, created_at
         FROM mpesa_transactions
-        WHERE client_id = ?
+        WHERE client_id = ? AND (tenant_id = ? OR tenant_id IS NULL)
         ORDER BY created_at DESC
         LIMIT 100
     ");
-    $mtSt->execute([$client_id]);
+    $mtSt->execute([$client_id, $tenant_id]);
     $mpesaTx = $mtSt->fetchAll(PDO::FETCH_ASSOC);
 
     // Index mpesa rows by checkout_request_id for quick lookup

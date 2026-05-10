@@ -378,6 +378,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <button class="sync-btn" onclick="location.reload()">
                     <i class="fas fa-sync-alt"></i> Sync All
                 </button>
+                <button class="sync-btn" id="syncPkgBtn" onclick="syncPackageProfiles(this)" title="Push all package speed profiles to every active router — run this after adding a new router">
+                    <i class="fas fa-layer-group"></i> Sync Profiles
+                </button>
                 <button class="add-router-btn" onclick="openWizard()">
                     <i class="fas fa-plus"></i> Add Router
                 </button>
@@ -1257,6 +1260,20 @@ function updateRouterCard(id, data) {
             bd.style.color = 'rgba(239,68,68,.6)';
         }
     }
+}
+
+function syncPackageProfiles(btn) {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing…'; btn.disabled = true;
+    fetch('api/routers/sync_packages.php', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+            btn.innerHTML = orig; btn.disabled = false;
+            if (!d.success) { showToast('Sync failed: ' + d.message, 'error'); return; }
+            const summary = d.results.map(r => r.router + ': ' + (r.status === 'ok' ? r.synced + ' profiles synced' : r.status)).join(' | ');
+            showToast('Profiles synced — ' + summary, 'success');
+        })
+        .catch(() => { btn.innerHTML = orig; btn.disabled = false; showToast('Network error during sync.', 'error'); });
 }
 
 function testConnection(id, btn) {

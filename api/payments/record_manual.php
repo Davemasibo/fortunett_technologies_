@@ -52,29 +52,38 @@ try {
         throw new Exception("Invalid customer or not in your account");
     }
 
-    // Parse the provided date
-    $txDate = date('Y-m-d H:i:s', strtotime($transaction_date) ?: time());
+    // Parse the provided date — handle both datetime-local (YYYY-MM-DDTHH:MM:SS)
+    // and plain date (YYYY-MM-DD). For date-only values, use current time so the
+    // stored record always has a meaningful timestamp, not midnight 00:00.
+    $parsedTs = strtotime(str_replace('T', ' ', $transaction_date));
+    if (!$parsedTs) {
+        $parsedTs = time();
+    } elseif (!preg_match('/\d{2}:\d{2}/', $transaction_date)) {
+        // Date-only string was given — keep the date but use current time
+        $parsedTs = strtotime(date('Y-m-d', $parsedTs) . ' ' . date('H:i:s'));
+    }
+    $txDate = date('Y-m-d H:i:s', $parsedTs);
 
     // result_code: '0' = verified/success, 'MANUAL' = unverified manual entry
     $result_code = $is_verified ? '0' : 'MANUAL';
     $result_desc = 'Manual:' . $method . ($notes ? ' | ' . substr($notes, 0, 200) : '');
 
-    // Insert into mpesa_transactions using its actual column names
-    // Actual columns: id, client_id, phone_number, amount, merchant_request_id,
-    //                 checkout_request_id, result_code, result_desc, created_at, updated_at
-    // We use reference_code as checkout_request_id for lookup/display
+    // Insert into mpesa_transactions — include tenant_id and status to satisfy NOT NULL constraints
     $sql = "INSERT INTO mpesa_transactions
-                (client_id, phone_number, amount, merchant_request_id, checkout_request_id,
-                 result_code, result_desc, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+                (client_id, tenant_id, phone_number, amount, merchant_request_id, checkout_request_id,
+                 status, result_code, result_desc, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
 
+    $payStatus2 = $is_verified ? 'completed' : 'pending';
     $stmt2 = $pdo->prepare($sql);
     $stmt2->execute([
         $client_id,
+        $tenant_id,
         $client['phone'],
         $amount,
         'MANUAL-' . strtoupper(substr(md5(uniqid()), 0, 6)), // merchant_request_id placeholder
         $reference_code,                                       // checkout_request_id = ref code
+        $payStatus2,
         $result_code,
         $result_desc,
         $txDate

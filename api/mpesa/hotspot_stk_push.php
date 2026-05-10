@@ -227,7 +227,7 @@ try {
                 if ($platCreds && !empty($platCreds['consumer_key'])) {
                     if (empty($platCreds['callback_url'])) {
                         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-                        $platCreds['callback_url'] = $scheme . '://' . explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0] . '/api/mpesa/callback.php';
+                        $platCreds['callback_url'] = $scheme . '://' . explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0] . '/api/payment/callback.php';
                     }
                     $mpesa->loadFromArray($platCreds);
                     $usingPlatform = true;
@@ -322,7 +322,7 @@ try {
                 if ($platCreds && !empty($platCreds['consumer_key'])) {
                     if (empty($platCreds['callback_url'])) {
                         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-                        $platCreds['callback_url'] = $scheme . '://' . explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0] . '/api/mpesa/callback.php';
+                        $platCreds['callback_url'] = $scheme . '://' . explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0] . '/api/payment/callback.php';
                     }
                     $mpesa->loadFromArray($platCreds);
                     $usingPlatform = true;

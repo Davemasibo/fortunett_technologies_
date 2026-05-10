@@ -408,7 +408,7 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                         <div>
                             <label class="form-label-sm">Callback URL <span style="font-weight:400;color:#9CA3AF;">(auto-detected if blank)</span></label>
                             <input type="url" name="mpesa_callback_url" id="mpesa_callback_url" class="form-input"
-                                   placeholder="https://yourdomain.com/api/mpesa/callback.php">
+                                   placeholder="https://yourdomain.com/api/payment/callback.php">
                             <div class="preserve-note" id="mpesa_cb_hint" style="display:block;">
                                 <i class="fas fa-info-circle" style="font-size:10px;color:var(--primary-color);"></i>
                                 Must be a public HTTPS URL — localhost won't work with real M-Pesa
@@ -782,8 +782,8 @@ input:checked + .live-slider:before { transform: translateX(18px); }
     $platformShortcode = $platformShortcodeDB ?? (defined('MPESA_SHORTCODE') ? MPESA_SHORTCODE : null);
     $prefix         = $accountPrefix ?? '?';
     $disburseTarget = $tenantBound ?? [];
-    $c2bUrl         = defined('MPESA_C2B_CONFIRMATION_URL') ? MPESA_C2B_CONFIRMATION_URL : 'https://fortunetttech.site/api/mpesa/c2b_confirmation.php';
-    $cbUrl          = 'https://' . htmlspecialchars(explode('.', $_SERVER['HTTP_HOST'] ?? 'yourdomain.fortunetttech.site')[0]) . '.fortunetttech.site/api/mpesa/callback.php';
+    $c2bUrl         = defined('MPESA_C2B_CONFIRMATION_URL') ? MPESA_C2B_CONFIRMATION_URL : 'https://fortunetttech.site/api/payment/c2b_confirmation.php';
+    $cbUrl          = 'https://' . htmlspecialchars(explode('.', $_SERVER['HTTP_HOST'] ?? 'yourdomain.fortunetttech.site')[0]) . '.fortunetttech.site/api/payment/callback.php';
     if ($platformShortcode && $showPlatToggle):
     ?>
     <div style="margin-top:28px;">

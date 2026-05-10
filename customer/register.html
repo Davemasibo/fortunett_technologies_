@@ -452,7 +452,7 @@ function doFree() {
         tenant_id:   TENANT_ID
     });
 
-    fetch(_base + '/api/mpesa/hotspot_stk_push.php', {method:'POST', body:body})
+    fetch(_base + '/api/payment/hotspot_stk_push.php', {method:'POST', body:body})
         .then(function(r){ return r.json(); })
         .then(function(d) {
             setLoading('free-btn', false);
@@ -508,7 +508,7 @@ function doPaid() {
     setLoading('paid-btn', true);
     showOverlay('Payment Request Sent', 'Check your phone for the M-Pesa prompt...', SEL_PKG.price, phone);
 
-    fetch(_base + '/api/mpesa/hotspot_stk_push.php', {method:'POST', body:body})
+    fetch(_base + '/api/payment/hotspot_stk_push.php', {method:'POST', body:body})
         .then(function(r){ return r.json(); })
         .then(function(d) {
             setLoading('paid-btn', false);
@@ -536,7 +536,7 @@ function startPolling(checkoutId, clientId) {
             updateOverlay('fail', 'Timeout', 'No payment received. If you paid, contact support.');
             return;
         }
-        fetch(_base + '/api/mpesa/hotspot_payment_status.php?checkout_request_id='
+        fetch(_base + '/api/payment/hotspot_payment_status.php?checkout_request_id='
             + encodeURIComponent(checkoutId) + '&client_id=' + encodeURIComponent(clientId))
         .then(function(r){ return r.json(); })
         .then(function(d) {

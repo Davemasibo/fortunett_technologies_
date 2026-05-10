@@ -97,31 +97,41 @@ try {
             $api = new MikrotikAPI($router['ip_address'], $router['username'], $router['password'], $router['api_port']);
             if ($api->connect()) {
                 if ($connection_type === 'hotspot') {
-                    // Hotspot Profile
+                    // Hotspot Profile — create or update rate-limit on all routers
                     $profiles = $api->getHotspotUserProfiles();
-                    $exists = false;
+                    $existingId = null;
                     foreach ((array)$profiles as $p) {
-                        if (isset($p['name']) && $p['name'] == $mikrotik_profile) {
-                            $exists = true;
+                        if (isset($p['name']) && $p['name'] === $mikrotik_profile) {
+                            $existingId = $p['.id'] ?? null;
                             break;
                         }
                     }
-                    
-                    if (!$exists) {
+                    if ($existingId !== null) {
+                        // Update rate-limit to enforce the package speed cap
+                        $api->comm('/ip/hotspot/user/profile/set', [
+                            '=.id='        . $existingId,
+                            '=rate-limit=' . $rate_limit,
+                        ]);
+                    } else {
                         $api->createHotspotProfile($mikrotik_profile, $rate_limit);
                     }
                 } else {
-                    // PPPoE Profile (Default)
+                    // PPPoE Profile — create or update rate-limit on all routers
                     $profiles = $api->getPPPoEProfiles();
-                    $exists = false;
+                    $existingId = null;
                     foreach ((array)$profiles as $p) {
-                        if (isset($p['name']) && $p['name'] == $mikrotik_profile) {
-                            $exists = true;
+                        if (isset($p['name']) && $p['name'] === $mikrotik_profile) {
+                            $existingId = $p['.id'] ?? null;
                             break;
                         }
                     }
-                    
-                    if (!$exists) {
+                    if ($existingId !== null) {
+                        // Update rate-limit to enforce the package speed cap
+                        $api->comm('/ppp/profile/set', [
+                            '=.id='        . $existingId,
+                            '=rate-limit=' . $rate_limit,
+                        ]);
+                    } else {
                         $api->createPPPoEProfile($mikrotik_profile, null, null, $rate_limit);
                     }
                 }

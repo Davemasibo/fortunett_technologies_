@@ -572,7 +572,7 @@ function confirmRenew() {
     document.getElementById('proc-hint').textContent    = 'Sending to: ' + phone;
     document.getElementById('proc-close').style.display = 'none';
 
-    fetch('../api/mpesa/hotspot_stk_push.php', {
+    fetch('../api/payment/hotspot_stk_push.php', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: new URLSearchParams({
@@ -603,7 +603,7 @@ function startRenewPoll(checkoutId, clientId) {
         pollCount++;
         if (pollCount > 60) { clearInterval(pollTimer); procFail('Payment timeout. Contact support if you were charged.'); return; }
 
-        fetch('../api/mpesa/hotspot_payment_status.php?checkout_request_id=' + encodeURIComponent(checkoutId) + '&client_id=' + clientId)
+        fetch('../api/payment/hotspot_payment_status.php?checkout_request_id=' + encodeURIComponent(checkoutId) + '&client_id=' + clientId)
         .then(function(r){ return r.json(); })
         .then(function(d){
             if (d.status === 'completed') {

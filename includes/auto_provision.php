@@ -63,7 +63,9 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
 
         $downloadSpeed = max(1, (int)($package['download_speed'] ?? 10));
         $uploadSpeed   = max(1, (int)($package['upload_speed']   ?? 5));
-        $rateLimit     = "{$downloadSpeed}M/{$uploadSpeed}M";
+        // RouterOS rate-limit format: rx-rate/tx-rate (router perspective)
+        // rx-rate = client upload speed, tx-rate = client download speed
+        $rateLimit     = "{$uploadSpeed}M/{$downloadSpeed}M";
         // Use the package-level profile (one shared profile per package, not per user).
         $profileName   = $package['mikrotik_profile']
             ?: preg_replace('/[^a-zA-Z0-9-]/', '', strtolower($package['name']));
@@ -146,6 +148,7 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
             'username' => $username,
             'password' => $password,
             'service'  => $connType,
+            'profile'  => $profileName,
             'router'   => $router['name'] ?? $router['ip_address'],
         ];
 
@@ -164,18 +167,26 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
  */
 function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment): void
 {
-    // Ensure the package profile exists (skip if it's 'default' — that always exists)
+    // Ensure the package profile exists with the correct rate-limit.
+    // Skip 'default' — it always exists and shouldn't be modified.
+    // IMPORTANT: even if the profile exists, update its rate-limit so speed caps are enforced.
     if ($profileName !== 'default') {
         $profiles = $api->comm('/ppp/profile/print', ['?name=' . $profileName]);
-        $hasProfile = false;
+        $profileId = null;
         foreach ($profiles as $p) {
-            if (isset($p['!re']) && ($p['name'] ?? '') === $profileName) { $hasProfile = true; break; }
+            if (isset($p['!re']) && ($p['name'] ?? '') === $profileName) { $profileId = $p['.id'] ?? null; break; }
         }
-        if (!$hasProfile) {
+        if ($profileId !== null) {
+            // Profile exists — enforce rate-limit in case it changed or was never set
+            $api->comm('/ppp/profile/set', [
+                '=.id='        . $profileId,
+                '=rate-limit=' . $rateLimit,
+            ]);
+        } else {
+            // Profile missing on this router — create it with rate-limit only.
+            // Do NOT reference pppoe-pool (it may not exist on new routers).
             $api->comm('/ppp/profile/add', [
                 '=name='        . $profileName,
-                '=local-address=10.0.0.1',
-                '=remote-address=pppoe-pool',
                 '=rate-limit='  . $rateLimit,
             ]);
         }
@@ -224,16 +235,23 @@ function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, s
  */
 function _provisionHotspot(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment, string $sharedUsers = 'unlimited', string $hotspotServer = 'all'): void
 {
-    // ── Ensure package profile exists ─────────────────────────────────────────
-    // We create it if missing (e.g. router was offline when the package was saved),
-    // but we do NOT recreate it per-user — one profile serves all users on that package.
+    // ── Ensure package profile exists with correct rate-limit ─────────────────
+    // One profile per package; create on first use, update rate-limit on every
+    // provisioning call so speed caps are enforced even on new/re-added routers.
     if ($profileName !== 'default') {
         $profiles = $api->comm('/ip/hotspot/user/profile/print', ['?name=' . $profileName]);
-        $hasProfile = false;
+        $profileId = null;
         foreach ($profiles as $p) {
-            if (isset($p['!re']) && ($p['name'] ?? '') === $profileName) { $hasProfile = true; break; }
+            if (isset($p['!re']) && ($p['name'] ?? '') === $profileName) { $profileId = $p['.id'] ?? null; break; }
         }
-        if (!$hasProfile) {
+        if ($profileId !== null) {
+            // Profile exists — enforce rate-limit in case it changed or was never set
+            $api->comm('/ip/hotspot/user/profile/set', [
+                '=.id='          . $profileId,
+                '=rate-limit='   . $rateLimit,
+                '=shared-users=' . $sharedUsers,
+            ]);
+        } else {
             $api->comm('/ip/hotspot/user/profile/add', [
                 '=name='         . $profileName,
                 '=rate-limit='   . $rateLimit,

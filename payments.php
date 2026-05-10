@@ -725,7 +725,7 @@ function handlePaymentSubmit(e) {
     const method = formData.get('method');
     
     // Determine URL based on method
-    let url = 'api/mpesa/stk_push.php';
+    let url = 'api/payment/stk_push.php';
     if (method === 'cash') {
         url = 'api/payments/record_cash.php';
     }

@@ -34,17 +34,17 @@ define('MPESA_PASSKEY',   'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72
 /**
  * STK Push callback URL.
  * For tenant-specific flows the MpesaAPI class auto-resolves this from
- * the tenant's subdomain (https://{subdomain}.fortunetttech.site/api/mpesa/callback.php).
+ * the tenant's subdomain (https://{subdomain}.fortunetttech.site/api/payment/callback.php).
  * This constant is only used when the host cannot be auto-detected.
  */
-define('MPESA_CALLBACK_URL', 'https://fortunetttech.site/api/mpesa/callback.php');
+define('MPESA_CALLBACK_URL', 'https://fortunetttech.site/api/payment/callback.php');
 
 /**
  * C2B Confirmation URL — register this in Daraja for the platform shortcode.
  * This handles all payments made to the shared paybill via account numbers.
  */
-define('MPESA_C2B_CONFIRMATION_URL', 'https://fortunetttech.site/api/mpesa/c2b_confirmation.php');
-define('MPESA_C2B_VALIDATION_URL',   'https://fortunetttech.site/api/mpesa/c2b_validation.php');
+define('MPESA_C2B_CONFIRMATION_URL', 'https://fortunetttech.site/api/payment/c2b_confirmation.php');
+define('MPESA_C2B_VALIDATION_URL',   'https://fortunetttech.site/api/payment/c2b_validation.php');
 
 // API base URLs (set automatically below — do not edit)
 if (MPESA_ENV === 'production') {

@@ -117,30 +117,37 @@ try {
     $search = $_GET['search'] ?? '';
     $status_filter = $_GET['status'] ?? '';
     $package_filter = $_GET['package'] ?? '';
-    
+    $type_filter = $_GET['type'] ?? '';
+    if (!in_array($type_filter, ['pppoe', 'hotspot'])) $type_filter = '';
+
     $query = "SELECT c.*,
               COALESCE((SELECT name FROM packages WHERE id = c.package_id LIMIT 1), c.subscription_plan) AS package_name,
               COALESCE((SELECT price FROM packages WHERE id = c.package_id LIMIT 1), 0) AS package_price
               FROM clients c WHERE c.tenant_id = ?";
-              
+
     $params = [$tenant_id];
-    
+
     if (!empty($search)) {
         $query .= " AND (c.full_name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.account_number LIKE ?)";
         $term = "%$search%";
         $params[] = $term; $params[] = $term; $params[] = $term; $params[] = $term;
     }
-    
+
     if (!empty($status_filter)) {
         $query .= " AND c.status = ?";
         $params[] = $status_filter;
     }
-    
+
     if (!empty($package_filter)) {
         $query .= " AND c.package_id = ?";
         $params[] = $package_filter;
     }
-    
+
+    if (!empty($type_filter)) {
+        $query .= " AND COALESCE(NULLIF(c.connection_type,''), 'hotspot') = ?";
+        $params[] = $type_filter;
+    }
+
     $query .= " ORDER BY c.created_at DESC";
               
     $stmt = $db->prepare($query);
@@ -148,6 +155,17 @@ try {
     $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $customers = [];
+}
+
+// Connection type counts for tabs
+try {
+    $cntStmt = $db->prepare("SELECT COALESCE(NULLIF(connection_type,''), 'hotspot') AS ct, COUNT(*) AS n FROM clients WHERE tenant_id = ? GROUP BY ct");
+    $cntStmt->execute([$tenant_id]);
+    $typeCountsRaw = $cntStmt->fetchAll(PDO::FETCH_ASSOC);
+    $typeCounts = ['all' => $total_customers, 'pppoe' => 0, 'hotspot' => 0];
+    foreach ($typeCountsRaw as $r) { if (isset($typeCounts[$r['ct']])) $typeCounts[$r['ct']] = (int)$r['n']; }
+} catch (Exception $_e) {
+    $typeCounts = ['all' => $total_customers, 'pppoe' => 0, 'hotspot' => 0];
 }
 
 // Get Packages for Dropdown
@@ -196,6 +214,14 @@ include 'includes/sidebar.php';
     .stat-change { font-size:12px; margin-top:8px; color:rgba(255,255,255,.35); }
     .stat-change.positive { color:#34d399; }
     .stat-change.negative { color:#f87171; }
+
+    /* Connection type tabs */
+    .conn-tabs { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
+    .conn-tab { padding:7px 18px; border-radius:20px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid var(--neu-border); background:var(--neu-s2); color:rgba(255,255,255,.5); text-decoration:none; transition:all .18s; display:inline-flex; align-items:center; gap:6px; }
+    .conn-tab:hover { color:#e2e2e0; background:rgba(255,255,255,.06); }
+    .conn-tab.active { background:linear-gradient(135deg,var(--primary-dark,#2C5282) 0%,var(--primary-color,#3B6EA5) 100%); border-color:var(--primary-color,#3B6EA5); color:#fff; }
+    .conn-tab .ct-badge { font-size:10px; font-weight:700; background:rgba(255,255,255,.18); padding:1px 6px; border-radius:10px; }
+    .conn-tab.active .ct-badge { background:rgba(255,255,255,.25); }
 
     /* Filters */
     .filters-bar { background:var(--neu-s2); border-radius:10px; padding:20px 24px; margin-bottom:20px; border:1px solid var(--neu-border); box-shadow:var(--neu-card); }
@@ -410,6 +436,23 @@ include 'includes/sidebar.php';
             </div>
         </div>
 
+        <!-- Connection Type Tabs -->
+        <div class="conn-tabs">
+            <?php
+            $baseParams = array_filter(['search' => $search, 'status' => $status_filter, 'package' => $package_filter]);
+            $mkTabUrl = fn($t) => 'clients.php?' . http_build_query(array_merge($baseParams, $t ? ['type' => $t] : []));
+            ?>
+            <a href="<?php echo htmlspecialchars($mkTabUrl('')); ?>" class="conn-tab <?php echo $type_filter === '' ? 'active' : ''; ?>">
+                All <span class="ct-badge"><?php echo $typeCounts['all']; ?></span>
+            </a>
+            <a href="<?php echo htmlspecialchars($mkTabUrl('pppoe')); ?>" class="conn-tab <?php echo $type_filter === 'pppoe' ? 'active' : ''; ?>">
+                <i class="fas fa-network-wired" style="font-size:11px;"></i> PPPoE <span class="ct-badge"><?php echo $typeCounts['pppoe']; ?></span>
+            </a>
+            <a href="<?php echo htmlspecialchars($mkTabUrl('hotspot')); ?>" class="conn-tab <?php echo $type_filter === 'hotspot' ? 'active' : ''; ?>">
+                <i class="fas fa-wifi" style="font-size:11px;"></i> Hotspot <span class="ct-badge"><?php echo $typeCounts['hotspot']; ?></span>
+            </a>
+        </div>
+
         <!-- Filters Bar -->
         <div class="filters-bar">
             <form id="filterForm" method="GET" action="clients.php" class="filters-grid">
@@ -437,7 +480,8 @@ include 'includes/sidebar.php';
                         <option value="inactive" <?php echo (isset($_GET['status']) && $_GET['status'] == 'inactive') ? 'selected' : ''; ?>>Inactive</option>
                     </select>
                 </div>
-                <button type="button" onclick="window.location.href='clients.php'" class="clear-filters-btn" style="border:1px solid #ddd; background:#fff; padding:8px 12px; border-radius:6px; cursor:pointer;">
+                <?php if ($type_filter): ?><input type="hidden" name="type" value="<?php echo htmlspecialchars($type_filter); ?>"><?php endif; ?>
+                <button type="button" onclick="window.location.href='clients.php<?php echo $type_filter ? '?type='.htmlspecialchars($type_filter) : ''; ?>'" class="clear-filters-btn" style="border:1px solid #ddd; background:#fff; padding:8px 12px; border-radius:6px; cursor:pointer;">
                     <i class="fas fa-times"></i> Clear Filters
                 </button>
             </form>
@@ -774,7 +818,7 @@ include 'includes/sidebar.php';
                     </div>
                     <div>
                         <label style="display:block;font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;">Date</label>
-                        <input type="datetime-local" id="rpDate" style="width:100%;padding:7px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:13px;box-sizing:border-box;background:#1c1c1b;color:#e2e2e0;">
+                        <input type="datetime-local" id="rpDate" step="1" style="width:100%;padding:7px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:13px;box-sizing:border-box;background:#1c1c1b;color:#e2e2e0;">
                     </div>
                 </div>
                 <div style="margin-bottom:10px;">
@@ -1453,7 +1497,7 @@ function promptPayment() {
     formData.append('phone', phone);
     formData.append('amount', amount);
 
-    fetch('api/mpesa/stk_push.php', { method: 'POST', body: formData })
+    fetch('api/payment/stk_push.php', { method: 'POST', body: formData })
         .then(r => r.json())
         .then(data => {
             if (data.success) {
@@ -1879,9 +1923,10 @@ function openRecordPaymentForm() {
     const form = document.getElementById('recordPaymentForm');
     form.style.display = form.style.display === 'none' ? 'block' : 'none';
     if (form.style.display === 'block') {
-        // Default date to now
+        // Default date to local time (not UTC ISO) with seconds
         const now = new Date();
-        const local = now.toISOString().slice(0,16);
+        const pad = n => String(n).padStart(2,'0');
+        const local = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate())+'T'+pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
         document.getElementById('rpDate').value = local;
     }
 }
@@ -1900,7 +1945,9 @@ function submitRecordPayment() {
     fd.append('amount', amount);
     fd.append('reference_code', ref);
     fd.append('method', method);
-    fd.append('transaction_date', date || new Date().toISOString().slice(0,16));
+    const _now = new Date(), _p = n => String(n).padStart(2,'0');
+    const _localNow = _now.getFullYear()+'-'+_p(_now.getMonth()+1)+'-'+_p(_now.getDate())+'T'+_p(_now.getHours())+':'+_p(_now.getMinutes())+':'+_p(_now.getSeconds());
+    fd.append('transaction_date', date || _localNow);
     fd.append('is_verified', '1');
     fd.append('notes', notes);
 
@@ -2412,6 +2459,7 @@ function openImportModal(type) {
     document.getElementById('importTemplateLink').download   = type + '_template.csv';
     document.getElementById('importModalResult').innerHTML   = '';
     document.getElementById('importCsvFile').value           = '';
+    document.getElementById('importConnTypeRow').style.display = (type === 'clients') ? 'block' : 'none';
     document.getElementById('importModal').style.display     = 'flex';
 }
 function closeImportModal() {
@@ -2542,6 +2590,14 @@ function showImportResult(html, type) {
                 <label style="display:block;font-size:13px;color:rgba(255,255,255,.55);margin-bottom:6px;">CSV File <span style="color:#fca5a5">*</span></label>
                 <input id="importCsvFile" type="file" name="csv_file" accept=".csv,text/csv"
                     style="width:100%;padding:9px 12px;background:#1a1a19;border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#e2e2e0;font-size:13px;box-sizing:border-box;">
+            </div>
+            <!-- Default connection type — shown only when importing customers -->
+            <div id="importConnTypeRow" style="display:none;margin-bottom:16px;">
+                <label style="display:block;font-size:13px;color:rgba(255,255,255,.55);margin-bottom:6px;">Default Connection Type <span style="font-size:11px;color:rgba(255,255,255,.3);">(used when CSV has no connection_type column)</span></label>
+                <select name="default_connection_type" style="width:100%;padding:9px 12px;background:#1a1a19;border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#e2e2e0;font-size:13px;box-sizing:border-box;">
+                    <option value="hotspot">Hotspot</option>
+                    <option value="pppoe">PPPoE</option>
+                </select>
             </div>
             <div style="margin-bottom:20px;font-size:13px;color:rgba(255,255,255,.4);">
                 <i class="fas fa-info-circle" style="color:#93c5fd;margin-right:4px;"></i>

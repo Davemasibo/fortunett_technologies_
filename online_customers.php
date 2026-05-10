@@ -733,7 +733,7 @@ function ocDisconnect(btn, username, type, routerId) {
                     <div><label style="display:block;font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;">Amount (KES) *</label><input type="number" id="rpAmount" placeholder="e.g. 1500" style="width:100%;padding:7px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:13px;box-sizing:border-box;background:#1c1c1b;color:#e2e2e0;"></div>
                     <div><label style="display:block;font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;">Reference / Code *</label><input type="text" id="rpReference" placeholder="e.g. QAB123456" style="width:100%;padding:7px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:13px;box-sizing:border-box;background:#1c1c1b;color:#e2e2e0;"></div>
                     <div><label style="display:block;font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;">Method</label><select id="rpMethod" style="width:100%;padding:7px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:13px;background:#1c1c1b;color:#e2e2e0;"><option value="M-Pesa">M-Pesa</option><option value="cash">Cash</option><option value="bank_transfer">Bank Transfer</option></select></div>
-                    <div><label style="display:block;font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;">Date</label><input type="datetime-local" id="rpDate" style="width:100%;padding:7px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:13px;box-sizing:border-box;background:#1c1c1b;color:#e2e2e0;"></div>
+                    <div><label style="display:block;font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;">Date</label><input type="datetime-local" id="rpDate" step="1" style="width:100%;padding:7px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:13px;box-sizing:border-box;background:#1c1c1b;color:#e2e2e0;"></div>
                 </div>
                 <div style="margin-bottom:10px;"><label style="display:block;font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;">Notes (optional)</label><input type="text" id="rpNotes" placeholder="Optional note" style="width:100%;padding:7px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;font-size:13px;box-sizing:border-box;background:#1c1c1b;color:#e2e2e0;"></div>
                 <div style="display:flex;gap:8px;">
@@ -1060,7 +1060,7 @@ function promptPayment() {
     ocToast('Initiating STK Push…', true);
     const fd = new FormData();
     fd.append('client_id', currentCustomer.id); fd.append('phone', phone); fd.append('amount', amount);
-    fetch('api/mpesa/stk_push.php', { method:'POST', body:fd })
+    fetch('api/payment/stk_push.php', { method:'POST', body:fd })
         .then(r => r.json())
         .then(d => { ocToast(d.success ? (d.sandbox ? 'SANDBOX: no real prompt sent.' : 'STK Push sent!') : 'STK Push failed: ' + (d.message||''), d.success); })
         .catch(() => ocToast('Network error.', false));
@@ -1149,7 +1149,10 @@ function handleSendSMS(e) {
 function openRecordPaymentForm() {
     const f = document.getElementById('recordPaymentForm');
     f.style.display = f.style.display === 'none' ? 'block' : 'none';
-    if (f.style.display === 'block') document.getElementById('rpDate').value = new Date().toISOString().slice(0,16);
+    if (f.style.display === 'block') {
+        const _n = new Date(), _p = n => String(n).padStart(2,'0');
+        document.getElementById('rpDate').value = _n.getFullYear()+'-'+_p(_n.getMonth()+1)+'-'+_p(_n.getDate())+'T'+_p(_n.getHours())+':'+_p(_n.getMinutes())+':'+_p(_n.getSeconds());
+    }
 }
 function submitRecordPayment() {
     if (!currentCustomer) return;
@@ -1159,7 +1162,10 @@ function submitRecordPayment() {
     const fd = new FormData();
     fd.append('client_id', currentCustomer.id); fd.append('amount', amount); fd.append('reference_code', ref);
     fd.append('method', document.getElementById('rpMethod').value);
-    fd.append('transaction_date', document.getElementById('rpDate').value || new Date().toISOString().slice(0,16));
+    const _rpDateVal = document.getElementById('rpDate').value;
+    const _rn = new Date(), _rp = n => String(n).padStart(2,'0');
+    const _rlocal = _rn.getFullYear()+'-'+_rp(_rn.getMonth()+1)+'-'+_rp(_rn.getDate())+'T'+_rp(_rn.getHours())+':'+_rp(_rn.getMinutes())+':'+_rp(_rn.getSeconds());
+    fd.append('transaction_date', _rpDateVal || _rlocal);
     fd.append('is_verified', '1'); fd.append('notes', document.getElementById('rpNotes').value);
     fetch('api/payments/record_manual.php', { method:'POST', body:fd })
         .then(r => r.json())

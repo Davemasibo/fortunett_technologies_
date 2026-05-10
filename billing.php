@@ -1202,7 +1202,7 @@ function submitMpesaPayment() {
     fd.append('bill_id',     currentBillId);
     fd.append('account_ref', 'INV-<?php echo htmlspecialchars($orgSlug); ?>');
 
-    fetch('api/mpesa/stk_push.php', { method:'POST', body:fd })
+    fetch('api/payment/stk_push.php', { method:'POST', body:fd })
         .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(data => {
             btn.innerHTML = origHtml;

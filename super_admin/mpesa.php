@@ -34,9 +34,9 @@ if (!$cfg) $cfg = [];
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
 $baseUrl = $scheme . '://' . $host;
-$autoCallback    = $baseUrl . '/api/mpesa/callback.php';
-$autoC2bValidation   = $baseUrl . '/api/mpesa/c2b_validation.php';
-$autoC2bConfirmation = $baseUrl . '/api/mpesa/c2b_confirmation.php';
+$autoCallback    = $baseUrl . '/api/payment/callback.php';
+$autoC2bValidation   = $baseUrl . '/api/payment/c2b_validation.php';
+$autoC2bConfirmation = $baseUrl . '/api/payment/c2b_confirmation.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -277,7 +277,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                             ?>
                             <?php if ($cbIsLocal): ?>
                             <span class="hint" style="color:#fca5a5;font-weight:600;">
-                                ⚠️ Saved URL is localhost — Safaricom cannot reach it. Update to your public HTTPS domain (e.g. <code>https://fortunetttech.site/api/mpesa/callback.php</code>).
+                                ⚠️ Saved URL is localhost — Safaricom cannot reach it. Update to your public HTTPS domain (e.g. <code>https://fortunetttech.site/api/payment/callback.php</code>).
                             </span>
                             <?php else: ?>
                             <span class="hint">Must be a public HTTPS URL. Auto-detected: <code><?php echo htmlspecialchars($autoCallback); ?></code></span>
@@ -387,7 +387,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                 <?php
                 // Show the callback URL that will actually be used
                 $savedCb = $cfg['callback_url'] ?? '';
-                $constCb = 'https://fortunetttech.site/api/mpesa/callback.php';
+                $constCb = 'https://fortunetttech.site/api/payment/callback.php';
                 $effectiveCb = !empty($savedCb) && !preg_match('/https?:\/\/(localhost|127\.)/i', $savedCb)
                     ? $savedCb
                     : $constCb;

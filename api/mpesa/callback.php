@@ -4,10 +4,10 @@
  *
  * Safaricom calls this URL after an STK Push completes (success or failure).
  * For tenants using their own credentials the callback URL contains their
- * subdomain (e.g. https://acme.fortunetttech.site/api/mpesa/callback.php),
+ * subdomain (e.g. https://acme.fortunetttech.site/api/payment/callback.php),
  * so we detect the tenant from HTTP_HOST.
  *
- * For the platform shared paybill, use /api/mpesa/c2b_confirmation.php instead.
+ * For the platform shared paybill, use /api/payment/c2b_confirmation.php instead.
  */
 header('Content-Type: application/json');
 

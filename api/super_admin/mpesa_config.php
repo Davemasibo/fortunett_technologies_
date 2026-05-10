@@ -276,7 +276,7 @@ if ($action === 'test_stk') {
     // Determine callback URL for this test push
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host   = explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0];
-    $autoCallback = $scheme . '://' . $host . '/api/mpesa/callback.php';
+    $autoCallback = $scheme . '://' . $host . '/api/payment/callback.php';
     if (empty($row['callback_url']) || preg_match('/https?:\/\/(localhost|127\.)/i', $row['callback_url'])) {
         $testRow = $row;
         $testRow['callback_url'] = $autoCallback;
