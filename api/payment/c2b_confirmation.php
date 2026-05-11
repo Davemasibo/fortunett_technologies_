@@ -113,7 +113,7 @@ try {
         VALUES (?, ?, ?, 'mpesa_paybill', ?, 'completed', NOW(), ?)
     ")->execute([$client_id, $tenant_id, $amount, $transactionId, 'C2B via platform paybill — acct: ' . $accountRef]);
 
-    // Log the raw C2B transaction
+    // Log the raw C2B transaction — uses correct mpesa_transactions schema columns
     $pdo->prepare("
         INSERT INTO mpesa_transactions
             (client_id, tenant_id, phone_number, amount, merchant_request_id,
