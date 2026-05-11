@@ -58,13 +58,26 @@ try {
     // Check TCP reachability separately so we can give a clear error reason
     if (!$mk->isReachable(4)) {
         $pdo->prepare("UPDATE mikrotik_routers SET status = 'inactive' WHERE id = ?")->execute([$id]);
-        // Include the server's real outbound IP so the admin can verify the firewall rule
-        $serverIp = $_SERVER['SERVER_ADDR'] ?? 'unknown';
+
+        // Connections always go through WireGuard — source IP at the router is always 10.200.200.1
+        $isVpn = str_starts_with($ip, '10.200.200.');
+        if ($isVpn) {
+            $msg = "TCP port $port unreachable on $ip (WireGuard VPN). "
+                 . "The WireGuard tunnel is likely down. On the VPS run: "
+                 . "sudo wg show && ping -c3 $ip — then restart with: sudo systemctl restart wg-quick@wg0. "
+                 . "If the tunnel is up but port is blocked, on the router run: "
+                 . "/ip firewall filter print where comment~\"Fortunett-API\" and verify it accepts src-address=10.200.200.1.";
+        } else {
+            $serverIp = $_SERVER['SERVER_ADDR'] ?? 'unknown';
+            $msg = "TCP port $port unreachable on $ip (direct IP). "
+                 . "Verify the router firewall allows $serverIp/32 on port $port, "
+                 . "or switch to VPN-based access via the Setup VPN button.";
+        }
+
         echo json_encode([
             'status'     => 'error',
             'reason'     => 'unreachable',
-            'server_ip'  => $serverIp,
-            'message'    => "TCP port $port unreachable on $ip. Server IP is $serverIp — run: /ip firewall filter print where comment=Fortunett-API and verify it allows $serverIp/32.",
+            'message'    => $msg,
         ]);
         exit;
     }
