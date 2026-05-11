@@ -53,15 +53,24 @@ try {
     $st->execute([$client_id, $tenant_id]);
     $payments = $st->fetchAll(PDO::FETCH_ASSOC);
 
+    // Detect whether mpesa_transactions has a tenant_id column
+    $hasMpesaTenant = false;
+    try {
+        $col2 = $pdo->query("SHOW COLUMNS FROM mpesa_transactions LIKE 'tenant_id'");
+        $hasMpesaTenant = (bool)$col2->fetch();
+    } catch (Throwable $_e) {}
+
     // Merge in M-Pesa transaction details (phone, confirmation code from callback)
+    $mpesaTenantClause = $hasMpesaTenant ? 'AND (tenant_id = ? OR tenant_id IS NULL)' : '';
+    $mpesaParams = $hasMpesaTenant ? [$client_id, $tenant_id] : [$client_id];
     $mtSt = $pdo->prepare("
         SELECT phone_number, checkout_request_id, transaction_id, result_code, amount, created_at
         FROM mpesa_transactions
-        WHERE client_id = ? AND (tenant_id = ? OR tenant_id IS NULL)
+        WHERE client_id = ? {$mpesaTenantClause}
         ORDER BY created_at DESC
         LIMIT 100
     ");
-    $mtSt->execute([$client_id, $tenant_id]);
+    $mtSt->execute($mpesaParams);
     $mpesaTx = $mtSt->fetchAll(PDO::FETCH_ASSOC);
 
     // Index mpesa rows by checkout_request_id for quick lookup
