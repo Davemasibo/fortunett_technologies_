@@ -563,6 +563,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <button class="footer-btn deploy" id="rdeploy-<?php echo $router['id']; ?>" onclick="deployHotspotLogin(<?php echo $router['id']; ?>, this)" title="Push branded hotspot login page to this router's flash"><i class="fas fa-cloud-upload-alt"></i> Deploy Login</button>
                             <span class="login-status-dot checking" id="rlogin-status-<?php echo $router['id']; ?>" title="Checking deploy status…"><i class="fas fa-circle-notch fa-spin"></i> …</span>
                         </div>
+                        <!-- WireGuard VPN -->
+                        <div class="footer-actions-group">
+                            <button class="footer-btn" id="rbtn-wg-<?php echo $router['id']; ?>"
+                                onclick="setupWireGuard(<?php echo $router['id']; ?>, this)"
+                                title="<?php echo $router['vpn_ip'] ? 'Re-generate WireGuard config (VPN: '.$router['vpn_ip'].')' : 'Setup WireGuard VPN tunnel'; ?>"
+                                style="<?php echo $router['vpn_ip'] ? 'color:#4ade80;' : 'color:#fb923c;'; ?>">
+                                <i class="fas fa-shield-alt"></i> <?php echo $router['vpn_ip'] ? 'VPN ✓' : 'Setup VPN'; ?>
+                            </button>
+                        </div>
                         <!-- Management -->
                         <div class="footer-actions-group">
                             <button class="footer-btn edit" onclick="editRouter(<?php echo htmlspecialchars(json_encode($router)); ?>)" title="Edit router settings"><i class="fas fa-sliders-h"></i> Edit</button>
@@ -1146,6 +1155,19 @@ window.onclick = function(event) {
 </script>
 
 <!-- Edit Router Modal -->
+<!-- ── WireGuard Setup Modal ────────────────────────────────────────────── -->
+<div id="wgModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center;">
+  <div style="background:#1e1e1d;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:24px;width:100%;max-width:660px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.7);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <h3 style="margin:0;color:#e2e2e0;font-size:16px;"><i class="fas fa-shield-alt" style="color:#4ade80;margin-right:8px;"></i>WireGuard VPN Setup</h3>
+      <button onclick="document.getElementById('wgModal').style.display='none'" style="background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;">✕</button>
+    </div>
+    <div id="wgModalBody">
+      <div style="text-align:center;padding:30px;color:rgba(255,255,255,.35);"><i class="fas fa-spinner fa-spin"></i> Generating WireGuard config…</div>
+    </div>
+  </div>
+</div>
+
 <div id="editRouterModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.65); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:#222221; border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:24px; width:100%; max-width:500px; box-shadow:0 24px 60px rgba(0,0,0,.6);">
         <h3 style="margin-top:0; margin-bottom:16px; color:#e2e2e0;">Edit Router</h3>
@@ -1274,6 +1296,45 @@ function syncPackageProfiles(btn) {
             showToast('Profiles synced — ' + summary, 'success');
         })
         .catch(() => { btn.innerHTML = orig; btn.disabled = false; showToast('Network error during sync.', 'error'); });
+}
+
+function setupWireGuard(routerId, btn) {
+    const modal = document.getElementById('wgModal');
+    const body  = document.getElementById('wgModalBody');
+    modal.style.display = 'flex';
+    body.innerHTML = '<div style="text-align:center;padding:30px;color:rgba(255,255,255,.35);"><i class="fas fa-spinner fa-spin"></i> Generating WireGuard config…</div>';
+
+    const fd = new FormData();
+    fd.append('router_id', routerId);
+    fetch('api/routers/wireguard_setup.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) {
+                body.innerHTML = `<div style="color:#f87171;padding:16px;background:rgba(239,68,68,.1);border-radius:8px;font-size:13px;"><i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>${d.error}</div>`;
+                return;
+            }
+            // Update button to show VPN is now configured
+            if (btn) { btn.innerHTML = '<i class="fas fa-shield-alt"></i> VPN ✓'; btn.style.color='#4ade80'; }
+            body.innerHTML = `
+              <div style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.2);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#4ade80;">
+                <i class="fas fa-check-circle" style="margin-right:6px;"></i>
+                VPN IP <strong>${d.vpn_ip}</strong> assigned and peer added to VPS wg0.
+              </div>
+              <p style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:10px;">
+                Copy and run these commands in the RouterOS terminal (Winbox → New Terminal):
+              </p>
+              <div style="position:relative;">
+                <pre id="wgCmds" style="background:#111;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:14px;font-size:11px;color:#a3e635;overflow-x:auto;white-space:pre-wrap;line-height:1.6;">${d.commands.replace(/</g,'&lt;')}</pre>
+                <button onclick="navigator.clipboard.writeText(document.getElementById('wgCmds').innerText).then(()=>showToast('Copied!','success'))"
+                  style="position:absolute;top:8px;right:8px;padding:4px 10px;font-size:11px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:5px;color:#d4d4d2;cursor:pointer;">
+                  <i class="fas fa-copy"></i> Copy
+                </button>
+              </div>
+              <p style="font-size:12px;color:rgba(255,255,255,.35);margin-top:12px;">
+                After running these commands, the tunnel will come up automatically. Test connectivity with: <code style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:3px;">/ping ${d.vpn_ip ? '10.200.200.1' : ''}</code>
+              </p>`;
+        })
+        .catch(() => { body.innerHTML = '<div style="color:#f87171;padding:16px;">Network error. Try again.</div>'; });
 }
 
 function testConnection(id, btn) {
