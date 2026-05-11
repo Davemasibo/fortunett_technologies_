@@ -30,7 +30,7 @@ $log("=== Expiry Check: " . date('Y-m-d H:i:s') . " ===");
 // ── Find expired-but-still-active clients ─────────────────────────────────────
 $stmt = $pdo->prepare("
     SELECT c.id, c.full_name, c.mikrotik_username, c.connection_type, c.tenant_id,
-           c.expiry_date, c.router_id, c.phone, c.account_number,
+           c.expiry_date, c.phone, c.account_number,
            p.name AS pkg_name, p.price AS pkg_price,
            t.company_name AS tenant_name, t.subdomain
     FROM clients c

@@ -53,18 +53,27 @@ try {
     $st->execute([$client_id, $tenant_id]);
     $payments = $st->fetchAll(PDO::FETCH_ASSOC);
 
-    // Detect whether mpesa_transactions has a tenant_id column
-    $hasMpesaTenant = false;
+    // Detect optional columns on mpesa_transactions (schema varies by migration state)
+    $mpesaCols = [];
     try {
-        $col2 = $pdo->query("SHOW COLUMNS FROM mpesa_transactions LIKE 'tenant_id'");
-        $hasMpesaTenant = (bool)$col2->fetch();
+        foreach ($pdo->query("SHOW COLUMNS FROM mpesa_transactions") as $col) {
+            $mpesaCols[] = $col['Field'];
+        }
     } catch (Throwable $_e) {}
+
+    $hasMpesaTenant  = in_array('tenant_id', $mpesaCols);
+    // Receipt number may be stored as transaction_id (newer) or mpesa_receipt_number (original schema)
+    $receiptCol      = in_array('transaction_id', $mpesaCols)      ? 'transaction_id'       : (in_array('mpesa_receipt_number', $mpesaCols) ? 'mpesa_receipt_number' : 'NULL');
+    $resultCodeCol   = in_array('result_code', $mpesaCols)         ? 'result_code'          : 'NULL';
 
     // Merge in M-Pesa transaction details (phone, confirmation code from callback)
     $mpesaTenantClause = $hasMpesaTenant ? 'AND (tenant_id = ? OR tenant_id IS NULL)' : '';
     $mpesaParams = $hasMpesaTenant ? [$client_id, $tenant_id] : [$client_id];
     $mtSt = $pdo->prepare("
-        SELECT phone_number, checkout_request_id, transaction_id, result_code, amount, created_at
+        SELECT phone_number, checkout_request_id,
+               {$receiptCol}   AS transaction_id,
+               {$resultCodeCol} AS result_code,
+               amount, created_at
         FROM mpesa_transactions
         WHERE client_id = ? {$mpesaTenantClause}
         ORDER BY created_at DESC

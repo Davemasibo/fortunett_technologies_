@@ -92,11 +92,12 @@ try {
             $tenant_id = $tx['c_tenant_id'] ?? null;
         }
 
-        // Update mpesa_transactions
+        // Update mpesa_transactions — use mpesa_receipt_number (schema column)
+        // raw_callback stores the full Safaricom payload for auditing
         $pdo->prepare("
             UPDATE mpesa_transactions
             SET status = 'completed', result_code = ?, result_desc = ?,
-                transaction_id = ?, callback_data = ?, updated_at = NOW()
+                mpesa_receipt_number = ?, raw_callback = ?, updated_at = NOW()
             WHERE checkout_request_id = ?
         ")->execute([$resultCode, $resultDesc, $receipt, $content, $checkoutRequestId]);
 
@@ -164,7 +165,7 @@ try {
         $pdo->prepare("
             UPDATE mpesa_transactions
             SET status = 'failed', result_code = ?, result_desc = ?,
-                callback_data = ?, updated_at = NOW()
+                raw_callback = ?, updated_at = NOW()
             WHERE checkout_request_id = ?
         ")->execute([$resultCode, $resultDesc, $content, $checkoutRequestId]);
 
