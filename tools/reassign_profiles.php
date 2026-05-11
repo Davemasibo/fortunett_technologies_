@@ -21,18 +21,19 @@ if ($dryRun) {
     echo "[DRY RUN] Pass --apply to make actual changes.\n\n";
 }
 
-// Fetch all active PPPoE clients with their package profile
+// Fetch all active PPPoE clients joined to their tenant's first active router.
+// clients table has no router_id — router is resolved via tenant_id, same as auto_provision.php.
 $clients = $pdo->query("
     SELECT
         c.id,
         c.full_name,
         c.mikrotik_username,
-        c.router_id,
         c.tenant_id,
         p.mikrotik_profile,
         p.name        AS package_name,
         p.upload_speed,
         p.download_speed,
+        r.id          AS router_id,
         r.name        AS router_name,
         r.ip_address,
         r.vpn_ip,
@@ -40,13 +41,17 @@ $clients = $pdo->query("
         r.password    AS r_pass,
         r.api_port
     FROM clients c
-    JOIN packages p        ON p.id = c.package_id
-    JOIN mikrotik_routers r ON r.id = c.router_id
+    JOIN packages p ON p.id = c.package_id
+    JOIN mikrotik_routers r ON r.tenant_id = c.tenant_id
+        AND r.id = (
+            SELECT id FROM mikrotik_routers
+            WHERE tenant_id = c.tenant_id AND status IN ('active','online')
+            ORDER BY id ASC LIMIT 1
+        )
     WHERE c.status = 'active'
       AND c.connection_type = 'pppoe'
       AND c.mikrotik_username IS NOT NULL
       AND c.mikrotik_username != ''
-      AND r.status IN ('active','online')
     ORDER BY r.id, c.id
 ")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -60,7 +65,7 @@ echo "Found " . count($clients) . " active PPPoE clients.\n\n";
 // Group by router to minimise reconnects
 $byRouter = [];
 foreach ($clients as $c) {
-    $byRouter[$c['router_id']][] = $c;
+    $byRouter[$c['router_id'] ?? $c['tenant_id']][] = $c;
 }
 
 foreach ($byRouter as $routerId => $rows) {
