@@ -1,0 +1,40 @@
+[versions]
+agp                 = "8.5.2"
+kotlin              = "2.0.21"
+coreKtx             = "1.13.1"
+appcompat           = "1.7.0"
+material            = "1.12.0"
+constraintlayout    = "2.1.4"
+navigationFragment  = "2.7.7"
+lifecycleViewModel  = "2.8.6"
+hilt                = "2.51.1"
+retrofit            = "2.11.0"
+okhttp              = "4.12.0"
+gson                = "2.10.1"
+securityCrypto      = "1.1.0-alpha06"
+coroutines          = "1.8.1"
+swiperefresh        = "1.1.0"
+
+[libraries]
+androidx-core-ktx              = { group = "androidx.core",                   name = "core-ktx",                        version.ref = "coreKtx" }
+androidx-appcompat             = { group = "androidx.appcompat",              name = "appcompat",                       version.ref = "appcompat" }
+material                       = { group = "com.google.android.material",     name = "material",                        version.ref = "material" }
+androidx-constraintlayout      = { group = "androidx.constraintlayout",       name = "constraintlayout",                version.ref = "constraintlayout" }
+androidx-navigation-fragment   = { group = "androidx.navigation",             name = "navigation-fragment-ktx",         version.ref = "navigationFragment" }
+androidx-navigation-ui         = { group = "androidx.navigation",             name = "navigation-ui-ktx",               version.ref = "navigationFragment" }
+androidx-lifecycle-viewmodel   = { group = "androidx.lifecycle",              name = "lifecycle-viewmodel-ktx",         version.ref = "lifecycleViewModel" }
+androidx-lifecycle-runtime     = { group = "androidx.lifecycle",              name = "lifecycle-runtime-ktx",           version.ref = "lifecycleViewModel" }
+hilt-android                   = { group = "com.google.dagger",               name = "hilt-android",                    version.ref = "hilt" }
+hilt-compiler                  = { group = "com.google.dagger",               name = "hilt-android-compiler",           version.ref = "hilt" }
+retrofit                       = { group = "com.squareup.retrofit2",          name = "retrofit",                        version.ref = "retrofit" }
+retrofit-gson                  = { group = "com.squareup.retrofit2",          name = "converter-gson",                  version.ref = "retrofit" }
+okhttp-logging                 = { group = "com.squareup.okhttp3",            name = "logging-interceptor",             version.ref = "okhttp" }
+gson                           = { group = "com.google.code.gson",            name = "gson",                            version.ref = "gson" }
+security-crypto                = { group = "androidx.security",               name = "security-crypto",                 version.ref = "securityCrypto" }
+coroutines-android             = { group = "org.jetbrains.kotlinx",           name = "kotlinx-coroutines-android",      version.ref = "coroutines" }
+swiperefreshlayout             = { group = "androidx.swiperefreshlayout",     name = "swiperefreshlayout",              version.ref = "swiperefresh" }
+
+[plugins]
+android-application  = { id = "com.android.application", version.ref = "agp" }
+kotlin-android       = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+hilt                 = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }

@@ -12,6 +12,7 @@
  */
 
 require_once __DIR__ . '/../classes/MikrotikAPI.php';
+require_once __DIR__ . '/radius_client.php';
 
 /**
  * Provision a newly activated client on their tenant's first active router.
@@ -106,6 +107,13 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
                 }
             }
             _provisionPPPoE($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '');
+
+            // Sync to RADIUS (best-effort — runs alongside MikroTik API provisioning)
+            try {
+                radius_sync_client($pdo, array_merge($client, ['mikrotik_username' => $username, 'mikrotik_password' => $password]), $package);
+            } catch (Throwable $_e) {
+                error_log('RADIUS sync on provision: ' . $_e->getMessage());
+            }
         } else {
             _provisionHotspot($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '', $sharedUsers, $hotspotServer);
         }

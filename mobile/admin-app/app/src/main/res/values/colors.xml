@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_primary">#3B6EA5</color>
+    <color name="brand_dark">#1B4E85</color>
+
+    <color name="status_active">#4CAF50</color>
+    <color name="status_inactive">#9E9E9E</color>
+    <color name="status_expired">#F44336</color>
+    <color name="status_suspended">#FF9800</color>
+</resources>

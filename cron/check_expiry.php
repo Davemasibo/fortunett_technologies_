@@ -16,6 +16,7 @@ chdir(dirname(__DIR__));
 require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/../classes/MikrotikAPI.php';
 require_once __DIR__ . '/../classes/SMSHelper.php';
+require_once __DIR__ . '/../includes/radius_client.php';
 
 // Add missing columns silently (safe to run repeatedly)
 try { $pdo->exec("ALTER TABLE mikrotik_routers ADD COLUMN vpn_ip VARCHAR(45) NULL DEFAULT NULL"); } catch (Throwable $_) {}
@@ -118,6 +119,7 @@ foreach ($byTenant as $tenantId => $clients) {
                 if ($connType === 'pppoe') {
                     $disabled = $api->disablePPPoEUser($uname);
                     $api->kickPPPoESession($uname);
+                    radius_disable_client($pdo, $uname); // also block RADIUS reconnects
                 } else {
                     // disableHotspotUser already calls kickHotspotSession internally
                     $disabled = $api->disableHotspotUser($uname);

@@ -1,0 +1,24 @@
+# FreeRADIUS clients.conf — NAS (Network Access Server) definitions.
+# Each MikroTik router that will use RADIUS needs an entry here.
+# Add to /etc/freeradius/3.0/clients.conf (append to existing file).
+#
+# shared_secret MUST match what you configure on the MikroTik:
+#   /radius add address=<vps-ip> secret=<shared_secret> service=ppp
+#
+# Generate a strong secret: openssl rand -hex 16
+
+# Template — duplicate for each router, using its WAN/VPN IP
+client mikrotik_router_1 {
+    ipaddr          = 0.0.0.0/0    # replace with router's public IP for security
+    secret          = CHANGE_TO_STRONG_SECRET
+    nastype         = other
+    shortname       = mikrotik_1
+}
+
+# Example with specific IP (more secure):
+# client mikrotik_acme_branch1 {
+#     ipaddr    = 41.80.xxx.xxx
+#     secret    = my_strong_secret_here
+#     nastype   = other
+#     shortname = acme_nairobi
+# }

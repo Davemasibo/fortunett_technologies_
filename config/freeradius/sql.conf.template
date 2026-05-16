@@ -1,0 +1,56 @@
+# FreeRADIUS SQL module config — copy to /etc/freeradius/3.0/mods-available/sql
+# Then: ln -sf /etc/freeradius/3.0/mods-available/sql /etc/freeradius/3.0/mods-enabled/sql
+#
+# This points FreeRADIUS at the SAME MySQL database as FortuNett,
+# so PHP writes to rad* tables and FreeRADIUS reads them instantly.
+
+sql {
+    driver   = "rlm_sql_mysql"
+    dialect  = "mysql"
+
+    server   = "127.0.0.1"
+    port     = 3306
+    login    = "radius"              # dedicated DB user (see setup guide)
+    password = "CHANGE_ME"           # set in .env and match here
+    radius_db = "fortunnet_technologies"
+
+    # Connection pool — tune based on subscriber count
+    pool {
+        start    = 5
+        min      = 3
+        max      = 32
+        spare    = 3
+        uses     = 0
+        retry_delay = 30
+        lifetime = 0
+        idle_timeout = 60
+    }
+
+    # Standard table names (match schema in 2026-05-16-freeradius-schema.sql)
+    authcheck_table   = "radcheck"
+    authreply_table   = "radreply"
+    groupcheck_table  = "radgroupcheck"
+    groupreply_table  = "radgroupreply"
+    usergroup_table   = "radusergroup"
+    read_groups       = yes
+
+    acct_table1       = "radacct"
+    acct_table2       = "radacct"
+    postauth_table    = "radpostauth"
+
+    # Write interim accounting updates (session usage data)
+    # MikroTik sends these every 5 min (configured on the router)
+    acct_update_query = "\
+        UPDATE ${acct_table2} \
+        SET \
+            acctupdatetime  = '%S', \
+            acctinterval    = '%I', \
+            acctsessiontime = '%{Acct-Session-Time}', \
+            acctinputoctets = '%{%{Acct-Input-Gigawords}:-0}' << 32 | '%{%{Acct-Input-Octets}:-0}', \
+            acctoutputoctets = '%{%{Acct-Output-Gigawords}:-0}' << 32 | '%{%{Acct-Output-Octets}:-0}' \
+        WHERE acctsessionid = '%{Acct-Session-Id}' \
+        AND username       = '%{SQL-User-Name}' \
+        AND nasipaddress   = '%{%{NAS-IPv6-Address}:-%{NAS-IP-Address}}'"
+
+    read_clients = no   # NAS definitions are in clients.conf, not DB
+}
