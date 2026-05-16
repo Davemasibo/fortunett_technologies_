@@ -709,6 +709,33 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                             <?php endforeach; ?>
                         </div>
                     </div>
+                    <!-- C2B auto-payment registration status -->
+                    <?php
+                    $c2bRegistered = !empty($creds['c2b_registered']);
+                    $c2bAt = $creds['c2b_registered_at'] ?? null;
+                    $shortcodeType = $creds['shortcode_type'] ?? 'paybill';
+                    ?>
+                    <div style="margin-top:10px;padding:10px 12px;border-radius:8px;
+                         background:<?= $c2bRegistered ? 'rgba(16,185,129,.08)' : 'rgba(245,158,11,.07)' ?>;
+                         border:1px solid <?= $c2bRegistered ? 'rgba(16,185,129,.2)' : 'rgba(245,158,11,.2)' ?>;"
+                         id="c2b-status-<?= $g['id'] ?>">
+                        <div style="display:flex;align-items:center;gap:7px;">
+                            <i class="fas <?= $c2bRegistered ? 'fa-check-circle' : 'fa-exclamation-circle' ?>"
+                               style="font-size:13px;color:<?= $c2bRegistered ? '#34d399' : '#fcd34d' ?>;flex-shrink:0;"></i>
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-size:12px;font-weight:700;color:<?= $c2bRegistered ? '#6ee7b7' : '#fcd34d' ?>;">
+                                    <?= $c2bRegistered ? 'C2B Auto-Payment Active' : 'C2B Auto-Payment Not Registered' ?>
+                                </div>
+                                <div style="font-size:11px;color:rgba(255,255,255,.38);margin-top:1px;">
+                                    <?php if ($c2bRegistered && $c2bAt): ?>
+                                        Registered <?= htmlspecialchars(date('d M Y', strtotime($c2bAt))) ?> · customers paying your <?= $shortcodeType === 'till' ? 'till' : 'paybill' ?> are auto-connected
+                                    <?php else: ?>
+                                        Register C2B so customers paying your <?= $shortcodeType === 'till' ? 'till' : 'paybill' ?> directly get auto-connected
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 <?php elseif ($g['gateway_type'] === 'bank_account'): ?>
                     <div class="gw-detail">
                         <span class="gw-detail-label">Bank</span>
@@ -754,6 +781,15 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                 <button class="gw-btn test" onclick="testGateway(<?= $g['id'] ?>, this)">
                     <i class="fas fa-plug"></i> Test
                 </button>
+                <?php if ($g['gateway_type'] === 'mpesa_api' && ($creds['shortcode_type'] ?? 'paybill') === 'paybill'): ?>
+                <button class="gw-btn" id="c2b-btn-<?= $g['id'] ?>"
+                        style="color:<?= $c2bRegistered ? '#34d399' : '#fcd34d' ?>;border-color:<?= $c2bRegistered ? 'rgba(52,211,153,.3)' : 'rgba(252,211,77,.3)' ?>;"
+                        onclick="registerC2B(<?= $g['id'] ?>, this)"
+                        title="<?= $c2bRegistered ? 'Re-register C2B URLs with Safaricom' : 'Register C2B so direct paybill payments auto-connect customers' ?>">
+                    <i class="fas <?= $c2bRegistered ? 'fa-sync-alt' : 'fa-bolt' ?>"></i>
+                    <?= $c2bRegistered ? 'Re-register C2B' : 'Register C2B' ?>
+                </button>
+                <?php endif; ?>
                 <?php if (!$g['is_default']): ?>
                 <button class="gw-btn" style="color:var(--primary-dark,#2C5282);border-color:rgba(59,110,165,.3);"
                         onclick="setDefaultGateway(<?= $g['id'] ?>, this)" title="Make this the primary payment method for customers">
@@ -1163,5 +1199,50 @@ function testGateway(gatewayId, btn) {
             btn.innerHTML = origHtml;
             btn.disabled  = false;
         });
+}
+
+/* ── Register C2B URLs with Safaricom ──────────────────────── */
+function registerC2B(gatewayId, btn) {
+    const statusEl = document.getElementById('c2b-status-' + gatewayId);
+    const origHtml = btn.innerHTML;
+    btn.innerHTML  = '<i class="fas fa-spinner fa-spin"></i> Registering…';
+    btn.disabled   = true;
+
+    fetch('api/payment/register_c2b.php', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ gateway_id: gatewayId }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            if (statusEl) {
+                statusEl.style.background = 'rgba(16,185,129,.08)';
+                statusEl.style.border     = '1px solid rgba(16,185,129,.2)';
+                statusEl.innerHTML = `
+                    <div style="display:flex;align-items:center;gap:7px;">
+                        <i class="fas fa-check-circle" style="font-size:13px;color:#34d399;flex-shrink:0;"></i>
+                        <div>
+                            <div style="font-size:12px;font-weight:700;color:#6ee7b7;">C2B Auto-Payment Active</div>
+                            <div style="font-size:11px;color:rgba(255,255,255,.38);margin-top:1px;">
+                                Registered just now · customers paying your paybill are auto-connected
+                            </div>
+                        </div>
+                    </div>`;
+            }
+            btn.innerHTML = '<i class="fas fa-sync-alt"></i> Re-register C2B';
+            btn.style.color       = '#34d399';
+            btn.style.borderColor = 'rgba(52,211,153,.3)';
+            if (typeof showToast === 'function') showToast(data.message, 'success');
+        } else {
+            if (typeof showToast === 'function') showToast('C2B registration failed: ' + data.error, 'error');
+            btn.innerHTML = origHtml;
+        }
+    })
+    .catch(() => {
+        if (typeof showToast === 'function') showToast('Network error — could not reach registration endpoint.', 'error');
+        btn.innerHTML = origHtml;
+    })
+    .finally(() => { btn.disabled = false; });
 }
 </script>

@@ -272,6 +272,66 @@ class MpesaAPI {
     }
     
     /**
+     * Register C2B validation and confirmation URLs with Safaricom.
+     *
+     * Call this once after saving M-Pesa API credentials. Safaricom remembers
+     * the URLs per shortcode — you only need to re-register if the URLs change.
+     *
+     * ResponseType:
+     *   'Completed' — accept all transactions even if validation URL is down
+     *   'Cancelled' — reject the transaction if validation URL is unreachable
+     *
+     * @return array ['success' => bool, 'error' => string|null, 'response' => array|null]
+     */
+    public function registerC2B(string $validationUrl, string $confirmationUrl, string $responseType = 'Completed'): array {
+        $token = $this->getAccessToken();
+        if (!$token) {
+            $detail = $this->last_error ? ' (' . $this->last_error . ')' : '';
+            return ['success' => false, 'error' => 'Failed to get access token' . $detail];
+        }
+
+        $url  = $this->base_url . '/mpesa/c2b/v1/registerurl';
+        $body = [
+            'ShortCode'       => $this->shortcode,
+            'ResponseType'    => $responseType,
+            'ConfirmationURL' => $confirmationUrl,
+            'ValidationURL'   => $validationUrl,
+        ];
+
+        $curl = curl_init();
+        curl_setopt($curl, CURLOPT_URL, $url);
+        curl_setopt($curl, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $token,
+        ]);
+        curl_setopt($curl, CURLOPT_POST, true);
+        curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($body));
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, 15);
+        curl_setopt($curl, CURLOPT_TIMEOUT, 30);
+
+        $response  = curl_exec($curl);
+        $curlError = curl_error($curl);
+        $httpCode  = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        curl_close($curl);
+
+        if ($curlError) {
+            return ['success' => false, 'error' => 'cURL error: ' . $curlError];
+        }
+
+        $json = json_decode($response, true) ?? [];
+
+        // Safaricom returns ResponseCode "0" on success
+        if (isset($json['ResponseCode']) && $json['ResponseCode'] === '0') {
+            return ['success' => true, 'response' => $json];
+        }
+
+        $errorMsg = $json['errorMessage'] ?? $json['ResponseDescription'] ?? ('HTTP ' . $httpCode . ': ' . substr($response, 0, 300));
+        return ['success' => false, 'error' => $errorMsg, 'raw' => $json];
+    }
+
+    /**
      * Format phone number to 254...
      */
     private function formatPhone($phone) {
