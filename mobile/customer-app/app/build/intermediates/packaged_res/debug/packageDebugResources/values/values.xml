@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_dark">#1B4E85</color>
+    <color name="brand_primary">#3B6EA5</color>
+    <color name="status_active">#4CAF50</color>
+    <color name="status_expired">#F44336</color>
+    <color name="status_pending">#FF9800</color>
+    <color name="status_success">#4CAF50</color>
+    <string name="app_name">FortuNett</string>
+    <style name="Theme.FortuNettCustomer" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/brand_primary</item>
+        <item name="colorPrimaryVariant">@color/brand_dark</item>
+        <item name="colorSecondary">@color/brand_primary</item>
+    </style>
+</resources>

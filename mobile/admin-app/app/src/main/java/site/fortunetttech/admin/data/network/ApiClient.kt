@@ -8,7 +8,8 @@ import site.fortunetttech.admin.data.preferences.TokenPreferences
 import java.util.concurrent.TimeUnit
 
 // Placeholder host — SubdomainInterceptor rewrites to {subdomain}.fortunetttech.site on every call.
-private const val BASE_URL = "https://placeholder.fortunetttech.site/"
+// 10.0.2.2 = host machine localhost from Android emulator
+private const val BASE_URL = "http://10.0.2.2/"
 
 /**
  * Rewrites the request host to {subdomain}.fortunetttech.site so the same Retrofit singleton
@@ -18,8 +19,8 @@ class SubdomainInterceptor(private val prefs: TokenPreferences) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val subdomain = prefs.subdomain ?: return chain.proceed(chain.request())
         val newUrl = chain.request().url.newBuilder()
-            .scheme("https")
-            .host("$subdomain.fortunetttech.site")
+            .scheme("http")
+            .host("10.0.2.2")
             .build()
         return chain.proceed(chain.request().newBuilder().url(newUrl).build())
     }

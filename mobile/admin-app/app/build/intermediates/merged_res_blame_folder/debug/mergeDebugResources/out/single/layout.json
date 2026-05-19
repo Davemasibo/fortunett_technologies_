@@ -1,0 +1,22 @@
+[
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/fragment_dashboard.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/fragment_dashboard.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/fragment_client_list.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/fragment_client_list.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/item_client.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/item_client.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/activity_main.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/activity_main.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/activity_login.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/activity_login.xml"
+    }
+]

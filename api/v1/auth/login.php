@@ -71,7 +71,7 @@ try {
     $tenantName      = null;
     $tenantSubdomain = null;
     if ($tenantId) {
-        $ts = $pdo->prepare("SELECT name, subdomain FROM tenants WHERE id = ? LIMIT 1");
+        $ts = $pdo->prepare("SELECT company_name AS name, subdomain FROM tenants WHERE id = ? LIMIT 1");
         $ts->execute([$tenantId]);
         $tr = $ts->fetch(PDO::FETCH_ASSOC);
         $tenantName      = $tr['name']      ?? null;
