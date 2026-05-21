@@ -28,8 +28,8 @@ try {
             COUNT(*) AS total,
             SUM(status = 'active')    AS active,
             SUM(status = 'inactive')  AS inactive,
-            SUM(status = 'suspended') AS suspended,
-            SUM(expiry_date < NOW() AND status = 'active') AS expiring_soon
+            SUM(status = 'expired')   AS expired,
+            SUM(status = 'suspended') AS suspended
         FROM clients WHERE tenant_id = ?
     ");
     $clientStats->execute([$tenantId]);
@@ -40,19 +40,19 @@ try {
         SELECT COALESCE(SUM(amount), 0) AS month_revenue
         FROM payments
         WHERE tenant_id = ? AND status = 'completed'
-          AND payment_date >= DATE_FORMAT(NOW(), '%Y-%m-01')
+          AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')
     ");
     $revStmt->execute([$tenantId]);
     $monthRevenue = (float)$revStmt->fetchColumn();
 
     // Revenue — last 6 months trend
     $trendStmt = $pdo->prepare("
-        SELECT DATE_FORMAT(payment_date, '%Y-%m') AS month,
-               COALESCE(SUM(amount), 0)           AS revenue
+        SELECT DATE_FORMAT(created_at, '%Y-%m') AS month,
+               COALESCE(SUM(amount), 0)         AS total
         FROM payments
         WHERE tenant_id = ? AND status = 'completed'
-          AND payment_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-        GROUP BY DATE_FORMAT(payment_date, '%Y-%m')
+          AND created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+        GROUP BY DATE_FORMAT(created_at, '%Y-%m')
         ORDER BY month ASC
     ");
     $trendStmt->execute([$tenantId]);
@@ -69,45 +69,46 @@ try {
 
     // Recent payments (last 5)
     $recentStmt = $pdo->prepare("
-        SELECT p.id, p.amount, p.payment_method, p.transaction_id,
-               p.status, p.payment_date,
-               COALESCE(c.full_name, c.name) AS client_name
+        SELECT p.id, p.amount,
+               p.payment_method AS method,
+               p.status,
+               p.created_at,
+               COALESCE(c.full_name, c.username, c.phone) AS client_name
         FROM payments p
         LEFT JOIN clients c ON c.id = p.client_id
         WHERE p.tenant_id = ?
-        ORDER BY p.payment_date DESC
+        ORDER BY p.created_at DESC
         LIMIT 5
     ");
     $recentStmt->execute([$tenantId]);
     $recentPayments = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // New clients this month
-    $newClientsStmt = $pdo->prepare("
-        SELECT COUNT(*) FROM clients
-        WHERE tenant_id = ? AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')
-    ");
-    $newClientsStmt->execute([$tenantId]);
-    $newThisMonth = (int)$newClientsStmt->fetchColumn();
-
     echo json_encode([
         'clients' => [
-            'total'         => (int)($clients['total']         ?? 0),
-            'active'        => (int)($clients['active']        ?? 0),
-            'inactive'      => (int)($clients['inactive']      ?? 0),
-            'suspended'     => (int)($clients['suspended']     ?? 0),
-            'expiring_soon' => (int)($clients['expiring_soon'] ?? 0),
-            'new_this_month'=> $newThisMonth,
+            'total'    => (int)($clients['total']    ?? 0),
+            'active'   => (int)($clients['active']   ?? 0),
+            'inactive' => (int)($clients['inactive'] ?? 0),
+            'expired'  => (int)($clients['expired']  ?? 0),
         ],
         'revenue' => [
             'this_month' => $monthRevenue,
-            'trend'      => $revenueTrend,
+            'trend'      => array_map(fn($r) => [
+                'month' => $r['month'],
+                'total' => (float)$r['total'],
+            ], $revenueTrend),
         ],
         'routers' => [
             'total'  => (int)($routers['total']  ?? 0),
             'online' => (int)($routers['online'] ?? 0),
         ],
-        'recent_payments' => $recentPayments,
-        'generated_at'    => date('c'),
+        'recent_payments' => array_map(fn($r) => [
+            'id'          => (int)$r['id'],
+            'client_name' => $r['client_name'] ?? 'Unknown',
+            'amount'      => (float)$r['amount'],
+            'method'      => $r['method'] ?? '',
+            'status'      => $r['status'],
+            'created_at'  => $r['created_at'],
+        ], $recentPayments),
     ]);
 
 } catch (Throwable $e) {

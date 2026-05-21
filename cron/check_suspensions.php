@@ -27,6 +27,54 @@ $log = function(string $msg) {
 
 $log("=== Suspension Check: $today ===");
 
+// ── 0. Convert expired trial tenants to suspended ─────────────────────────────
+$expiredTrials = $pdo->query("
+    SELECT t.id AS tenant_id, t.company_name, t.subdomain, u.email AS admin_email
+    FROM tenants t
+    LEFT JOIN users u ON u.id = t.admin_user_id
+    WHERE t.status = 'trial'
+      AND t.trial_ends_at < CURDATE()
+")->fetchAll(PDO::FETCH_ASSOC);
+
+foreach ($expiredTrials as $t) {
+    try {
+        $pdo->prepare("
+            UPDATE tenants
+            SET status = 'suspended',
+                suspended_at = NOW(),
+                suspended_reason = 'Trial period ended — payment required'
+            WHERE id = ?
+        ")->execute([$t['tenant_id']]);
+        $log("TRIAL EXPIRED tenant #{$t['tenant_id']} ({$t['company_name']}) — suspended");
+
+        // Generate a pending invoice for the current month if none exists
+        $period = date('Y-m-01');
+        $checkInv = $pdo->prepare("SELECT id FROM platform_invoices WHERE tenant_id = ? AND billing_period = ?");
+        $checkInv->execute([$t['tenant_id'], $period]);
+        if (!$checkInv->fetchColumn()) {
+            $invNum  = sprintf('INV-%s-%04d', date('Y-m'), $t['tenant_id']);
+            $dueDate = date('Y-m-d', strtotime('+15 days'));
+            $pdo->prepare("
+                INSERT INTO platform_invoices
+                    (invoice_number, tenant_id, billing_period,
+                     pppoe_user_count, pppoe_fee_per_user,
+                     hotspot_collections, hotspot_commission_rate,
+                     base_fee, due_date, status)
+                VALUES (?, ?, ?, 0, 25.00, 0, 0.03, 0, ?, 'pending')
+            ")->execute([$invNum, $t['tenant_id'], $period, $dueDate]);
+            $log("INVOICE $invNum generated for trial-expired tenant #{$t['tenant_id']}");
+        }
+
+        if (!empty($t['admin_email'])) {
+            $tenantUrl = "https://{$t['subdomain']}.fortunetttech.site";
+            sendSystemEmail($t['admin_email'], "Your FortuNett free trial has ended", buildTrialExpiredEmail($t, $tenantUrl));
+            $log("TRIAL EXPIRED email sent to {$t['admin_email']}");
+        }
+    } catch (Throwable $e) {
+        $log("ERROR trial-expiry tenant #{$t['tenant_id']}: " . $e->getMessage());
+    }
+}
+
 // ── 1. Mark invoices as overdue ───────────────────────────────────────────────
 $overdueStmt = $pdo->prepare("
     UPDATE platform_invoices
@@ -103,7 +151,7 @@ $reactivateCandidates = $pdo->query("
     FROM tenants t
     LEFT JOIN users u ON u.id = t.admin_user_id
     WHERE t.status = 'suspended'
-      AND t.suspended_reason LIKE '%auto-suspended%'
+      AND (t.suspended_reason LIKE '%auto-suspended%' OR t.suspended_reason LIKE '%Trial period ended%')
       AND NOT EXISTS (
           SELECT 1 FROM platform_invoices pi
           WHERE pi.tenant_id = t.id AND pi.status IN ('pending','overdue')
@@ -126,6 +174,24 @@ foreach ($reactivateCandidates as $t) {
 $log("=== Done ===");
 
 // ─── Email builders ───────────────────────────────────────────────────────────
+
+function buildTrialExpiredEmail(array $t, string $tenantUrl): string {
+    return <<<HTML
+<div style="font-family:sans-serif;max-width:560px;margin:auto;background:#fff;border-radius:10px;overflow:hidden;">
+  <div style="background:#7c3aed;padding:24px;color:#fff;text-align:center;">
+    <h2 style="margin:0;">Free Trial Ended</h2>
+    <p style="margin:6px 0 0;opacity:.85;">Subscribe to continue using FortuNett</p>
+  </div>
+  <div style="padding:28px;">
+    <p>Dear <strong>{$t['company_name']}</strong> administrator,</p>
+    <p>Your 14-day free trial has ended. To continue managing your ISP and serving your customers, please pay your first platform invoice.</p>
+    <p>Your account will be reactivated <strong>automatically</strong> within minutes of payment confirmation.</p>
+    <p style="text-align:center;margin:24px 0;"><a href="{$tenantUrl}/billing.php" style="background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">View Invoice &amp; Pay</a></p>
+    <p style="font-size:12px;color:#6b7280;">Pay via M-Pesa Paybill <strong>400200</strong>. For assistance, contact <a href="mailto:support@fortunetttech.site">support@fortunetttech.site</a></p>
+  </div>
+</div>
+HTML;
+}
 
 function buildWarningEmail(array $inv, int $warningDays, string $tenantUrl): string {
     $due = date('d M Y', strtotime($inv['due_date']));

@@ -18,9 +18,10 @@ class PaymentAdapter : ListAdapter<Payment, PaymentAdapter.ViewHolder>(DIFF) {
             b.tvMethod.text  = p.method.uppercase()
             b.tvDate.text    = p.created_at.take(10)
             b.tvStatus.text  = p.status.replaceFirstChar { it.uppercase() }
-            b.tvStatus.setTextColor(ContextCompat.getColor(b.root.context,
-                if (p.status == "completed") R.color.status_success else R.color.status_pending
-            ))
+            val isCompleted = p.status == "completed"
+            val color = if (isCompleted) R.color.status_success else R.color.status_pending
+            b.tvStatus.setTextColor(ContextCompat.getColor(b.root.context, color))
+            b.viewStatusBar.setBackgroundColor(ContextCompat.getColor(b.root.context, color))
         }
     }
 

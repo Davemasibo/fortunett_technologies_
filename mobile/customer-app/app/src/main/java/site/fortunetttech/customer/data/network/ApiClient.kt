@@ -8,7 +8,7 @@ import site.fortunetttech.customer.data.preferences.TokenPreferences
 import java.util.concurrent.TimeUnit
 
 // 10.0.2.2 = host machine localhost from Android emulator
-private const val BASE_URL = "http://10.0.2.2/"
+private const val BASE_URL = "http://10.0.2.2/fortunett_technologies_/"
 
 class SubdomainInterceptor(private val prefs: TokenPreferences) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -17,7 +17,11 @@ class SubdomainInterceptor(private val prefs: TokenPreferences) : Interceptor {
             .scheme("http")
             .host("10.0.2.2")
             .build()
-        return chain.proceed(chain.request().newBuilder().url(newUrl).build())
+        val newRequest = chain.request().newBuilder()
+            .url(newUrl)
+            .header("X-Tenant-Subdomain", subdomain)
+            .build()
+        return chain.proceed(newRequest)
     }
 }
 

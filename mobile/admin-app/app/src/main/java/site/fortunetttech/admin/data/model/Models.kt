@@ -77,6 +77,29 @@ data class RecentPayment(
     val created_at: String
 )
 
+// ── Payments (admin) ─────────────────────────────────────────────────────────
+
+data class AdminPaymentsResponse(
+    val data: List<AdminPayment>,
+    val total: Int,
+    val page: Int,
+    @SerializedName("per_page")    val perPage: Int,
+    @SerializedName("total_pages") val totalPages: Int,
+    @SerializedName("total_amount") val totalAmount: Double
+)
+
+data class AdminPayment(
+    val id: Int,
+    val amount: Double,
+    @SerializedName("payment_method") val paymentMethod: String,
+    @SerializedName("transaction_id") val transactionId: String?,
+    val status: String,
+    @SerializedName("payment_date")   val paymentDate: String,
+    @SerializedName("client_name")    val clientName: String?,
+    @SerializedName("client_phone")   val clientPhone: String?,
+    @SerializedName("account_number") val accountNumber: String?
+)
+
 // ── Routers ───────────────────────────────────────────────────────────────────
 
 data class RoutersResponse(val data: List<Router>)

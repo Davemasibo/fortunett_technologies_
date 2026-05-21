@@ -1,11 +1,18 @@
 R_DEF: Internal format may change without notice
 local
+color background_dark
+color bottom_nav_item
 color brand_dark
 color brand_primary
 color status_active
 color status_expired
 color status_pending
 color status_success
+color surface_dark
+color surface_darker
+color text_hint
+color text_primary
+color text_secondary
 drawable ic_launcher_background
 drawable ic_launcher_foreground
 id action_home_to_pay

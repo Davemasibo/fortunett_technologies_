@@ -444,13 +444,16 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
+      static String site_fortunetttech_customer_ui_history_HistoryViewModel = "site.fortunetttech.customer.ui.history.HistoryViewModel";
+
       static String site_fortunetttech_customer_ui_auth_LoginViewModel = "site.fortunetttech.customer.ui.auth.LoginViewModel";
 
       static String site_fortunetttech_customer_ui_pay_PayViewModel = "site.fortunetttech.customer.ui.pay.PayViewModel";
 
       static String site_fortunetttech_customer_ui_home_HomeViewModel = "site.fortunetttech.customer.ui.home.HomeViewModel";
 
-      static String site_fortunetttech_customer_ui_history_HistoryViewModel = "site.fortunetttech.customer.ui.history.HistoryViewModel";
+      @KeepFieldType
+      HistoryViewModel site_fortunetttech_customer_ui_history_HistoryViewModel2;
 
       @KeepFieldType
       LoginViewModel site_fortunetttech_customer_ui_auth_LoginViewModel2;
@@ -460,9 +463,6 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
 
       @KeepFieldType
       HomeViewModel site_fortunetttech_customer_ui_home_HomeViewModel2;
-
-      @KeepFieldType
-      HistoryViewModel site_fortunetttech_customer_ui_history_HistoryViewModel2;
     }
   }
 
@@ -512,25 +512,25 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String site_fortunetttech_customer_ui_home_HomeViewModel = "site.fortunetttech.customer.ui.home.HomeViewModel";
-
       static String site_fortunetttech_customer_ui_pay_PayViewModel = "site.fortunetttech.customer.ui.pay.PayViewModel";
 
-      static String site_fortunetttech_customer_ui_auth_LoginViewModel = "site.fortunetttech.customer.ui.auth.LoginViewModel";
+      static String site_fortunetttech_customer_ui_home_HomeViewModel = "site.fortunetttech.customer.ui.home.HomeViewModel";
 
       static String site_fortunetttech_customer_ui_history_HistoryViewModel = "site.fortunetttech.customer.ui.history.HistoryViewModel";
 
-      @KeepFieldType
-      HomeViewModel site_fortunetttech_customer_ui_home_HomeViewModel2;
+      static String site_fortunetttech_customer_ui_auth_LoginViewModel = "site.fortunetttech.customer.ui.auth.LoginViewModel";
 
       @KeepFieldType
       PayViewModel site_fortunetttech_customer_ui_pay_PayViewModel2;
 
       @KeepFieldType
-      LoginViewModel site_fortunetttech_customer_ui_auth_LoginViewModel2;
+      HomeViewModel site_fortunetttech_customer_ui_home_HomeViewModel2;
 
       @KeepFieldType
       HistoryViewModel site_fortunetttech_customer_ui_history_HistoryViewModel2;
+
+      @KeepFieldType
+      LoginViewModel site_fortunetttech_customer_ui_auth_LoginViewModel2;
     }
 
     private static final class SwitchingProvider<T> implements Provider<T> {

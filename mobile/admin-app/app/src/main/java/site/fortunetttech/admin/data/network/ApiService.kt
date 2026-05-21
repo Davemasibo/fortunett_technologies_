@@ -34,6 +34,13 @@ interface ApiService {
     @GET("api/v1/dashboard/stats.php")
     suspend fun dashboardStats(): Response<DashboardStats>
 
+    @GET("api/v1/payments/index.php")
+    suspend fun payments(
+        @Query("page")     page: Int      = 1,
+        @Query("per_page") perPage: Int   = 25,
+        @Query("status")   status: String? = null
+    ): Response<AdminPaymentsResponse>
+
     @GET("api/v1/routers/index.php")
     suspend fun routers(): Response<RoutersResponse>
 }

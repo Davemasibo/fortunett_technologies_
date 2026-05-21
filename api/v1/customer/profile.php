@@ -26,11 +26,10 @@ try {
         SELECT c.id, c.full_name, c.name, c.email, c.phone,
                c.account_number, c.status, c.connection_type,
                c.expiry_date, c.created_at, c.mikrotik_username,
-               c.address, c.company,
                p.id         AS package_id,
                p.name       AS package_name,
                p.download_speed, p.upload_speed, p.price,
-               p.validity_value, p.validity_unit, p.data_limit
+               p.validity_value, p.validity_unit
         FROM clients c
         LEFT JOIN packages p ON p.id = c.package_id
         WHERE c.id = ? AND c.tenant_id = ?
@@ -53,53 +52,58 @@ try {
 
     // Recent payments (last 10)
     $payStmt = $pdo->prepare("
-        SELECT id, amount, payment_method, transaction_id, status, payment_date
+        SELECT id, amount,
+               payment_method AS method,
+               status,
+               created_at
         FROM payments
         WHERE client_id = ? AND tenant_id = ?
-        ORDER BY payment_date DESC
+        ORDER BY created_at DESC
         LIMIT 10
     ");
     $payStmt->execute([$clientId, $tenantId]);
     $payments = $payStmt->fetchAll(PDO::FETCH_ASSOC);
 
     // ISP tenant info (for branding in the customer app)
-    $tenantStmt = $pdo->prepare("SELECT name, subdomain, brand_color, logo_url FROM tenants WHERE id = ? LIMIT 1");
+    $tenantStmt = $pdo->prepare("SELECT company_name AS name, subdomain FROM tenants WHERE id = ? LIMIT 1");
     $tenantStmt->execute([$tenantId]);
     $tenant = $tenantStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
+    // Subscription status derived from expiry
+    $subStatus = 'inactive';
+    if ($client['status'] === 'active' && $expiresInSeconds > 0) {
+        $subStatus = 'active';
+    } elseif ($expiresInSeconds === 0) {
+        $subStatus = 'expired';
+    }
+
+    // Flat structure matching the Kotlin ProfileResponse model
     echo json_encode([
-        'customer' => [
-            'id'             => (int)$client['id'],
-            'name'           => $client['full_name'] ?? $client['name'] ?? '',
-            'email'          => $client['email'],
-            'phone'          => $client['phone'],
-            'account_number' => $client['account_number'],
-            'address'        => $client['address'],
-            'company'        => $client['company'],
-            'status'         => $client['status'],
-            'connection_type'=> $client['connection_type'],
-            'mikrotik_username' => $client['mikrotik_username'],
-            'member_since'   => $client['created_at'],
-        ],
-        'subscription' => [
-            'package_id'       => $client['package_id'] ? (int)$client['package_id'] : null,
-            'package_name'     => $client['package_name'],
-            'download_speed'   => $client['download_speed'],
-            'upload_speed'     => $client['upload_speed'],
-            'price'            => $client['price'],
-            'data_limit'       => $client['data_limit'],
-            'expiry_date'      => $client['expiry_date'],
+        'id'             => (int)$client['id'],
+        'full_name'      => $client['full_name'] ?? $client['name'] ?? '',
+        'username'       => $client['mikrotik_username'] ?? '',
+        'email'          => $client['email'],
+        'phone'          => $client['phone'],
+        'account_number' => $client['account_number'],
+        'status'         => $client['status'],
+        'subscription'   => [
+            'package_name'       => $client['package_name'],
+            'package_price'      => $client['price'] ? (float)$client['price'] : null,
+            'expiry_date'        => $client['expiry_date'],
             'expires_in_seconds' => $expiresInSeconds,
-            'is_expired'       => $expiresInSeconds !== null && $expiresInSeconds === 0,
+            'status'             => $subStatus,
         ],
-        'recent_payments' => $payments,
+        'recent_payments' => array_map(fn($p) => [
+            'id'         => (int)$p['id'],
+            'amount'     => (float)$p['amount'],
+            'method'     => $p['method'] ?? '',
+            'status'     => $p['status'],
+            'created_at' => $p['created_at'],
+        ], $payments),
         'isp' => [
-            'name'        => $tenant['name']       ?? '',
-            'subdomain'   => $tenant['subdomain']  ?? '',
-            'brand_color' => $tenant['brand_color'] ?? '#3B6EA5',
-            'logo_url'    => $tenant['logo_url']   ?? '',
+            'name'        => $tenant['name'] ?? '',
+            'brand_color' => null,
         ],
-        'fetched_at' => date('c'),
     ]);
 
 } catch (Throwable $e) {

@@ -47,14 +47,22 @@ if (!$secret) {
     exit;
 }
 
-// Detect tenant from subdomain (customer app hits their ISP's subdomain)
-$httpHost  = explode(':', $_SERVER['HTTP_HOST'] ?? '')[0];
-$hostParts = explode('.', $httpHost);
-$tenantId  = null;
+// Detect tenant from subdomain — check X-Tenant-Subdomain header first (mobile app),
+// then fall back to HTTP_HOST parsing (web/production).
+$tenantId = null;
+$subdomain = $_SERVER['HTTP_X_TENANT_SUBDOMAIN'] ?? null;
 
-if (count($hostParts) >= 3 && $hostParts[0] !== 'www') {
+if (!$subdomain) {
+    $httpHost  = explode(':', $_SERVER['HTTP_HOST'] ?? '')[0];
+    $hostParts = explode('.', $httpHost);
+    if (count($hostParts) >= 3 && $hostParts[0] !== 'www') {
+        $subdomain = $hostParts[0];
+    }
+}
+
+if ($subdomain) {
     $ts = $pdo->prepare("SELECT id FROM tenants WHERE subdomain = ? LIMIT 1");
-    $ts->execute([$hostParts[0]]);
+    $ts->execute([$subdomain]);
     $tenantId = $ts->fetchColumn() ?: null;
 }
 
@@ -75,8 +83,10 @@ try {
     if ($client) {
         if (!empty($client['auth_password']) && password_verify($password, $client['auth_password'])) {
             $authenticated = true;
+        } elseif (!empty($client['password']) && password_verify($password, $client['password'])) {
+            $authenticated = true;
         } elseif (!empty($client['mikrotik_password']) && $password === $client['mikrotik_password']) {
-            $authenticated = true; // MikroTik password fallback
+            $authenticated = true;
         }
     }
 
@@ -127,7 +137,8 @@ try {
         'expires_in'    => 900,
         'customer'      => [
             'id'               => (int)$client['id'],
-            'name'             => $client['full_name'] ?? $client['name'] ?? '',
+            'full_name'        => $client['full_name'] ?? $client['name'] ?? '',
+            'username'         => $client['username'] ?? '',
             'email'            => $client['email'],
             'phone'            => $client['phone'],
             'account_number'   => $client['account_number'],

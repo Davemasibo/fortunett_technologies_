@@ -2,6 +2,12 @@
 <resources>
     <color name="brand_primary">#3B6EA5</color>
     <color name="brand_dark">#1B4E85</color>
+    <color name="surface_dark">#222221</color>
+    <color name="surface_darker">#1a1a19</color>
+    <color name="background_dark">#0e0e0d</color>
+    <color name="text_primary">#E8E8E6</color>
+    <color name="text_secondary">#AAAAAA</color>
+    <color name="text_hint">#888888</color>
 
     <color name="status_active">#4CAF50</color>
     <color name="status_inactive">#9E9E9E</color>

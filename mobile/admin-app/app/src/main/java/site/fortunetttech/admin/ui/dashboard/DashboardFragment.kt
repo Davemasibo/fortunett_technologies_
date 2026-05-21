@@ -36,10 +36,12 @@ class DashboardFragment : Fragment() {
                     null -> {}
                     is Result.Success -> {
                         val s = result.data
-                        binding.tvTotalClients.text  = s.clients.total.toString()
-                        binding.tvActiveClients.text = s.clients.active.toString()
-                        binding.tvRevenue.text       = "KSH %.0f".format(s.revenue.this_month)
-                        binding.tvRouters.text       = "${s.routers.online}/${s.routers.total}"
+                        binding.tvTotalClients.text    = s.clients.total.toString()
+                        binding.tvActiveClients.text   = s.clients.active.toString()
+                        binding.tvExpiredClients.text  = s.clients.expired.toString()
+                        binding.tvInactiveClients.text = s.clients.inactive.toString()
+                        binding.tvRevenue.text         = "KSH %.0f".format(s.revenue.this_month)
+                        binding.tvRouters.text         = "${s.routers.online}/${s.routers.total}"
                         binding.layoutContent.visibility = View.VISIBLE
                         binding.layoutError.visibility   = View.GONE
                     }

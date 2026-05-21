@@ -38,59 +38,78 @@
             app:cardBackgroundColor="#222221"
             app:cardCornerRadius="22dp"
             app:cardElevation="0dp"
-            app:strokeColor="#1A1A1A"
+            app:strokeColor="#333332"
             app:strokeWidth="1dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="32dp">
+                android:padding="28dp">
 
+                <!-- Subdomain -->
                 <com.google.android.material.textfield.TextInputLayout
                     style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="16dp"
-                    android:hint="ISP Subdomain (e.g. acme)">
+                    android:hint="ISP Subdomain (e.g. acme)"
+                    app:hintTextColor="#AAAAAA"
+                    app:boxStrokeColor="#555554"
+                    app:boxBackgroundColor="#1a1a19">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etSubdomain"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:textColor="#E8E8E6"
+                        android:textColorHint="#666665"
                         android:imeOptions="actionNext"
                         android:inputType="textNoSuggestions"
                         android:singleLine="true" />
                 </com.google.android.material.textfield.TextInputLayout>
 
+                <!-- Username -->
                 <com.google.android.material.textfield.TextInputLayout
                     style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="16dp"
-                    android:hint="Username / Phone / Email">
+                    android:hint="Username / Phone / Email"
+                    app:hintTextColor="#AAAAAA"
+                    app:boxStrokeColor="#555554"
+                    app:boxBackgroundColor="#1a1a19">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etUsername"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:textColor="#E8E8E6"
+                        android:textColorHint="#666665"
                         android:imeOptions="actionNext"
                         android:inputType="text"
                         android:singleLine="true" />
                 </com.google.android.material.textfield.TextInputLayout>
 
+                <!-- Password -->
                 <com.google.android.material.textfield.TextInputLayout
                     style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="24dp"
                     android:hint="Password"
-                    app:endIconMode="password_toggle">
+                    app:hintTextColor="#AAAAAA"
+                    app:boxStrokeColor="#555554"
+                    app:boxBackgroundColor="#1a1a19"
+                    app:endIconMode="password_toggle"
+                    app:endIconTint="#AAAAAA">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etPassword"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:textColor="#E8E8E6"
+                        android:textColorHint="#666665"
                         android:imeOptions="actionDone"
                         android:inputType="textPassword"
                         android:singleLine="true" />
@@ -110,7 +129,9 @@
                     android:layout_width="match_parent"
                     android:layout_height="56dp"
                     android:text="Sign In"
-                    android:textSize="16sp" />
+                    android:textSize="16sp"
+                    android:textColor="#FFFFFF"
+                    app:backgroundTint="#3B6EA5" />
 
                 <ProgressBar
                     android:id="@+id/progressBar"

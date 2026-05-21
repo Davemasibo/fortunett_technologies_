@@ -1,15 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="background_dark">#0e0e0d</color>
     <color name="brand_dark">#1B4E85</color>
     <color name="brand_primary">#3B6EA5</color>
     <color name="status_active">#4CAF50</color>
     <color name="status_expired">#F44336</color>
     <color name="status_pending">#FF9800</color>
     <color name="status_success">#4CAF50</color>
+    <color name="surface_dark">#222221</color>
+    <color name="surface_darker">#1a1a19</color>
+    <color name="text_hint">#888888</color>
+    <color name="text_primary">#E8E8E6</color>
+    <color name="text_secondary">#AAAAAA</color>
     <string name="app_name">FortuNett</string>
-    <style name="Theme.FortuNettCustomer" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.FortuNettCustomer" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">@color/brand_primary</item>
-        <item name="colorPrimaryVariant">@color/brand_dark</item>
+        <item name="colorPrimaryContainer">@color/brand_dark</item>
         <item name="colorSecondary">@color/brand_primary</item>
+        <item name="colorSurface">@color/surface_dark</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="android:colorBackground">@color/background_dark</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorHint">@color/text_hint</item>
     </style>
 </resources>

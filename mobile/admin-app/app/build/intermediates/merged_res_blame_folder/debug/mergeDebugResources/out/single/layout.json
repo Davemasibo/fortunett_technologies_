@@ -1,22 +1,26 @@
 [
     {
-        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/fragment_dashboard.xml",
-        "source": "site.fortunetttech.admin.app-main-51:/layout/fragment_dashboard.xml"
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-mergeDebugResources-48:\\layout\\fragment_client_list.xml",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-main-51:\\layout\\fragment_client_list.xml"
     },
     {
-        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/fragment_client_list.xml",
-        "source": "site.fortunetttech.admin.app-main-51:/layout/fragment_client_list.xml"
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-mergeDebugResources-48:\\layout\\item_client.xml",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-main-51:\\layout\\item_client.xml"
     },
     {
-        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/item_client.xml",
-        "source": "site.fortunetttech.admin.app-main-51:/layout/item_client.xml"
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-mergeDebugResources-48:\\layout\\activity_main.xml",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-main-51:\\layout\\activity_main.xml"
+    },
+    {
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-mergeDebugResources-48:\\layout\\activity_login.xml",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-main-51:\\layout\\activity_login.xml"
     },
     {
         "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/activity_main.xml",
         "source": "site.fortunetttech.admin.app-main-51:/layout/activity_main.xml"
     },
     {
-        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/activity_login.xml",
-        "source": "site.fortunetttech.admin.app-main-51:/layout/activity_login.xml"
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-mergeDebugResources-48:\\layout\\fragment_dashboard.xml",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-main-51:\\layout\\fragment_dashboard.xml"
     }
 ]

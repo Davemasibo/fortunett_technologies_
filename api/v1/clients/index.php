@@ -82,26 +82,38 @@ $countStmt = $pdo->prepare("SELECT COUNT(*) FROM clients c $whereClause");
 $countStmt->execute($params);
 $total = (int)$countStmt->fetchColumn();
 
-// Rows
+// Rows — bind LIMIT/OFFSET explicitly as INT to avoid PDO string-quoting them
 $listStmt = $pdo->prepare("
-    SELECT c.id, c.full_name, c.name, c.phone, c.email,
-           c.account_number, c.status, c.connection_type,
-           c.expiry_date, c.mikrotik_username, c.package_id,
-           p.name AS package_name, p.download_speed, p.upload_speed
+    SELECT c.id,
+           COALESCE(c.full_name, c.name, c.username) AS full_name,
+           COALESCE(c.username, '') AS username,
+           c.phone, c.email,
+           c.account_number, c.status,
+           c.connection_type AS service_type,
+           c.expiry_date,
+           COALESCE(p.name, '') AS package_name,
+           c.created_at
     FROM clients c
     LEFT JOIN packages p ON p.id = c.package_id
     $whereClause
     ORDER BY c.id DESC
     LIMIT ? OFFSET ?
 ");
-$listParams = array_merge($params, [$perPage, $offset]);
-$listStmt->execute($listParams);
+foreach ($params as $i => $v) {
+    $listStmt->bindValue($i + 1, $v);
+}
+$listStmt->bindValue(count($params) + 1, $perPage, PDO::PARAM_INT);
+$listStmt->bindValue(count($params) + 2, $offset,  PDO::PARAM_INT);
+$listStmt->execute();
 $clients = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 
+$lastPage = (int)ceil($total / $perPage) ?: 1;
 echo json_encode([
-    'data'        => $clients,
-    'total'       => $total,
-    'page'        => $page,
-    'per_page'    => $perPage,
-    'total_pages' => (int)ceil($total / $perPage),
+    'data'       => $clients,
+    'pagination' => [
+        'total'     => $total,
+        'page'      => $page,
+        'per_page'  => $perPage,
+        'last_page' => $lastPage,
+    ],
 ]);

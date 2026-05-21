@@ -52,12 +52,14 @@ class HomeFragment : Fragment() {
                     is Result.Success -> {
                         val p = result.data
                         val s = p.subscription
-                        binding.tvName.text         = "Hello, ${p.full_name.split(" ").first()}"
-                        binding.tvIsp.text          = p.isp.name
-                        binding.tvPackage.text      = s.package_name ?: "No active plan"
-                        binding.tvExpiry.text       = s.expiry_date?.take(10) ?: "—"
-                        binding.tvStatus.text       = s.status.replaceFirstChar { it.uppercase() }
-                        binding.tvCountdown.text    = formatCountdown(s.expiresInSeconds)
+                        binding.tvName.text          = "Hello, ${p.full_name.split(" ").first()}"
+                        binding.tvIsp.text           = p.isp.name
+                        binding.tvPackage.text       = s.package_name ?: "No active plan"
+                        binding.tvExpiry.text        = s.expiry_date?.take(10) ?: "—"
+                        binding.tvStatus.text        = s.status.replaceFirstChar { it.uppercase() }
+                        binding.tvCountdown.text     = formatCountdown(s.expiresInSeconds)
+                        binding.tvAccountNumber.text = p.account_number ?: "—"
+                        binding.tvPhone.text         = p.phone ?: "—"
                         val statusColor = when (s.status) {
                             "active" -> R.color.status_active
                             else     -> R.color.status_expired

@@ -38,9 +38,13 @@ class HistoryFragment : Fragment() {
                 when (result) {
                     null -> {}
                     is Result.Success -> {
-                        adapter.submitList(result.data.recent_payments)
-                        binding.tvEmpty.visibility     = if (result.data.recent_payments.isEmpty()) View.VISIBLE else View.GONE
+                        val payments = result.data.recent_payments
+                        adapter.submitList(payments)
+                        binding.tvEmpty.visibility     = if (payments.isEmpty()) View.VISIBLE else View.GONE
                         binding.layoutError.visibility = View.GONE
+                        val total = payments.filter { it.status == "completed" }.sumOf { it.amount }
+                        binding.tvTotalSpent.text      = "KSH %.0f".format(total)
+                        binding.tvPaymentCount.text    = "${payments.size} payments"
                     }
                     is Result.Error -> {
                         binding.tvErrorMsg.text        = result.message

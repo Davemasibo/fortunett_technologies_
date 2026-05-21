@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 
 // Placeholder host — SubdomainInterceptor rewrites to {subdomain}.fortunetttech.site on every call.
 // 10.0.2.2 = host machine localhost from Android emulator
-private const val BASE_URL = "http://10.0.2.2/"
+private const val BASE_URL = "http://10.0.2.2/fortunett_technologies_/"
 
 /**
  * Rewrites the request host to {subdomain}.fortunetttech.site so the same Retrofit singleton
@@ -22,7 +22,11 @@ class SubdomainInterceptor(private val prefs: TokenPreferences) : Interceptor {
             .scheme("http")
             .host("10.0.2.2")
             .build()
-        return chain.proceed(chain.request().newBuilder().url(newUrl).build())
+        val newRequest = chain.request().newBuilder()
+            .url(newUrl)
+            .header("X-Tenant-Subdomain", subdomain)
+            .build()
+        return chain.proceed(newRequest)
     }
 }
 

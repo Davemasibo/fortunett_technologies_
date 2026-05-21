@@ -123,12 +123,19 @@ function requireTenantActive(PDO $pdo, $tenant_id) {
         return;
     }
 
-    $stmt = $pdo->prepare("SELECT status FROM tenants WHERE id = ? LIMIT 1");
+    $stmt = $pdo->prepare("SELECT status, trial_ends_at FROM tenants WHERE id = ? LIMIT 1");
     $stmt->execute([$tenant_id]);
-    $status = $stmt->fetchColumn();
+    $tenant = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if ($status === 'suspended') {
+    if (!$tenant) return;
+
+    if ($tenant['status'] === 'suspended') {
         header('Location: billing.php?suspended=1');
+        exit;
+    }
+
+    if ($tenant['status'] === 'trial' && !empty($tenant['trial_ends_at']) && $tenant['trial_ends_at'] < date('Y-m-d')) {
+        header('Location: billing.php?trial_expired=1');
         exit;
     }
 }

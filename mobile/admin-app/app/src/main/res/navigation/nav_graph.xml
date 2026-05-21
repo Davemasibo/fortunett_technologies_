@@ -14,4 +14,14 @@
         android:name="site.fortunetttech.admin.ui.clients.ClientListFragment"
         android:label="Clients" />
 
+    <fragment
+        android:id="@+id/paymentsFragment"
+        android:name="site.fortunetttech.admin.ui.payments.PaymentsFragment"
+        android:label="Payments" />
+
+    <fragment
+        android:id="@+id/routersFragment"
+        android:name="site.fortunetttech.admin.ui.routers.RoutersFragment"
+        android:label="Routers" />
+
 </navigation>
