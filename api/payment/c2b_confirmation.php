@@ -20,6 +20,7 @@ header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../includes/auto_provision.php';
+require_once __DIR__ . '/../../includes/payment_pipeline.php';
 
 $logDir = __DIR__ . '/../../logs';
 if (!is_dir($logDir)) {
@@ -113,7 +114,7 @@ try {
         VALUES (?, ?, ?, 'mpesa_paybill', ?, 'completed', NOW(), ?)
     ")->execute([$client_id, $tenant_id, $amount, $transactionId, 'C2B via platform paybill — acct: ' . $accountRef]);
 
-    // Log the raw C2B transaction — uses correct mpesa_transactions schema columns
+    // Log the raw C2B transaction
     $pdo->prepare("
         INSERT INTO mpesa_transactions
             (client_id, tenant_id, phone_number, amount, merchant_request_id,
@@ -126,33 +127,18 @@ try {
         $content
     ]);
 
-    // Extend client subscription if they have a package
-    if ($client['package_id']) {
-        $pkg = $pdo->prepare("SELECT validity_value, validity_unit FROM packages WHERE id = ? AND tenant_id = ?");
-        $pkg->execute([$client['package_id'], $tenant_id]);
-        $package = $pkg->fetch(PDO::FETCH_ASSOC);
-
-        if ($package) {
-            $validityValue = max(1, (int)($package['validity_value'] ?? 30));
-            $validityUnit  = in_array($package['validity_unit'], ['days','weeks','months']) ? $package['validity_unit'] : 'days';
-            $expiryDate    = date('Y-m-d H:i:s', strtotime('+' . $validityValue . ' ' . $validityUnit));
-
-            $pdo->prepare("
-                UPDATE clients SET status = 'active', expiry_date = ?
-                WHERE id = ? AND tenant_id = ?
-            ")->execute([$expiryDate, $client_id, $tenant_id]);
-
-            $pdo->prepare("
-                INSERT INTO customer_activity_log (client_id, tenant_id, activity_type, description)
-                VALUES (?, ?, 'payment_success', ?)
-            ")->execute([$client_id, $tenant_id, 'C2B payment ' . $transactionId . ' (KSH ' . $amount . ') — active until ' . $expiryDate]);
-        }
-    }
-
-    // Auto-provision to router (best-effort — failure never blocks the confirmation response)
-    if ($client['package_id']) {
-        autoProvisionClient($pdo, (int)$client_id, (int)$tenant_id);
-    }
+    // Full pipeline: invoice, ledger, commission, payout queue, RADIUS, SMS, provision
+    // platformCollected=true — FortuNett holds the money; ISP payout must be queued
+    process_payment_success(
+        $pdo,
+        (int)$client_id,
+        (int)$tenant_id,
+        $amount,
+        $transactionId,
+        'mpesa_paybill',
+        $client['package_id'] ? (int)$client['package_id'] : null,
+        true
+    );
 
     file_put_contents($logDir . '/mpesa_c2b.log', date('Y-m-d H:i:s') . " OK: tenant=$tenant_id client=$client_id amount=$amount tx=$transactionId\n", FILE_APPEND | LOCK_EX);
     echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);

@@ -42,6 +42,12 @@ public final class FragmentHomeBinding implements ViewBinding {
   public final SwipeRefreshLayout swipeRefresh;
 
   @NonNull
+  public final TextView tvAccountNumber;
+
+  @NonNull
+  public final TextView tvBalance;
+
+  @NonNull
   public final TextView tvCountdown;
 
   @NonNull
@@ -60,14 +66,18 @@ public final class FragmentHomeBinding implements ViewBinding {
   public final TextView tvPackage;
 
   @NonNull
+  public final TextView tvPhone;
+
+  @NonNull
   public final TextView tvStatus;
 
   private FragmentHomeBinding(@NonNull FrameLayout rootView, @NonNull MaterialButton btnLogout,
       @NonNull MaterialButton btnPay, @NonNull MaterialCardView cardSubscription,
       @NonNull LinearLayout layoutContent, @NonNull LinearLayout layoutError,
-      @NonNull SwipeRefreshLayout swipeRefresh, @NonNull TextView tvCountdown,
-      @NonNull TextView tvErrorMsg, @NonNull TextView tvExpiry, @NonNull TextView tvIsp,
-      @NonNull TextView tvName, @NonNull TextView tvPackage, @NonNull TextView tvStatus) {
+      @NonNull SwipeRefreshLayout swipeRefresh, @NonNull TextView tvAccountNumber,
+      @NonNull TextView tvBalance, @NonNull TextView tvCountdown, @NonNull TextView tvErrorMsg,
+      @NonNull TextView tvExpiry, @NonNull TextView tvIsp, @NonNull TextView tvName,
+      @NonNull TextView tvPackage, @NonNull TextView tvPhone, @NonNull TextView tvStatus) {
     this.rootView = rootView;
     this.btnLogout = btnLogout;
     this.btnPay = btnPay;
@@ -75,12 +85,15 @@ public final class FragmentHomeBinding implements ViewBinding {
     this.layoutContent = layoutContent;
     this.layoutError = layoutError;
     this.swipeRefresh = swipeRefresh;
+    this.tvAccountNumber = tvAccountNumber;
+    this.tvBalance = tvBalance;
     this.tvCountdown = tvCountdown;
     this.tvErrorMsg = tvErrorMsg;
     this.tvExpiry = tvExpiry;
     this.tvIsp = tvIsp;
     this.tvName = tvName;
     this.tvPackage = tvPackage;
+    this.tvPhone = tvPhone;
     this.tvStatus = tvStatus;
   }
 
@@ -147,6 +160,18 @@ public final class FragmentHomeBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.tvAccountNumber;
+      TextView tvAccountNumber = ViewBindings.findChildViewById(rootView, id);
+      if (tvAccountNumber == null) {
+        break missingId;
+      }
+
+      id = R.id.tvBalance;
+      TextView tvBalance = ViewBindings.findChildViewById(rootView, id);
+      if (tvBalance == null) {
+        break missingId;
+      }
+
       id = R.id.tvCountdown;
       TextView tvCountdown = ViewBindings.findChildViewById(rootView, id);
       if (tvCountdown == null) {
@@ -183,6 +208,12 @@ public final class FragmentHomeBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.tvPhone;
+      TextView tvPhone = ViewBindings.findChildViewById(rootView, id);
+      if (tvPhone == null) {
+        break missingId;
+      }
+
       id = R.id.tvStatus;
       TextView tvStatus = ViewBindings.findChildViewById(rootView, id);
       if (tvStatus == null) {
@@ -190,8 +221,8 @@ public final class FragmentHomeBinding implements ViewBinding {
       }
 
       return new FragmentHomeBinding((FrameLayout) rootView, btnLogout, btnPay, cardSubscription,
-          layoutContent, layoutError, swipeRefresh, tvCountdown, tvErrorMsg, tvExpiry, tvIsp,
-          tvName, tvPackage, tvStatus);
+          layoutContent, layoutError, swipeRefresh, tvAccountNumber, tvBalance, tvCountdown,
+          tvErrorMsg, tvExpiry, tvIsp, tvName, tvPackage, tvPhone, tvStatus);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

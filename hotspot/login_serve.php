@@ -82,11 +82,12 @@ try {
     // Fetch M-Pesa paybill for this tenant
     $paybill = 'N/A';
     try {
+        require_once __DIR__ . '/../includes/credential_helper.php';
         $gwSt = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1 LIMIT 1");
         $gwSt->execute([$tenantId]);
         $gwRow = $gwSt->fetch(PDO::FETCH_ASSOC);
         if ($gwRow) {
-            $gwCreds = json_decode($gwRow['credentials'], true) ?? [];
+            $gwCreds = decrypt_gateway_credentials($gwRow['credentials']);
             $paybill = $gwCreds['shortcode'] ?? $gwCreds['paybill'] ?? 'N/A';
         }
     } catch (Throwable $_e) {}

@@ -4,7 +4,6 @@ package site.fortunetttech.customer.databinding;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
@@ -13,6 +12,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import androidx.viewbinding.ViewBinding;
 import androidx.viewbinding.ViewBindings;
+import com.google.android.material.card.MaterialCardView;
 import java.lang.NullPointerException;
 import java.lang.Override;
 import java.lang.String;
@@ -20,7 +20,10 @@ import site.fortunetttech.customer.R;
 
 public final class FragmentHistoryBinding implements ViewBinding {
   @NonNull
-  private final FrameLayout rootView;
+  private final LinearLayout rootView;
+
+  @NonNull
+  public final MaterialCardView cardSummary;
 
   @NonNull
   public final LinearLayout layoutError;
@@ -37,20 +40,31 @@ public final class FragmentHistoryBinding implements ViewBinding {
   @NonNull
   public final TextView tvErrorMsg;
 
-  private FragmentHistoryBinding(@NonNull FrameLayout rootView, @NonNull LinearLayout layoutError,
+  @NonNull
+  public final TextView tvPaymentCount;
+
+  @NonNull
+  public final TextView tvTotalSpent;
+
+  private FragmentHistoryBinding(@NonNull LinearLayout rootView,
+      @NonNull MaterialCardView cardSummary, @NonNull LinearLayout layoutError,
       @NonNull RecyclerView recyclerView, @NonNull SwipeRefreshLayout swipeRefresh,
-      @NonNull TextView tvEmpty, @NonNull TextView tvErrorMsg) {
+      @NonNull TextView tvEmpty, @NonNull TextView tvErrorMsg, @NonNull TextView tvPaymentCount,
+      @NonNull TextView tvTotalSpent) {
     this.rootView = rootView;
+    this.cardSummary = cardSummary;
     this.layoutError = layoutError;
     this.recyclerView = recyclerView;
     this.swipeRefresh = swipeRefresh;
     this.tvEmpty = tvEmpty;
     this.tvErrorMsg = tvErrorMsg;
+    this.tvPaymentCount = tvPaymentCount;
+    this.tvTotalSpent = tvTotalSpent;
   }
 
   @Override
   @NonNull
-  public FrameLayout getRoot() {
+  public LinearLayout getRoot() {
     return rootView;
   }
 
@@ -75,6 +89,12 @@ public final class FragmentHistoryBinding implements ViewBinding {
     // This is done to optimize the compiled bytecode for size and performance.
     int id;
     missingId: {
+      id = R.id.cardSummary;
+      MaterialCardView cardSummary = ViewBindings.findChildViewById(rootView, id);
+      if (cardSummary == null) {
+        break missingId;
+      }
+
       id = R.id.layoutError;
       LinearLayout layoutError = ViewBindings.findChildViewById(rootView, id);
       if (layoutError == null) {
@@ -105,8 +125,20 @@ public final class FragmentHistoryBinding implements ViewBinding {
         break missingId;
       }
 
-      return new FragmentHistoryBinding((FrameLayout) rootView, layoutError, recyclerView,
-          swipeRefresh, tvEmpty, tvErrorMsg);
+      id = R.id.tvPaymentCount;
+      TextView tvPaymentCount = ViewBindings.findChildViewById(rootView, id);
+      if (tvPaymentCount == null) {
+        break missingId;
+      }
+
+      id = R.id.tvTotalSpent;
+      TextView tvTotalSpent = ViewBindings.findChildViewById(rootView, id);
+      if (tvTotalSpent == null) {
+        break missingId;
+      }
+
+      return new FragmentHistoryBinding((LinearLayout) rootView, cardSummary, layoutError,
+          recyclerView, swipeRefresh, tvEmpty, tvErrorMsg, tvPaymentCount, tvTotalSpent);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

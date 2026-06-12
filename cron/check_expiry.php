@@ -26,9 +26,15 @@ $log = function(string $msg) {
     echo '[' . date('Y-m-d H:i:s') . '] ' . $msg . PHP_EOL;
 };
 
-$log("=== Expiry Check: " . date('Y-m-d H:i:s') . " ===");
+$graceDays = 3; // Days between expiry and full block (walled garden window)
 
-// ── Find expired-but-still-active clients ─────────────────────────────────────
+$log("=== Expiry Check: " . date('Y-m-d H:i:s') . " | grace={$graceDays}d ===");
+
+// Silently add the grace status support (no-op on MySQL after first run)
+try { $pdo->exec("ALTER TABLE clients MODIFY COLUMN status ENUM('active','inactive','suspended','grace') NOT NULL DEFAULT 'active'"); } catch (Throwable $_) {}
+
+// ── 1. Clients newly expired (active → grace) ─────────────────────────────────
+// Expiry just passed — throttle but don't kick yet
 $stmt = $pdo->prepare("
     SELECT c.id, c.full_name, c.mikrotik_username, c.connection_type, c.tenant_id,
            c.expiry_date, c.phone, c.account_number,
@@ -40,9 +46,28 @@ $stmt = $pdo->prepare("
     WHERE c.status = 'active'
       AND c.expiry_date IS NOT NULL
       AND c.expiry_date < NOW()
+      AND c.expiry_date >= NOW() - INTERVAL ? DAY
 ");
-$stmt->execute();
-$expired = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$stmt->execute([$graceDays]);
+$newlyExpired = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// ── 2. Clients in grace whose grace period has elapsed (grace → fully blocked) ─
+$stmtBlock = $pdo->prepare("
+    SELECT c.id, c.full_name, c.mikrotik_username, c.connection_type, c.tenant_id,
+           c.expiry_date, c.phone, c.account_number,
+           p.name AS pkg_name, p.price AS pkg_price,
+           t.company_name AS tenant_name, t.subdomain
+    FROM clients c
+    LEFT JOIN packages p ON p.id = c.package_id
+    LEFT JOIN tenants t ON t.id = c.tenant_id
+    WHERE c.status IN ('active', 'grace')
+      AND c.expiry_date IS NOT NULL
+      AND c.expiry_date < NOW() - INTERVAL ? DAY
+");
+$stmtBlock->execute([$graceDays]);
+$toBlock = $stmtBlock->fetchAll(PDO::FETCH_ASSOC);
+
+$expired = array_merge($newlyExpired, $toBlock); // used for router-grouping below
 
 // Fetch platform domain once
 $platformDomain = 'fortunetttech.site';
@@ -52,7 +77,12 @@ try {
     if ($pd) $platformDomain = $pd;
 } catch (Throwable $_e) {}
 
-$log("Found " . count($expired) . " expired active client(s).");
+// Index by ID for quick lookup
+$toBlockIds     = array_column($toBlock, 'id');
+$newlyExpiredIds = array_column($newlyExpired, 'id');
+
+$log("Found " . count($newlyExpired) . " newly expired client(s) → grace period.");
+$log("Found " . count($toBlock)      . " client(s) past grace period → full block.");
 
 if (empty($expired)) {
     $log("Nothing to do.");
@@ -103,75 +133,92 @@ foreach ($byTenant as $tenantId => $clients) {
     }
 
     foreach ($clients as $client) {
-        $clientId  = $client['id'];
+        $clientId  = (int)$client['id'];
         $name      = $client['full_name'];
         $uname     = $client['mikrotik_username'];
         $connType  = strtolower($client['connection_type'] ?? 'hotspot');
+        $isFullBlock = in_array($clientId, $toBlockIds);
 
-        // 1. Mark client inactive in DB
-        $upd = $pdo->prepare("UPDATE clients SET status = 'inactive', updated_at = NOW() WHERE id = ? AND tenant_id = ?");
-        $upd->execute([$clientId, $tenantId]);
-        $log("  [{$tenantId}] #{$clientId} {$name} — DB set to inactive (was active, expired {$client['expiry_date']})");
+        if ($isFullBlock) {
+            // ── Full block: disable on router + kick + RADIUS reject ──────────
+            $pdo->prepare("UPDATE clients SET status = 'inactive', updated_at = NOW() WHERE id = ? AND tenant_id = ?")
+                ->execute([$clientId, $tenantId]);
+            $log("  [{$tenantId}] #{$clientId} {$name} — FULL BLOCK (grace expired)");
 
-        // 2. Disable on router + kick active session
-        if ($api && !empty($uname)) {
-            try {
-                if ($connType === 'pppoe') {
-                    $disabled = $api->disablePPPoEUser($uname);
-                    $api->kickPPPoESession($uname);
-                    radius_disable_client($pdo, $uname); // also block RADIUS reconnects
-                } else {
-                    // disableHotspotUser already calls kickHotspotSession internally
-                    $disabled = $api->disableHotspotUser($uname);
+            if ($api && !empty($uname)) {
+                try {
+                    if ($connType === 'pppoe') {
+                        $api->disablePPPoEUser($uname);
+                        $api->kickPPPoESession($uname);
+                        radius_disable_client($pdo, $uname);
+                    } else {
+                        $api->disableHotspotUser($uname);
+                    }
+                    $log("  [{$tenantId}] #{$clientId} {$name} — router disabled+kicked ({$connType})");
+                } catch (Throwable $e) {
+                    $log("  [{$tenantId}] #{$clientId} {$name} — router error: " . $e->getMessage());
                 }
-                $log("  [{$tenantId}] #{$clientId} {$name} — router disable " . ($disabled ? 'OK' : 'FAILED (user not found)') . " ({$connType}: {$uname})");
-            } catch (Throwable $e) {
-                $log("  [{$tenantId}] #{$clientId} {$name} — router disable error: " . $e->getMessage());
             }
-        } elseif (empty($uname)) {
-            $log("  [{$tenantId}] #{$clientId} {$name} — no mikrotik_username, skipping router step");
+        } else {
+            // ── Grace: throttle only — do NOT kick the active session ─────────
+            // Client can still reach the payment page but general internet is throttled.
+            $pdo->prepare("UPDATE clients SET status = 'grace', updated_at = NOW() WHERE id = ? AND tenant_id = ? AND status = 'active'")
+                ->execute([$clientId, $tenantId]);
+            $log("  [{$tenantId}] #{$clientId} {$name} — GRACE PERIOD (throttled, not kicked)");
+
+            if (!empty($uname)) {
+                // RADIUS walled-garden (PPPoE — speed throttled, session stays up)
+                radius_walled_garden_client($pdo, $uname);
+
+                // MikroTik: for hotspot, change profile to a walled-garden profile if it exists
+                if ($api && $connType === 'hotspot') {
+                    try {
+                        // If a "walled-garden" hotspot profile exists on the router, switch to it.
+                        // If not, disable the user (fallback to old behaviour for hotspot).
+                        $profileSet = @$api->setHotspotUserProfile($uname, 'walled-garden');
+                        if (!$profileSet) {
+                            $api->disableHotspotUser($uname);
+                        }
+                    } catch (Throwable $e) {
+                        $log("  [{$tenantId}] #{$clientId} — hotspot grace error: " . $e->getMessage());
+                    }
+                }
+            }
         }
 
-        // 3. Send SMS notification to customer
-        $clientPhone = $client['phone'] ?? '';
-        if ($clientPhone) {
+        // ── Send SMS on first expiry (status was 'active' → now 'grace') ─────
+        if (!$isFullBlock && $client['phone'] ?? '') {
             try {
                 $sms = new SMSHelper($pdo, $tenantId);
                 if ($sms->hasConfig()) {
-                    $renewUrl = 'https://' . ($client['subdomain'] ?? '') . '.' . $platformDomain . '/customer/renew.php';
-                    $accNo    = $client['account_number'] ?? '';
-                    $pkgPrice = isset($client['pkg_price']) ? 'KES ' . number_format((float)$client['pkg_price'], 0) : '';
-                    $company  = $client['tenant_name'] ?? 'Your ISP';
+                    $renewUrl  = 'https://' . ($client['subdomain'] ?? '') . '.' . $platformDomain . '/customer/renew.php';
+                    $accNo     = $client['account_number'] ?? '';
+                    $pkgPrice  = isset($client['pkg_price']) ? 'KES ' . number_format((float)$client['pkg_price'], 0) : '';
+                    $company   = $client['tenant_name'] ?? 'Your ISP';
                     $firstName = explode(' ', $name)[0];
 
-                    // Fetch M-Pesa paybill for this tenant (for SMS instructions)
+                    // Fetch paybill for this tenant
+                    require_once __DIR__ . '/../includes/credential_helper.php';
                     $paybill = '';
                     try {
                         $gwSt = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1 LIMIT 1");
                         $gwSt->execute([$tenantId]);
                         $gwRow = $gwSt->fetch(PDO::FETCH_ASSOC);
-                        if ($gwRow) {
-                            $gwCreds = json_decode($gwRow['credentials'], true) ?? [];
-                            $paybill = $gwCreds['shortcode'] ?? '';
-                        }
+                        if ($gwRow) { $paybill = decrypt_gateway_credentials($gwRow['credentials'])['shortcode'] ?? ''; }
                     } catch (Throwable $_e) {}
 
                     if ($paybill && $accNo && $pkgPrice) {
                         $msg = "Hi {$firstName}, your {$company} internet has expired. Renew: M-Pesa Paybill {$paybill} Acc {$accNo} {$pkgPrice}. Or visit {$renewUrl}";
                     } else {
-                        $msg = "Hi {$firstName}, your {$company} internet subscription has expired. Visit {$renewUrl} to renew and get back online.";
+                        $msg = "Hi {$firstName}, your {$company} internet has expired. Visit {$renewUrl} to renew.";
                     }
-
-                    // Trim to 160 chars
                     if (strlen($msg) > 160) $msg = substr($msg, 0, 157) . '...';
 
-                    $smsResult = $sms->send($clientPhone, $msg, $clientId);
-                    $log("  [{$tenantId}] #{$clientId} {$name} — SMS " . ($smsResult['success'] ? 'sent' : 'failed: ' . ($smsResult['message'] ?? '?')));
-                } else {
-                    $log("  [{$tenantId}] #{$clientId} {$name} — SMS skipped (not configured)");
+                    $smsResult = $sms->send($client['phone'], $msg, $clientId);
+                    $log("  [{$tenantId}] #{$clientId} {$name} — expiry SMS " . ($smsResult['success'] ? 'sent' : 'failed'));
                 }
             } catch (Throwable $smsEx) {
-                $log("  [{$tenantId}] #{$clientId} {$name} — SMS error: " . $smsEx->getMessage());
+                $log("  [{$tenantId}] #{$clientId} — SMS error: " . $smsEx->getMessage());
             }
         }
     }

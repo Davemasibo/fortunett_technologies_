@@ -33,8 +33,29 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+// ── Fix 6: Daraja IP allowlist (fail-open in non-production) ─────────────────
+// Safaricom callback IPs: 196.201.214.0/24 and 196.201.216.0/24
+$_daraja_ip   = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+$_daraja_ip   = trim(explode(',', $_daraja_ip)[0]);
+$_allowed_nets = ['196.201.214.', '196.201.216.'];
+$_ip_ok = false;
+foreach ($_allowed_nets as $_net) {
+    if (str_starts_with($_daraja_ip, $_net)) { $_ip_ok = true; break; }
+}
+if (!$_ip_ok && (getenv('APP_ENV') === 'production' || getenv('MPESA_IP_STRICT') === 'true')) {
+    @file_put_contents(
+        dirname(__DIR__, 2) . '/logs/mpesa_callbacks.log',
+        date('Y-m-d H:i:s') . " BLOCKED IP={$_daraja_ip}\n",
+        FILE_APPEND | LOCK_EX
+    );
+    http_response_code(403);
+    echo json_encode(['result' => 'blocked']);
+    exit;
+}
+
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../includes/auto_provision.php';
+require_once __DIR__ . '/../../includes/payment_pipeline.php';
 
 $data = json_decode($content);
 if (!$data || !isset($data->Body->stkCallback)) {
@@ -112,11 +133,19 @@ try {
             }
         }
 
-        if ($tx && $tx['client_id']) {
-            $clientId = (int)$tx['client_id'];
-            $resolvedTenantId = $tenant_id ?? $tx['c_tenant_id'];
+        // ── Fix 2: Idempotency guard — skip pipeline if already processed ────────
+        // Safaricom retries callbacks up to 3×. Without this guard the subscription
+        // extension runs again, adding another full validity period.
+        if ($tx && $tx['status'] !== 'pending') {
+            echo json_encode(['result' => 'success']);
+            exit;
+        }
 
-            // Update the pending payment row
+        if ($tx && $tx['client_id']) {
+            $clientId         = (int)$tx['client_id'];
+            $resolvedTenantId = (int)($tenant_id ?? $tx['c_tenant_id']);
+
+            // Convert pending payment row from checkout_request_id to the real receipt
             $rows = $pdo->prepare("
                 UPDATE payments
                 SET status = 'completed', transaction_id = ?
@@ -125,39 +154,27 @@ try {
             $rows->execute([$receipt, $checkoutRequestId, $resolvedTenantId, $resolvedTenantId]);
 
             if ($rows->rowCount() === 0) {
-                // No pending row — insert a completed record
                 $pdo->prepare("
                     INSERT INTO payments (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date)
                     VALUES (?, ?, ?, 'mpesa', ?, 'completed', NOW())
                 ")->execute([$clientId, $resolvedTenantId, $amount, $receipt]);
             }
 
-            // Extend client subscription
-            if ($tx['package_id']) {
-                $pkg = $pdo->prepare("SELECT validity_value, validity_unit, name FROM packages WHERE id = ? AND tenant_id = ?");
-                $pkg->execute([$tx['package_id'], $resolvedTenantId]);
-                $package = $pkg->fetch(PDO::FETCH_ASSOC);
+            // Determine whether FortuNett collected this payment or the tenant's own paybill did
+            $ownGw = $pdo->prepare("SELECT id FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa' AND is_active = 1 LIMIT 1");
+            $ownGw->execute([$resolvedTenantId]);
+            $platformCollected = !$ownGw->fetchColumn();
 
-                if ($package) {
-                    $validityValue = max(1, (int)($package['validity_value'] ?? 30));
-                    $validityUnit  = in_array($package['validity_unit'], ['days','weeks','months']) ? $package['validity_unit'] : 'days';
-                    $expiryDate    = date('Y-m-d H:i:s', strtotime('+' . $validityValue . ' ' . $validityUnit));
-
-                    $pdo->prepare("
-                        UPDATE clients
-                        SET status = 'active', expiry_date = ?
-                        WHERE id = ? AND tenant_id = ?
-                    ")->execute([$expiryDate, $clientId, $resolvedTenantId]);
-
-                    $pdo->prepare("
-                        INSERT INTO customer_activity_log (client_id, tenant_id, activity_type, description)
-                        VALUES (?, ?, 'payment_success', ?)
-                    ")->execute([$clientId, $resolvedTenantId, 'Service activated via M-Pesa (' . $receipt . ') until ' . $expiryDate]);
-
-                    // Auto-provision on the tenant's router (best-effort — failure is logged, not fatal)
-                    autoProvisionClient($pdo, $clientId, (int)$resolvedTenantId);
-                }
-            }
+            process_payment_success(
+                $pdo,
+                $clientId,
+                $resolvedTenantId,
+                $amount,
+                $receipt,
+                'mpesa',
+                $tx['package_id'] ? (int)$tx['package_id'] : null,
+                $platformCollected
+            );
         }
 
     } else {

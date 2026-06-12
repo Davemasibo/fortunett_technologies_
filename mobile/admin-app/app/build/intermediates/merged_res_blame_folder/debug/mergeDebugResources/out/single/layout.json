@@ -1,23 +1,87 @@
 [
     {
-        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-mergeDebugResources-48:\\layout\\fragment_client_list.xml",
-        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-main-51:\\layout\\fragment_client_list.xml"
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/fragment_dashboard.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/fragment_dashboard.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/dialog_record_payment.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/dialog_record_payment.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/item_voucher.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/item_voucher.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/item_payment.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/item_payment.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/fragment_routers.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/fragment_routers.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/item_package.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/item_package.xml"
     },
     {
         "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-mergeDebugResources-48:\\layout\\item_client.xml",
         "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-main-51:\\layout\\item_client.xml"
     },
     {
-        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-mergeDebugResources-48:\\layout\\activity_main.xml",
-        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-main-51:\\layout\\activity_main.xml"
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/fragment_add_client.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/fragment_add_client.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/fragment_packages.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/fragment_packages.xml"
     },
     {
         "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-mergeDebugResources-48:\\layout\\activity_login.xml",
         "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-main-51:\\layout\\activity_login.xml"
     },
     {
-        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/activity_main.xml",
-        "source": "site.fortunetttech.admin.app-main-51:/layout/activity_main.xml"
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/dialog_package_form.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/dialog_package_form.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/fragment_client_list.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/fragment_client_list.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/fragment_client_detail.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/fragment_client_detail.xml"
+    },
+    {
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-mergeDebugResources-48:\\layout\\fragment_client_list.xml",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-main-51:\\layout\\fragment_client_list.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/item_router.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/item_router.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/fragment_vouchers.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/fragment_vouchers.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/dialog_generate_vouchers.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/dialog_generate_vouchers.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/fragment_payments.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/fragment_payments.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/dialog_edit_client.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/dialog_edit_client.xml"
+    },
+    {
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-mergeDebugResources-48:\\layout\\activity_main.xml",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-main-51:\\layout\\activity_main.xml"
+    },
+    {
+        "merged": "site.fortunetttech.admin.app-mergeDebugResources-48:/layout/row_detail_item.xml",
+        "source": "site.fortunetttech.admin.app-main-51:/layout/row_detail_item.xml"
     },
     {
         "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.admin.app-mergeDebugResources-48:\\layout\\fragment_dashboard.xml",

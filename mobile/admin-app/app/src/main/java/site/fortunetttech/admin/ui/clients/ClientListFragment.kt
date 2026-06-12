@@ -8,6 +8,7 @@ import androidx.appcompat.widget.SearchView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import dagger.hilt.android.AndroidEntryPoint
@@ -22,7 +23,10 @@ class ClientListFragment : Fragment() {
     private var _binding: FragmentClientListBinding? = null
     private val binding get() = _binding!!
     private val vm: ClientListViewModel by viewModels()
-    private val adapter = ClientAdapter { /* TODO: navigate to client detail */ }
+    private val adapter = ClientAdapter { client ->
+        val args = Bundle().apply { putInt("clientId", client.id) }
+        findNavController().navigate(site.fortunetttech.admin.R.id.clientDetailFragment, args)
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentClientListBinding.inflate(inflater, container, false)
@@ -32,6 +36,7 @@ class ClientListFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         binding.recyclerView.adapter       = adapter
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
+        binding.fabAdd.setOnClickListener { findNavController().navigate(site.fortunetttech.admin.R.id.addClientFragment) }
 
         binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {

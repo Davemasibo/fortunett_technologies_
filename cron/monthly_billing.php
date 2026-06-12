@@ -17,6 +17,7 @@
 define('CRON_MODE', true);
 chdir(dirname(__DIR__)); // Set working dir to project root
 
+require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../includes/db_master.php';
 
 // ── Configuration ─────────────────────────────────────────────────────────────

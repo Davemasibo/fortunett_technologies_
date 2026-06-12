@@ -162,6 +162,11 @@ if (isLoggedIn()) {
                     <div class="trial-bar <?= $barClass ?>" style="width:<?= $pct ?>%"></div>
                 </div>
                 <div class="trial-label"><?= $daysLeft ?> day<?= $daysLeft !== 1 ? 's' : '' ?> remaining</div>
+                <?php if ($tInfo['status'] === 'trial' && $daysLeft <= 3): ?>
+                <a href="billing.php" class="billing-alert" style="background:rgba(124,58,237,.18);border-color:rgba(124,58,237,.4);color:#c4b5fd;">
+                    <i class="fas fa-arrow-circle-up"></i> <?= $daysLeft === 0 ? 'Trial ended — Upgrade now' : 'Trial ending soon — Upgrade' ?>
+                </a>
+                <?php endif; ?>
                 <?php endif; ?>
                 <?php if ($hasOverdue): ?>
                 <a href="billing.php" class="billing-alert">

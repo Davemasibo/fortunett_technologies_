@@ -6,6 +6,7 @@
 header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
+require_once '../../includes/credential_helper.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user_id'])) {
@@ -38,7 +39,7 @@ if (!$gateway) {
     exit;
 }
 
-$creds = json_decode($gateway['credentials'], true) ?? [];
+$creds = decrypt_gateway_credentials($gateway['credentials']);
 $type  = $gateway['gateway_type'];
 
 try {

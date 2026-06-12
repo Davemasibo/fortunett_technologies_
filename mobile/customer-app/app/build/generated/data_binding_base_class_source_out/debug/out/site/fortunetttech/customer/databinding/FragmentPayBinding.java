@@ -6,6 +6,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.Spinner;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -39,18 +40,26 @@ public final class FragmentPayBinding implements ViewBinding {
   public final ProgressBar progressBar;
 
   @NonNull
+  public final Spinner spPackage;
+
+  @NonNull
+  public final TextView tvPolling;
+
+  @NonNull
   public final TextView tvResult;
 
   private FragmentPayBinding(@NonNull ScrollView rootView, @NonNull MaterialButton btnPay,
       @NonNull MaterialButton btnReset, @NonNull TextInputEditText etPhone,
       @NonNull MaterialCardView layoutResult, @NonNull ProgressBar progressBar,
-      @NonNull TextView tvResult) {
+      @NonNull Spinner spPackage, @NonNull TextView tvPolling, @NonNull TextView tvResult) {
     this.rootView = rootView;
     this.btnPay = btnPay;
     this.btnReset = btnReset;
     this.etPhone = etPhone;
     this.layoutResult = layoutResult;
     this.progressBar = progressBar;
+    this.spPackage = spPackage;
+    this.tvPolling = tvPolling;
     this.tvResult = tvResult;
   }
 
@@ -111,6 +120,18 @@ public final class FragmentPayBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.spPackage;
+      Spinner spPackage = ViewBindings.findChildViewById(rootView, id);
+      if (spPackage == null) {
+        break missingId;
+      }
+
+      id = R.id.tvPolling;
+      TextView tvPolling = ViewBindings.findChildViewById(rootView, id);
+      if (tvPolling == null) {
+        break missingId;
+      }
+
       id = R.id.tvResult;
       TextView tvResult = ViewBindings.findChildViewById(rootView, id);
       if (tvResult == null) {
@@ -118,7 +139,7 @@ public final class FragmentPayBinding implements ViewBinding {
       }
 
       return new FragmentPayBinding((ScrollView) rootView, btnPay, btnReset, etPhone, layoutResult,
-          progressBar, tvResult);
+          progressBar, spPackage, tvPolling, tvResult);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

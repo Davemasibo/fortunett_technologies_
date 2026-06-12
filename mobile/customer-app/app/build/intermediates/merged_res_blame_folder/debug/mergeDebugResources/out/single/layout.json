@@ -4,16 +4,44 @@
         "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\layout\\fragment_home.xml"
     },
     {
-        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-mergeDebugResources-48:\\layout\\fragment_pay.xml",
-        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\layout\\fragment_pay.xml"
+        "merged": "site.fortunetttech.customer.app-mergeDebugResources-48:/layout/fragment_profile.xml",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/fragment_profile.xml"
     },
     {
-        "merged": "site.fortunetttech.customer.app-mergeDebugResources-48:/layout/activity_main.xml",
-        "source": "site.fortunetttech.customer.app-main-51:/layout/activity_main.xml"
+        "merged": "site.fortunetttech.customer.app-mergeDebugResources-48:/layout/fragment_history.xml",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/fragment_history.xml"
     },
     {
         "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-mergeDebugResources-48:\\layout\\activity_main.xml",
         "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\layout\\activity_main.xml"
+    },
+    {
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-mergeDebugResources-48:\\layout\\activity_login.xml",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\layout\\activity_login.xml"
+    },
+    {
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-mergeDebugResources-48:\\layout\\fragment_pay.xml",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\layout\\fragment_pay.xml"
+    },
+    {
+        "merged": "site.fortunetttech.customer.app-mergeDebugResources-48:/layout/fragment_pay.xml",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/fragment_pay.xml"
+    },
+    {
+        "merged": "site.fortunetttech.customer.app-mergeDebugResources-48:/layout/dialog_change_password.xml",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/dialog_change_password.xml"
+    },
+    {
+        "merged": "site.fortunetttech.customer.app-mergeDebugResources-48:/layout/fragment_packages_browser.xml",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/fragment_packages_browser.xml"
+    },
+    {
+        "merged": "site.fortunetttech.customer.app-mergeDebugResources-48:/layout/item_payment.xml",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/item_payment.xml"
+    },
+    {
+        "merged": "site.fortunetttech.customer.app-mergeDebugResources-48:/layout/fragment_home.xml",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/fragment_home.xml"
     },
     {
         "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-mergeDebugResources-48:\\layout\\item_payment.xml",
@@ -24,7 +52,11 @@
         "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\layout\\fragment_history.xml"
     },
     {
-        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-mergeDebugResources-48:\\layout\\activity_login.xml",
-        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\layout\\activity_login.xml"
+        "merged": "site.fortunetttech.customer.app-mergeDebugResources-48:/layout/item_available_package.xml",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/item_available_package.xml"
+    },
+    {
+        "merged": "site.fortunetttech.customer.app-mergeDebugResources-48:/layout/dialog_edit_profile.xml",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/dialog_edit_profile.xml"
     }
 ]

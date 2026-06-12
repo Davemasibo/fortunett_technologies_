@@ -6,6 +6,7 @@ import dagger.internal.QualifierMetadata;
 import dagger.internal.ScopeMetadata;
 import javax.annotation.processing.Generated;
 import javax.inject.Provider;
+import site.fortunetttech.customer.data.repository.PackagesRepository;
 import site.fortunetttech.customer.data.repository.PayRepository;
 
 @ScopeMetadata
@@ -25,20 +26,25 @@ import site.fortunetttech.customer.data.repository.PayRepository;
 public final class PayViewModel_Factory implements Factory<PayViewModel> {
   private final Provider<PayRepository> repoProvider;
 
-  public PayViewModel_Factory(Provider<PayRepository> repoProvider) {
+  private final Provider<PackagesRepository> pkgRepoProvider;
+
+  public PayViewModel_Factory(Provider<PayRepository> repoProvider,
+      Provider<PackagesRepository> pkgRepoProvider) {
     this.repoProvider = repoProvider;
+    this.pkgRepoProvider = pkgRepoProvider;
   }
 
   @Override
   public PayViewModel get() {
-    return newInstance(repoProvider.get());
+    return newInstance(repoProvider.get(), pkgRepoProvider.get());
   }
 
-  public static PayViewModel_Factory create(Provider<PayRepository> repoProvider) {
-    return new PayViewModel_Factory(repoProvider);
+  public static PayViewModel_Factory create(Provider<PayRepository> repoProvider,
+      Provider<PackagesRepository> pkgRepoProvider) {
+    return new PayViewModel_Factory(repoProvider, pkgRepoProvider);
   }
 
-  public static PayViewModel newInstance(PayRepository repo) {
-    return new PayViewModel(repo);
+  public static PayViewModel newInstance(PayRepository repo, PackagesRepository pkgRepo) {
+    return new PayViewModel(repo, pkgRepo);
   }
 }

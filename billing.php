@@ -143,6 +143,8 @@ try {
     $platformSummary = $pcSumStmt->fetch(PDO::FETCH_ASSOC) ?: $platformSummary;
 } catch (Exception $e) {}
 
+require_once __DIR__ . '/includes/credential_helper.php';
+
 // M-Pesa config — prefer tenant's own gateway, fall back to platform
 $mpesaConfig = ['shortcode' => '', 'env' => 'sandbox', 'using_own' => false];
 try {
@@ -154,7 +156,7 @@ try {
     $gwStmt->execute([$tenant_id]);
     $tenantGw = $gwStmt->fetch(PDO::FETCH_ASSOC);
     if ($tenantGw) {
-        $gwCreds = json_decode($tenantGw['credentials'], true) ?? [];
+        $gwCreds = decrypt_gateway_credentials($tenantGw['credentials']);
         if (!empty($gwCreds['shortcode']) && !empty($gwCreds['consumer_key'])) {
             $mpesaConfig = [
                 'shortcode'  => $gwCreds['shortcode'],
@@ -482,12 +484,68 @@ include 'includes/sidebar.php';
 <div class="main-content-wrapper billing-wrapper">
 <div class="billing-container">
 
-    <?php if (!empty($_GET['suspended'])): ?>
-    <div style="margin-bottom:20px;padding:16px 20px;border-radius:10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);display:flex;align-items:flex-start;gap:12px;">
-        <i class="fas fa-ban" style="color:#EF4444;font-size:18px;margin-top:1px;flex-shrink:0;"></i>
-        <div>
-            <div style="font-weight:700;color:#DC2626;margin-bottom:3px;">Account Suspended</div>
-            <div style="font-size:13px;color:#6B7280;">Your platform subscription has been suspended due to an overdue invoice. Please settle your outstanding balance below to restore full access.</div>
+    <?php
+    // Dunning walled garden — driven by actual DB status, not URL param alone.
+    // URL params from requireTenantActive() are kept as a hint but DB is the authority.
+    $dunningState = null;
+    if (($tenant['status'] ?? '') === 'suspended') {
+        $dunningState = 'suspended';
+    } elseif (
+        ($tenant['status'] ?? '') === 'trial' &&
+        !empty($tenant['trial_ends_at']) &&
+        $tenant['trial_ends_at'] < date('Y-m-d')
+    ) {
+        $dunningState = 'trial_expired';
+    } elseif (!empty($_GET['suspended'])) {
+        $dunningState = 'suspended';
+    } elseif (!empty($_GET['trial_expired'])) {
+        $dunningState = 'trial_expired';
+    }
+
+    if ($dunningState): ?>
+    <div id="dunning-wall" style="
+        position:fixed;inset:0;z-index:9999;
+        background:rgba(10,10,9,0.92);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+        display:flex;align-items:center;justify-content:center;padding:20px;
+    ">
+        <div style="
+            background:#1c1c1b;border-radius:20px;max-width:500px;width:100%;
+            box-shadow:0 32px 80px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.06);
+            overflow:hidden;text-align:center;
+        ">
+            <?php if ($dunningState === 'suspended'): ?>
+            <div style="background:linear-gradient(135deg,#7f1d1d,#dc2626);padding:28px 24px;">
+                <div style="font-size:40px;margin-bottom:10px;">🔒</div>
+                <div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:6px;">Account Suspended</div>
+                <div style="font-size:13px;color:rgba(255,255,255,.75);">Your FortuNett platform access has been paused</div>
+            </div>
+            <div style="padding:28px 32px;">
+                <p style="color:#d4d4d2;font-size:14px;line-height:1.7;margin-bottom:20px;">
+                    An overdue platform invoice has put your account on hold. Your ISP dashboard and all features are currently inaccessible to your team.<br><br>
+                    <strong style="color:#fca5a5;">Good news:</strong> Your account reactivates <em>automatically within minutes</em> of payment confirmation.
+                </p>
+                <button onclick="document.getElementById('dunning-wall').style.display='none';document.querySelector('.view-invoice-btn')?.click()" style="width:100%;padding:14px;background:linear-gradient(135deg,#b91c1c,#ef4444);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;">
+                    View Invoice &amp; Pay Now
+                </button>
+                <div style="font-size:12px;color:#6b7280;">Pay via M-Pesa Paybill <strong style="color:#9ca3af;">400200</strong> &nbsp;|&nbsp; Support: <a href="mailto:support@fortunetttech.site" style="color:#60a5fa;text-decoration:none;">support@fortunetttech.site</a></div>
+            </div>
+            <?php else: ?>
+            <div style="background:linear-gradient(135deg,#4c1d95,#7c3aed);padding:28px 24px;">
+                <div style="font-size:40px;margin-bottom:10px;">⏳</div>
+                <div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:6px;">Free Trial Ended</div>
+                <div style="font-size:13px;color:rgba(255,255,255,.75);">Your 14-day trial period has expired</div>
+            </div>
+            <div style="padding:28px 32px;">
+                <p style="color:#d4d4d2;font-size:14px;line-height:1.7;margin-bottom:20px;">
+                    To continue managing your ISP and serving your customers, please pay your first platform invoice.<br><br>
+                    <strong style="color:#c4b5fd;">Instant reactivation</strong> — your account is restored automatically within minutes of payment.
+                </p>
+                <button onclick="document.getElementById('dunning-wall').style.display='none';document.querySelector('.view-invoice-btn')?.click()" style="width:100%;padding:14px;background:linear-gradient(135deg,#6d28d9,#7c3aed);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;">
+                    View Invoice &amp; Subscribe
+                </button>
+                <div style="font-size:12px;color:#6b7280;">Pay via M-Pesa Paybill <strong style="color:#9ca3af;">400200</strong> &nbsp;|&nbsp; Support: <a href="mailto:support@fortunetttech.site" style="color:#60a5fa;text-decoration:none;">support@fortunetttech.site</a></div>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
     <?php endif; ?>

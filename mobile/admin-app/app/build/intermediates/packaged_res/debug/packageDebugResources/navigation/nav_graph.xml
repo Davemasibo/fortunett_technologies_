@@ -12,6 +12,48 @@
     <fragment
         android:id="@+id/clientListFragment"
         android:name="site.fortunetttech.admin.ui.clients.ClientListFragment"
-        android:label="Clients" />
+        android:label="Clients">
+        <action
+            android:id="@+id/action_clients_to_detail"
+            app:destination="@id/clientDetailFragment" />
+        <action
+            android:id="@+id/action_clients_to_add"
+            app:destination="@id/addClientFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/clientDetailFragment"
+        android:name="site.fortunetttech.admin.ui.clients.ClientDetailFragment"
+        android:label="Client Detail">
+        <argument
+            android:name="clientId"
+            app:argType="integer"
+            android:defaultValue="0" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/addClientFragment"
+        android:name="site.fortunetttech.admin.ui.clients.AddClientFragment"
+        android:label="Add Client" />
+
+    <fragment
+        android:id="@+id/paymentsFragment"
+        android:name="site.fortunetttech.admin.ui.payments.PaymentsFragment"
+        android:label="Payments" />
+
+    <fragment
+        android:id="@+id/packagesFragment"
+        android:name="site.fortunetttech.admin.ui.packages.PackagesFragment"
+        android:label="Packages" />
+
+    <fragment
+        android:id="@+id/vouchersFragment"
+        android:name="site.fortunetttech.admin.ui.vouchers.VouchersFragment"
+        android:label="Vouchers" />
+
+    <fragment
+        android:id="@+id/routersFragment"
+        android:name="site.fortunetttech.admin.ui.routers.RoutersFragment"
+        android:label="Routers" />
 
 </navigation>

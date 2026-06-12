@@ -86,67 +86,112 @@ try {
         }
     } catch (Throwable $_e) {}
 
-    // Build one RouterOS command string per requested service.
-    // Every block uses :do { remove } on-error={} before adding so the script is
-    // idempotent — safe to run multiple times even if config already exists.
-    $commands = [];
+    // ── Bridge detection preamble ─────────────────────────────────────────────
+    //
+    // Runs ONCE before any service block. Uses RouterOS scripting to:
+    //   1. Find any existing non-disabled bridge and reuse it under $bname.
+    //      If none exists, create bridge-local.
+    //   2. Loop over every Ethernet interface EXCEPT ether1 (WAN) and add it
+    //      to the bridge if it is not already a member — handles any port count
+    //      (ether2, ether3 … etherN) without hard-coding interface names.
+    //   3. Strip any raw IP from each access port before bridging it.
+    //
+    // Both the PPPoE server and hotspot server below reference $bname so they
+    // coexist on a single physically-segregated bridge.
+    $bridgePreamble = <<<'RSC'
+# ═══════════════════════════════════════════════════════════════════════════════
+# FortuNett: Bridge Detection + Access-Port Discovery
+# ═══════════════════════════════════════════════════════════════════════════════
+# Step 1 — reuse any existing bridge, or create bridge-local
+:local bname "";
+:local bfound [/interface bridge find !disabled];
+:if ([:len $bfound] > 0) do={
+    :set bname [/interface bridge get ($bfound->0) name];
+    :log info ("FortuNett: reusing existing bridge: " . $bname);
+} else={
+    :set bname "bridge-local";
+    :do { /interface bridge add name=bridge-local auto-mac=yes comment="FortuNett-Bridge" } on-error={};
+    :log info "FortuNett: created bridge-local";
+};
+# Step 2 — dump all access ports (every Ethernet except ether1 WAN) into the bridge
+:foreach iface in=[/interface ethernet find !disabled] do={
+    :local ifname [/interface ethernet get $iface name];
+    :if ($ifname != "ether1") do={
+        :do { /ip address remove [find interface=$ifname] } on-error={};
+        :if ([:len [/interface bridge port find interface=$ifname]] = 0) do={
+            /interface bridge port add bridge=$bname interface=$ifname;
+        };
+    };
+};
+RSC;
+
+    // ── Per-service command blocks (reference $bname set by the preamble) ──────
+    $serviceBlocks = [];
+
     foreach ($services as $service) {
         if ($service === 'pppoe') {
-            $commands[] = implode(' ', [
-                // Remove existing (ignore errors if they don't exist)
-                ':do { /interface pppoe-server server remove [find service-name=pppoe-service] } on-error={};',
-                ':do { /ppp profile remove [find name=pppoe-profile] } on-error={};',
-                ':do { /ip pool remove [find name=pppoe-pool] } on-error={};',
-                // Create fresh
-                '/ip pool add name=pppoe-pool ranges=10.10.10.2-10.10.10.254;',
-                '/ppp profile add name=pppoe-profile local-address=10.10.10.1 remote-address=pppoe-pool dns-server=8.8.8.8,8.8.4.4;',
-                '/interface pppoe-server server add service-name=pppoe-service interface=ether2 default-profile=pppoe-profile disabled=no;',
-            ]);
+            // $bname is a RouterOS variable (single-quoted — no PHP interpolation)
+            $serviceBlocks['pppoe'] = <<<'RSC'
+# ═══════════════════════════════════════════════════════════════════════════════
+# FortuNett: PPPoE Server — bound to bridge $bname
+# ═══════════════════════════════════════════════════════════════════════════════
+:do { /interface pppoe-server server remove [find service-name=pppoe-service] } on-error={};
+:do { /ppp profile remove [find name=pppoe-profile] } on-error={};
+:do { /ip pool remove [find name=pppoe-pool] } on-error={};
+/ip pool add name=pppoe-pool ranges=10.10.10.2-10.10.10.254;
+/ppp profile add name=pppoe-profile local-address=10.10.10.1 remote-address=pppoe-pool dns-server=8.8.8.8,8.8.4.4;
+/interface pppoe-server server add service-name=pppoe-service interface=$bname default-profile=pppoe-profile disabled=no;
+RSC;
 
         } elseif ($service === 'hotspot') {
-            // shared-users: '1' = one device at a time (session sharing off), 'unlimited' = no cap
-            $cmds = [
-                // Remove existing (reverse dependency order)
+            // $sharedUsers is PHP-interpolated; $bname is a literal RouterOS var
+            // (single-quoted array entries pass $bname through as-is)
+            $hsLines = [
+                '# ═══════════════════════════════════════════════════════════════════════════════',
+                '# FortuNett: Hotspot Server — bound to bridge $bname',
+                '# ═══════════════════════════════════════════════════════════════════════════════',
                 ':do { /ip hotspot remove [find name=hotspot1] } on-error={};',
                 ':do { /ip hotspot profile remove [find name=hsprof1] } on-error={};',
                 ':do { /ip pool remove [find name=hs-pool] } on-error={};',
                 ':do { /ip address remove [find address="10.5.50.1/24"] } on-error={};',
-                // Create fresh — html-directory and login-by are required for captive portal
                 '/ip pool add name=hs-pool ranges=10.5.50.2-10.5.50.254;',
-                '/ip address add address=10.5.50.1/24 interface=ether2;',
+                '/ip address add address=10.5.50.1/24 interface=$bname;',
                 '/ip hotspot profile add name=hsprof1 dns-name=hotspot.fortunett.com hotspot-address=10.5.50.1 html-directory=flash/hotspot login-by=http-pap,cookie;',
                 "/ip hotspot user profile set [find name=default] rate-limit=5M/5M shared-users={$sharedUsers};",
-                '/ip hotspot add name=hotspot1 interface=ether2 address-pool=hs-pool profile=hsprof1 disabled=no;',
-                // NAT masquerade — without this hotspot clients get IPs but cannot reach the internet
+                '/ip hotspot add name=hotspot1 interface=$bname address-pool=hs-pool profile=hsprof1 disabled=no;',
                 ':do { /ip firewall nat remove [find comment="FortuNett-Hotspot-NAT"] } on-error={};',
                 '/ip firewall nat add chain=srcnat src-address=10.5.50.0/24 action=masquerade comment="FortuNett-Hotspot-NAT";',
             ];
 
-            // Walled garden — portal must be reachable before the client authenticates
             if ($portalHost) {
-                $cmds[] = ":do { /ip hotspot walled-garden remove [find comment=\"FortuNett-Portal\"] } on-error={};";
-                $cmds[] = "/ip hotspot walled-garden add dst-host=\"$portalHost\" comment=\"FortuNett-Portal\";";
+                $hsLines[] = ":do { /ip hotspot walled-garden remove [find comment=\"FortuNett-Portal\"] } on-error={};";
+                $hsLines[] = "/ip hotspot walled-garden add dst-host=\"{$portalHost}\" comment=\"FortuNett-Portal\";";
             }
-
-            // Pull the branded login.html from the server onto the router flash
             if ($loginServeUrl) {
                 $esc = addslashes($loginServeUrl);
-                $cmds[] = ":do { /file remove [find name=\"flash/hotspot/login.html\"] } on-error={};";
-                $cmds[] = "/tool fetch mode=https url=\"$esc\" dst-path=flash/hotspot/login.html check-certificate=no;";
+                $hsLines[] = ":do { /file remove [find name=\"flash/hotspot/login.html\"] } on-error={};";
+                $hsLines[] = "/tool fetch mode=https url=\"{$esc}\" dst-path=flash/hotspot/login.html check-certificate=no;";
             }
 
-            $commands[] = implode(' ', $cmds);
+            $serviceBlocks['hotspot'] = implode("\n", $hsLines);
         }
     }
 
+    // ── Build output ───────────────────────────────────────────────────────────
+    // 'command'  — single unified script (bridge preamble + all service blocks).
+    //              Paste the whole thing once in the RouterOS terminal; $bname is
+    //              set by the preamble and shared by every service block below it.
+    // 'commands' — array: first element = bridge preamble, then one per service.
+    //              Lets the frontend display each block separately if needed.
+    $commands = array_merge([$bridgePreamble], array_values($serviceBlocks));
+
     echo json_encode([
-        'status'              => 'success',
-        'message'             => 'Configuration generated for: ' . implode(', ', $services),
-        'services'            => $services,
-        'commands'            => $commands,
-        'hotspot_no_sharing'  => (bool)$noSharing,
-        // Legacy single-command field for backwards compatibility
-        'command'             => $commands[0] ?? '',
+        'status'             => 'success',
+        'message'            => 'Configuration generated for: ' . implode(', ', $services),
+        'services'           => $services,
+        'commands'           => $commands,
+        'hotspot_no_sharing' => (bool)$noSharing,
+        'command'            => implode("\n\n", $commands),
     ]);
 
 } catch (Exception $e) {

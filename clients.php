@@ -1483,6 +1483,9 @@ function copyText(text) { // kept for any legacy calls
         .catch(() => { showToast('Copy failed', 'error'); });
 }
 
+let _stkPollTimer = null;
+let _stkPollCount = 0;
+
 function promptPayment() {
     if (!currentCustomer) return;
     const amount = currentCustomer.package_price || '1000';
@@ -1502,15 +1505,75 @@ function promptPayment() {
         .then(data => {
             if (data.success) {
                 if (data.sandbox) {
-                    showToast('SANDBOX: STK request accepted but no real phone prompt is sent. Switch to Production in Settings → Payments.', 'warning');
-                } else {
-                    showToast('STK Push sent! Customer should see a prompt on their phone.', 'success');
+                    showToast('SANDBOX: No real phone prompt sent. Showing demo payment confirmed.', 'warning');
+                    return;
                 }
+                _openStkModal(phone, amount, data.checkout_request_id, currentCustomer.id);
             } else {
                 showToast('STK Push failed: ' + (data.message || data.errorMessage || 'Unknown error'), 'error');
             }
         })
         .catch(() => showToast('Network error initiating STK Push.', 'error'));
+}
+
+function _openStkModal(phone, amount, checkoutId, clientId) {
+    const m = document.getElementById('stkPollModal');
+    document.getElementById('stkPollPhone').textContent  = phone;
+    document.getElementById('stkPollAmount').textContent = 'KES ' + parseFloat(amount).toLocaleString();
+    document.getElementById('stkPollStatus').textContent = 'Waiting for approval on customer\'s phone…';
+    document.getElementById('stkPollSpinner').style.display = 'block';
+    document.getElementById('stkPollIconOk').style.display  = 'none';
+    document.getElementById('stkPollIconFail').style.display = 'none';
+    document.getElementById('stkPollDismiss').style.display  = 'none';
+    m.style.display = 'flex';
+
+    clearInterval(_stkPollTimer);
+    _stkPollCount = 0;
+
+    _stkPollTimer = setInterval(function() {
+        _stkPollCount++;
+        // 3s × 60 = 3 min timeout
+        if (_stkPollCount > 60) {
+            clearInterval(_stkPollTimer);
+            _stkModalFail('Timed out waiting for payment. If the customer was charged, it will auto-process within minutes.');
+            return;
+        }
+
+        fetch('api/payment/hotspot_payment_status.php?checkout_request_id=' + encodeURIComponent(checkoutId) + '&client_id=' + encodeURIComponent(clientId))
+            .then(r => r.json())
+            .then(d => {
+                if (d.status === 'completed') {
+                    clearInterval(_stkPollTimer);
+                    _stkModalSuccess();
+                } else if (d.status === 'failed') {
+                    clearInterval(_stkPollTimer);
+                    _stkModalFail(d.message || 'Payment failed or was cancelled by the customer.');
+                }
+                // 'pending' → keep polling
+            })
+            .catch(() => {}); // network blip — retry next tick
+    }, 3000);
+}
+
+function _stkModalSuccess() {
+    document.getElementById('stkPollSpinner').style.display  = 'none';
+    document.getElementById('stkPollIconOk').style.display   = 'flex';
+    document.getElementById('stkPollStatus').textContent     = 'Payment confirmed! Account activated.';
+    document.getElementById('stkPollDismiss').style.display  = 'block';
+    document.getElementById('stkPollDismiss').textContent    = 'Done';
+}
+
+function _stkModalFail(msg) {
+    document.getElementById('stkPollSpinner').style.display   = 'none';
+    document.getElementById('stkPollIconFail').style.display  = 'flex';
+    document.getElementById('stkPollStatus').textContent      = msg;
+    document.getElementById('stkPollDismiss').style.display   = 'block';
+    document.getElementById('stkPollDismiss').textContent     = 'Close';
+}
+
+function _closeStkModal() {
+    clearInterval(_stkPollTimer);
+    document.getElementById('stkPollModal').style.display = 'none';
 }
 
 function sendEmail() {
@@ -2507,6 +2570,21 @@ function showImportResult(html, type) {
     el.innerHTML = html;
 }
 </script>
+
+<!-- ── STK Push Polling Modal ────────────────────────────────────────────────── -->
+<div id="stkPollModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:10002;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+  <div style="background:#222221;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px 28px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.6);text-align:center;">
+    <div id="stkPollSpinner" style="margin:0 auto 20px;width:52px;height:52px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--primary-color,#3B6EA5);border-radius:50%;animation:spin .8s linear infinite;"></div>
+    <div id="stkPollIconOk" style="display:none;margin:0 auto 20px;width:52px;height:52px;border-radius:50%;background:rgba(16,185,129,.15);border:2px solid rgba(16,185,129,.4);align-items:center;justify-content:center;font-size:26px;">✓</div>
+    <div id="stkPollIconFail" style="display:none;margin:0 auto 20px;width:52px;height:52px;border-radius:50%;background:rgba(239,68,68,.15);border:2px solid rgba(239,68,68,.4);align-items:center;justify-content:center;font-size:26px;">✕</div>
+    <div style="font-size:13px;color:rgba(255,255,255,.45);margin-bottom:4px;">STK Push sent to</div>
+    <div id="stkPollPhone" style="font-size:16px;font-weight:700;color:#e2e2e0;margin-bottom:4px;"></div>
+    <div id="stkPollAmount" style="font-size:22px;font-weight:800;color:var(--primary-color,#3B6EA5);margin-bottom:18px;"></div>
+    <p id="stkPollStatus" style="font-size:13px;color:rgba(255,255,255,.6);line-height:1.55;margin:0 0 22px;"></p>
+    <button id="stkPollDismiss" onclick="_closeStkModal()" style="display:none;width:100%;padding:11px;border-radius:10px;border:none;background:var(--primary-color,#3B6EA5);color:#fff;font-weight:700;font-size:14px;cursor:pointer;">Done</button>
+  </div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
 <!-- ── Import Options Modal ──────────────────────────────────────────────────── -->
 <div id="importOptionsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10001;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">

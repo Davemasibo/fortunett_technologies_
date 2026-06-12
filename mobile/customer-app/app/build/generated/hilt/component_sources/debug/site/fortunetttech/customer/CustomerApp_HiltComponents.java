@@ -53,8 +53,12 @@ import site.fortunetttech.customer.ui.history.HistoryFragment_GeneratedInjector;
 import site.fortunetttech.customer.ui.history.HistoryViewModel_HiltModules;
 import site.fortunetttech.customer.ui.home.HomeFragment_GeneratedInjector;
 import site.fortunetttech.customer.ui.home.HomeViewModel_HiltModules;
+import site.fortunetttech.customer.ui.packages.PackagesBrowserFragment_GeneratedInjector;
+import site.fortunetttech.customer.ui.packages.PackagesBrowserViewModel_HiltModules;
 import site.fortunetttech.customer.ui.pay.PayFragment_GeneratedInjector;
 import site.fortunetttech.customer.ui.pay.PayViewModel_HiltModules;
+import site.fortunetttech.customer.ui.profile.ProfileFragment_GeneratedInjector;
+import site.fortunetttech.customer.ui.profile.ProfileViewModel_HiltModules;
 
 @Generated("dagger.hilt.processor.internal.root.RootProcessor")
 public final class CustomerApp_HiltComponents {
@@ -167,7 +171,9 @@ public final class CustomerApp_HiltComponents {
           HistoryViewModel_HiltModules.KeyModule.class,
           HomeViewModel_HiltModules.KeyModule.class,
           LoginViewModel_HiltModules.KeyModule.class,
-          PayViewModel_HiltModules.KeyModule.class
+          PackagesBrowserViewModel_HiltModules.KeyModule.class,
+          PayViewModel_HiltModules.KeyModule.class,
+          ProfileViewModel_HiltModules.KeyModule.class
       }
   )
   @ActivityRetainedScoped
@@ -208,7 +214,9 @@ public final class CustomerApp_HiltComponents {
           HistoryViewModel_HiltModules.BindsModule.class,
           HomeViewModel_HiltModules.BindsModule.class,
           LoginViewModel_HiltModules.BindsModule.class,
-          PayViewModel_HiltModules.BindsModule.class
+          PackagesBrowserViewModel_HiltModules.BindsModule.class,
+          PayViewModel_HiltModules.BindsModule.class,
+          ProfileViewModel_HiltModules.BindsModule.class
       }
   )
   @ViewModelScoped
@@ -239,7 +247,9 @@ public final class CustomerApp_HiltComponents {
       GeneratedComponent,
       HistoryFragment_GeneratedInjector,
       HomeFragment_GeneratedInjector,
-      PayFragment_GeneratedInjector {
+      PackagesBrowserFragment_GeneratedInjector,
+      PayFragment_GeneratedInjector,
+      ProfileFragment_GeneratedInjector {
     @Subcomponent.Builder
     abstract interface Builder extends FragmentComponentBuilder {
     }

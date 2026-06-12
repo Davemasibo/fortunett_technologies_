@@ -134,21 +134,26 @@ h1{color:#e8e8e6;font-size:18px;font-weight:700;text-align:center;margin-bottom:
     </div>
     $(endif)
 
+    <div id="hs-login-err" class="error-box" style="display:none">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span></span>
+    </div>
+
     <form name="login" id="hs-login-form" action="$(link-login-only)" method="post" accept-charset="UTF-8">
       <input type="hidden" name="dst" id="hs-dst"
              value="{{PORTAL_URL}}/customer/hotspot_landing.php?mac=$(mac-esc)">
       <div class="form-group">
-        <label>Username</label>
+        <label>Username / Phone</label>
         <input type="text" name="username" id="hs-user"
-               value="$(username)" placeholder="Enter your username"
+               value="$(username)" placeholder="Enter your phone or username"
                autocomplete="username" required>
       </div>
       <div class="form-group">
         <label>Password</label>
-        <input type="password" name="password" placeholder="Enter your password"
+        <input type="password" name="password" id="hs-pass" placeholder="Enter your password"
                autocomplete="current-password" required>
       </div>
-      <button type="submit" class="btn-main">Connect to Internet</button>
+      <button type="submit" class="btn-main" id="hs-login-btn">Connect to Internet</button>
     </form>
 
     <div class="divider"></div>
@@ -290,13 +295,59 @@ function switchTab(name) {
 /* ── Auto-select login tab if there's an error ─────────────── */
 if (document.querySelector('.error-box')) switchTab('login');
 
-/* ── Login: append username to dst for fast portal lookup ─── */
-document.getElementById('hs-login-form').addEventListener('submit', function() {
-  var u = (document.getElementById('hs-user').value || '').trim();
-  if (u) {
-    var d = document.getElementById('hs-dst');
-    d.value = d.value + '&user=' + encodeURIComponent(u);
-  }
+/* ── Login: translate portal credentials → MikroTik credentials ─── */
+function setLoginError(msg) {
+  var box  = document.getElementById('hs-login-err');
+  var span = box.querySelector('span');
+  box.style.display = msg ? 'flex' : 'none';
+  if (span) span.textContent = msg;
+}
+
+document.getElementById('hs-login-form').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var form = this;
+  var u    = (document.getElementById('hs-user').value  || '').trim();
+  var p    = (document.getElementById('hs-pass').value  || '');
+  var btn  = document.getElementById('hs-login-btn');
+  if (!u || !p) return;
+
+  setLoginError('');
+  btn.disabled    = true;
+  btn.textContent = 'Connecting…';
+
+  fetch(PORTAL + '/api/customer/hotspot_login.php', {
+    method  : 'POST',
+    headers : {'Content-Type': 'application/x-www-form-urlencoded'},
+    body    : 'username='     + encodeURIComponent(u)   +
+              '&password='    + encodeURIComponent(p)   +
+              '&tenant_id='   + encodeURIComponent(TID) +
+              '&mac_address=' + encodeURIComponent(MAC)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.success) {
+      // Swap in the MikroTik credentials before submitting to RouterOS
+      document.getElementById('hs-user').value = d.mikrotik_username;
+      document.getElementById('hs-pass').value = d.mikrotik_password;
+      var dst = document.getElementById('hs-dst');
+      dst.value = dst.value + '&user=' + encodeURIComponent(d.mikrotik_username);
+      form.submit();
+    } else if (d.expired) {
+      btn.disabled    = false;
+      btn.textContent = 'Connect to Internet';
+      setLoginError((d.message || 'Subscription expired.') + ' Please buy a plan.');
+      switchTab('buy');
+    } else {
+      btn.disabled    = false;
+      btn.textContent = 'Connect to Internet';
+      setLoginError(d.message || 'Login failed. Check your credentials and try again.');
+    }
+  })
+  .catch(function() {
+    btn.disabled    = false;
+    btn.textContent = 'Connect to Internet';
+    setLoginError('Network error. Please try again.');
+  });
 });
 
 /* ── Voucher: copy code to password field ──────────────────── */
@@ -365,8 +416,11 @@ function resetReconnect() {
 }
 
 /* ── Buy Plans: STK Push ───────────────────────────────────── */
-var _buyTimer  = null;
-var _buyReqId  = null;
+var _buyTimer     = null;
+var _buyReqId     = null;
+var _buyClientId  = null;
+var _buyPollCount = 0;
+var _buyPollMax   = 75; /* 75 × 4 s = 5 min — matches Safaricom's STK timeout */
 
 function doBuyPlan() {
   var phone = (document.getElementById('buy-phone').value || '').trim();
@@ -390,7 +444,9 @@ function doBuyPlan() {
   .then(function(r) { return r.json(); })
   .then(function(d) {
     if (d.success && d.checkout_request_id) {
-      _buyReqId = d.checkout_request_id;
+      _buyReqId     = d.checkout_request_id;
+      _buyClientId  = d.client_id || null;
+      _buyPollCount = 0;
       document.getElementById('buy-status-title').textContent = 'Payment request sent!';
       document.getElementById('buy-status-msg').textContent   = 'Enter your M-Pesa PIN…';
       _buyTimer = setInterval(pollBuyStatus, 4000);
@@ -404,7 +460,25 @@ function doBuyPlan() {
 
 function pollBuyStatus() {
   if (!_buyReqId) return;
-  fetch(PORTAL + '/api/payment/hotspot_payment_status.php?checkout_request_id=' + encodeURIComponent(_buyReqId) + '&tenant_id=' + encodeURIComponent(TID))
+
+  _buyPollCount++;
+  if (_buyPollCount > _buyPollMax) {
+    clearInterval(_buyTimer);
+    cancelBuy();
+    var res = document.getElementById('rc-result');
+    if (res) {
+      res.style.display = 'block';
+      res.innerHTML = '<div class="result-fail"><div class="result-fail-title">&#10007; Payment Timed Out</div>'
+        + '<div class="result-sub">No confirmation received after 5 minutes. If you paid, use the <strong>Reconnect</strong> tab with your M-Pesa code.</div></div>'
+        + '<button class="btn-ghost" onclick="switchTab(\'reconnect\')">Go to Reconnect</button>';
+    }
+    alert('Payment timed out. If you completed the payment, use the Reconnect tab to connect.');
+    return;
+  }
+
+  var pollUrl = PORTAL + '/api/payment/hotspot_payment_status.php?checkout_request_id=' + encodeURIComponent(_buyReqId);
+  pollUrl += _buyClientId ? '&client_id=' + encodeURIComponent(_buyClientId) : '&tenant_id=' + encodeURIComponent(TID);
+  fetch(pollUrl)
     .then(function(r) { return r.json(); })
     .then(function(d) {
       if (d.status === 'completed') {
@@ -430,7 +504,9 @@ function pollBuyStatus() {
 
 function cancelBuy() {
   clearInterval(_buyTimer);
-  _buyReqId = null;
+  _buyReqId     = null;
+  _buyClientId  = null;
+  _buyPollCount = 0;
   document.getElementById('buy-status').style.display = 'none';
   document.getElementById('buy-btn').style.display    = 'block';
 }

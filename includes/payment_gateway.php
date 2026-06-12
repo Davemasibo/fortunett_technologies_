@@ -8,98 +8,18 @@
 
 class PaymentGatewayManager {
     private $db;
-    private $encryptionKey;
-    
+
     public function __construct($db) {
         $this->db = $db;
-        // Use a secure encryption key (should be in environment variables in production)
-        $this->encryptionKey = $this->getEncryptionKey();
+        require_once __DIR__ . '/credential_helper.php';
     }
     
-    /**
-     * Get encryption key from environment or generate one
-     * In production, this should be stored securely in environment variables
-     */
-    private function getEncryptionKey() {
-        // Check if encryption key exists in config
-        $keyFile = __DIR__ . '/../config/encryption.key';
-        
-        if (file_exists($keyFile)) {
-            return file_get_contents($keyFile);
-        }
-        
-        // Generate new key if it doesn't exist
-        $key = base64_encode(random_bytes(32));
-        
-        // Create config directory if it doesn't exist
-        $configDir = dirname($keyFile);
-        if (!is_dir($configDir)) {
-            mkdir($configDir, 0755, true);
-        }
-        
-        file_put_contents($keyFile, $key);
-        chmod($keyFile, 0600); // Restrict permissions
-        
-        return $key;
+    private function encryptCredentials(array $credentials): string {
+        return encrypt_gateway_credentials($credentials);
     }
-    
-    /**
-     * Encrypt credentials before storing
-     * 
-     * @param array $credentials
-     * @return string Encrypted JSON
-     */
-    private function encryptCredentials($credentials) {
-        $json = json_encode($credentials);
-        $iv = random_bytes(16);
-        $encrypted = openssl_encrypt(
-            $json,
-            'AES-256-CBC',
-            base64_decode($this->encryptionKey),
-            0,
-            $iv
-        );
-        
-        // Prepend IV to encrypted data
-        return base64_encode($iv . $encrypted);
-    }
-    
-    /**
-     * Decrypt credentials when retrieving
-     * 
-     * @param string $encryptedData
-     * @return array|null Decrypted credentials array
-     */
-    private function decryptCredentials($encryptedData) {
-        if (!is_string($encryptedData) || $encryptedData === '') {
-            return [];
-        }
 
-        // Plain JSON fast-path: credentials saved directly (settings form) — no encryption
-        $plain = json_decode($encryptedData, true);
-        if ($plain !== null) {
-            return $plain;
-        }
-
-        // Encrypted path: credentials saved via API endpoint
-        try {
-            $data = base64_decode($encryptedData);
-            $iv = substr($data, 0, 16);
-            $encrypted = substr($data, 16);
-
-            $decrypted = openssl_decrypt(
-                $encrypted,
-                'AES-256-CBC',
-                base64_decode($this->encryptionKey),
-                0,
-                $iv
-            );
-
-            return json_decode($decrypted, true) ?? [];
-        } catch (Exception $e) {
-            error_log("Decryption error: " . $e->getMessage());
-            return [];
-        }
+    private function decryptCredentials(string $encryptedData): array {
+        return decrypt_gateway_credentials($encryptedData);
     }
     
     /**

@@ -763,6 +763,25 @@ class MikrotikAPI {
     }
 
     /**
+     * Change a hotspot user's profile (e.g., to 'walled-garden' on expiry,
+     * or back to their real package profile after payment).
+     * Returns false if the user is not found or the profile doesn't exist on the router.
+     */
+    public function setHotspotUserProfile(string $username, string $profile): bool {
+        $users = $this->getHotspotUsers();
+        foreach ($users as $u) {
+            if (strcasecmp($u['name'] ?? '', $username) === 0) {
+                $r = $this->comm('/ip/hotspot/user/set', [
+                    '=.id='    . $u['.id'],
+                    '=profile=' . $profile,
+                ]);
+                return !isset($r[0]['!trap']);
+            }
+        }
+        return false;
+    }
+
+    /**
      * Get all Hotspot users
      */
     public function getHotspotUsers() {

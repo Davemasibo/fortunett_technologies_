@@ -13,7 +13,11 @@
         android:icon="@android:drawable/ic_menu_send"
         android:title="Payments" />
     <item
-        android:id="@+id/routersFragment"
+        android:id="@+id/packagesFragment"
         android:icon="@android:drawable/ic_menu_manage"
-        android:title="Routers" />
+        android:title="Packages" />
+    <item
+        android:id="@+id/vouchersFragment"
+        android:icon="@android:drawable/ic_menu_edit"
+        android:title="Vouchers" />
 </menu>

@@ -10,6 +10,7 @@ header('Access-Control-Allow-Methods: POST');
 
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../includes/tenant.php';
+require_once __DIR__ . '/../../includes/auto_provision.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'POST required']);
@@ -53,17 +54,22 @@ try {
         $loginPhone254 = '254' . substr($username, 1);
     }
 
-    // ── Find client by username, phone (both formats), or account_number ─────
+    // ── Find hotspot client by username, phone (both formats), account_number, or mikrotik_username ─
+    // COALESCE guard accepts NULL connection_type (legacy rows) as hotspot.
+    // Excluding PPPoE clients prevents returning PPPoE MikroTik credentials to a
+    // hotspot portal, which would cause MikroTik authentication to fail.
     $clSt = $pdo->prepare("
         SELECT c.*, p.name AS pkg_name, p.price AS pkg_price,
                p.validity_value, p.validity_unit
         FROM clients c
         LEFT JOIN packages p ON p.id = c.package_id
         WHERE c.tenant_id = ?
-          AND (c.username = ? OR c.phone = ? OR c.phone = ? OR c.account_number = ?)
+          AND COALESCE(NULLIF(c.connection_type,''), 'hotspot') = 'hotspot'
+          AND (c.username = ? OR c.phone = ? OR c.phone = ?
+               OR c.account_number = ? OR c.mikrotik_username = ?)
         LIMIT 1
     ");
-    $clSt->execute([$tenantId, $username, $username, $loginPhone254, $username]);
+    $clSt->execute([$tenantId, $username, $username, $loginPhone254, $username, $username]);
     $client = $clSt->fetch(PDO::FETCH_ASSOC);
 
     if (!$client) {
@@ -72,8 +78,11 @@ try {
     }
 
     // ── Verify password ───────────────────────────────────────────────────────
-    $pwMatch = password_verify($password, $client['auth_password'] ?? '')
-            || ($password === ($client['mikrotik_password'] ?? "\0NEVER\0"));
+    // auth_password is the hashed portal password (set at registration or by admin).
+    // mikrotik_password is the plain-text router credential (some customers use this directly).
+    $authHash = $client['auth_password'] ?? '';
+    $pwMatch  = ($authHash !== '' && password_verify($password, $authHash))
+             || ($password !== '' && $password === ($client['mikrotik_password'] ?? "\0NEVER\0"));
 
     if (!$pwMatch) {
         echo json_encode(['success' => false, 'message' => 'Incorrect password. Please try again.']);
@@ -91,8 +100,11 @@ try {
         exit;
     }
 
-    $isExpired = ($client['status'] === 'inactive')
-              || (!empty($client['expiry_date']) && strtotime($client['expiry_date']) < time());
+    // 'grace' clients have expired but are in the grace window — treat as expired so they renew.
+    // 'inactive' = fully expired. Either way, redirect to buy.
+    $isExpired = in_array($client['status'], ['inactive', 'grace'])
+              || (!empty($client['expiry_date']) && strtotime($client['expiry_date']) < time()
+                  && !in_array($client['status'], ['active']));
 
     if ($isExpired) {
         echo json_encode([
@@ -114,15 +126,54 @@ try {
         $portalToken = null;
     }
 
+    // ── Ensure user is enabled on MikroTik (re-enable if disabled by check_expiry) ─
+    $mkUsername = $client['mikrotik_username'] ?? ($client['username'] ?? '');
+    $mkPassword = $client['mikrotik_password'] ?? '';
+    if (!empty($mkUsername)) {
+        try {
+            $rSt = $pdo->prepare("
+                SELECT id, ip_address, vpn_ip, username, password, api_port
+                FROM mikrotik_routers
+                WHERE tenant_id = ? AND status IN ('active','online')
+                ORDER BY id ASC LIMIT 1
+            ");
+            $rSt->execute([$tenantId]);
+            $router = $rSt->fetch(PDO::FETCH_ASSOC);
+
+            if ($router) {
+                $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
+                $port      = (int)($router['api_port'] ?: 8728);
+                $sock      = @fsockopen($connectIp, $port, $errno, $errstr, 3);
+                if ($sock) {
+                    fclose($sock);
+                    require_once __DIR__ . '/../../classes/MikrotikAPI.php';
+                    $mk = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
+                    $mk->connect();
+                    $enabled = $mk->enableHotspotUser($mkUsername);
+                    $mk->disconnect();
+
+                    if (!$enabled) {
+                        // User doesn't exist on router — auto-provision on the fly
+                        autoProvisionClient($pdo, (int)$client['id'], $tenantId);
+                    }
+                }
+            }
+        } catch (Throwable $_mkEx) {
+            // Non-fatal — if router is unreachable, return credentials anyway;
+            // Fix 3 retry cron will provision the user shortly.
+            error_log('[hotspot_login] re-enable error: ' . $_mkEx->getMessage());
+        }
+    }
+
     // ── Return MikroTik credentials ───────────────────────────────────────────
     $firstName = explode(' ', trim($client['full_name'] ?? $client['username'] ?? ''))[0];
 
     echo json_encode([
-        'success'          => true,
-        'mikrotik_username' => $client['mikrotik_username'] ?? $client['username'],
-        'mikrotik_password' => $client['mikrotik_password'] ?? '',
-        'portal_token'     => $portalToken,
-        'client_name'      => $firstName,
+        'success'           => true,
+        'mikrotik_username' => $mkUsername,
+        'mikrotik_password' => $mkPassword,
+        'portal_token'      => $portalToken,
+        'client_name'       => $firstName,
     ]);
 
 } catch (Throwable $e) {

@@ -37,6 +37,7 @@ import javax.annotation.processing.Generated;
 import site.fortunetttech.customer.data.network.ApiService;
 import site.fortunetttech.customer.data.preferences.TokenPreferences;
 import site.fortunetttech.customer.data.repository.AuthRepository;
+import site.fortunetttech.customer.data.repository.PackagesRepository;
 import site.fortunetttech.customer.data.repository.PayRepository;
 import site.fortunetttech.customer.data.repository.ProfileRepository;
 import site.fortunetttech.customer.di.NetworkModule_ProvideApiServiceFactory;
@@ -50,10 +51,16 @@ import site.fortunetttech.customer.ui.history.HistoryViewModel_HiltModules;
 import site.fortunetttech.customer.ui.home.HomeFragment;
 import site.fortunetttech.customer.ui.home.HomeViewModel;
 import site.fortunetttech.customer.ui.home.HomeViewModel_HiltModules;
+import site.fortunetttech.customer.ui.packages.PackagesBrowserFragment;
+import site.fortunetttech.customer.ui.packages.PackagesBrowserViewModel;
+import site.fortunetttech.customer.ui.packages.PackagesBrowserViewModel_HiltModules;
 import site.fortunetttech.customer.ui.pay.PayFragment;
 import site.fortunetttech.customer.ui.pay.PayFragment_MembersInjector;
 import site.fortunetttech.customer.ui.pay.PayViewModel;
 import site.fortunetttech.customer.ui.pay.PayViewModel_HiltModules;
+import site.fortunetttech.customer.ui.profile.ProfileFragment;
+import site.fortunetttech.customer.ui.profile.ProfileViewModel;
+import site.fortunetttech.customer.ui.profile.ProfileViewModel_HiltModules;
 
 @DaggerGenerated
 @Generated(
@@ -350,8 +357,16 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
     }
 
     @Override
+    public void injectPackagesBrowserFragment(PackagesBrowserFragment arg0) {
+    }
+
+    @Override
     public void injectPayFragment(PayFragment arg0) {
       injectPayFragment2(arg0);
+    }
+
+    @Override
+    public void injectProfileFragment(ProfileFragment arg0) {
     }
 
     @CanIgnoreReturnValue
@@ -402,7 +417,7 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
 
     @Override
     public Map<Class<?>, Boolean> getViewModelKeys() {
-      return LazyClassKeyMap.<Boolean>of(MapBuilder.<String, Boolean>newMapBuilder(4).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_history_HistoryViewModel, HistoryViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_home_HomeViewModel, HomeViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_auth_LoginViewModel, LoginViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_pay_PayViewModel, PayViewModel_HiltModules.KeyModule.provide()).build());
+      return LazyClassKeyMap.<Boolean>of(MapBuilder.<String, Boolean>newMapBuilder(6).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_history_HistoryViewModel, HistoryViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_home_HomeViewModel, HomeViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_auth_LoginViewModel, LoginViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_packages_PackagesBrowserViewModel, PackagesBrowserViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_pay_PayViewModel, PayViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_profile_ProfileViewModel, ProfileViewModel_HiltModules.KeyModule.provide()).build());
     }
 
     @Override
@@ -444,25 +459,35 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String site_fortunetttech_customer_ui_history_HistoryViewModel = "site.fortunetttech.customer.ui.history.HistoryViewModel";
+      static String site_fortunetttech_customer_ui_home_HomeViewModel = "site.fortunetttech.customer.ui.home.HomeViewModel";
 
       static String site_fortunetttech_customer_ui_auth_LoginViewModel = "site.fortunetttech.customer.ui.auth.LoginViewModel";
 
+      static String site_fortunetttech_customer_ui_history_HistoryViewModel = "site.fortunetttech.customer.ui.history.HistoryViewModel";
+
+      static String site_fortunetttech_customer_ui_packages_PackagesBrowserViewModel = "site.fortunetttech.customer.ui.packages.PackagesBrowserViewModel";
+
       static String site_fortunetttech_customer_ui_pay_PayViewModel = "site.fortunetttech.customer.ui.pay.PayViewModel";
 
-      static String site_fortunetttech_customer_ui_home_HomeViewModel = "site.fortunetttech.customer.ui.home.HomeViewModel";
+      static String site_fortunetttech_customer_ui_profile_ProfileViewModel = "site.fortunetttech.customer.ui.profile.ProfileViewModel";
 
       @KeepFieldType
-      HistoryViewModel site_fortunetttech_customer_ui_history_HistoryViewModel2;
+      HomeViewModel site_fortunetttech_customer_ui_home_HomeViewModel2;
 
       @KeepFieldType
       LoginViewModel site_fortunetttech_customer_ui_auth_LoginViewModel2;
 
       @KeepFieldType
+      HistoryViewModel site_fortunetttech_customer_ui_history_HistoryViewModel2;
+
+      @KeepFieldType
+      PackagesBrowserViewModel site_fortunetttech_customer_ui_packages_PackagesBrowserViewModel2;
+
+      @KeepFieldType
       PayViewModel site_fortunetttech_customer_ui_pay_PayViewModel2;
 
       @KeepFieldType
-      HomeViewModel site_fortunetttech_customer_ui_home_HomeViewModel2;
+      ProfileViewModel site_fortunetttech_customer_ui_profile_ProfileViewModel2;
     }
   }
 
@@ -479,7 +504,11 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
 
     private Provider<LoginViewModel> loginViewModelProvider;
 
+    private Provider<PackagesBrowserViewModel> packagesBrowserViewModelProvider;
+
     private Provider<PayViewModel> payViewModelProvider;
+
+    private Provider<ProfileViewModel> profileViewModelProvider;
 
     private ViewModelCImpl(SingletonCImpl singletonCImpl,
         ActivityRetainedCImpl activityRetainedCImpl, SavedStateHandle savedStateHandleParam,
@@ -497,12 +526,14 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
       this.historyViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 0);
       this.homeViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 1);
       this.loginViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 2);
-      this.payViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 3);
+      this.packagesBrowserViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 3);
+      this.payViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 4);
+      this.profileViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 5);
     }
 
     @Override
     public Map<Class<?>, javax.inject.Provider<ViewModel>> getHiltViewModelMap() {
-      return LazyClassKeyMap.<javax.inject.Provider<ViewModel>>of(MapBuilder.<String, javax.inject.Provider<ViewModel>>newMapBuilder(4).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_history_HistoryViewModel, ((Provider) historyViewModelProvider)).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_home_HomeViewModel, ((Provider) homeViewModelProvider)).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_auth_LoginViewModel, ((Provider) loginViewModelProvider)).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_pay_PayViewModel, ((Provider) payViewModelProvider)).build());
+      return LazyClassKeyMap.<javax.inject.Provider<ViewModel>>of(MapBuilder.<String, javax.inject.Provider<ViewModel>>newMapBuilder(6).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_history_HistoryViewModel, ((Provider) historyViewModelProvider)).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_home_HomeViewModel, ((Provider) homeViewModelProvider)).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_auth_LoginViewModel, ((Provider) loginViewModelProvider)).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_packages_PackagesBrowserViewModel, ((Provider) packagesBrowserViewModelProvider)).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_pay_PayViewModel, ((Provider) payViewModelProvider)).put(LazyClassKeyProvider.site_fortunetttech_customer_ui_profile_ProfileViewModel, ((Provider) profileViewModelProvider)).build());
     }
 
     @Override
@@ -512,25 +543,35 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String site_fortunetttech_customer_ui_pay_PayViewModel = "site.fortunetttech.customer.ui.pay.PayViewModel";
+      static String site_fortunetttech_customer_ui_auth_LoginViewModel = "site.fortunetttech.customer.ui.auth.LoginViewModel";
 
-      static String site_fortunetttech_customer_ui_home_HomeViewModel = "site.fortunetttech.customer.ui.home.HomeViewModel";
+      static String site_fortunetttech_customer_ui_pay_PayViewModel = "site.fortunetttech.customer.ui.pay.PayViewModel";
 
       static String site_fortunetttech_customer_ui_history_HistoryViewModel = "site.fortunetttech.customer.ui.history.HistoryViewModel";
 
-      static String site_fortunetttech_customer_ui_auth_LoginViewModel = "site.fortunetttech.customer.ui.auth.LoginViewModel";
+      static String site_fortunetttech_customer_ui_packages_PackagesBrowserViewModel = "site.fortunetttech.customer.ui.packages.PackagesBrowserViewModel";
+
+      static String site_fortunetttech_customer_ui_home_HomeViewModel = "site.fortunetttech.customer.ui.home.HomeViewModel";
+
+      static String site_fortunetttech_customer_ui_profile_ProfileViewModel = "site.fortunetttech.customer.ui.profile.ProfileViewModel";
+
+      @KeepFieldType
+      LoginViewModel site_fortunetttech_customer_ui_auth_LoginViewModel2;
 
       @KeepFieldType
       PayViewModel site_fortunetttech_customer_ui_pay_PayViewModel2;
 
       @KeepFieldType
-      HomeViewModel site_fortunetttech_customer_ui_home_HomeViewModel2;
-
-      @KeepFieldType
       HistoryViewModel site_fortunetttech_customer_ui_history_HistoryViewModel2;
 
       @KeepFieldType
-      LoginViewModel site_fortunetttech_customer_ui_auth_LoginViewModel2;
+      PackagesBrowserViewModel site_fortunetttech_customer_ui_packages_PackagesBrowserViewModel2;
+
+      @KeepFieldType
+      HomeViewModel site_fortunetttech_customer_ui_home_HomeViewModel2;
+
+      @KeepFieldType
+      ProfileViewModel site_fortunetttech_customer_ui_profile_ProfileViewModel2;
     }
 
     private static final class SwitchingProvider<T> implements Provider<T> {
@@ -563,8 +604,14 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
           case 2: // site.fortunetttech.customer.ui.auth.LoginViewModel 
           return (T) new LoginViewModel(singletonCImpl.authRepositoryProvider.get());
 
-          case 3: // site.fortunetttech.customer.ui.pay.PayViewModel 
-          return (T) new PayViewModel(singletonCImpl.payRepositoryProvider.get());
+          case 3: // site.fortunetttech.customer.ui.packages.PackagesBrowserViewModel 
+          return (T) new PackagesBrowserViewModel(singletonCImpl.packagesRepositoryProvider.get());
+
+          case 4: // site.fortunetttech.customer.ui.pay.PayViewModel 
+          return (T) new PayViewModel(singletonCImpl.payRepositoryProvider.get(), singletonCImpl.packagesRepositoryProvider.get());
+
+          case 5: // site.fortunetttech.customer.ui.profile.ProfileViewModel 
+          return (T) new ProfileViewModel(singletonCImpl.profileRepositoryProvider.get());
 
           default: throw new AssertionError(id);
         }
@@ -654,6 +701,8 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
 
     private Provider<AuthRepository> authRepositoryProvider;
 
+    private Provider<PackagesRepository> packagesRepositoryProvider;
+
     private Provider<PayRepository> payRepositoryProvider;
 
     private SingletonCImpl(ApplicationContextModule applicationContextModuleParam) {
@@ -668,7 +717,8 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
       this.provideApiServiceProvider = DoubleCheck.provider(new SwitchingProvider<ApiService>(singletonCImpl, 2));
       this.profileRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<ProfileRepository>(singletonCImpl, 1));
       this.authRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<AuthRepository>(singletonCImpl, 3));
-      this.payRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<PayRepository>(singletonCImpl, 4));
+      this.packagesRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<PackagesRepository>(singletonCImpl, 4));
+      this.payRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<PayRepository>(singletonCImpl, 5));
     }
 
     @Override
@@ -687,7 +737,7 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
     }
 
     @Override
-    public void injectCustomerApp(CustomerApp arg0) {
+    public void injectCustomerApp(CustomerApp customerApp) {
     }
 
     private static final class SwitchingProvider<T> implements Provider<T> {
@@ -716,7 +766,10 @@ public final class DaggerCustomerApp_HiltComponents_SingletonC {
           case 3: // site.fortunetttech.customer.data.repository.AuthRepository 
           return (T) new AuthRepository(singletonCImpl.provideApiServiceProvider.get(), singletonCImpl.tokenPreferencesProvider.get());
 
-          case 4: // site.fortunetttech.customer.data.repository.PayRepository 
+          case 4: // site.fortunetttech.customer.data.repository.PackagesRepository 
+          return (T) new PackagesRepository(singletonCImpl.provideApiServiceProvider.get());
+
+          case 5: // site.fortunetttech.customer.data.repository.PayRepository 
           return (T) new PayRepository(singletonCImpl.provideApiServiceProvider.get());
 
           default: throw new AssertionError(id);

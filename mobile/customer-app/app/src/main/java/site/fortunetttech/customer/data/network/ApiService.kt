@@ -22,4 +22,21 @@ interface ApiService {
 
     @POST("api/v1/customer/pay.php")
     suspend fun pay(@Body request: PayRequest): Response<PayResponse>
+
+    @GET("api/v1/customer/packages.php")
+    suspend fun packages(@Query("type") type: String? = null): Response<PackagesResponse>
+
+    @POST("api/v1/customer/update_profile.php")
+    suspend fun updateProfile(@Body request: UpdateProfileRequest): Response<Map<String, Any>>
+
+    @POST("api/v1/customer/change_password.php")
+    suspend fun changePassword(@Body request: ChangePasswordRequest): Response<Map<String, Any>>
+
+    @GET("api/v1/customer/payment_status.php")
+    suspend fun paymentStatus(
+        @Query("checkout_request_id") checkoutRequestId: String
+    ): Response<PaymentStatusResponse>
+
+    @GET("api/v1/customer/sessions.php")
+    suspend fun sessions(): Response<SessionsResponse>
 }

@@ -15,6 +15,7 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../classes/MpesaAPI.php';
+require_once __DIR__ . '/../../includes/credential_helper.php';
 
 // Auth guard
 if (empty($_SESSION['user_id'])) {
@@ -81,15 +82,15 @@ if (!$mpesa->hasValidCredentials()) {
 $result = $mpesa->registerC2B($validationUrl, $confirmationUrl, 'Completed');
 
 if ($result['success']) {
-    // Persist registration status in credentials JSON
-    $creds = json_decode($gateway['credentials'], true) ?? [];
+    // Persist registration status back into credentials (re-encrypted)
+    $creds = decrypt_gateway_credentials($gateway['credentials']);
     $creds['c2b_registered']      = true;
     $creds['c2b_registered_at']   = date('Y-m-d H:i:s');
     $creds['c2b_validation_url']  = $validationUrl;
     $creds['c2b_confirmation_url'] = $confirmationUrl;
 
     $pdo->prepare("UPDATE payment_gateways SET credentials = ? WHERE id = ? AND tenant_id = ?")
-        ->execute([json_encode($creds), $gatewayId, $tenantId]);
+        ->execute([encrypt_gateway_credentials($creds), $gatewayId, $tenantId]);
 
     $logDir = __DIR__ . '/../../logs';
     if (!is_dir($logDir)) @mkdir($logDir, 0755, true);

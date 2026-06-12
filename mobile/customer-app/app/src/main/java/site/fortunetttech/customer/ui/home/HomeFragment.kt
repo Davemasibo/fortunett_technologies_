@@ -60,6 +60,7 @@ class HomeFragment : Fragment() {
                         binding.tvCountdown.text     = formatCountdown(s.expiresInSeconds)
                         binding.tvAccountNumber.text = p.account_number ?: "—"
                         binding.tvPhone.text         = p.phone ?: "—"
+                        binding.tvBalance.text       = "KSH ${String.format("%.2f", p.account_balance ?: 0.0)}"
                         val statusColor = when (s.status) {
                             "active" -> R.color.status_active
                             else     -> R.color.status_expired

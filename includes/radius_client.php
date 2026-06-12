@@ -109,6 +109,50 @@ function radius_enable_client(PDO $pdo, string $username): bool {
 }
 
 /**
+ * Put a user into the walled-garden RADIUS group.
+ *
+ * The walled-garden group throttles bandwidth to near-zero (256K/256K) so the
+ * user cannot use the internet, but PPPoE re-authentication is still allowed —
+ * the session stays up. MikroTik firewall rules can then redirect walled-garden
+ * traffic to the billing/payment page (add address-list "walled-garden" rule
+ * in the router pointing to the payment URL).
+ *
+ * Call this on first expiry (grace period). After the grace period elapses,
+ * call radius_disable_client() to set Auth-Type = Reject.
+ */
+function radius_walled_garden_client(PDO $pdo, string $username): bool {
+    if (!radius_is_available($pdo)) return false;
+    $group = 'walled-garden';
+    try {
+        // Ensure the walled-garden group exists with near-zero speed
+        $pdo->prepare("
+            INSERT INTO radgroupreply (groupname, attribute, op, value)
+            VALUES (?, 'Mikrotik-Rate-Limit', '=', '256k/256k'),
+                   (?, 'Service-Type',        '=', 'Framed-User'),
+                   (?, 'Framed-Protocol',     '=', 'PPP')
+            ON DUPLICATE KEY UPDATE value = VALUES(value)
+        ")->execute([$group, $group, $group]);
+
+        // Clear any Reject first (allow reconnect in walled-garden state)
+        $pdo->prepare("
+            DELETE FROM radcheck WHERE username = ? AND attribute = 'Auth-Type'
+        ")->execute([$username]);
+
+        // Assign user to walled-garden group
+        $pdo->prepare("
+            INSERT INTO radusergroup (username, groupname, priority)
+            VALUES (?, ?, 1)
+            ON DUPLICATE KEY UPDATE groupname = VALUES(groupname)
+        ")->execute([$username, $group]);
+
+        return true;
+    } catch (Throwable $e) {
+        error_log("radius_walled_garden_client error for $username: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Remove all RADIUS entries for a user (on client deletion).
  */
 function radius_delete_client(PDO $pdo, string $username): void {

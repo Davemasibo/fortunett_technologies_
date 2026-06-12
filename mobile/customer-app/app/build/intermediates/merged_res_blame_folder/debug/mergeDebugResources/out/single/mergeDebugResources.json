@@ -8,8 +8,56 @@
         "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\mipmap-anydpi-v26\\ic_launcher_round.xml"
     },
     {
+        "merged": "site.fortunetttech.customer.app-debug-49:/layout_dialog_change_password.xml.flat",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/dialog_change_password.xml"
+    },
+    {
+        "merged": "site.fortunetttech.customer.app-debug-49:/layout_fragment_profile.xml.flat",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/fragment_profile.xml"
+    },
+    {
+        "merged": "site.fortunetttech.customer.app-debug-49:/menu_bottom_nav_menu.xml.flat",
+        "source": "site.fortunetttech.customer.app-main-51:/menu/bottom_nav_menu.xml"
+    },
+    {
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\drawable_ic_launcher_foreground.xml.flat",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\drawable\\ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "site.fortunetttech.customer.app-debug-49:/layout_item_available_package.xml.flat",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/item_available_package.xml"
+    },
+    {
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\mipmap-anydpi-v26\\ic_launcher.xml"
+    },
+    {
+        "merged": "site.fortunetttech.customer.app-debug-49:/layout_item_payment.xml.flat",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/item_payment.xml"
+    },
+    {
+        "merged": "site.fortunetttech.customer.app-debug-49:/layout_fragment_pay.xml.flat",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/fragment_pay.xml"
+    },
+    {
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\navigation_nav_graph.xml.flat",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\navigation\\nav_graph.xml"
+    },
+    {
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\menu_bottom_nav_menu.xml.flat",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\menu\\bottom_nav_menu.xml"
+    },
+    {
+        "merged": "site.fortunetttech.customer.app-debug-49:/navigation_nav_graph.xml.flat",
+        "source": "site.fortunetttech.customer.app-main-51:/navigation/nav_graph.xml"
+    },
+    {
         "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\layout_item_payment.xml.flat",
         "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\layout\\item_payment.xml"
+    },
+    {
+        "merged": "site.fortunetttech.customer.app-debug-49:/layout_fragment_history.xml.flat",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/fragment_history.xml"
     },
     {
         "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\layout_activity_main.xml.flat",
@@ -20,39 +68,31 @@
         "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\drawable\\ic_launcher_background.xml"
     },
     {
-        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\drawable_ic_launcher_foreground.xml.flat",
-        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\drawable\\ic_launcher_foreground.xml"
+        "merged": "site.fortunetttech.customer.app-debug-49:/layout_fragment_home.xml.flat",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/fragment_home.xml"
     },
     {
         "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\layout_fragment_pay.xml.flat",
         "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\layout\\fragment_pay.xml"
     },
     {
-        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\mipmap-anydpi-v26_ic_launcher.xml.flat",
-        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\mipmap-anydpi-v26\\ic_launcher.xml"
-    },
-    {
-        "merged": "site.fortunetttech.customer.app-debug-49:/layout_activity_main.xml.flat",
-        "source": "site.fortunetttech.customer.app-main-51:/layout/activity_main.xml"
-    },
-    {
-        "merged": "site.fortunetttech.customer.app-debug-49:/color_bottom_nav_item.xml.flat",
-        "source": "site.fortunetttech.customer.app-main-51:/color/bottom_nav_item.xml"
+        "merged": "site.fortunetttech.customer.app-debug-49:/layout_dialog_edit_profile.xml.flat",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/dialog_edit_profile.xml"
     },
     {
         "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\layout_activity_login.xml.flat",
         "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\layout\\activity_login.xml"
     },
     {
-        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\navigation_nav_graph.xml.flat",
-        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\navigation\\nav_graph.xml"
+        "merged": "site.fortunetttech.customer.app-debug-49:/layout_fragment_packages_browser.xml.flat",
+        "source": "site.fortunetttech.customer.app-main-51:/layout/fragment_packages_browser.xml"
     },
     {
         "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\layout_fragment_history.xml.flat",
         "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\layout\\fragment_history.xml"
     },
     {
-        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\menu_bottom_nav_menu.xml.flat",
-        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\menu\\bottom_nav_menu.xml"
+        "merged": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-debug-49:\\color_bottom_nav_item.xml.flat",
+        "source": "C:\\Users\\Administrator\\.gradle\\daemon\\8.7\\site.fortunetttech.customer.app-main-51:\\color\\bottom_nav_item.xml"
     }
 ]

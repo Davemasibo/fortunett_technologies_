@@ -18,6 +18,7 @@ header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../includes/auto_provision.php';
+require_once __DIR__ . '/../../includes/payment_pipeline.php';
 
 $logDir = __DIR__ . '/../../logs';
 if (!is_dir($logDir)) @mkdir($logDir, 0755, true);
@@ -116,38 +117,18 @@ try {
         $content,
     ]);
 
-    // Extend subscription if client has a package
-    $expiryDate = null;
-    if (!empty($client['package_id'])) {
-        $pkg = $pdo->prepare("SELECT validity_value, validity_unit FROM packages WHERE id = ? LIMIT 1");
-        $pkg->execute([$client['package_id']]);
-        $package = $pkg->fetch(PDO::FETCH_ASSOC);
-
-        if ($package) {
-            $validityValue = max(1, (int)($package['validity_value'] ?? 30));
-            $validityUnit  = in_array($package['validity_unit'], ['days', 'weeks', 'months'], true)
-                ? $package['validity_unit'] : 'days';
-            $expiryDate = date('Y-m-d H:i:s', strtotime('+' . $validityValue . ' ' . $validityUnit));
-
-            $pdo->prepare("UPDATE clients SET status = 'active', expiry_date = ? WHERE id = ? AND tenant_id = ?")
-                ->execute([$expiryDate, $clientId, $tenantId]);
-        }
-    }
-
-    // Activity log
-    $pdo->prepare("
-        INSERT INTO customer_activity_log (client_id, tenant_id, activity_type, description)
-        VALUES (?, ?, 'payment_success', ?)
-    ")->execute([
-        $clientId, $tenantId,
-        'Tenant paybill C2B — ' . $transactionId . ' — KSH ' . $amount
-            . ($expiryDate ? ' — active until ' . $expiryDate : ''),
-    ]);
-
-    // Auto-provision to router immediately
-    if (!empty($client['package_id'])) {
-        autoProvisionClient($pdo, (int)$clientId, (int)$tenantId);
-    }
+    // Full pipeline: invoice, ledger, commission, RADIUS, SMS, provision, activity log
+    // platformCollected=false — ISP already holds this money; no payout queue needed
+    process_payment_success(
+        $pdo,
+        (int)$clientId,
+        (int)$tenantId,
+        $amount,
+        $transactionId,
+        'mpesa_paybill',
+        !empty($client['package_id']) ? (int)$client['package_id'] : null,
+        false
+    );
 
     @file_put_contents($logDir . '/tenant_c2b.log',
         date('Y-m-d H:i:s') . " CONFIRM OK: tenant={$tenantId} client={$clientId} amount={$amount} tx={$transactionId}\n",

@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -46,7 +49,13 @@ class TokenPreferences @Inject constructor(@ApplicationContext context: Context)
     val isLoggedIn: Boolean
         get() = !refreshToken.isNullOrBlank() && !subdomain.isNullOrBlank()
 
-    fun clear() = prefs.edit().clear().apply()
+    private val _sessionExpired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val sessionExpired: SharedFlow<Unit> = _sessionExpired.asSharedFlow()
+
+    fun clear() {
+        prefs.edit().clear().apply()
+        _sessionExpired.tryEmit(Unit)
+    }
 
     companion object {
         private const val KEY_ACCESS    = "access_token"

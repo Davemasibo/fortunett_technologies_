@@ -31,13 +31,18 @@ public final class ItemPaymentBinding implements ViewBinding {
   @NonNull
   public final TextView tvStatus;
 
+  @NonNull
+  public final View viewStatusBar;
+
   private ItemPaymentBinding(@NonNull MaterialCardView rootView, @NonNull TextView tvAmount,
-      @NonNull TextView tvDate, @NonNull TextView tvMethod, @NonNull TextView tvStatus) {
+      @NonNull TextView tvDate, @NonNull TextView tvMethod, @NonNull TextView tvStatus,
+      @NonNull View viewStatusBar) {
     this.rootView = rootView;
     this.tvAmount = tvAmount;
     this.tvDate = tvDate;
     this.tvMethod = tvMethod;
     this.tvStatus = tvStatus;
+    this.viewStatusBar = viewStatusBar;
   }
 
   @Override
@@ -91,8 +96,14 @@ public final class ItemPaymentBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.viewStatusBar;
+      View viewStatusBar = ViewBindings.findChildViewById(rootView, id);
+      if (viewStatusBar == null) {
+        break missingId;
+      }
+
       return new ItemPaymentBinding((MaterialCardView) rootView, tvAmount, tvDate, tvMethod,
-          tvStatus);
+          tvStatus, viewStatusBar);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

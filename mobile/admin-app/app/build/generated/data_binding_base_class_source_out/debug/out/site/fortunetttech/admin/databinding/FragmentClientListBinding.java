@@ -9,10 +9,12 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.SearchView;
+import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import androidx.viewbinding.ViewBinding;
 import androidx.viewbinding.ViewBindings;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import java.lang.NullPointerException;
 import java.lang.Override;
 import java.lang.String;
@@ -20,7 +22,10 @@ import site.fortunetttech.admin.R;
 
 public final class FragmentClientListBinding implements ViewBinding {
   @NonNull
-  private final LinearLayout rootView;
+  private final CoordinatorLayout rootView;
+
+  @NonNull
+  public final FloatingActionButton fabAdd;
 
   @NonNull
   public final LinearLayout layoutError;
@@ -40,11 +45,13 @@ public final class FragmentClientListBinding implements ViewBinding {
   @NonNull
   public final TextView tvErrorMsg;
 
-  private FragmentClientListBinding(@NonNull LinearLayout rootView,
-      @NonNull LinearLayout layoutError, @NonNull RecyclerView recyclerView,
-      @NonNull SearchView searchView, @NonNull SwipeRefreshLayout swipeRefresh,
-      @NonNull TextView tvCount, @NonNull TextView tvErrorMsg) {
+  private FragmentClientListBinding(@NonNull CoordinatorLayout rootView,
+      @NonNull FloatingActionButton fabAdd, @NonNull LinearLayout layoutError,
+      @NonNull RecyclerView recyclerView, @NonNull SearchView searchView,
+      @NonNull SwipeRefreshLayout swipeRefresh, @NonNull TextView tvCount,
+      @NonNull TextView tvErrorMsg) {
     this.rootView = rootView;
+    this.fabAdd = fabAdd;
     this.layoutError = layoutError;
     this.recyclerView = recyclerView;
     this.searchView = searchView;
@@ -55,7 +62,7 @@ public final class FragmentClientListBinding implements ViewBinding {
 
   @Override
   @NonNull
-  public LinearLayout getRoot() {
+  public CoordinatorLayout getRoot() {
     return rootView;
   }
 
@@ -80,6 +87,12 @@ public final class FragmentClientListBinding implements ViewBinding {
     // This is done to optimize the compiled bytecode for size and performance.
     int id;
     missingId: {
+      id = R.id.fabAdd;
+      FloatingActionButton fabAdd = ViewBindings.findChildViewById(rootView, id);
+      if (fabAdd == null) {
+        break missingId;
+      }
+
       id = R.id.layoutError;
       LinearLayout layoutError = ViewBindings.findChildViewById(rootView, id);
       if (layoutError == null) {
@@ -116,8 +129,8 @@ public final class FragmentClientListBinding implements ViewBinding {
         break missingId;
       }
 
-      return new FragmentClientListBinding((LinearLayout) rootView, layoutError, recyclerView,
-          searchView, swipeRefresh, tvCount, tvErrorMsg);
+      return new FragmentClientListBinding((CoordinatorLayout) rootView, fabAdd, layoutError,
+          recyclerView, searchView, swipeRefresh, tvCount, tvErrorMsg);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

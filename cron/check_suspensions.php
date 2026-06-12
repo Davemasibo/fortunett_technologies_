@@ -15,6 +15,7 @@
 define('CRON_MODE', true);
 chdir(dirname(__DIR__));
 
+require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../includes/db_master.php';
 
 $graceDays    = 7;    // Days after due_date before suspension

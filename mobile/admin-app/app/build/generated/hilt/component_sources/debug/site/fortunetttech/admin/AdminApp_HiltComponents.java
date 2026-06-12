@@ -49,10 +49,22 @@ import javax.inject.Singleton;
 import site.fortunetttech.admin.di.NetworkModule;
 import site.fortunetttech.admin.ui.auth.LoginActivity_GeneratedInjector;
 import site.fortunetttech.admin.ui.auth.LoginViewModel_HiltModules;
+import site.fortunetttech.admin.ui.clients.AddClientFragment_GeneratedInjector;
+import site.fortunetttech.admin.ui.clients.AddClientViewModel_HiltModules;
+import site.fortunetttech.admin.ui.clients.ClientDetailFragment_GeneratedInjector;
+import site.fortunetttech.admin.ui.clients.ClientDetailViewModel_HiltModules;
 import site.fortunetttech.admin.ui.clients.ClientListFragment_GeneratedInjector;
 import site.fortunetttech.admin.ui.clients.ClientListViewModel_HiltModules;
 import site.fortunetttech.admin.ui.dashboard.DashboardFragment_GeneratedInjector;
 import site.fortunetttech.admin.ui.dashboard.DashboardViewModel_HiltModules;
+import site.fortunetttech.admin.ui.packages.PackagesFragment_GeneratedInjector;
+import site.fortunetttech.admin.ui.packages.PackagesViewModel_HiltModules;
+import site.fortunetttech.admin.ui.payments.PaymentsFragment_GeneratedInjector;
+import site.fortunetttech.admin.ui.payments.PaymentsViewModel_HiltModules;
+import site.fortunetttech.admin.ui.routers.RoutersFragment_GeneratedInjector;
+import site.fortunetttech.admin.ui.routers.RoutersViewModel_HiltModules;
+import site.fortunetttech.admin.ui.vouchers.VouchersFragment_GeneratedInjector;
+import site.fortunetttech.admin.ui.vouchers.VouchersViewModel_HiltModules;
 
 @Generated("dagger.hilt.processor.internal.root.RootProcessor")
 public final class AdminApp_HiltComponents {
@@ -158,13 +170,19 @@ public final class AdminApp_HiltComponents {
 
   @Subcomponent(
       modules = {
+          AddClientViewModel_HiltModules.KeyModule.class,
           ActivityCBuilderModule.class,
           ViewModelCBuilderModule.class,
+          ClientDetailViewModel_HiltModules.KeyModule.class,
           ClientListViewModel_HiltModules.KeyModule.class,
           DashboardViewModel_HiltModules.KeyModule.class,
           HiltWrapper_ActivityRetainedComponentManager_LifecycleModule.class,
           HiltWrapper_SavedStateHandleModule.class,
-          LoginViewModel_HiltModules.KeyModule.class
+          LoginViewModel_HiltModules.KeyModule.class,
+          PackagesViewModel_HiltModules.KeyModule.class,
+          PaymentsViewModel_HiltModules.KeyModule.class,
+          RoutersViewModel_HiltModules.KeyModule.class,
+          VouchersViewModel_HiltModules.KeyModule.class
       }
   )
   @ActivityRetainedScoped
@@ -201,10 +219,16 @@ public final class AdminApp_HiltComponents {
 
   @Subcomponent(
       modules = {
+          AddClientViewModel_HiltModules.BindsModule.class,
+          ClientDetailViewModel_HiltModules.BindsModule.class,
           ClientListViewModel_HiltModules.BindsModule.class,
           DashboardViewModel_HiltModules.BindsModule.class,
           HiltWrapper_HiltViewModelFactory_ViewModelModule.class,
-          LoginViewModel_HiltModules.BindsModule.class
+          LoginViewModel_HiltModules.BindsModule.class,
+          PackagesViewModel_HiltModules.BindsModule.class,
+          PaymentsViewModel_HiltModules.BindsModule.class,
+          RoutersViewModel_HiltModules.BindsModule.class,
+          VouchersViewModel_HiltModules.BindsModule.class
       }
   )
   @ViewModelScoped
@@ -233,8 +257,14 @@ public final class AdminApp_HiltComponents {
       DefaultViewModelFactories.FragmentEntryPoint,
       ViewComponentManager.ViewWithFragmentComponentBuilderEntryPoint,
       GeneratedComponent,
+      AddClientFragment_GeneratedInjector,
+      ClientDetailFragment_GeneratedInjector,
       ClientListFragment_GeneratedInjector,
-      DashboardFragment_GeneratedInjector {
+      DashboardFragment_GeneratedInjector,
+      PackagesFragment_GeneratedInjector,
+      PaymentsFragment_GeneratedInjector,
+      RoutersFragment_GeneratedInjector,
+      VouchersFragment_GeneratedInjector {
     @Subcomponent.Builder
     abstract interface Builder extends FragmentComponentBuilder {
     }

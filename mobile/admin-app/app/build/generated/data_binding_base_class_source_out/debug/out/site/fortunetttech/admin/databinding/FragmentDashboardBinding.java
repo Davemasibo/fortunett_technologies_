@@ -41,6 +41,12 @@ public final class FragmentDashboardBinding implements ViewBinding {
   public final TextView tvErrorMsg;
 
   @NonNull
+  public final TextView tvExpiredClients;
+
+  @NonNull
+  public final TextView tvInactiveClients;
+
+  @NonNull
   public final TextView tvRevenue;
 
   @NonNull
@@ -52,7 +58,8 @@ public final class FragmentDashboardBinding implements ViewBinding {
   private FragmentDashboardBinding(@NonNull FrameLayout rootView, @NonNull MaterialButton btnRetry,
       @NonNull LinearLayout layoutContent, @NonNull LinearLayout layoutError,
       @NonNull SwipeRefreshLayout swipeRefresh, @NonNull TextView tvActiveClients,
-      @NonNull TextView tvErrorMsg, @NonNull TextView tvRevenue, @NonNull TextView tvRouters,
+      @NonNull TextView tvErrorMsg, @NonNull TextView tvExpiredClients,
+      @NonNull TextView tvInactiveClients, @NonNull TextView tvRevenue, @NonNull TextView tvRouters,
       @NonNull TextView tvTotalClients) {
     this.rootView = rootView;
     this.btnRetry = btnRetry;
@@ -61,6 +68,8 @@ public final class FragmentDashboardBinding implements ViewBinding {
     this.swipeRefresh = swipeRefresh;
     this.tvActiveClients = tvActiveClients;
     this.tvErrorMsg = tvErrorMsg;
+    this.tvExpiredClients = tvExpiredClients;
+    this.tvInactiveClients = tvInactiveClients;
     this.tvRevenue = tvRevenue;
     this.tvRouters = tvRouters;
     this.tvTotalClients = tvTotalClients;
@@ -129,6 +138,18 @@ public final class FragmentDashboardBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.tvExpiredClients;
+      TextView tvExpiredClients = ViewBindings.findChildViewById(rootView, id);
+      if (tvExpiredClients == null) {
+        break missingId;
+      }
+
+      id = R.id.tvInactiveClients;
+      TextView tvInactiveClients = ViewBindings.findChildViewById(rootView, id);
+      if (tvInactiveClients == null) {
+        break missingId;
+      }
+
       id = R.id.tvRevenue;
       TextView tvRevenue = ViewBindings.findChildViewById(rootView, id);
       if (tvRevenue == null) {
@@ -148,8 +169,8 @@ public final class FragmentDashboardBinding implements ViewBinding {
       }
 
       return new FragmentDashboardBinding((FrameLayout) rootView, btnRetry, layoutContent,
-          layoutError, swipeRefresh, tvActiveClients, tvErrorMsg, tvRevenue, tvRouters,
-          tvTotalClients);
+          layoutError, swipeRefresh, tvActiveClients, tvErrorMsg, tvExpiredClients,
+          tvInactiveClients, tvRevenue, tvRouters, tvTotalClients);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

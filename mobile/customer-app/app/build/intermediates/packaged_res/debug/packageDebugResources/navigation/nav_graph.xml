@@ -23,4 +23,9 @@
         android:name="site.fortunetttech.customer.ui.history.HistoryFragment"
         android:label="History" />
 
+    <fragment
+        android:id="@+id/profileFragment"
+        android:name="site.fortunetttech.customer.ui.profile.ProfileFragment"
+        android:label="Profile" />
+
 </navigation>

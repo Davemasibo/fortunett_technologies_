@@ -1,4 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FortuNett Admin</string>
+
+    <string-array name="connection_types">
+        <item>pppoe</item>
+        <item>hotspot</item>
+    </string-array>
+
+    <string-array name="validity_units">
+        <item>days</item>
+        <item>months</item>
+        <item>hours</item>
+    </string-array>
+
+    <string-array name="status_options">
+        <item>active</item>
+        <item>inactive</item>
+    </string-array>
 </resources>

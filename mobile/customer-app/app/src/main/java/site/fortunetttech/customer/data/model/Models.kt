@@ -34,6 +34,7 @@ data class ProfileResponse(
     val phone: String?,
     val email: String?,
     val account_number: String?,
+    val account_balance: Double?,
     val status: String,
     val subscription: Subscription,
     val recent_payments: List<Payment>,
@@ -60,6 +61,23 @@ data class Payment(
     val created_at: String
 )
 
+// ── Available Packages ────────────────────────────────────────────────────────
+
+data class PackagesResponse(val data: List<AvailablePackage>)
+
+data class AvailablePackage(
+    val id: Int,
+    val name: String,
+    val price: Double,
+    val description: String?,
+    val download_speed: Int,
+    val upload_speed: Int,
+    val validity_value: Int,
+    val validity_unit: String,
+    val connection_type: String,
+    val device_limit: Int
+)
+
 // ── Pay (STK Push) ────────────────────────────────────────────────────────────
 
 data class PayRequest(
@@ -71,4 +89,38 @@ data class PayResponse(
     val success: Boolean,
     val message: String,
     @SerializedName("checkout_request_id") val checkoutRequestId: String?
+)
+
+// ── Sessions ──────────────────────────────────────────────────────────────────
+
+data class Session(
+    val id: Int,
+    val ip_address: String,
+    val mac_address: String?,
+    val user_agent: String?,
+    val created_at: String,
+    val last_activity: String?
+)
+
+data class SessionsResponse(val data: List<Session>)
+
+// ── Payment Status ─────────────────────────────────────────────────────────────
+
+data class PaymentStatusResponse(
+    val status: String,
+    val amount: Double?,
+    val message: String
+)
+
+// ── Profile Update ────────────────────────────────────────────────────────────
+
+data class UpdateProfileRequest(
+    val full_name: String?,
+    val phone: String?,
+    val email: String?
+)
+
+data class ChangePasswordRequest(
+    val current_password: String,
+    val new_password: String
 )

@@ -16,11 +16,30 @@
     <fragment
         android:id="@+id/payFragment"
         android:name="site.fortunetttech.customer.ui.pay.PayFragment"
-        android:label="Pay" />
+        android:label="Pay">
+        <argument
+            android:name="packageId"
+            app:argType="integer"
+            android:defaultValue="-1" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/packagesBrowserFragment"
+        android:name="site.fortunetttech.customer.ui.packages.PackagesBrowserFragment"
+        android:label="Packages">
+        <action
+            android:id="@+id/action_packages_to_pay"
+            app:destination="@id/payFragment" />
+    </fragment>
 
     <fragment
         android:id="@+id/historyFragment"
         android:name="site.fortunetttech.customer.ui.history.HistoryFragment"
         android:label="History" />
+
+    <fragment
+        android:id="@+id/profileFragment"
+        android:name="site.fortunetttech.customer.ui.profile.ProfileFragment"
+        android:label="Profile" />
 
 </navigation>

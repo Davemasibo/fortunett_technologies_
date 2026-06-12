@@ -19,6 +19,7 @@ class MpesaAPI {
 
     public function __construct($pdo = null, $tenant_id = null) {
         require_once __DIR__ . '/../config/mpesa.php';
+        require_once __DIR__ . '/../includes/credential_helper.php';
         
         $this->pdo = $pdo;
         $this->tenant_id = $tenant_id;
@@ -53,8 +54,8 @@ class MpesaAPI {
             $gateway = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($gateway && !empty($gateway['credentials'])) {
-                $creds = json_decode($gateway['credentials'], true);
-                if (json_last_error() === JSON_ERROR_NONE) {
+                $creds = decrypt_gateway_credentials($gateway['credentials']);
+                if (!empty($creds)) {
                     $this->consumer_key    = $creds['consumer_key']    ?? $this->consumer_key;
                     $this->consumer_secret = $creds['consumer_secret'] ?? $this->consumer_secret;
                     $this->passkey         = $creds['passkey']         ?? $this->passkey;
@@ -329,6 +330,65 @@ class MpesaAPI {
 
         $errorMsg = $json['errorMessage'] ?? $json['ResponseDescription'] ?? ('HTTP ' . $httpCode . ': ' . substr($response, 0, 300));
         return ['success' => false, 'error' => $errorMsg, 'raw' => $json];
+    }
+
+    /**
+     * Query STK Push transaction status from Daraja.
+     *
+     * Returns an array with keys:
+     *   result_code  (int)    — 0 = success, 1032 = cancelled, 1019 = timeout/expired
+     *   result_desc  (string)
+     *   raw          (array)  — full decoded Daraja response
+     *   error        (string|null) — set on network/auth failure before Daraja responded
+     *
+     * Result codes to treat as "still pending": 1025 (processing).
+     * Codes 1019 (expired) and 1037 (timeout) mean the request is gone — mark failed.
+     */
+    public function stkQuery(string $checkoutRequestId): array {
+        $token = $this->getAccessToken();
+        if (!$token) {
+            return ['result_code' => -1, 'result_desc' => 'Token error', 'error' => $this->last_error ?: 'No access token', 'raw' => []];
+        }
+
+        $timestamp         = date('YmdHis');
+        $isTill            = ($this->shortcode_type === 'till');
+        $businessShortCode = ($isTill && !empty($this->store_number)) ? $this->store_number : $this->shortcode;
+        $password          = base64_encode($businessShortCode . $this->passkey . $timestamp);
+
+        $body = [
+            'BusinessShortCode'  => $businessShortCode,
+            'Password'           => $password,
+            'Timestamp'          => $timestamp,
+            'CheckoutRequestID'  => $checkoutRequestId,
+        ];
+
+        $url  = $this->base_url . '/mpesa/stkpushquery/v1/query';
+        $curl = curl_init();
+        curl_setopt($curl, CURLOPT_URL, $url);
+        curl_setopt($curl, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $token,
+        ]);
+        curl_setopt($curl, CURLOPT_POST, true);
+        curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($body));
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, 15);
+        curl_setopt($curl, CURLOPT_TIMEOUT, 30);
+
+        $response  = curl_exec($curl);
+        $curlError = curl_error($curl);
+        curl_close($curl);
+
+        if ($curlError) {
+            return ['result_code' => -1, 'result_desc' => 'cURL error', 'error' => $curlError, 'raw' => []];
+        }
+
+        $json = json_decode($response, true) ?? [];
+        $code = isset($json['ResultCode']) ? (int)$json['ResultCode'] : -1;
+        $desc = $json['ResultDesc'] ?? ($json['errorMessage'] ?? 'Unknown');
+
+        return ['result_code' => $code, 'result_desc' => $desc, 'error' => null, 'raw' => $json];
     }
 
     /**
