@@ -32,6 +32,91 @@ $log("=== Expiry Check: " . date('Y-m-d H:i:s') . " | grace={$graceDays}d ===");
 
 // Silently add the grace status support (no-op on MySQL after first run)
 try { $pdo->exec("ALTER TABLE clients MODIFY COLUMN status ENUM('active','inactive','suspended','grace') NOT NULL DEFAULT 'active'"); } catch (Throwable $_) {}
+// Silently add reminder flag columns (no-op if migration already ran)
+try { $pdo->exec("ALTER TABLE clients ADD COLUMN IF NOT EXISTS expiry_reminder_3d_sent TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $_) {}
+try { $pdo->exec("ALTER TABLE clients ADD COLUMN IF NOT EXISTS expiry_reminder_1d_sent TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $_) {}
+
+// ── 0. Pre-expiry SMS reminders (3-day and 1-day warnings) ───────────────────
+try {
+    $reminders = [
+        ['days' => 3, 'flag' => 'expiry_reminder_3d_sent', 'label' => '3-day'],
+        ['days' => 1, 'flag' => 'expiry_reminder_1d_sent', 'label' => '1-day'],
+    ];
+
+    foreach ($reminders as $r) {
+        $days = $r['days'];
+        $flag = $r['flag'];
+
+        // Window: expiry is between now+$days-0.5h and now+$days+0.5h
+        // The cron runs every 15 min so a ±30-min window avoids duplicates
+        // while ensuring the reminder fires even if cron is slightly late.
+        $rStmt = $pdo->prepare("
+            SELECT c.id, c.full_name, c.phone, c.account_number, c.tenant_id,
+                   c.expiry_date,
+                   p.name AS pkg_name, p.price AS pkg_price,
+                   t.company_name AS tenant_name, t.subdomain
+            FROM clients c
+            LEFT JOIN packages p ON p.id = c.package_id
+            LEFT JOIN tenants t ON t.id = c.tenant_id
+            WHERE c.status = 'active'
+              AND c.expiry_date IS NOT NULL
+              AND c.expiry_date BETWEEN NOW() + INTERVAL ? HOUR AND NOW() + INTERVAL ? HOUR
+              AND c.{$flag} = 0
+              AND c.phone IS NOT NULL AND c.phone != ''
+        ");
+        // Window: ($days * 24 - 12) to ($days * 24 + 12) hours from now
+        $rStmt->execute([$days * 24 - 12, $days * 24 + 12]);
+        $upcoming = $rStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $log("Pre-expiry {$r['label']} reminders: " . count($upcoming) . " client(s).");
+
+        foreach ($upcoming as $client) {
+            $tenantId = (int)$client['tenant_id'];
+            $clientId = (int)$client['id'];
+            try {
+                $sms = new SMSHelper($pdo, $tenantId);
+                if (!$sms->hasConfig()) continue;
+
+                $subdomain     = $client['subdomain'] ?? '';
+                $renewUrl      = 'https://' . $subdomain . '.' . $platformDomain . '/customer/renew.php';
+                $accNo         = $client['account_number'] ?? '';
+                $pkgPrice      = isset($client['pkg_price']) ? 'KES ' . number_format((float)$client['pkg_price'], 0) : '';
+                $company       = $client['tenant_name'] ?? 'Your ISP';
+                $firstName     = explode(' ', trim($client['full_name']))[0];
+                $expiryHuman   = date('d M H:i', strtotime($client['expiry_date']));
+
+                require_once __DIR__ . '/../includes/credential_helper.php';
+                $paybill = '';
+                try {
+                    $gwSt = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1 LIMIT 1");
+                    $gwSt->execute([$tenantId]);
+                    $gwRow = $gwSt->fetch(PDO::FETCH_ASSOC);
+                    if ($gwRow) { $paybill = decrypt_gateway_credentials($gwRow['credentials'])['shortcode'] ?? ''; }
+                } catch (Throwable $_e) {}
+
+                if ($paybill && $accNo && $pkgPrice) {
+                    $msg = "Hi {$firstName}, your {$company} internet expires {$expiryHuman}. Renew now: M-Pesa Paybill {$paybill} Acc {$accNo} {$pkgPrice}.";
+                } else {
+                    $msg = "Hi {$firstName}, your {$company} internet expires {$expiryHuman}. Renew at {$renewUrl}";
+                }
+                if (strlen($msg) > 160) $msg = substr($msg, 0, 157) . '...';
+
+                $smsResult = $sms->send($client['phone'], $msg, $clientId);
+                $sent = $smsResult['success'] ?? false;
+
+                if ($sent) {
+                    $pdo->prepare("UPDATE clients SET {$flag} = 1 WHERE id = ? AND tenant_id = ?")
+                        ->execute([$clientId, $tenantId]);
+                }
+                $log("  [{$tenantId}] #{$clientId} {$client['full_name']} — {$r['label']} reminder " . ($sent ? 'sent' : 'failed'));
+            } catch (Throwable $smsEx) {
+                $log("  [{$tenantId}] #{$clientId} — reminder SMS error: " . $smsEx->getMessage());
+            }
+        }
+    }
+} catch (Throwable $reminderEx) {
+    $log("Pre-expiry reminder block error: " . $reminderEx->getMessage());
+}
 
 // ── 1. Clients newly expired (active → grace) ─────────────────────────────────
 // Expiry just passed — throttle but don't kick yet
