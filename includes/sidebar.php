@@ -52,6 +52,11 @@ if (isLoggedIn()) {
             </a>
         </li>
         <li>
+            <a href="hotspot_diagnostics.php" class="<?php echo isActivePage('hotspot_diagnostics.php'); ?>">
+                <i class="fas fa-stethoscope"></i> <span>Hotspot Diagnostics</span>
+            </a>
+        </li>
+        <li>
             <a href="packages.php" class="<?php echo isActivePage('packages.php'); ?>">
                 <i class="fas fa-cube"></i> <span>Packages</span>
             </a>

@@ -126,9 +126,26 @@ try {
         $portalToken = null;
     }
 
-    // ── Ensure user is enabled on MikroTik (re-enable if disabled by check_expiry) ─
-    $mkUsername = $client['mikrotik_username'] ?? ($client['username'] ?? '');
+    // ── Resolve MikroTik credentials — provision if missing ──────────────────
+    $mkUsername = $client['mikrotik_username'] ?? '';
     $mkPassword = $client['mikrotik_password'] ?? '';
+
+    // If credentials were never written (e.g. provisioning failed at payment time),
+    // run provision now so the router has a user record to authenticate against.
+    if (empty($mkUsername)) {
+        try {
+            autoProvisionClient($pdo, (int)$client['id'], $tenantId);
+            $reSt = $pdo->prepare("SELECT mikrotik_username, mikrotik_password FROM clients WHERE id = ? LIMIT 1");
+            $reSt->execute([$client['id']]);
+            $re = $reSt->fetch(PDO::FETCH_ASSOC);
+            $mkUsername = $re['mikrotik_username'] ?? '';
+            $mkPassword = $re['mikrotik_password'] ?? '';
+        } catch (Throwable $_provEx) {
+            error_log('[hotspot_login] initial provision: ' . $_provEx->getMessage());
+        }
+    }
+
+    // ── Ensure user is enabled on MikroTik (re-enable if disabled by check_expiry) ─
     if (!empty($mkUsername)) {
         try {
             $rSt = $pdo->prepare("
@@ -153,16 +170,28 @@ try {
                     $mk->disconnect();
 
                     if (!$enabled) {
-                        // User doesn't exist on router — auto-provision on the fly
+                        // User not found on router — provision, then re-read credentials
                         autoProvisionClient($pdo, (int)$client['id'], $tenantId);
+                        $reSt2 = $pdo->prepare("SELECT mikrotik_username, mikrotik_password FROM clients WHERE id = ? LIMIT 1");
+                        $reSt2->execute([$client['id']]);
+                        $re2 = $reSt2->fetch(PDO::FETCH_ASSOC);
+                        $mkUsername = $re2['mikrotik_username'] ?? $mkUsername;
+                        $mkPassword = $re2['mikrotik_password'] ?? $mkPassword;
                     }
                 }
             }
         } catch (Throwable $_mkEx) {
-            // Non-fatal — if router is unreachable, return credentials anyway;
-            // Fix 3 retry cron will provision the user shortly.
             error_log('[hotspot_login] re-enable error: ' . $_mkEx->getMessage());
         }
+    }
+
+    // If still no credentials (router unreachable and never provisioned), block login
+    if (empty($mkUsername)) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Your account is not yet configured on the router. Please try again in a minute, or contact your ISP.',
+        ]);
+        exit;
     }
 
     // ── Return MikroTik credentials ───────────────────────────────────────────

@@ -88,6 +88,46 @@ try {
             echo json_encode(['success' => true, 'message' => 'Plan updated']);
             break;
 
+        case 'extend_days':
+            $days = (int)($data['days'] ?? 0);
+            if ($days < 1 || $days > 3650) {
+                echo json_encode(['success' => false, 'message' => 'days must be between 1 and 3650']);
+                exit;
+            }
+
+            // Fetch current tenant to know which date field to extend
+            $tRow = $pdo->prepare("SELECT status, trial_ends_at, subscription_ends_at FROM tenants WHERE id = ?");
+            $tRow->execute([$tenantId]);
+            $tRow = $tRow->fetch(PDO::FETCH_ASSOC);
+
+            // Determine the base date: if the date is already in the future use it,
+            // otherwise start the extension from today so we don't lose days.
+            $today = date('Y-m-d');
+            if ($tRow['status'] === 'trial') {
+                $current = $tRow['trial_ends_at'] ?? $today;
+                $base    = $current > $today ? $current : $today;
+                $newDate = date('Y-m-d', strtotime($base . ' +' . $days . ' days'));
+                $pdo->prepare("UPDATE tenants SET trial_ends_at = ?, status = 'trial' WHERE id = ?")
+                    ->execute([$newDate, $tenantId]);
+                $field = 'trial_ends_at';
+            } else {
+                $current = $tRow['subscription_ends_at'] ?? $today;
+                $base    = $current > $today ? $current : $today;
+                $newDate = date('Y-m-d', strtotime($base . ' +' . $days . ' days'));
+                // If tenant was suspended/expired because of date, reactivate them
+                $newStatus = in_array($tRow['status'], ['suspended', 'expired']) ? 'active' : $tRow['status'];
+                $pdo->prepare("UPDATE tenants SET subscription_ends_at = ?, status = ?, suspended_at = NULL, suspended_reason = NULL WHERE id = ?")
+                    ->execute([$newDate, $newStatus, $tenantId]);
+                $field = 'subscription_ends_at';
+            }
+
+            echo json_encode([
+                'success'  => true,
+                'message'  => "Extended by $days day(s). New {$field}: $newDate",
+                'new_date' => $newDate,
+            ]);
+            break;
+
         case 'mark_invoice_paid':
             $invoiceId = (int)($data['invoice_id'] ?? 0);
             $ref       = trim($data['transaction_ref'] ?? '');

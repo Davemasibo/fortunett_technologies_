@@ -124,6 +124,19 @@ tr:hover td{background:rgba(255,255,255,.035);}
 .btn-view{background:rgba(255,255,255,.07);color:var(--neu-muted);border:1px solid var(--neu-border);}
 .btn-view:hover{background:rgba(255,255,255,.13);color:var(--neu-text);}
 .btn-danger{background:linear-gradient(135deg,#b91c1c,#ef4444);color:#fff;border:none;}
+.btn-extend{background:rgba(99,102,241,.15);color:#a5b4fc;border:1px solid rgba(99,102,241,.25);}
+.btn-extend:hover{background:rgba(99,102,241,.28);color:#fff;}
+/* Extend modal */
+#extendModal{display:none;position:fixed;inset:0;z-index:1000;align-items:center;justify-content:center;background:rgba(0,0,0,.6);}
+#extendModal.open{display:flex;}
+#extendModal .modal-box{background:var(--neu-s2);border-radius:14px;padding:28px 32px;width:340px;border:1px solid var(--neu-border);box-shadow:0 20px 60px rgba(0,0,0,.7);}
+#extendModal h3{font-size:16px;font-weight:700;margin-bottom:18px;color:var(--neu-text);}
+#extendModal label{display:block;font-size:12px;font-weight:600;color:var(--neu-muted);margin-bottom:6px;}
+#extendModal input[type=number]{width:100%;padding:9px 12px;border:1px solid rgba(255,255,255,.1);border-radius:7px;background:#1a1a19;color:var(--neu-text);font-size:14px;box-shadow:inset 3px 3px 7px rgba(0,0,0,.3);}
+#extendModal .modal-actions{display:flex;gap:10px;margin-top:20px;justify-content:flex-end;}
+#extendModal .btn-ok{padding:8px 20px;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;}
+#extendModal .btn-cancel{padding:8px 16px;background:rgba(255,255,255,.07);color:var(--neu-muted);border:1px solid var(--neu-border);border-radius:7px;font-size:13px;cursor:pointer;}
+#extendModal .modal-info{font-size:12px;color:var(--neu-muted);margin-bottom:14px;}
 .empty-row td{text-align:center;color:var(--neu-muted);padding:36px;}
 /* Detail panel */
 .detail-panel{background:var(--neu-s2);border-radius:14px;padding:28px;border:1px solid var(--neu-border);box-shadow:14px 14px 28px rgba(0,0,0,.5),-7px -7px 18px rgba(255,255,255,.035),0 0 0 1px var(--neu-border);margin-bottom:24px;}
@@ -174,6 +187,12 @@ table a:hover{color:#93c5fd;}
                     <a href="https://<?= $detailTenant['subdomain'] ?>.fortunetttech.site" target="_blank" style="color:#2563eb;font-size:13px;"><?= $detailTenant['subdomain'] ?>.fortunetttech.site</a>
                 </div>
                 <div style="display:flex;gap:8px;">
+                    <?php
+                        $detailExpiry = $detailTenant['trial_ends_at'] ?? $detailTenant['subscription_ends_at'] ?? null;
+                        $detailExpiryLabel = $detailExpiry ? date('d M Y', strtotime($detailExpiry)) : 'No expiry set';
+                        $detailModalInfo = "Tenant: {$detailTenant['company_name']} | Current expiry: {$detailExpiryLabel}";
+                    ?>
+                    <button class="btn-sm btn-extend" onclick="openExtendModal(<?= $detailTenant['id'] ?>, <?= htmlspecialchars(json_encode($detailModalInfo), ENT_QUOTES) ?>)"><i class="fas fa-calendar-plus"></i> Extend Days</button>
                     <?php if ($detailTenant['status'] === 'suspended'): ?>
                     <button class="btn-sm btn-activate" onclick="changeTenantStatus(<?= $detailTenant['id'] ?>,'active')"><i class="fas fa-play"></i> Activate</button>
                     <?php else: ?>
@@ -287,6 +306,12 @@ table a:hover{color:#93c5fd;}
                     <td style="white-space:nowrap;"><?= date('d M Y', strtotime($t['created_at'])) ?></td>
                     <td style="white-space:nowrap;">
                         <a href="tenants.php?id=<?= $t['id'] ?>" class="btn-sm btn-view"><i class="fas fa-eye"></i></a>
+                        <?php
+                            $listExpiry = $t['trial_ends_at'] ?? $t['subscription_ends_at'] ?? null;
+                            $listExpiryLabel = $listExpiry ? date('d M Y', strtotime($listExpiry)) : 'No expiry';
+                            $listModalInfo = "{$t['company_name']} | Expiry: {$listExpiryLabel}";
+                        ?>
+                        <button class="btn-sm btn-extend" onclick="openExtendModal(<?= $t['id'] ?>, <?= htmlspecialchars(json_encode($listModalInfo), ENT_QUOTES) ?>)"><i class="fas fa-calendar-plus"></i></button>
                         <?php if ($t['status'] === 'suspended'): ?>
                         <button class="btn-sm btn-activate" onclick="changeTenantStatus(<?= $t['id'] ?>,'active')"><i class="fas fa-play"></i> Activate</button>
                         <?php else: ?>
@@ -306,7 +331,53 @@ table a:hover{color:#93c5fd;}
     </div>
 </div>
 
+<!-- Extend Days Modal -->
+<div id="extendModal" role="dialog" aria-modal="true">
+    <div class="modal-box">
+        <h3><i class="fas fa-calendar-plus" style="color:#818cf8;margin-right:8px;"></i>Extend Subscription Days</h3>
+        <p class="modal-info" id="extendModalInfo"></p>
+        <label for="extendDaysInput">Number of days to add</label>
+        <input type="number" id="extendDaysInput" min="1" max="3650" value="30" placeholder="e.g. 30">
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="closeExtendModal()">Cancel</button>
+            <button class="btn-ok" onclick="submitExtend()">Extend</button>
+        </div>
+    </div>
+</div>
+
 <script>
+let _extendTenantId = null;
+
+function openExtendModal(tenantId, info) {
+    _extendTenantId = tenantId;
+    document.getElementById('extendModalInfo').textContent = info || '';
+    document.getElementById('extendDaysInput').value = 30;
+    document.getElementById('extendModal').classList.add('open');
+    document.getElementById('extendDaysInput').focus();
+}
+function closeExtendModal() {
+    document.getElementById('extendModal').classList.remove('open');
+    _extendTenantId = null;
+}
+function submitExtend() {
+    const days = parseInt(document.getElementById('extendDaysInput').value, 10);
+    if (!days || days < 1) { alert('Enter a valid number of days.'); return; }
+    fetch('../api/super_admin/tenants.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'extend_days', tenant_id: _extendTenantId, days: days })
+    })
+    .then(r => r.json())
+    .then(d => {
+        closeExtendModal();
+        if (d.success) { location.reload(); }
+        else { alert(d.message || 'Failed to extend'); }
+    });
+}
+document.getElementById('extendModal').addEventListener('click', function(e) {
+    if (e.target === this) closeExtendModal();
+});
+
 function changeTenantStatus(tenantId, status) {
     const label = status === 'suspended' ? 'suspend' : 'activate';
     if (!confirm('Are you sure you want to ' + label + ' this tenant?')) return;

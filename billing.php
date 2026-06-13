@@ -496,10 +496,18 @@ include 'includes/sidebar.php';
         $tenant['trial_ends_at'] < date('Y-m-d')
     ) {
         $dunningState = 'trial_expired';
+    } elseif (
+        ($tenant['status'] ?? '') === 'active' &&
+        !empty($tenant['subscription_ends_at']) &&
+        $tenant['subscription_ends_at'] < date('Y-m-d')
+    ) {
+        $dunningState = 'subscription_expired';
     } elseif (!empty($_GET['suspended'])) {
         $dunningState = 'suspended';
     } elseif (!empty($_GET['trial_expired'])) {
         $dunningState = 'trial_expired';
+    } elseif (!empty($_GET['subscription_expired'])) {
+        $dunningState = 'subscription_expired';
     }
 
     if ($dunningState): ?>
@@ -526,6 +534,22 @@ include 'includes/sidebar.php';
                 </p>
                 <button onclick="document.getElementById('dunning-wall').style.display='none';document.querySelector('.view-invoice-btn')?.click()" style="width:100%;padding:14px;background:linear-gradient(135deg,#b91c1c,#ef4444);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;">
                     View Invoice &amp; Pay Now
+                </button>
+                <div style="font-size:12px;color:#6b7280;">Pay via M-Pesa Paybill <strong style="color:#9ca3af;">400200</strong> &nbsp;|&nbsp; Support: <a href="mailto:support@fortunetttech.site" style="color:#60a5fa;text-decoration:none;">support@fortunetttech.site</a></div>
+            </div>
+            <?php elseif ($dunningState === 'subscription_expired'): ?>
+            <div style="background:linear-gradient(135deg,#92400e,#d97706);padding:28px 24px;">
+                <div style="font-size:40px;margin-bottom:10px;">📅</div>
+                <div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:6px;">Subscription Expired</div>
+                <div style="font-size:13px;color:rgba(255,255,255,.75);">Your platform subscription period has ended</div>
+            </div>
+            <div style="padding:28px 32px;">
+                <p style="color:#d4d4d2;font-size:14px;line-height:1.7;margin-bottom:20px;">
+                    Your FortuNett subscription has expired. Please pay your outstanding invoice to restore full access to your ISP dashboard and all features.<br><br>
+                    <strong style="color:#fcd34d;">Instant reactivation</strong> — your account is restored automatically within minutes of payment.
+                </p>
+                <button onclick="document.getElementById('dunning-wall').style.display='none';document.querySelector('.view-invoice-btn')?.click()" style="width:100%;padding:14px;background:linear-gradient(135deg,#b45309,#d97706);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;">
+                    View Invoice &amp; Renew
                 </button>
                 <div style="font-size:12px;color:#6b7280;">Pay via M-Pesa Paybill <strong style="color:#9ca3af;">400200</strong> &nbsp;|&nbsp; Support: <a href="mailto:support@fortunetttech.site" style="color:#60a5fa;text-decoration:none;">support@fortunetttech.site</a></div>
             </div>

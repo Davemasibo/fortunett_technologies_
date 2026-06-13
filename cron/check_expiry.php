@@ -32,9 +32,12 @@ $log("=== Expiry Check: " . date('Y-m-d H:i:s') . " | grace={$graceDays}d ===");
 
 // Silently add the grace status support (no-op on MySQL after first run)
 try { $pdo->exec("ALTER TABLE clients MODIFY COLUMN status ENUM('active','inactive','suspended','grace') NOT NULL DEFAULT 'active'"); } catch (Throwable $_) {}
-// Silently add reminder flag columns (no-op if migration already ran)
-try { $pdo->exec("ALTER TABLE clients ADD COLUMN IF NOT EXISTS expiry_reminder_3d_sent TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $_) {}
-try { $pdo->exec("ALTER TABLE clients ADD COLUMN IF NOT EXISTS expiry_reminder_1d_sent TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $_) {}
+// Silently add reminder flag columns (no-op if already present)
+try {
+    $cols = $pdo->query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clients' AND COLUMN_NAME IN ('expiry_reminder_3d_sent','expiry_reminder_1d_sent')")->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('expiry_reminder_3d_sent', $cols)) { $pdo->exec("ALTER TABLE clients ADD COLUMN expiry_reminder_3d_sent TINYINT(1) NOT NULL DEFAULT 0"); }
+    if (!in_array('expiry_reminder_1d_sent', $cols)) { $pdo->exec("ALTER TABLE clients ADD COLUMN expiry_reminder_1d_sent TINYINT(1) NOT NULL DEFAULT 0"); }
+} catch (Throwable $_) {}
 
 // ── 0. Pre-expiry SMS reminders (3-day and 1-day warnings) ───────────────────
 try {

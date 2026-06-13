@@ -58,6 +58,9 @@ function process_payment_success(
         'steps'        => [],
     ];
 
+    // Ensure all required tables and columns exist before any pipeline step runs
+    _pipeline_ensure_tables($pdo);
+
     // ── 1. Load client + package ───────────────────────────────────────────────
     $cSt = $pdo->prepare("
         SELECT c.id, c.full_name, c.name, c.phone, c.status,
@@ -105,11 +108,17 @@ function process_payment_success(
               ? $client['expiry_date'] : 'now';
         $expiryDate = date('Y-m-d H:i:s', strtotime('+' . $valVal . ' ' . $valUnit, strtotime($base)));
 
-        $pdo->prepare("
-            UPDATE clients SET status = 'active', expiry_date = ?,
-                expiry_reminder_3d_sent = 0, expiry_reminder_1d_sent = 0
-            WHERE id = ? AND tenant_id = ?
-        ")->execute([$expiryDate, $clientId, $tenantId]);
+        try {
+            $pdo->prepare("
+                UPDATE clients SET status = 'active', expiry_date = ?,
+                    expiry_reminder_3d_sent = 0, expiry_reminder_1d_sent = 0
+                WHERE id = ? AND tenant_id = ?
+            ")->execute([$expiryDate, $clientId, $tenantId]);
+        } catch (Throwable $_colErr) {
+            // Reminder-flag columns may not exist yet — fall back to basic update
+            $pdo->prepare("UPDATE clients SET status = 'active', expiry_date = ? WHERE id = ? AND tenant_id = ?")
+                ->execute([$expiryDate, $clientId, $tenantId]);
+        }
     } else {
         // No package — at least mark the account active
         $pdo->prepare("UPDATE clients SET status = 'active' WHERE id = ? AND tenant_id = ?")
@@ -150,8 +159,6 @@ function process_payment_success(
 
     // ── 4. Client invoice ──────────────────────────────────────────────────────
     try {
-        _pipeline_ensure_tables($pdo);
-
         // Find an open invoice for this client, or create one and immediately close it
         $invSt = $pdo->prepare("
             SELECT id FROM client_invoices
@@ -440,6 +447,22 @@ function _pipeline_ensure_tables(PDO $pdo): void {
     static $done = false;
     if ($done) return;
     $done = true;
+
+    // Ensure expiry-reminder flag columns exist (added by the expiry-reminders feature;
+    // if the migration was never run these will be missing and break step 2).
+    try {
+        $existing = $pdo->query("
+            SELECT COLUMN_NAME FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clients'
+              AND COLUMN_NAME IN ('expiry_reminder_3d_sent','expiry_reminder_1d_sent')
+        ")->fetchAll(PDO::FETCH_COLUMN);
+        if (!in_array('expiry_reminder_3d_sent', $existing)) {
+            $pdo->exec("ALTER TABLE clients ADD COLUMN expiry_reminder_3d_sent TINYINT(1) NOT NULL DEFAULT 0");
+        }
+        if (!in_array('expiry_reminder_1d_sent', $existing)) {
+            $pdo->exec("ALTER TABLE clients ADD COLUMN expiry_reminder_1d_sent TINYINT(1) NOT NULL DEFAULT 0");
+        }
+    } catch (Throwable $_) {}
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS client_invoices (

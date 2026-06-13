@@ -1,12 +1,32 @@
 -- Migration: 2026-06-07-expiry-reminders
 -- Adds columns to track whether pre-expiry SMS reminders have been sent,
 -- preventing duplicate messages when the cron runs every 15 minutes.
--- Safe to run repeatedly (IF NOT EXISTS / IF NOT EXIST patterns).
+-- Uses PREPARE/EXECUTE to avoid DELIMITER issues in any MySQL client context.
 
-ALTER TABLE clients
-  ADD COLUMN IF NOT EXISTS expiry_reminder_3d_sent TINYINT(1) NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS expiry_reminder_1d_sent TINYINT(1) NOT NULL DEFAULT 0;
+SET @col3d := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'clients'
+      AND COLUMN_NAME  = 'expiry_reminder_3d_sent'
+);
+SET @sql3d := IF(@col3d = 0,
+    'ALTER TABLE clients ADD COLUMN expiry_reminder_3d_sent TINYINT(1) NOT NULL DEFAULT 0',
+    'SELECT 1 -- expiry_reminder_3d_sent already exists'
+);
+PREPARE _stmt FROM @sql3d;
+EXECUTE _stmt;
+DEALLOCATE PREPARE _stmt;
 
--- Reset reminder flags when a client renews (expiry_date pushed forward)
--- This is handled in code (payment_pipeline.php step 2 already updates expiry_date).
--- A DB trigger would also work but code-side reset in pipeline is sufficient.
+SET @col1d := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'clients'
+      AND COLUMN_NAME  = 'expiry_reminder_1d_sent'
+);
+SET @sql1d := IF(@col1d = 0,
+    'ALTER TABLE clients ADD COLUMN expiry_reminder_1d_sent TINYINT(1) NOT NULL DEFAULT 0',
+    'SELECT 1 -- expiry_reminder_1d_sent already exists'
+);
+PREPARE _stmt FROM @sql1d;
+EXECUTE _stmt;
+DEALLOCATE PREPARE _stmt;
