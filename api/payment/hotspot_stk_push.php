@@ -368,5 +368,12 @@ try {
 
 } catch (Throwable $e) {
     error_log('[hotspot_stk_push] ' . $e->getMessage());
-    echo json_encode(['success' => false, 'message' => 'Server error. Please try again.']);
+    // Surface the real reason (M-Pesa token failure, DB error, etc.) instead of a
+    // generic "server error" — the portal alert()s this message, and operators need
+    // the actual cause to diagnose. stkPush() throws here when Safaricom credentials
+    // are invalid or the access token can't be fetched.
+    echo json_encode([
+        'success' => false,
+        'message' => 'Payment could not be initiated: ' . $e->getMessage(),
+    ]);
 }

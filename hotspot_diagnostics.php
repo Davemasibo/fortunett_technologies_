@@ -170,13 +170,33 @@ function renderChecks(routerId, d) {
     html += row('TCP / API Login', d.api_ok ? 'OK' : 'FAIL', d.api_ok ? 'Connected' : (d.error || 'Auth failed'));
 
     if (d.api_ok) {
+        // Bridge interface
+        if (d.bridge) {
+            html += row('Bridge Interface', 'OK', d.bridge);
+        } else {
+            html += row('Bridge Interface', 'FAIL', 'No bridge found — provisioning will be blocked');
+        }
+
         // Hotspot server
         if (d.hotspot_server) {
-            html += row('Hotspot Server', 'OK', 'Running: ' + d.hotspot_server);
+            const onBridge = d.bridge && d.hotspot_server.includes(' on ' + d.bridge);
+            html += row('Hotspot Server', onBridge ? 'OK' : 'WARN',
+                        (d.hotspot_server) + (onBridge ? '' : ' ⚠ not on bridge'));
         } else if (d.hotspot_server === false) {
-            html += row('Hotspot Server', 'FAIL', 'No server running');
+            html += row('Hotspot Server', 'FAIL', 'No server running' + (d.bridge ? ' — add one on ' + d.bridge : ''));
         } else {
-            html += row('Hotspot Server', 'WARN', 'Unknown');
+            html += row('Hotspot Server', 'SKIP', 'N/A');
+        }
+
+        // PPPoE server
+        if (d.pppoe_server) {
+            const ppOnBridge = d.bridge && d.pppoe_server.includes(' on ' + d.bridge);
+            html += row('PPPoE Server', ppOnBridge ? 'OK' : 'WARN',
+                        (d.pppoe_server) + (ppOnBridge ? '' : ' ⚠ not on bridge'));
+        } else if (d.pppoe_server === false) {
+            html += row('PPPoE Server', 'SKIP', 'Not configured');
+        } else {
+            html += row('PPPoE Server', 'SKIP', 'N/A');
         }
 
         // Login page

@@ -86,11 +86,23 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
 
         $api->connect();
 
+        // ── Pre-flight: detect bridge + running service (ADVISORY ONLY) ─────────
+        // Never block provisioning here. Hotspots/PPPoE legitimately run on a plain
+        // interface or VLAN with no bridge, so a missing bridge is not an error.
+        // RouterOS itself returns a clear trap if the hotspot/PPPoE server is truly
+        // missing (handled in _provisionHotspot/_provisionPPPoE). Hard-failing here
+        // blocked working setups and broke hotspot connect + renewal.
+        $bridgeCheck = _verifyServiceOnBridge($api, $connType);
+        if (!$bridgeCheck['ok']) {
+            error_log("autoProvisionClient($clientId): pre-flight warning — " . $bridgeCheck['message']);
+        }
+
         // ── Provision ─────────────────────────────────────────────────────────
         // hotspot_shared_users: 0 = unlimited, 1 = one active session per user
         $sharedUsers = ((int)($router['hotspot_shared_users'] ?? 0) === 1) ? '1' : 'unlimited';
 
-        $hotspotServer = !empty($package['hotspot_server']) ? $package['hotspot_server'] : 'all';
+        // Use the hotspot server detected during bridge check if not overridden by package
+        $hotspotServer = !empty($package['hotspot_server']) ? $package['hotspot_server'] : ($bridgeCheck['server_name'] ?? 'all');
 
         // Fetch server IP for captive portal setup
         $serverIp = '';
@@ -523,6 +535,12 @@ function preProvisionPPPoEClient(PDO $pdo, int $clientId, int $tenantId): array
         }
         $api->connect();
 
+        // ── Pre-flight: advisory check only (never blocks — see autoProvisionClient) ──
+        $bridgeCheck = _verifyServiceOnBridge($api, 'pppoe');
+        if (!$bridgeCheck['ok']) {
+            error_log("preProvisionPPPoEClient($clientId): pre-flight warning — " . $bridgeCheck['message']);
+        }
+
         // Get server IP and ensure captive portal infrastructure exists
         $serverIp = '';
         try {
@@ -863,6 +881,127 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
         error_log('_uploadHotspotLoginPage: ' . $e->getMessage());
         throw $e;   // re-throw so deploy_hotspot_login.php can report it
     }
+}
+
+/**
+ * Return the name of the first enabled bridge interface on the router, or null.
+ */
+function _detectBridgeInterface(MikrotikAPI $api): ?string
+{
+    try {
+        $bridges = $api->comm('/interface/bridge/print');
+        foreach ($bridges as $b) {
+            if (!isset($b['!re'])) continue;
+            if (($b['disabled'] ?? 'false') === 'false' && !empty($b['name'])) {
+                return $b['name'];
+            }
+        }
+    } catch (Throwable $_e) {
+        error_log('_detectBridgeInterface: ' . $_e->getMessage());
+    }
+    return null;
+}
+
+/**
+ * Verify the hotspot or PPPoE server is configured and running on a bridge.
+ *
+ * Rules:
+ *  - If no bridge exists on the router: hard fail (routers should always have a bridge).
+ *  - If the service server doesn't exist: hard fail with actionable message.
+ *  - If the service server exists but is NOT on the bridge: warning log + soft pass
+ *    (admin should reconfigure the server, but we don't block the customer).
+ *
+ * Returns ['ok' => bool, 'message' => string, 'bridge' => ?string, 'server_name' => ?string]
+ */
+function _verifyServiceOnBridge(MikrotikAPI $api, string $connType): array
+{
+    $bridge = _detectBridgeInterface($api);
+
+    if ($bridge === null) {
+        return [
+            'ok'          => false,
+            'message'     => 'No bridge interface found on this router. '
+                           . 'Create a bridge (e.g. bridge1) and add your LAN port to it before provisioning.',
+            'bridge'      => null,
+            'server_name' => null,
+        ];
+    }
+
+    if ($connType === 'hotspot') {
+        // Fetch hotspot servers
+        $servers = $api->comm('/ip/hotspot/print');
+        $running = null;
+        foreach ($servers as $s) {
+            if (!isset($s['!re'])) continue;
+            if (($s['disabled'] ?? 'true') !== 'true') {
+                $running = $s;
+                break;
+            }
+        }
+
+        if ($running === null) {
+            return [
+                'ok'          => false,
+                'message'     => "No active hotspot server found on this router. "
+                               . "Add a hotspot server on interface {$bridge} (/ip hotspot add interface={$bridge} ...).",
+                'bridge'      => $bridge,
+                'server_name' => null,
+            ];
+        }
+
+        $serverIface = $running['interface'] ?? '';
+        $serverName  = $running['name']      ?? '';
+        if ($serverIface !== $bridge) {
+            error_log(
+                "_verifyServiceOnBridge: hotspot server '{$serverName}' is on '{$serverIface}', "
+                . "but bridge is '{$bridge}'. Move the hotspot server to the bridge for correct operation."
+            );
+        }
+
+        return [
+            'ok'          => true,
+            'message'     => "Hotspot server '{$serverName}' on '{$serverIface}' (bridge: {$bridge})",
+            'bridge'      => $bridge,
+            'server_name' => $serverName ?: 'all',
+        ];
+    }
+
+    // PPPoE — check /interface/pppoe-server/server
+    $servers = $api->comm('/interface/pppoe-server/server/print');
+    $running = null;
+    foreach ($servers as $s) {
+        if (!isset($s['!re'])) continue;
+        if (($s['disabled'] ?? 'true') !== 'true') {
+            $running = $s;
+            break;
+        }
+    }
+
+    if ($running === null) {
+        return [
+            'ok'          => false,
+            'message'     => "No active PPPoE server found on this router. "
+                           . "Add a PPPoE server on interface {$bridge} (/interface pppoe-server server add interface={$bridge} ...).",
+            'bridge'      => $bridge,
+            'server_name' => null,
+        ];
+    }
+
+    $serverIface = $running['interface'] ?? '';
+    $serverName  = $running['service-name'] ?? ($running['name'] ?? '');
+    if ($serverIface !== $bridge) {
+        error_log(
+            "_verifyServiceOnBridge: PPPoE server '{$serverName}' is on '{$serverIface}', "
+            . "but bridge is '{$bridge}'. Move the PPPoE server to the bridge for correct operation."
+        );
+    }
+
+    return [
+        'ok'          => true,
+        'message'     => "PPPoE server '{$serverName}' on '{$serverIface}' (bridge: {$bridge})",
+        'bridge'      => $bridge,
+        'server_name' => $serverName,
+    ];
 }
 
 /**

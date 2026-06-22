@@ -47,7 +47,9 @@ $result = [
     'success'        => true,
     'reachable'      => false,
     'api_ok'         => false,
+    'bridge'         => null,   // name of the detected bridge interface, or null
     'hotspot_server' => null,   // name of running hotspot server, or false
+    'pppoe_server'   => null,   // name of running PPPoE server, or false
     'login_deployed' => false,
     'login_size'     => null,
     'login_mod_time' => null,
@@ -77,19 +79,45 @@ try {
     $api->connect();
     $result['api_ok'] = true;
 
+    // ── Bridge detection ──────────────────────────────────────────────────
+    try {
+        $bridges = $api->comm('/interface/bridge/print');
+        foreach ($bridges as $b) {
+            if (isset($b['!re']) && ($b['disabled'] ?? 'false') === 'false' && !empty($b['name'])) {
+                $result['bridge'] = $b['name'];
+                break;
+            }
+        }
+    } catch (Throwable $_e) {}
+
     // ── Hotspot server status ─────────────────────────────────────────────
     try {
         $servers = $api->comm('/ip/hotspot/print');
         $running = null;
         foreach ($servers as $s) {
-            if (isset($s['!re']) && ($s['disabled'] ?? 'true') === 'false') {
-                $running = $s['name'] ?? 'unknown';
+            if (isset($s['!re']) && ($s['disabled'] ?? 'true') !== 'true') {
+                $running = ($s['name'] ?? 'unknown') . ' on ' . ($s['interface'] ?? '?');
                 break;
             }
         }
         $result['hotspot_server'] = $running;
     } catch (Throwable $_e) {
         $result['hotspot_server'] = false;
+    }
+
+    // ── PPPoE server status ───────────────────────────────────────────────
+    try {
+        $ppServers = $api->comm('/interface/pppoe-server/server/print');
+        $ppRunning = null;
+        foreach ($ppServers as $s) {
+            if (isset($s['!re']) && ($s['disabled'] ?? 'true') !== 'true') {
+                $ppRunning = ($s['service-name'] ?? ($s['name'] ?? 'pppoe')) . ' on ' . ($s['interface'] ?? '?');
+                break;
+            }
+        }
+        $result['pppoe_server'] = $ppRunning;
+    } catch (Throwable $_e) {
+        $result['pppoe_server'] = false;
     }
 
     // ── Login page on flash ───────────────────────────────────────────────

@@ -207,5 +207,5 @@ try {
 
 } catch (Throwable $e) {
     error_log('[hotspot_login] ' . $e->getMessage());
-    echo json_encode(['success' => false, 'message' => 'Server error. Please try again.']);
+    echo json_encode(['success' => false, 'message' => 'Sign-in error: ' . $e->getMessage()]);
 }
