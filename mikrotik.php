@@ -1075,19 +1075,9 @@ function finishWizard() {
     .then(data => {
         if (data.status === 'success') {
             const services = Array.isArray(data.services) ? data.services : [];
-            const label = services.map(s => String(s).toUpperCase()).join(' + ');
-            // command_labels is aligned 1:1 with commands (first = "Bridge Setup").
-            // Fall back gracefully if an older backend didn't send it.
-            const cmdLabels = Array.isArray(data.command_labels) ? data.command_labels : [];
-            const commandBlocks = data.commands.map((cmd, i) => `
-                <div style="margin-bottom:${i < data.commands.length - 1 ? '16px' : '0'};">
-                    <div style="font-size:11px; font-weight:600; color:rgba(255,255,255,.35); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">${(cmdLabels[i] || 'Setup')} Command</div>
-                    <div class="command-box" style="text-align:left;">
-                        <button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.textContent)">Copy</button>
-                        <div class="command-text">${cmd}</div>
-                    </div>
-                </div>
-            `).join('');
+            const label = services.map(s => String(s).toUpperCase()).join(' + ') || 'Router';
+            // Single-line script — one copy, one paste. Rendered in one box.
+            const cmd = data.command || '';
 
             document.getElementById('step3').innerHTML = `
                 <div style="padding:20px;">
@@ -1096,9 +1086,12 @@ function finishWizard() {
                             <i class="fas fa-check" style="font-size:24px;"></i>
                         </div>
                         <h3 style="font-size:18px; font-weight:600; margin-bottom:4px; color:#e2e2e0;">${label} Configured</h3>
-                        <p style="color:rgba(255,255,255,.4); font-size:13px;">Run the command(s) below in your MikroTik terminal to finalize setup.</p>
+                        <p style="color:rgba(255,255,255,.4); font-size:13px;">Copy the command below and paste it <strong>once</strong> into your MikroTik terminal (New Terminal in WinBox, or SSH). Assumes <strong>ether1</strong> is your WAN/uplink.</p>
                     </div>
-                    ${commandBlocks}
+                    <div class="command-box" style="text-align:left;">
+                        <button class="copy-btn" onclick="copyCmd(this)">Copy</button>
+                        <div class="command-text" style="white-space:pre-wrap; word-break:break-all; user-select:all;">${escapeHtml(cmd)}</div>
+                    </div>
                     <div style="text-align:center; margin-top:20px;">
                         <button onclick="location.reload()" style="padding:10px 24px; background:linear-gradient(135deg, var(--primary-dark,#1e3a5f) 0%, var(--primary-color,#3B6EA5) 100%); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">Done</button>
                     </div>
@@ -1139,6 +1132,50 @@ function copyCommand() {
         ta.remove();
         showRouterToast('Copied!', 'success');
     });
+}
+
+// Copy the command next to this button and show inline "Copied!" feedback so the
+// user gets a clear confirmation (the old inline button gave none).
+function copyCmd(btn) {
+    const box  = btn.closest('.command-box') || btn.parentElement;
+    const text = box.querySelector('.command-text').textContent;
+    const done = () => {
+        const orig = btn.dataset.orig || btn.textContent;
+        btn.dataset.orig = orig;
+        btn.textContent = 'Copied!';
+        btn.style.background = '#059669';
+        btn.style.color = '#fff';
+        clearTimeout(btn._t);
+        btn._t = setTimeout(() => {
+            btn.textContent = orig;
+            btn.style.background = '';
+            btn.style.color = '';
+        }, 1800);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+    } else {
+        fallbackCopy(text, done);
+    }
+}
+
+function fallbackCopy(text, cb) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    if (cb) cb();
+}
+
+function escapeHtml(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 
 function showRouterToast(msg, type) {
