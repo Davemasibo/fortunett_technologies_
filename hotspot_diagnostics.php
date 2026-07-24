@@ -2,7 +2,10 @@
 require_once 'includes/db_master.php';
 require_once 'includes/auth.php';
 redirectIfNotLoggedIn();
-requireTenantActive();
+// Note: requireTenantActive($pdo, $tenant_id) is called by includes/header.php
+// once the tenant is resolved. Do NOT call it here with no arguments — its
+// signature requires ($pdo, $tenant_id), so an arg-less call throws
+// ArgumentCountError and renders this page blank.
 
 $userId = $_SESSION['user_id'];
 $stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
