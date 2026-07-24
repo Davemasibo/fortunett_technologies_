@@ -107,11 +107,18 @@ try {
     // '#' comment in a one-liner would swallow everything after it on the line).
     // Each mutating step is preceded by an idempotent remove so re-running is safe.
     $parts = [];
-    $parts[] = ':do {/interface/wireguard remove [find name="wg-fortunett"]} on-error={}';
+    // Full cleanup FIRST — remove every existing WireGuard peer and interface plus
+    // any stray VPN-subnet address. Earlier runs left orphaned interfaces (e.g. *8,
+    // *9) whose peers also claimed allowed-address=10.200.200.0/24, so the router
+    // had multiple interfaces fighting over the same route ("ambiguous" tunnel
+    // routing) and the handshake never settled. Wiping all WG state guarantees a
+    // single clean interface. These routers are platform-managed for this VPN only.
+    $parts[] = ':do {/interface/wireguard/peers remove [find]} on-error={}';
+    $parts[] = ':do {/interface/wireguard remove [find]} on-error={}';
+    $parts[] = ':do {/ip address remove [find address~"10.200.200."]} on-error={}';
+    // Recreate a single clean interface + peer + VPN IP.
     $parts[] = "/interface/wireguard add name=\"wg-fortunett\" listen-port=13231 private-key=\"{$routerPrivKey}\"";
-    $parts[] = ':do {/interface/wireguard/peers remove [find interface="wg-fortunett"]} on-error={}';
     $parts[] = "/interface/wireguard/peers add interface=\"wg-fortunett\" public-key=\"{$vpsPublicKey}\" endpoint-address={$serverIp} endpoint-port={$wgPort} allowed-address=10.200.200.0/24 persistent-keepalive=25";
-    $parts[] = ':do {/ip address remove [find interface="wg-fortunett"]} on-error={}';
     $parts[] = "/ip address add address=\"{$vpnIp}/24\" interface=\"wg-fortunett\"";
     $parts[] = "/ip service set api disabled=no port=8728 address={$vpsVpnIp}/32";
     $parts[] = ':do {/ip firewall filter remove [find comment="Fortunett-API-VPN"]} on-error={}';

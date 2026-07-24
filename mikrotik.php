@@ -1313,14 +1313,23 @@ function updateRouterCard(id, data) {
         setEl('rstat-active-'    + id, '—');
         setEl('rstat-uptime-'    + id, '—');
         setEl('rstat-cpu-'       + id, '—');
-        // Show reason in the breakdown slot
+        // Show reason in the breakdown slot. The backend already computes a precise,
+        // actionable message (VPN tunnel down vs. direct-IP firewall block) — show a
+        // concise headline on the card and the full guidance on hover, instead of the
+        // old hardcoded "re-run provisioning script" (which fixes neither case).
         const bd = document.getElementById('rstat-breakdown-' + id);
         if (bd) {
-            const reason = data.reason === 'unreachable'
-                ? 'Port 8728 blocked — re-run provisioning script'
-                : (data.message || 'Connection failed');
-            bd.textContent = reason;
+            const full = data.message || 'Connection failed';
+            let headline = full;
+            if (data.reason === 'unreachable') {
+                headline = /wireguard|vpn/i.test(full)
+                    ? 'API unreachable over VPN — tunnel is down (hover for fix)'
+                    : 'API port unreachable — check router firewall (hover for fix)';
+            }
+            bd.textContent = headline;
+            bd.title = full;               // full step-by-step guidance on hover
             bd.style.color = 'rgba(239,68,68,.6)';
+            bd.style.cursor = 'help';
         }
     }
 }
