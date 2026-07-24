@@ -1140,14 +1140,14 @@ function copyCmd(btn) {
     const box  = btn.closest('.command-box') || btn.parentElement;
     const text = box.querySelector('.command-text').textContent;
     const done = () => {
-        const orig = btn.dataset.orig || btn.textContent;
+        const orig = btn.dataset.orig || btn.innerHTML;
         btn.dataset.orig = orig;
-        btn.textContent = 'Copied!';
+        btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
         btn.style.background = '#059669';
         btn.style.color = '#fff';
         clearTimeout(btn._t);
         btn._t = setTimeout(() => {
-            btn.textContent = orig;
+            btn.innerHTML = orig;
             btn.style.background = '';
             btn.style.color = '';
         }, 1800);
@@ -1362,14 +1362,14 @@ function setupWireGuard(routerId, btn) {
                 VPN IP <strong>${d.vpn_ip}</strong> assigned and peer added to VPS wg0.
               </div>
               <p style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:10px;">
-                Copy and run these commands in the RouterOS terminal (Winbox → New Terminal):
+                Copy the command below and paste it <strong>once</strong> into the RouterOS terminal (Winbox → New Terminal):
               </p>
-              <div style="position:relative;">
-                <pre id="wgCmds" style="background:#111;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:14px;font-size:11px;color:#a3e635;overflow-x:auto;white-space:pre-wrap;line-height:1.6;">${d.commands.replace(/</g,'&lt;')}</pre>
-                <button onclick="navigator.clipboard.writeText(document.getElementById('wgCmds').innerText).then(()=>showToast('Copied!','success'))"
-                  style="position:absolute;top:8px;right:8px;padding:4px 10px;font-size:11px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:5px;color:#d4d4d2;cursor:pointer;">
+              <div class="command-box" style="position:relative;background:#111;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:14px;">
+                <button class="copy-btn" onclick="copyCmd(this)"
+                  style="position:absolute;top:8px;right:8px;padding:4px 10px;font-size:11px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:5px;color:#d4d4d2;cursor:pointer;z-index:1;">
                   <i class="fas fa-copy"></i> Copy
                 </button>
+                <div class="command-text" style="font-size:11px;color:#a3e635;overflow-x:auto;white-space:pre-wrap;word-break:break-all;line-height:1.6;user-select:all;padding-right:64px;">${escapeHtml(d.commands)}</div>
               </div>
               <p style="font-size:12px;color:rgba(255,255,255,.35);margin-top:12px;">
                 After running these commands, the tunnel will come up automatically. Test connectivity with: <code style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:3px;">/ping ${d.vpn_ip ? '10.200.200.1' : ''}</code>

@@ -102,34 +102,23 @@ try {
     $wgPort = WireGuardManager::WG_PORT;
     $vpsVpnIp = WireGuardManager::VPS_VPN_IP;
 
-    $commands = <<<RSC
-# ── WireGuard VPN Setup for {$router['name']} ──
-# Run these in the RouterOS terminal (Winbox → New Terminal)
+    // Single-line, comment-free RouterOS script — one copy, one paste. Statements
+    // are joined with ';' so the whole thing runs atomically in the terminal (a
+    // '#' comment in a one-liner would swallow everything after it on the line).
+    // Each mutating step is preceded by an idempotent remove so re-running is safe.
+    $parts = [];
+    $parts[] = ':do {/interface/wireguard remove [find name="wg-fortunett"]} on-error={}';
+    $parts[] = "/interface/wireguard add name=\"wg-fortunett\" listen-port=13231 private-key=\"{$routerPrivKey}\"";
+    $parts[] = ':do {/interface/wireguard/peers remove [find interface="wg-fortunett"]} on-error={}';
+    $parts[] = "/interface/wireguard/peers add interface=\"wg-fortunett\" public-key=\"{$vpsPublicKey}\" endpoint-address={$serverIp} endpoint-port={$wgPort} allowed-address=10.200.200.0/24 persistent-keepalive=25";
+    $parts[] = ':do {/ip address remove [find interface="wg-fortunett"]} on-error={}';
+    $parts[] = "/ip address add address=\"{$vpnIp}/24\" interface=\"wg-fortunett\"";
+    $parts[] = "/ip service set api disabled=no port=8728 address={$vpsVpnIp}/32";
+    $parts[] = ':do {/ip firewall filter remove [find comment="Fortunett-API-VPN"]} on-error={}';
+    $parts[] = "/ip firewall filter add chain=input action=accept protocol=tcp src-address={$vpsVpnIp} dst-port=8728 comment=\"Fortunett-API-VPN\"";
+    $parts[] = '/ip firewall filter move [find comment="Fortunett-API-VPN"] destination=0';
 
-# Remove old WG interface if it exists
-:do { /interface/wireguard remove [find name="wg-fortunett"] } on-error={}
-
-# Create WireGuard interface
-/interface/wireguard add name="wg-fortunett" listen-port=13231 private-key="{$routerPrivKey}"
-
-# Add VPS as peer
-:do { /interface/wireguard/peers remove [find interface="wg-fortunett"] } on-error={}
-/interface/wireguard/peers add interface="wg-fortunett" public-key="{$vpsPublicKey}" endpoint-address={$serverIp} endpoint-port={$wgPort} allowed-address=10.200.200.0/24 persistent-keepalive=25
-
-# Assign VPN IP
-:do { /ip address remove [find interface="wg-fortunett"] } on-error={}
-/ip address add address="{$vpnIp}/24" interface="wg-fortunett"
-
-# Restrict API access to VPN only
-/ip service set api disabled=no port=8728 address={$vpsVpnIp}/32
-
-# Allow API from VPS VPN IP
-:do { /ip firewall filter remove [find comment="Fortunett-API-VPN"] } on-error={}
-/ip firewall filter add chain=input action=accept protocol=tcp src-address={$vpsVpnIp} dst-port=8728 comment="Fortunett-API-VPN"
-/ip firewall filter move [find comment="Fortunett-API-VPN"] destination=0
-
-:log info "WireGuard VPN setup complete — VPN IP: {$vpnIp}"
-RSC;
+    $commands = implode('; ', $parts) . ';';
 
     echo json_encode([
         'success'        => true,
