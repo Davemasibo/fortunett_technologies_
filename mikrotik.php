@@ -1074,10 +1074,14 @@ function finishWizard() {
     .then(r => r.json())
     .then(data => {
         if (data.status === 'success') {
-            const label = data.services.map(s => s.toUpperCase()).join(' + ');
+            const services = Array.isArray(data.services) ? data.services : [];
+            const label = services.map(s => String(s).toUpperCase()).join(' + ');
+            // command_labels is aligned 1:1 with commands (first = "Bridge Setup").
+            // Fall back gracefully if an older backend didn't send it.
+            const cmdLabels = Array.isArray(data.command_labels) ? data.command_labels : [];
             const commandBlocks = data.commands.map((cmd, i) => `
                 <div style="margin-bottom:${i < data.commands.length - 1 ? '16px' : '0'};">
-                    <div style="font-size:11px; font-weight:600; color:rgba(255,255,255,.35); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">${data.services[i].toUpperCase()} Command</div>
+                    <div style="font-size:11px; font-weight:600; color:rgba(255,255,255,.35); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">${(cmdLabels[i] || 'Setup')} Command</div>
                     <div class="command-box" style="text-align:left;">
                         <button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.textContent)">Copy</button>
                         <div class="command-text">${cmd}</div>

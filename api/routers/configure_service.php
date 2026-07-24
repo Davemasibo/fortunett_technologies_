@@ -185,11 +185,19 @@ RSC;
     //              Lets the frontend display each block separately if needed.
     $commands = array_merge([$bridgePreamble], array_values($serviceBlocks));
 
+    // Labels aligned 1:1 with $commands. The first command is always the bridge
+    // preamble; the rest follow $serviceBlocks insertion order (same as $services).
+    // The frontend indexes these instead of $services — otherwise the prepended
+    // preamble shifts every label by one and the last block reads an undefined
+    // service name (TypeError: reading 'toUpperCase' of undefined).
+    $commandLabels = array_merge(['Bridge Setup'], array_map('strtoupper', array_keys($serviceBlocks)));
+
     echo json_encode([
         'status'             => 'success',
         'message'            => 'Configuration generated for: ' . implode(', ', $services),
         'services'           => $services,
         'commands'           => $commands,
+        'command_labels'     => $commandLabels,
         'hotspot_no_sharing' => (bool)$noSharing,
         'command'            => implode("\n\n", $commands),
     ]);
