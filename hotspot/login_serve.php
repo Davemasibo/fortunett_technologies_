@@ -61,19 +61,35 @@ try {
         if ($pkgs) {
             $rows = '';
             foreach ($pkgs as $idx => $p) {
-                $dur   = ($p['validity_value'] ?? 1) . ' ' . ucfirst($p['validity_unit'] ?? 'days');
-                $speed = !empty($p['download_speed']) ? htmlspecialchars($p['download_speed']) . ' Mbps · ' : '';
+                // "1 day" / "7 days" — the stored unit may already be plural
+                $val   = (int)($p['validity_value'] ?? 1);
+                $unit  = rtrim(strtolower($p['validity_unit'] ?? 'days'), 's');
+                $dur   = $val . ' ' . $unit . ($val === 1 ? '' : 's');
+                $speed = !empty($p['download_speed']) ? htmlspecialchars($p['download_speed']) . ' Mbps' : '';
+                $meta  = $speed ? $speed . ' &middot; ' . $dur : $dur;
                 $pkgId = (int)$p['id'];
-                $rows .= '<div class="pkg-row' . ($idx === 0 ? ' selected' : '') . '" onclick="(function(r){document.querySelectorAll(\'.pkg-row\').forEach(function(x){x.classList.remove(\'selected\')});r.classList.add(\'selected\');r.querySelector(\'input\').checked=true;})(this)">'
+                $price = (float)$p['price'];
+
+                // <label> makes the whole row a native radio target — no inline JS,
+                // and keyboard/screen-reader selection works for free.
+                $rows .= '<label class="pkg-row' . ($idx === 0 ? ' selected' : '') . '"'
+                    . ' data-price="' . number_format($price, 0, '.', '') . '">'
                     . '<input type="radio" name="buy_package" value="' . $pkgId . '"' . ($idx === 0 ? ' checked' : '') . '>'
-                    . '<span class="pkg-name">' . htmlspecialchars($p['name']) . '</span>'
-                    . '<span class="pkg-meta">' . $speed . $dur . '</span>'
-                    . '<span class="pkg-price">KES ' . number_format((float)$p['price'], 0) . '</span>'
-                    . '<span class="pkg-check">' . ($idx === 0 ? '&#10003;' : '') . '</span>'
-                    . '</div>';
+                    . '<span class="pkg-check"></span>'
+                    . '<span class="pkg-body">'
+                    .   '<span class="pkg-name">' . htmlspecialchars($p['name']) . '</span>'
+                    .   '<span class="pkg-meta">' . $meta . '</span>'
+                    . '</span>'
+                    . '<span class="pkg-price">KES ' . number_format($price, 0) . '</span>'
+                    . '</label>';
             }
-            $packagesHtml = '<div class="pkg-section"><div class="pkg-section-title">Available Plans</div>'
+            $packagesHtml = '<div class="pkg-section"><div class="pkg-section-title">Choose a plan</div>'
                 . $rows . '</div>';
+        } else {
+            $packagesHtml = '<div class="pkg-empty">'
+                . '<div class="pkg-empty-title">No plans available yet</div>'
+                . '<div class="pkg-empty-sub">Please use the manual M-Pesa steps below, or contact support.</div>'
+                . '</div>';
         }
     } catch (Throwable $_e) {
         // Packages are optional — never let this break the login page

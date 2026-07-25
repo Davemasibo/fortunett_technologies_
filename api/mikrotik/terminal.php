@@ -251,10 +251,12 @@ function fmtResponse(array $response): string {
         );
 
         if ($isList) {
+            // Keep .id visible — it is the only way to target a specific record
+            // in a follow-up set/remove, since the API has no [find] expression.
             $id = $data['.id'] ?? '';
             unset($data['.id']);
             $parts = array_map(fn($k, $v) => "$k=$v", array_keys($data), array_values($data));
-            $lines[] = sprintf('  %-3d  %s', $rowNum, implode('  ', $parts));
+            $lines[] = sprintf('  %-3d %-6s %s', $rowNum, $id, implode('  ', $parts));
         } else {
             foreach ($data as $k => $v) {
                 $lines[] = sprintf('  %-28s: %s', $k, $v);

@@ -89,9 +89,28 @@ try {
         $checks[] = ['label' => 'Hotspot server (hotspot1)', 'ok' => $hsOk,
             'detail' => $hsOk ? ('Running on ' . ($hsRow['interface'] ?? '?') . ($onBridge ? '' : ' — NOT on bridge')) : 'Not found or disabled'];
 
-        $hsp = $api->comm('/ip/hotspot/profile/print');
-        $hspOk = $anyRow($hsp, fn($r) => ($r['name'] ?? '') === 'hsprof1');
-        $checks[] = ['label' => 'Hotspot profile (hsprof1)', 'ok' => $hspOk, 'detail' => $hspOk ? 'Present' : 'Missing'];
+        // Verify the profile the server actually references, not a hardcoded name.
+        // A router can carry several profiles (hsprof1, hsprof2, …) and pass a
+        // name-only check while its server points at a different, broken one.
+        $hspName = $hsRow['profile'] ?? '';
+        $hsp     = $api->comm('/ip/hotspot/profile/print');
+        $hspRow  = null;
+        foreach ($hsp as $r) { if (isset($r['!re']) && ($r['name'] ?? '') === $hspName) { $hspRow = $r; break; } }
+        $hspOk = $hspName !== '' && $hspRow !== null;
+        $checks[] = ['label' => 'Hotspot profile (in use)', 'ok' => $hspOk,
+            'detail' => $hspOk
+                ? ($hspName . ' — html-directory=' . ($hspRow['html-directory'] ?? '?'))
+                : ($hspName ? "Server references '$hspName' but no such profile exists" : 'Server has no profile assigned')];
+
+        // The bundled md5.js is a stub that returns the password unhashed, so any
+        // CHAP challenge fails. The login page authenticates by PAP only.
+        if ($hspRow !== null) {
+            $chapOk = strpos($hspRow['login-by'] ?? '', 'http-chap') === false;
+            $checks[] = ['label' => 'Login method (PAP, no CHAP)', 'ok' => $chapOk,
+                'detail' => $chapOk
+                    ? ($hspRow['login-by'] ?? 'unknown')
+                    : 'http-chap enabled — logins will fail; set login-by=cookie,http-pap'];
+        }
 
         $dhcp = $api->comm('/ip/dhcp-server/print');
         $dhcpOk = $anyRow($dhcp, fn($r) => ($r['name'] ?? '') === 'hs-dhcp' && ($r['disabled'] ?? 'true') !== 'true');
@@ -101,9 +120,24 @@ try {
         $loginOk = $anyRow($files, fn($r) => substr($r['name'] ?? '', -strlen('hotspot/login.html')) === 'hotspot/login.html');
         $checks[] = ['label' => 'Login page (flash/hotspot/login.html)', 'ok' => $loginOk, 'detail' => $loginOk ? 'Deployed' : 'Not on router — use "Deploy Login"'];
 
+        // redirect.html is what the servlet serves to an intercepted client to bounce
+        // it to /login. With login.html present but this missing, the hotspot redirects
+        // and returns an empty body — indistinguishable from having no portal at all.
+        $redirOk = $anyRow($files, fn($r) => substr($r['name'] ?? '', -strlen('hotspot/redirect.html')) === 'hotspot/redirect.html');
+        $checks[] = ['label' => 'Redirect page (hotspot/redirect.html)', 'ok' => $redirOk,
+                     'detail' => $redirOk ? 'Deployed' : 'Missing — clients are intercepted but get a blank page instead of the portal'];
+
         $wg = $api->comm('/ip/hotspot/walled-garden/print');
         $wgOk = $anyRow($wg, fn($r) => ($r['comment'] ?? '') === 'FortuNett-Portal');
         $checks[] = ['label' => 'Captive portal (walled garden)', 'ok' => $wgOk, 'detail' => $wgOk ? 'Portal domain whitelisted' : 'No walled-garden entry'];
+
+        // dst-host entries only match HTTP (the proxy reads the Host header), so the
+        // check above passing does not mean the portal is reachable over HTTPS.
+        // M-Pesa STK push from the login page needs an explicit IP entry.
+        $wgIp   = $api->comm('/ip/hotspot/walled-garden/ip/print');
+        $wgIpOk = $anyRow($wgIp, fn($r) => !empty($r['dst-address']));
+        $checks[] = ['label' => 'Portal reachable over HTTPS (walled-garden IP)', 'ok' => $wgIpOk,
+                     'detail' => $wgIpOk ? 'Portal IP whitelisted' : 'No IP entry — HTTPS to the portal is blocked, M-Pesa STK push will fail'];
     }
 
     $api->disconnect();

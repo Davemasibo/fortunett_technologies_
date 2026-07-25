@@ -70,11 +70,19 @@ try {
 
                 // Insert pending row to get a router ID → derive VPN IP
                 // Use only base columns first, then try to set WG columns (may not exist yet)
+                // username/password must be supplied explicitly — `password` is
+                // NOT NULL with no default, so a partial INSERT fails under
+                // MySQL strict mode (production) while passing on local XAMPP.
+                // These are the same credentials the .rsc creates on the router.
                 $pdo->prepare("
                     INSERT INTO mikrotik_routers
-                        (tenant_id, name, ip_address, status)
-                    VALUES (?, ?, '', 'pending')
-                ")->execute([$tenantId, $identity ?: 'Pending-' . substr($provisionId, 0, 8)]);
+                        (tenant_id, name, ip_address, username, password, status)
+                    VALUES (?, ?, '', 'fortunett_admin', ?, 'pending')
+                ")->execute([
+                    $tenantId,
+                    $identity ?: 'Pending-' . substr($provisionId, 0, 8),
+                    $adminPassword,
+                ]);
 
                 $routerId = (int)$pdo->lastInsertId();
 
@@ -179,18 +187,43 @@ try {
         echo "&router_username=fortunett_admin&router_password=$adminPassword\"";
         echo " keep-result=no;\n\n";
 
-        // 6. Download branded hotspot login page to both possible html-directory paths.
+        // 6. Download branded hotspot login page to every html-directory path.
         // RouterOS 7 sometimes stores html-directory=flash/hotspot but serves from
-        // flash/flash/hotspot — writing to both paths ensures it always finds login.html.
+        // flash/flash/hotspot, and hotspots built outside the setup wizard use a
+        // bare hotspot/ — writing all three ensures it always finds login.html.
+        $htmlDirs       = ['flash/hotspot', 'flash/flash/hotspot', 'hotspot'];
         $loginServeBase = $protocol . $_SERVER['HTTP_HOST'];
         $loginServeUrl  = $loginServeBase . '/hotspot/login_serve.php?token=' . rawurlencode($t);
-        echo "# ── Hotspot login page (both paths for RouterOS 7 compatibility) ─────────\n";
-        foreach (['flash/hotspot/login.html', 'flash/flash/hotspot/login.html'] as $dst) {
-            echo ":do { /file remove [find name=\"$dst\"] } on-error={};\n";
-            echo "/tool fetch $mode url=\"$loginServeUrl\" dst-path=$dst check-certificate=no;\n";
+        echo "# ── Hotspot login page (all paths for RouterOS 7 compatibility) ──────────\n";
+        foreach ($htmlDirs as $dir) {
+            echo ":do { /file remove [find name=\"$dir/login.html\"] } on-error={};\n";
+            echo "/tool fetch $mode url=\"$loginServeUrl\" dst-path=$dir/login.html check-certificate=no;\n";
         }
+
+        // login.html alone is not enough. redirect.html is what the servlet serves
+        // to an intercepted client to bounce it to /login — without it the redirect
+        // fires but returns an empty body, which is indistinguishable from having
+        // no captive portal at all. Escape " and $ so RouterOS stores them literally
+        // instead of expanding them as script variables.
+        $supportPages = [
+            'redirect.html' => '<meta http-equiv="refresh" content="0;url=/login">',
+            'alogin.html'   => '<meta http-equiv="refresh" content="0;url=$(link-orig)">',
+            'logout.html'   => '<meta http-equiv="refresh" content="0;url=/login">',
+            'error.html'    => '<html><body><h3>$(error)</h3><a href="$(link-login)">Back to login</a></body></html>',
+        ];
+        echo "\n# ── Servlet support pages (redirect.html drives the captive bounce) ──────\n";
+        foreach ($htmlDirs as $dir) {
+            foreach ($supportPages as $fname => $body) {
+                $esc = str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], $body);
+                echo ":do { /file remove [find name=\"$dir/$fname\"] } on-error={};\n";
+                echo ":do { /file add name=\"$dir/$fname\" contents=\"$esc\" } on-error={};\n";
+            }
+        }
+        echo "\n";
+
         echo ":do { /system scheduler remove [find name=\"fortunett_login_refresh\"] } on-error={};\n";
-        $loginCmd = "foreach dst in {flash/hotspot/login.html;flash/flash/hotspot/login.html} do={/tool fetch $mode url=\\\"$loginServeUrl\\\" dst-path=\\\$dst check-certificate=no}";
+        $schedDsts = implode(';', array_map(fn($d) => "$d/login.html", $htmlDirs));
+        $loginCmd = "foreach dst in {" . $schedDsts . "} do={/tool fetch $mode url=\\\"$loginServeUrl\\\" dst-path=\\\$dst check-certificate=no}";
         echo "/system scheduler add name=\"fortunett_login_refresh\" interval=24h start-time=startup on-event=\"$loginCmd\";\n\n";
 
         echo ":log info \"[Fortunett] Provisioning complete — VPN IP: $vpnIp\";\n";

@@ -71,27 +71,65 @@ h1{color:#e8e8e6;font-size:18px;font-weight:700;text-align:center;margin-bottom:
 .footer-links a{color:rgba(255,255,255,.22);font-size:11px;text-decoration:none;transition:color .18s}
 .footer-links a:hover{color:rgba(255,255,255,.5)}
 
-/* Package rows */
-.pkg-section{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:12px;margin-bottom:14px}
-.pkg-section-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.3);margin-bottom:8px}
-.pkg-row{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:8px;margin-bottom:4px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.025);cursor:pointer;transition:all .15s;position:relative}
+/* Package cards — neumorphic inset, brand glow when chosen */
+.pkg-section{margin-bottom:18px}
+.pkg-section-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.32);margin-bottom:10px}
+.pkg-row{
+  display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:14px;margin-bottom:9px;
+  background:rgb(30,30,29);
+  box-shadow:inset 3px 3px 7px rgb(12,12,11),inset -2px -2px 5px rgb(44,44,42);
+  border:1px solid rgba(255,255,255,.05);
+  cursor:pointer;position:relative;
+  transition:box-shadow .22s,border-color .22s,transform .14s;
+  animation:fadeInUp .32s ease both;
+}
 .pkg-row:last-child{margin-bottom:0}
-.pkg-row:hover,.pkg-row.selected{background:rgba(var(--brand-r,59),var(--brand-g,110),var(--brand-b,165),.15);border-color:var(--brand)}
+.pkg-row:nth-child(2){animation-delay:.04s}
+.pkg-row:nth-child(3){animation-delay:.08s}
+.pkg-row:nth-child(4){animation-delay:.12s}
+.pkg-row:active{transform:scale(.985)}
 .pkg-row input[type=radio]{position:absolute;opacity:0;width:0;height:0}
-.pkg-name{font-size:13px;font-weight:600;color:#e2e2e0;flex:1}
-.pkg-meta{font-size:11px;color:rgba(255,255,255,.35);white-space:nowrap}
-.pkg-price{font-size:13px;font-weight:700;color:var(--brand);white-space:nowrap;margin-left:4px}
-.pkg-check{width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;font-size:9px;color:transparent}
-.pkg-row.selected .pkg-check{border-color:var(--brand);background:var(--brand);color:#fff}
+.pkg-row.selected{
+  border-color:var(--brand);
+  box-shadow:inset 2px 2px 6px rgb(12,12,11),inset -2px -2px 5px rgb(46,46,44),
+             0 0 0 1px var(--brand),0 8px 22px -8px var(--brand);
+}
+.pkg-row input:focus-visible ~ .pkg-check{box-shadow:0 0 0 3px rgba(255,255,255,.18)}
+.pkg-check{width:19px;height:19px;border-radius:50%;border:2px solid rgba(255,255,255,.18);flex-shrink:0;position:relative;transition:all .2s}
+.pkg-row.selected .pkg-check{border-color:var(--brand);background:var(--brand)}
+.pkg-row.selected .pkg-check::after{content:'';position:absolute;left:5px;top:2px;width:5px;height:9px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(42deg)}
+.pkg-body{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0}
+.pkg-name{font-size:14px;font-weight:600;color:#e8e8e6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pkg-meta{font-size:11px;color:rgba(255,255,255,.38)}
+.pkg-price{font-size:15px;font-weight:800;color:var(--brand);white-space:nowrap}
 
-/* How to buy */
-.how-to{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:14px;margin-bottom:14px}
-.how-to-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:rgba(255,255,255,.45);margin-bottom:11px}
+/* Empty state when a tenant has no active hotspot packages */
+.pkg-empty{background:rgb(30,30,29);box-shadow:inset 3px 3px 7px rgb(12,12,11),inset -2px -2px 5px rgb(44,44,42);border:1px solid rgba(255,255,255,.05);border-radius:14px;padding:20px 16px;text-align:center;margin-bottom:16px}
+.pkg-empty-title{font-size:13px;font-weight:700;color:#e2e2e0;margin-bottom:5px}
+.pkg-empty-sub{font-size:12px;color:rgba(255,255,255,.4);line-height:1.5}
+
+@keyframes fadeInUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* Manual M-Pesa steps — collapsed by default so STK is the primary path */
+.how-to{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-radius:12px;margin-top:16px;overflow:hidden}
+.how-to>summary{list-style:none;cursor:pointer;padding:12px 14px;font-size:12px;font-weight:700;color:rgba(255,255,255,.5);display:flex;align-items:center;gap:8px;transition:color .18s}
+.how-to>summary::-webkit-details-marker{display:none}
+.how-to>summary::before{content:'\25B8';font-size:11px;display:inline-block;transition:transform .2s}
+.how-to[open]>summary::before{transform:rotate(90deg)}
+.how-to>summary:hover{color:#e2e2e0}
+.how-to-inner{padding:2px 14px 14px}
 .how-step{display:flex;gap:9px;margin-bottom:9px;align-items:flex-start}
 .how-step:last-child{margin-bottom:0}
 .step-num{width:20px;height:20px;border-radius:50%;background:var(--brand);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
 .step-text{font-size:12px;color:rgba(255,255,255,.6);line-height:1.5}
 .step-text strong{color:#e2e2e0}
+
+/* Inline notice — replaces alert() per the design system */
+.notice{border-radius:10px;padding:11px 13px;font-size:12.5px;line-height:1.5;margin-bottom:12px;display:none}
+.notice.show{display:block;animation:fadeInUp .25s ease both}
+.notice.err{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);color:#fca5a5}
+.pay-hint{font-size:11.5px;color:rgba(255,255,255,.34);line-height:1.5;text-align:center;margin-top:10px}
+.notice.warn{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#fcd34d}
 
 /* Payment status / spinner */
 .pay-wrap{text-align:center;padding:16px 0}
@@ -188,6 +226,8 @@ h1{color:#e8e8e6;font-size:18px;font-weight:700;text-align:center;margin-bottom:
       If your account expired after an M-Pesa payment, enter your M-Pesa confirmation code to reconnect instantly.
     </div>
 
+    <div id="rc-notice" class="notice err"></div>
+
     <div id="rc-form">
       <div class="form-group">
         <label>M-Pesa Confirmation Code</label>
@@ -222,54 +262,58 @@ h1{color:#e8e8e6;font-size:18px;font-weight:700;text-align:center;margin-bottom:
   <!-- ══ TAB 4: BUY PLANS ══════════════════════════════════════ -->
   <div class="tab-panel" id="tab-buy">
 
-    <!-- Available packages (radio-selectable) -->
+    <!-- Plans first, payment immediately below — one uninterrupted path -->
     {{PACKAGES_SECTION}}
 
-    <!-- How to purchase manually -->
-    <div class="how-to">
-      <div class="how-to-title">📱 How to Pay with M-Pesa</div>
-      <div class="how-step">
-        <div class="step-num">1</div>
-        <div class="step-text">Open <strong>M-Pesa</strong> → <strong>Lipa na M-Pesa</strong> → <strong>Pay Bill</strong></div>
-      </div>
-      <div class="how-step">
-        <div class="step-num">2</div>
-        <div class="step-text">Business No: <strong>{{PAYBILL}}</strong></div>
-      </div>
-      <div class="how-step">
-        <div class="step-num">3</div>
-        <div class="step-text">Account No: <strong>your phone number</strong> (e.g. 0712345678)</div>
-      </div>
-      <div class="how-step">
-        <div class="step-num">4</div>
-        <div class="step-text">Enter the plan amount and confirm with your PIN</div>
-      </div>
-      <div class="how-step">
-        <div class="step-num">5</div>
-        <div class="step-text">Got the M-Pesa code? Go to the <strong>Reconnect</strong> tab and enter it</div>
-      </div>
-    </div>
+    <div id="buy-notice" class="notice err"></div>
 
-    <!-- STK Push: pay directly -->
-    <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:16px">
-      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.35);margin-bottom:12px">Or get an M-Pesa prompt on your phone</div>
+    <div id="buy-form">
       <div class="form-group">
-        <label>Phone Number</label>
-        <input type="tel" id="buy-phone" placeholder="e.g. 0712345678" autocomplete="tel">
+        <label>M-Pesa Phone Number</label>
+        <input type="tel" id="buy-phone" placeholder="e.g. 0712345678"
+               autocomplete="tel" inputmode="numeric">
       </div>
-      <div id="buy-btn-wrap">
-        <button class="btn-main" id="buy-btn" onclick="doBuyPlan()">Pay with M-Pesa</button>
-      </div>
-
-      <div id="buy-status" style="display:none">
-        <div class="pay-wrap">
-          <div class="spinner"></div>
-          <div class="pay-title" id="buy-status-title">Sending request…</div>
-          <div class="pay-msg" id="buy-status-msg">Check your phone</div>
-        </div>
-        <button class="btn-ghost" onclick="cancelBuy()">Cancel</button>
-      </div>
+      <button class="btn-main" id="buy-btn" onclick="doBuyPlan()">Pay with M-Pesa</button>
+      <div class="pay-hint">You'll get an M-Pesa prompt on this phone. Your internet activates automatically once payment is confirmed &mdash; no code to type in.</div>
     </div>
+
+    <div id="buy-status" style="display:none">
+      <div class="pay-wrap">
+        <div class="spinner"></div>
+        <div class="pay-title" id="buy-status-title">Sending request&hellip;</div>
+        <div class="pay-msg" id="buy-status-msg">Check your phone</div>
+      </div>
+      <button class="btn-ghost" onclick="cancelBuy()">Cancel</button>
+    </div>
+
+    <div id="buy-result" style="display:none"></div>
+
+    <!-- Manual paybill route, demoted: only for people who can't use STK -->
+    <details class="how-to">
+      <summary>Pay manually with Paybill instead</summary>
+      <div class="how-to-inner">
+        <div class="how-step">
+          <div class="step-num">1</div>
+          <div class="step-text">Open <strong>M-Pesa</strong> &rarr; <strong>Lipa na M-Pesa</strong> &rarr; <strong>Pay Bill</strong></div>
+        </div>
+        <div class="how-step">
+          <div class="step-num">2</div>
+          <div class="step-text">Business No: <strong>{{PAYBILL}}</strong></div>
+        </div>
+        <div class="how-step">
+          <div class="step-num">3</div>
+          <div class="step-text">Account No: <strong>your phone number</strong> (e.g. 0712345678)</div>
+        </div>
+        <div class="how-step">
+          <div class="step-num">4</div>
+          <div class="step-text">Enter the plan amount and confirm with your PIN</div>
+        </div>
+        <div class="how-step">
+          <div class="step-num">5</div>
+          <div class="step-text">Got the M-Pesa code? Go to the <strong>Reconnect</strong> tab and enter it</div>
+        </div>
+      </div>
+    </details>
   </div>
 
   <div class="footer-links">
@@ -359,20 +403,48 @@ document.getElementById('hs-voucher-form').addEventListener('submit', function()
   d.value = d.value + '&user=' + encodeURIComponent(c);
 });
 
-/* ── Package radio selection ───────────────────────────────── */
-document.querySelectorAll('.pkg-row').forEach(function(row) {
-  row.addEventListener('click', function() {
+/* ── Package selection ─────────────────────────────────────── */
+/* Rows are <label>s wrapping the radio, so the browser handles checking and
+   keyboard access. We only mirror that state into .selected and the button. */
+function setBuyNotice(msg, kind) {
+  var el = document.getElementById('buy-notice');
+  if (!el) return;
+  el.className = 'notice ' + (kind || 'err') + (msg ? ' show' : '');
+  el.textContent = msg || '';
+}
+
+function syncPlanPrice() {
+  var btn = document.getElementById('buy-btn');
+  if (!btn) return;
+  var sel   = document.querySelector('.pkg-row.selected');
+  var price = sel && sel.getAttribute('data-price');
+  btn.textContent = price
+    ? 'Pay KES ' + Number(price).toLocaleString()
+    : 'Pay with M-Pesa';
+}
+
+document.querySelectorAll('.pkg-row input[type=radio]').forEach(function(inp) {
+  inp.addEventListener('change', function() {
     document.querySelectorAll('.pkg-row').forEach(function(r) { r.classList.remove('selected'); });
-    this.classList.add('selected');
-    var inp = this.querySelector('input[type=radio]');
-    if (inp) inp.checked = true;
+    var row = inp.closest('.pkg-row');
+    if (row) row.classList.add('selected');
+    setBuyNotice('');
+    syncPlanPrice();
   });
 });
+syncPlanPrice();
 
 /* ── Reconnect: verify M-Pesa code ────────────────────────── */
 function doReconnect() {
   var code = (document.getElementById('rc-code').value || '').trim().toUpperCase();
-  if (!code) { alert('Please enter your M-Pesa confirmation code.'); return; }
+  var note = document.getElementById('rc-notice');
+  if (!code) {
+    note.className   = 'notice err show';
+    note.textContent = 'Please enter the M-Pesa confirmation code from your SMS.';
+    document.getElementById('rc-code').focus();
+    return;
+  }
+  note.className = 'notice err';
   document.getElementById('rc-form').style.display    = 'none';
   document.getElementById('rc-status').style.display  = 'block';
   document.getElementById('rc-result').style.display  = 'none';
@@ -425,10 +497,18 @@ var _buyPollMax   = 75; /* 75 × 4 s = 5 min — matches Safaricom's STK timeout
 function doBuyPlan() {
   var phone = (document.getElementById('buy-phone').value || '').trim();
   var pkgEl = document.querySelector('.pkg-row.selected input[type=radio]');
-  if (!phone)  { alert('Please enter your phone number.'); return; }
-  if (!pkgEl)  { alert('Please select a plan above.'); return; }
 
-  document.getElementById('buy-btn').style.display    = 'none';
+  if (!pkgEl) { setBuyNotice('Please choose a plan above first.'); return; }
+  // Kenyan mobile: 07xx/01xx, 2547xx/2541xx, or +254 form
+  if (!/^(?:\+?254|0)?[17]\d{8}$/.test(phone.replace(/[\s-]/g, ''))) {
+    setBuyNotice('Enter a valid M-Pesa number, e.g. 0712345678.');
+    document.getElementById('buy-phone').focus();
+    return;
+  }
+
+  setBuyNotice('');
+  document.getElementById('buy-result').style.display = 'none';
+  document.getElementById('buy-form').style.display   = 'none';
   document.getElementById('buy-status').style.display = 'block';
   document.getElementById('buy-status-title').textContent = 'Sending request…';
   document.getElementById('buy-status-msg').textContent   = 'Check your phone in a few seconds';
@@ -452,10 +532,13 @@ function doBuyPlan() {
       _buyTimer = setInterval(pollBuyStatus, 4000);
     } else {
       cancelBuy();
-      alert(d.message || 'Failed to initiate payment. Please try again.');
+      setBuyNotice(d.message || 'Could not start the payment. Please try again.');
     }
   })
-  .catch(function() { cancelBuy(); alert('Network error. Please try again.'); });
+  .catch(function() {
+    cancelBuy();
+    setBuyNotice('Could not reach the payment server. Check you are still connected, then try again.');
+  });
 }
 
 function pollBuyStatus() {
@@ -465,14 +548,13 @@ function pollBuyStatus() {
   if (_buyPollCount > _buyPollMax) {
     clearInterval(_buyTimer);
     cancelBuy();
-    var res = document.getElementById('rc-result');
-    if (res) {
-      res.style.display = 'block';
-      res.innerHTML = '<div class="result-fail"><div class="result-fail-title">&#10007; Payment Timed Out</div>'
-        + '<div class="result-sub">No confirmation received after 5 minutes. If you paid, use the <strong>Reconnect</strong> tab with your M-Pesa code.</div></div>'
-        + '<button class="btn-ghost" onclick="switchTab(\'reconnect\')">Go to Reconnect</button>';
-    }
-    alert('Payment timed out. If you completed the payment, use the Reconnect tab to connect.');
+    // Show this in the Buy tab the user is actually looking at, not the hidden
+    // Reconnect panel — otherwise the timeout message is never seen.
+    var res = document.getElementById('buy-result');
+    res.style.display = 'block';
+    res.innerHTML = '<div class="result-fail"><div class="result-fail-title">&#10007; Payment timed out</div>'
+      + '<div class="result-sub">No confirmation after 5 minutes. If the money left your account, open the <strong>Reconnect</strong> tab and enter the M-Pesa code from your SMS.</div></div>'
+      + '<button class="btn-ghost" onclick="switchTab(\'reconnect\')">Go to Reconnect</button>';
     return;
   }
 
@@ -490,13 +572,17 @@ function pollBuyStatus() {
           document.getElementById('auto-pass').value = d.password;
           setTimeout(function() { document.getElementById('hs-auto-form').submit(); }, 1500);
         } else {
-          switchTab('reconnect');
-          alert('Payment received! Please go to Reconnect tab and enter your M-Pesa code to connect.');
+          // Paid, but no credentials came back — fall back to code entry.
+          var res = document.getElementById('buy-result');
+          res.style.display = 'block';
+          res.innerHTML = '<div class="result-ok"><div class="result-ok-title">&#10003; Payment received</div>'
+            + '<div class="result-sub">Open the <strong>Reconnect</strong> tab and enter the M-Pesa code from your SMS to get online.</div></div>'
+            + '<button class="btn-ghost" onclick="switchTab(\'reconnect\')">Go to Reconnect</button>';
         }
       } else if (d.status === 'failed') {
         clearInterval(_buyTimer);
         cancelBuy();
-        alert('Payment was not completed. Please try again.');
+        setBuyNotice('The payment was not completed. You can try again.', 'warn');
       }
     })
     .catch(function() { /* silent — keep polling */ });
@@ -508,7 +594,8 @@ function cancelBuy() {
   _buyClientId  = null;
   _buyPollCount = 0;
   document.getElementById('buy-status').style.display = 'none';
-  document.getElementById('buy-btn').style.display    = 'block';
+  document.getElementById('buy-form').style.display   = 'block';
+  syncPlanPrice();
 }
 
 function escHtml(s) {
