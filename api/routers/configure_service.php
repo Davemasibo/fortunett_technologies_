@@ -108,6 +108,10 @@ try {
     $parts[] = ':local bf [/interface bridge find where disabled=no]';
     $parts[] = ':if ([:len $bf]>0) do={:set bn [/interface bridge get ($bf->0) name]} else={/interface bridge add name=bridge-local auto-mac=yes comment="FortuNett-Bridge"; :set bn "bridge-local"}';
     $parts[] = ':foreach i in=[/interface ethernet find where name!="ether1"] do={:local n [/interface ethernet get $i name]; :do {/ip address remove [find interface=$n]} on-error={}; :if ([:len [/interface bridge port find where interface=$n]]=0) do={/interface bridge port add bridge=$bn interface=$n}}';
+    // Also fold any WiFi interface into the bridge so wireless hotspot clients are
+    // covered — otherwise only wired clients hit the hotspot. Wrapped in :do because
+    // wired-only routers / CHR have no /interface wireless command.
+    $parts[] = ':do {:foreach w in=[/interface wireless find] do={:local wn [/interface wireless get $w name]; :if ([:len [/interface bridge port find where interface=$wn]]=0) do={/interface bridge port add bridge=$bn interface=$wn}}} on-error={}';
 
     if (in_array('pppoe', $services, true)) {
         $parts[] = ':do {/interface pppoe-server server remove [find service-name=pppoe-service]} on-error={}';
@@ -140,7 +144,11 @@ try {
         // The hotspot DNS proxy forwards to the router's own resolver — make sure it
         // has upstreams and answers queries from hotspot clients.
         $parts[] = '/ip dns set servers=8.8.8.8,8.8.4.4 allow-remote-requests=yes';
-        $parts[] = '/ip hotspot profile add name=hsprof1 dns-name=hotspot.fortunett.com hotspot-address=10.5.50.1 html-directory=flash/hotspot login-by=http-pap,cookie';
+        // html-directory MUST be "hotspot" (not "flash/hotspot"): RouterOS 7 prepends
+        // flash/ internally, so "flash/hotspot" becomes flash/flash/hotspot and the
+        // hotspot can't find login.html → it serves a 404 instead of the portal.
+        // "hotspot" resolves to flash/hotspot, which is where the fetch below writes.
+        $parts[] = '/ip hotspot profile add name=hsprof1 dns-name=hotspot.fortunett.com hotspot-address=10.5.50.1 html-directory=hotspot login-by=http-pap,cookie';
         $parts[] = '/ip hotspot user profile set [find name=default] rate-limit=5M/5M shared-users=' . $sharedUsers;
         $parts[] = '/ip hotspot add name=hotspot1 interface=$bn address-pool=hs-pool profile=hsprof1 disabled=no';
         $parts[] = ':do {/ip firewall nat remove [find comment="FortuNett-Hotspot-NAT"]} on-error={}';

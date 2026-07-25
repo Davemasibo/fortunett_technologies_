@@ -566,7 +566,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                         <!-- Hotspot tools -->
                         <div class="footer-actions-group" style="align-items:center;gap:6px;">
-                            <button class="footer-btn deploy" id="rdeploy-<?php echo $router['id']; ?>" onclick="deployHotspotLogin(<?php echo $router['id']; ?>, this)" title="Push branded hotspot login page to this router's flash"><i class="fas fa-cloud-upload-alt"></i> Deploy Login</button>
+                            <button class="footer-btn deploy" id="rdeploy-<?php echo $router['id']; ?>" style="display:none;" onclick="deployHotspotLogin(<?php echo $router['id']; ?>, this)" title="Push branded hotspot login page to this router's flash"><i class="fas fa-cloud-upload-alt"></i> Deploy Login</button>
                             <span class="login-status-dot checking" id="rlogin-status-<?php echo $router['id']; ?>" title="Checking deploy status…"><i class="fas fa-circle-notch fa-spin"></i> …</span>
                         </div>
                         <!-- WireGuard VPN -->
@@ -1706,10 +1706,15 @@ function deployHotspotLogin(routerId, btn) {
 
 function checkHotspotLoginStatus(routerId) {
     const dot = document.getElementById('rlogin-status-' + routerId);
+    const btn = document.getElementById('rdeploy-' + routerId);
     if (!dot) return;
     dot.className = 'login-status-dot checking';
     dot.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> …';
     dot.title = 'Checking…';
+
+    // While checking, keep the Deploy button hidden to avoid a flash of the
+    // button before we know the status; it's shown again only if not deployed.
+    const showDeploy = (show) => { if (btn) btn.style.display = show ? '' : 'none'; };
 
     const fd = new FormData(); fd.append('router_id', routerId);
     fetch('api/mikrotik/check_hotspot_login.php', { method: 'POST', body: fd })
@@ -1719,23 +1724,30 @@ function checkHotspotLoginStatus(routerId) {
                 dot.className = 'login-status-dot missing';
                 dot.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Unreachable';
                 dot.title = d.message || 'Could not reach router';
+                showDeploy(true);   // unknown — let the user deploy
                 return;
             }
             if (d.deployed) {
                 dot.className = 'login-status-dot deployed';
                 const label = d.mod_time ? 'Deployed ' + d.mod_time : 'Deployed';
-                dot.innerHTML = '<i class="fas fa-check-circle"></i> Deployed';
-                dot.title = label + (d.size ? ' · ' + d.size + ' bytes' : '');
+                dot.innerHTML = '<i class="fas fa-check-circle"></i> Login page deployed';
+                dot.title = label + (d.size ? ' · ' + d.size + ' bytes' : '') + ' — click to re-deploy';
+                dot.style.cursor = 'pointer';
+                dot.onclick = () => deployHotspotLogin(routerId, dot);   // re-deploy still available via the badge
+                showDeploy(false);  // already deployed → hide the button (card cleanup)
             } else {
                 dot.className = 'login-status-dot missing';
                 dot.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Not deployed';
                 dot.title = 'hotspot/login.html not found on this router';
+                dot.onclick = null; dot.style.cursor = '';
+                showDeploy(true);
             }
         })
         .catch(() => {
             dot.className = 'login-status-dot missing';
             dot.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error';
             dot.title = 'Network error';
+            showDeploy(true);
         });
 }
 
