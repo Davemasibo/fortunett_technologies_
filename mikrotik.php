@@ -562,7 +562,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="footer-actions-group">
                             <button class="footer-btn test" id="rbtn-test-<?php echo $router['id']; ?>" onclick="testConnection(<?php echo $router['id']; ?>, this)" title="Test connection"><i class="fas fa-plug"></i> Test</button>
                             <button class="footer-btn terminal" onclick="openTerminal(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars(addslashes($router['name'])); ?>', '<?php echo htmlspecialchars($router['ip_address']); ?>')" title="Open remote terminal"><i class="fas fa-terminal"></i> Terminal</button>
-                            <button class="footer-btn provision" onclick="openProvision('<?php echo htmlspecialchars(addslashes($router['name'])); ?>')" title="Get this router's provisioning script (bridge + PPPoE/hotspot) anytime"><i class="fas fa-scroll"></i> Provision</button>
+                            <button class="footer-btn provision" onclick="openProvision(<?php echo (int)$router['id']; ?>, '<?php echo htmlspecialchars(addslashes($router['name'])); ?>')" title="Get this router's provisioning script (bridge + PPPoE/hotspot) anytime"><i class="fas fa-scroll"></i> Provision</button>
                         </div>
                         <!-- Hotspot tools -->
                         <div class="footer-actions-group" style="align-items:center;gap:6px;">
@@ -1392,9 +1392,11 @@ function syncPackageProfiles(btn) {
 
 // ─── Provisioning script (persistent — re-openable per router) ───────────────
 let provRouterName = '';
+let provRouterId   = 0;
 let provSelected   = new Set();
 
-function openProvision(name) {
+function openProvision(id, name) {
+    provRouterId   = id;
     provRouterName = name;
     provSelected   = new Set();
     document.getElementById('provRouterLabel').textContent = 'Router: ' + name;
@@ -1456,12 +1458,65 @@ function generateProvision() {
                 + '<button class="copy-btn" onclick="copyCmd(this)" style="position:absolute;top:8px;right:8px;padding:4px 10px;font-size:11px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:5px;color:#d4d4d2;cursor:pointer;z-index:1;"><i class="fas fa-copy"></i> Copy</button>'
                 + '<div class="command-text" style="font-size:11px;color:#a3e635;white-space:pre-wrap;word-break:break-all;line-height:1.6;user-select:all;padding-right:64px;">' + escapeHtml(d.command || '') + '</div>'
                 + '</div>'
-                + '<p style="font-size:12px;color:rgba(255,255,255,.35);margin-top:10px;">After running it, reconnect a client so it pulls a fresh <code style="color:#a3e635;">10.5.50.x</code> lease, then verify on the <a href="hotspot_diagnostics.php" style="color:#93c5fd;">Hotspot Diagnostics</a> page.</p>';
+                + '<div style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;">'
+                +   '<button id="provVerifyBtn" onclick="verifyProvision()" style="padding:9px 16px;border-radius:8px;border:1px solid rgba(52,211,153,.35);cursor:pointer;font-size:13px;font-weight:600;color:#6ee7b7;background:rgba(52,211,153,.1);display:inline-flex;align-items:center;gap:7px;"><i class="fas fa-circle-check"></i> I\'ve run it — Verify on router</button>'
+                +   '<span style="font-size:12px;color:rgba(255,255,255,.35);">Confirms the config actually landed on the router.</span>'
+                + '</div>'
+                + '<div id="provVerifyOut" style="margin-top:14px;"></div>';
         })
         .catch(e => {
             btn.disabled = false;
             btn.innerHTML = orig;
             showToast('Network error: ' + e.message, 'error');
+        });
+}
+
+// Connect to the router over the API and confirm the pasted script actually
+// created its objects — turns "trust the terminal" into real visual confirmation.
+function verifyProvision() {
+    const btn  = document.getElementById('provVerifyBtn');
+    const out  = document.getElementById('provVerifyOut');
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking router…';
+    out.innerHTML = '';
+
+    const fd = new FormData();
+    fd.append('router_id', provRouterId);
+    fd.append('services', Array.from(provSelected).join(','));
+
+    fetch('api/routers/verify_provisioning.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+
+            if (!d.api_ok) {
+                out.innerHTML = '<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:12px 14px;font-size:13px;color:#fca5a5;">'
+                    + '<i class="fas fa-triangle-exclamation" style="margin-right:6px;"></i>Could not reach the router API to verify. ' + escapeHtml(d.error || '')
+                    + '<div style="font-size:12px;color:rgba(255,255,255,.4);margin-top:6px;">The script may still have run fine — this only means the app can\'t connect (usually the WireGuard tunnel is down). Bring the tunnel up, then Verify again.</div></div>';
+                return;
+            }
+
+            const rows = (d.checks || []).map(c =>
+                '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06);">'
+                + '<i class="fas ' + (c.ok ? 'fa-circle-check" style="color:#34d399;' : 'fa-circle-xmark" style="color:#f87171;') + 'font-size:14px;flex-shrink:0;"></i>'
+                + '<span style="flex:1;font-size:13px;color:#d4d4d2;">' + escapeHtml(c.label) + '</span>'
+                + '<span style="font-size:11px;color:rgba(255,255,255,.4);text-align:right;">' + escapeHtml(c.detail || '') + '</span>'
+                + '</div>').join('');
+
+            const banner = d.all_ok
+                ? '<div style="background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);border-radius:8px;padding:12px 14px;margin-bottom:10px;color:#6ee7b7;font-weight:700;font-size:14px;"><i class="fas fa-circle-check" style="margin-right:7px;"></i>Provisioning verified — everything is in place.</div>'
+                : '<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:12px 14px;margin-bottom:10px;color:#fbbf24;font-weight:700;font-size:14px;"><i class="fas fa-triangle-exclamation" style="margin-right:7px;"></i>Some items are missing — re-run the script or check the red rows below.</div>';
+
+            out.innerHTML = banner + '<div style="background:var(--neu-surf);border:1px solid var(--neu-border);border-radius:8px;padding:4px 14px;">' + rows + '</div>';
+
+            if (d.all_ok) showToast('Provisioning verified on ' + provRouterName, 'success');
+        })
+        .catch(e => {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            out.innerHTML = '<div style="color:#f87171;font-size:13px;">Verify request failed: ' + escapeHtml(e.message) + '</div>';
         });
 }
 
