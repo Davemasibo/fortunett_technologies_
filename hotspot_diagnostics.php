@@ -35,6 +35,15 @@ require_once 'includes/sidebar.php';
     :root { --neu-bg:#141414; --neu-surf:#1c1c1b; --neu-s2:#222221; --neu-border:rgba(255,255,255,.06); --neu-card:8px 8px 20px rgba(0,0,0,.45),-4px -4px 10px rgba(255,255,255,.03); }
     .main-content-wrapper { background: var(--neu-bg) !important; }
 
+    /* Force native controls (select popups, scrollbars, autofill) to render dark
+       instead of the OS default white — this is the usual source of stray white. */
+    #mainContent, #mainContent select, #mainContent input, #mainContent textarea { color-scheme: dark; }
+    #mainContent select option { background: #222221 !important; color: #e2e2e0 !important; }
+    /* Belt-and-suspenders: neutralise any themed card class (from premium-theme.css /
+       page-layout.css) that defaults to a white background if it ever leaks in here. */
+    #mainContent .stat-card, #mainContent .content-card, #mainContent .metric-card,
+    #mainContent .stat-card-premium, #mainContent .card { background: var(--neu-s2) !important; color: #e2e2e0 !important; border-color: var(--neu-border) !important; }
+
     .hd-container { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
     .hd-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
     .hd-title h1 { font-size: 28px; font-weight: 600; color: #e2e2e0; margin: 0 0 4px 0; }

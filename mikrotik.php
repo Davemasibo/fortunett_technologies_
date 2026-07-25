@@ -225,6 +225,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .footer-btn.edit { background: rgba(99,102,241,.1); color: #a5b4fc; border-color: rgba(99,102,241,.3); }
     .footer-btn.edit:hover { background: rgba(99,102,241,.2); color: #c7d2fe; border-color: rgba(99,102,241,.5); }
 
+    /* Provision — sky blue */
+    .footer-btn.provision { background: rgba(59,130,246,.1); color: #93c5fd; border-color: rgba(59,130,246,.3); }
+    .footer-btn.provision:hover { background: rgba(59,130,246,.2); color: #bfdbfe; border-color: rgba(59,130,246,.5); }
+    .prov-svc:hover { border-color: rgba(255,255,255,.2) !important; }
+
     /* Delete — red, icon-only pill */
     .footer-btn.danger { background: rgba(239,68,68,.08); color: #f87171; border-color: rgba(239,68,68,.25); padding: 7px 10px; }
     .footer-btn.danger:hover { background: rgba(239,68,68,.18); color: #fca5a5; border-color: rgba(239,68,68,.5); }
@@ -557,6 +562,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="footer-actions-group">
                             <button class="footer-btn test" id="rbtn-test-<?php echo $router['id']; ?>" onclick="testConnection(<?php echo $router['id']; ?>, this)" title="Test connection"><i class="fas fa-plug"></i> Test</button>
                             <button class="footer-btn terminal" onclick="openTerminal(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars(addslashes($router['name'])); ?>', '<?php echo htmlspecialchars($router['ip_address']); ?>')" title="Open remote terminal"><i class="fas fa-terminal"></i> Terminal</button>
+                            <button class="footer-btn provision" onclick="openProvision('<?php echo htmlspecialchars(addslashes($router['name'])); ?>')" title="Get this router's provisioning script (bridge + PPPoE/hotspot) anytime"><i class="fas fa-scroll"></i> Provision</button>
                         </div>
                         <!-- Hotspot tools -->
                         <div class="footer-actions-group" style="align-items:center;gap:6px;">
@@ -1209,6 +1215,42 @@ window.onclick = function(event) {
   </div>
 </div>
 
+<!-- ── Provisioning Script Modal (re-open the service picker anytime) ──────── -->
+<div id="provisionModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center;">
+  <div style="background:#1e1e1d;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:24px;width:100%;max-width:660px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.7);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <h3 style="margin:0;color:#e2e2e0;font-size:16px;"><i class="fas fa-scroll" style="color:#93c5fd;margin-right:8px;"></i>Provisioning Script</h3>
+      <button onclick="closeProvision()" style="background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;">✕</button>
+    </div>
+    <p id="provRouterLabel" style="font-size:12px;color:rgba(255,255,255,.4);margin:0 0 14px;"></p>
+    <p style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:14px;">Select the services this router runs, then copy the one-line script and paste it once into the RouterOS terminal (WinBox → New Terminal).</p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+      <div class="prov-svc" id="prov-pppoe" onclick="provToggle('pppoe',this)" style="border:1px solid var(--neu-border);background:var(--neu-surf);padding:14px;border-radius:8px;cursor:pointer;transition:.15s;position:relative;">
+        <div style="display:flex;align-items:center;gap:8px;"><i class="fas fa-network-wired" style="color:rgba(255,255,255,.4);"></i><span style="font-weight:600;color:#e2e2e0;">PPPoE Server</span></div>
+        <p style="font-size:12px;color:rgba(255,255,255,.35);margin:4px 0 0;">Home/business broadband</p>
+        <div class="prov-check" style="display:none;position:absolute;top:9px;right:9px;width:18px;height:18px;background:var(--primary-color,#3B6EA5);border-radius:50%;text-align:center;line-height:18px;"><i class="fas fa-check" style="font-size:9px;color:#fff;"></i></div>
+      </div>
+      <div class="prov-svc" id="prov-hotspot" onclick="provToggle('hotspot',this)" style="border:1px solid var(--neu-border);background:var(--neu-surf);padding:14px;border-radius:8px;cursor:pointer;transition:.15s;position:relative;">
+        <div style="display:flex;align-items:center;gap:8px;"><i class="fas fa-wifi" style="color:rgba(255,255,255,.4);"></i><span style="font-weight:600;color:#e2e2e0;">Hotspot Server</span></div>
+        <p style="font-size:12px;color:rgba(255,255,255,.35);margin:4px 0 0;">Voucher / captive-portal</p>
+        <div class="prov-check" style="display:none;position:absolute;top:9px;right:9px;width:18px;height:18px;background:var(--primary-color,#3B6EA5);border-radius:50%;text-align:center;line-height:18px;"><i class="fas fa-check" style="font-size:9px;color:#fff;"></i></div>
+      </div>
+    </div>
+
+    <label id="provNoSharingWrap" style="display:none;align-items:flex-start;gap:10px;cursor:pointer;padding:10px;border-radius:6px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);margin-bottom:14px;">
+      <input type="checkbox" id="provNoSharing" style="width:16px;height:16px;accent-color:var(--primary-color,#3B6EA5);margin-top:2px;flex-shrink:0;">
+      <div><div style="font-weight:600;color:#e2e2e0;font-size:13px;">Prevent session sharing</div><div style="font-size:11px;color:rgba(255,255,255,.35);">One active device per hotspot account.</div></div>
+    </label>
+
+    <button id="provGenBtn" onclick="generateProvision()" style="width:100%;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:600;color:#fff;background:linear-gradient(135deg,var(--primary-dark,#1e3a5f) 0%,var(--primary-color,#3B6EA5) 100%);display:inline-flex;align-items:center;justify-content:center;gap:8px;">
+      <i class="fas fa-gears"></i> Generate Script
+    </button>
+
+    <div id="provOutput" style="margin-top:16px;"></div>
+  </div>
+</div>
+
 <div id="editRouterModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.65); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:#222221; border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:24px; width:100%; max-width:500px; box-shadow:0 24px 60px rgba(0,0,0,.6);">
         <h3 style="margin-top:0; margin-bottom:16px; color:#e2e2e0;">Edit Router</h3>
@@ -1346,6 +1388,81 @@ function syncPackageProfiles(btn) {
             showToast('Profiles synced — ' + summary, 'success');
         })
         .catch(() => { btn.innerHTML = orig; btn.disabled = false; showToast('Network error during sync.', 'error'); });
+}
+
+// ─── Provisioning script (persistent — re-openable per router) ───────────────
+let provRouterName = '';
+let provSelected   = new Set();
+
+function openProvision(name) {
+    provRouterName = name;
+    provSelected   = new Set();
+    document.getElementById('provRouterLabel').textContent = 'Router: ' + name;
+    document.querySelectorAll('#provisionModal .prov-svc').forEach(c => {
+        c.style.borderColor = 'var(--neu-border)';
+        c.style.background  = 'var(--neu-surf)';
+        const chk = c.querySelector('.prov-check');
+        if (chk) chk.style.display = 'none';
+    });
+    document.getElementById('provNoSharingWrap').style.display = 'none';
+    document.getElementById('provNoSharing').checked = false;
+    document.getElementById('provOutput').innerHTML = '';
+    document.getElementById('provisionModal').style.display = 'flex';
+}
+
+function closeProvision() { document.getElementById('provisionModal').style.display = 'none'; }
+
+function provToggle(svc, el) {
+    if (provSelected.has(svc)) {
+        provSelected.delete(svc);
+        el.style.borderColor = 'var(--neu-border)';
+        el.style.background  = 'var(--neu-surf)';
+        el.querySelector('.prov-check').style.display = 'none';
+    } else {
+        provSelected.add(svc);
+        el.style.borderColor = 'var(--primary-color,#3B6EA5)';
+        el.style.background  = 'rgba(59,110,165,.15)';
+        el.querySelector('.prov-check').style.display = 'block';
+    }
+    document.getElementById('provNoSharingWrap').style.display = provSelected.has('hotspot') ? 'flex' : 'none';
+}
+
+function generateProvision() {
+    if (provSelected.size === 0) { showToast('Select at least one service.', 'error'); return; }
+    const btn  = document.getElementById('provGenBtn');
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating…';
+
+    const fd = new FormData();
+    fd.append('identity', provRouterName);
+    fd.append('services', Array.from(provSelected).join(','));
+    fd.append('hotspot_no_sharing', document.getElementById('provNoSharing').checked ? '1' : '0');
+
+    fetch('api/routers/configure_service.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            const out = document.getElementById('provOutput');
+            if (d.status !== 'success') {
+                out.innerHTML = '<div style="color:#f87171;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);border-radius:8px;padding:12px;font-size:13px;">' + escapeHtml(d.message || 'Failed to generate script.') + '</div>';
+                return;
+            }
+            const label = (d.services || []).map(s => String(s).toUpperCase()).join(' + ') || 'Router';
+            out.innerHTML =
+                '<div style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:8px;">' + label + ' — paste this <strong>once</strong> into the RouterOS terminal:</div>'
+                + '<div class="command-box" style="position:relative;background:#111;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:14px;">'
+                + '<button class="copy-btn" onclick="copyCmd(this)" style="position:absolute;top:8px;right:8px;padding:4px 10px;font-size:11px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:5px;color:#d4d4d2;cursor:pointer;z-index:1;"><i class="fas fa-copy"></i> Copy</button>'
+                + '<div class="command-text" style="font-size:11px;color:#a3e635;white-space:pre-wrap;word-break:break-all;line-height:1.6;user-select:all;padding-right:64px;">' + escapeHtml(d.command || '') + '</div>'
+                + '</div>'
+                + '<p style="font-size:12px;color:rgba(255,255,255,.35);margin-top:10px;">After running it, reconnect a client so it pulls a fresh <code style="color:#a3e635;">10.5.50.x</code> lease, then verify on the <a href="hotspot_diagnostics.php" style="color:#93c5fd;">Hotspot Diagnostics</a> page.</p>';
+        })
+        .catch(e => {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            showToast('Network error: ' + e.message, 'error');
+        });
 }
 
 function setupWireGuard(routerId, btn) {

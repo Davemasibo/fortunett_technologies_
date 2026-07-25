@@ -125,6 +125,21 @@ try {
         $parts[] = ':do {/ip address remove [find address="10.5.50.1/24"]} on-error={}';
         $parts[] = '/ip pool add name=hs-pool ranges=10.5.50.2-10.5.50.254';
         $parts[] = '/ip address add address=10.5.50.1/24 interface=$bn';
+        // DHCP server for the hotspot subnet. WITHOUT this, a client that connects
+        // never gets a 10.5.50.x lease, so it can't reach the gateway (10.5.50.1)
+        // and the captive portal never loads — the #1 reason "the portal isn't
+        // pushing". Remove any DHCP already bound to the bridge first (e.g. the
+        // factory 'defconf' server on 192.168.88.0/24, which would hand out a
+        // foreign IP). dns-server is the gateway so the hotspot's DNS proxy can
+        // intercept lookups and trigger the OS captive-portal detection redirect.
+        $parts[] = ':do {/ip dhcp-server remove [find interface=$bn]} on-error={}';
+        $parts[] = ':do {/ip dhcp-server remove [find name=hs-dhcp]} on-error={}';
+        $parts[] = ':do {/ip dhcp-server network remove [find address="10.5.50.0/24"]} on-error={}';
+        $parts[] = '/ip dhcp-server add name=hs-dhcp interface=$bn address-pool=hs-pool lease-time=1h disabled=no';
+        $parts[] = '/ip dhcp-server network add address=10.5.50.0/24 gateway=10.5.50.1 dns-server=10.5.50.1';
+        // The hotspot DNS proxy forwards to the router's own resolver — make sure it
+        // has upstreams and answers queries from hotspot clients.
+        $parts[] = '/ip dns set servers=8.8.8.8,8.8.4.4 allow-remote-requests=yes';
         $parts[] = '/ip hotspot profile add name=hsprof1 dns-name=hotspot.fortunett.com hotspot-address=10.5.50.1 html-directory=flash/hotspot login-by=http-pap,cookie';
         $parts[] = '/ip hotspot user profile set [find name=default] rate-limit=5M/5M shared-users=' . $sharedUsers;
         $parts[] = '/ip hotspot add name=hotspot1 interface=$bn address-pool=hs-pool profile=hsprof1 disabled=no';
