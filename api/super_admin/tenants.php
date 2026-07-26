@@ -181,6 +181,63 @@ try {
             echo json_encode(['success' => true, 'message' => $message]);
             break;
 
+        case 'settle_all_invoices':
+            // Breaks the activate/re-suspend loop. Setting a tenant back to
+            // 'active' never worked on its own, because check_suspensions.php
+            // suspends on OUTSTANDING INVOICES, not on dates — so the next cron
+            // run undid it. Clearing what they owe is the only thing that sticks.
+            $ref  = trim($data['transaction_ref'] ?? '');
+            $mode = ($data['mode'] ?? 'paid') === 'waived' ? 'waived' : 'paid';
+
+            $sel = $pdo->prepare("SELECT id, total_due FROM platform_invoices WHERE tenant_id = ? AND status <> 'paid'");
+            $sel->execute([$tenantId]);
+            $open = $sel->fetchAll(PDO::FETCH_ASSOC);
+
+            if (!$open) {
+                echo json_encode(['success' => true, 'message' => 'Nothing outstanding — this tenant owes nothing']);
+                exit;
+            }
+
+            $total  = 0.0;
+            $prefix = $mode === 'waived' ? 'WAIVED-' : 'MANUAL-';
+            $upd = $pdo->prepare("
+                UPDATE platform_invoices
+                SET status = 'paid', paid_at = NOW(), payment_method = ?, transaction_ref = ?
+                WHERE id = ? AND tenant_id = ?
+            ");
+            foreach ($open as $inv) {
+                $total += (float)$inv['total_due'];
+                $upd->execute([
+                    $mode === 'waived' ? 'waiver' : 'manual',
+                    $ref ?: $prefix . strtoupper(bin2hex(random_bytes(3))),
+                    $inv['id'],
+                    $tenantId,
+                ]);
+            }
+
+            $reactivated = false;
+            try {
+                $st = $pdo->prepare("SELECT status FROM tenants WHERE id = ? LIMIT 1");
+                $st->execute([$tenantId]);
+                if (in_array($st->fetchColumn(), ['suspended', 'expired'], true)) {
+                    $pdo->prepare("
+                        UPDATE tenants
+                        SET status = 'active', suspended_at = NULL, suspended_reason = NULL
+                        WHERE id = ?
+                    ")->execute([$tenantId]);
+                    $reactivated = true;
+                }
+            } catch (Throwable $e) {
+                error_log('settle_all_invoices reactivation: ' . $e->getMessage());
+            }
+
+            echo json_encode([
+                'success' => true,
+                'message' => count($open) . " invoice(s) totalling KSH " . number_format($total, 2)
+                           . " marked {$mode}" . ($reactivated ? ' — tenant reactivated' : ''),
+            ]);
+            break;
+
         default:
             http_response_code(400);
             echo json_encode(['success' => false, 'message' => 'Unknown action: ' . $action]);

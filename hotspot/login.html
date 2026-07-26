@@ -990,9 +990,14 @@ function pollBuyStatus() {
             '<button class="btn-ghost" type="button" onclick="switchTab(\'reconnect\')">Enter M-Pesa code</button>');
         }
       } else if (d.status === 'failed') {
+        /* Terminal — usually the customer cancelled or let the PIN prompt time
+           out. Say which, and put the pay button straight back so they can retry
+           without hunting for it. */
         clearInterval(_buyTimer);
+        _buyReqId = null;
         cancelBuy();
         setBuyNotice(d.message || 'The payment was not completed. You can try again.', 'warn');
+        document.getElementById('buy-phone').scrollIntoView({ block: 'center', behavior: 'smooth' });
       }
     })
     .catch(function () { /* transient — keep polling */ });

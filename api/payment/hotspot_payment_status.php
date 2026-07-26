@@ -28,7 +28,7 @@ try {
     // Use client_id when provided (more precise); otherwise use tenant_id as scope guard.
     if ($clientId) {
         $txSt = $pdo->prepare("
-            SELECT mt.status, mt.result_desc, mt.client_id, mt.tenant_id
+            SELECT mt.status, mt.result_desc, mt.client_id, mt.tenant_id, mt.created_at, mt.amount
             FROM mpesa_transactions mt
             WHERE mt.checkout_request_id = ? AND mt.client_id = ?
             LIMIT 1
@@ -36,7 +36,7 @@ try {
         $txSt->execute([$checkoutId, $clientId]);
     } elseif ($tenantId) {
         $txSt = $pdo->prepare("
-            SELECT mt.status, mt.result_desc, mt.client_id, mt.tenant_id
+            SELECT mt.status, mt.result_desc, mt.client_id, mt.tenant_id, mt.created_at, mt.amount
             FROM mpesa_transactions mt
             WHERE mt.checkout_request_id = ? AND mt.tenant_id = ?
             LIMIT 1
@@ -161,7 +161,108 @@ try {
         exit;
     }
 
-    // Still pending
+    // ── Still pending: ask Safaricom directly rather than waiting on a callback ─
+    //
+    // The callback is not guaranteed to arrive — a WAF/CDN in front of the
+    // callback URL, a transient Safaricom failure, or a customer who simply
+    // cancels all leave the row 'pending' forever, and the portal spun for the
+    // full five minutes with no explanation. stkpushquery gives the authoritative
+    // outcome, including 1032 "cancelled by user", within seconds.
+    //
+    // cron/stk_poll.php does the same thing every 2 minutes as a backstop, but a
+    // customer standing at the router should not wait 2 minutes to be told they
+    // cancelled.
+    $createdAt = strtotime($tx['created_at'] ?? 'now');
+    $ageSec    = time() - $createdAt;
+
+    // Give the real callback ~25s first, then query at most once every ~12s.
+    if ($ageSec >= 25 && ($ageSec % 12) < 5) {
+        try {
+            require_once __DIR__ . '/../../classes/MpesaAPI.php';
+            require_once __DIR__ . '/../../includes/credential_helper.php';
+
+            $txTenantId = (int)($tx['tenant_id'] ?? 0);
+            $hasTenantCreds = false;
+            if ($txTenantId) {
+                $gwCheck = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type='mpesa_api' AND is_active=1 ORDER BY is_default DESC LIMIT 1");
+                $gwCheck->execute([$txTenantId]);
+                if ($gwRow = $gwCheck->fetch(PDO::FETCH_ASSOC)) {
+                    $gwCreds = decrypt_gateway_credentials($gwRow['credentials']);
+                    $hasTenantCreds = !empty($gwCreds['consumer_key']) && !empty($gwCreds['consumer_secret'])
+                                   && !empty($gwCreds['passkey']) && !empty($gwCreds['shortcode']);
+                }
+            }
+
+            $mpesa = new MpesaAPI($pdo, $hasTenantCreds ? $txTenantId : null);
+            if (!$hasTenantCreds) {
+                $plSt = $pdo->query("SELECT * FROM platform_mpesa_config LIMIT 1");
+                $platCreds = $plSt ? $plSt->fetch(PDO::FETCH_ASSOC) : null;
+                if ($platCreds && !empty($platCreds['consumer_key'])) {
+                    $mpesa->loadFromArray($platCreds);
+                }
+            }
+
+            $q    = $mpesa->stkQuery($checkoutId);
+            $code = (int)($q['result_code'] ?? -1);
+
+            // 1025 = still being processed, -1 = our own lookup failed. Keep waiting.
+            if ($code !== 1025 && $code !== -1) {
+                if ($code === 0) {
+                    // Paid. Let the pipeline do the real work, then report next poll —
+                    // this keeps activation logic in exactly one place.
+                    $pdo->prepare("
+                        UPDATE mpesa_transactions
+                        SET status = 'completed', result_code = ?, result_desc = ?, updated_at = NOW()
+                        WHERE checkout_request_id = ?
+                    ")->execute([$code, $q['result_desc'] ?? 'Confirmed via stkQuery', $checkoutId]);
+
+                    try {
+                        require_once __DIR__ . '/../../includes/payment_pipeline.php';
+                        $cl = $pdo->prepare("SELECT tenant_id, package_id FROM clients WHERE id = ? LIMIT 1");
+                        $cl->execute([(int)$tx['client_id']]);
+                        if ($clRow = $cl->fetch(PDO::FETCH_ASSOC)) {
+                            process_payment_success(
+                                $pdo, (int)$tx['client_id'], (int)$clRow['tenant_id'],
+                                (float)($tx['amount'] ?? 0), $checkoutId, 'mpesa_stk',
+                                $clRow['package_id'] ? (int)$clRow['package_id'] : null, false
+                            );
+                        }
+                    } catch (Throwable $e) {
+                        error_log("stkQuery pipeline [$checkoutId]: " . $e->getMessage());
+                    }
+
+                    echo json_encode(['status' => 'processing', 'message' => 'Payment confirmed. Setting up your connection…']);
+                    exit;
+                }
+
+                // Anything else is terminal — tell the customer which, by name.
+                $reasons = [
+                    1032 => 'You cancelled the payment request.',
+                    1037 => 'The request timed out — you did not enter your PIN in time.',
+                    1019 => 'The payment request expired. Please try again.',
+                    2001 => 'Wrong M-Pesa PIN entered.',
+                    1    => 'Insufficient M-Pesa balance.',
+                ];
+                $msg = $reasons[$code] ?? ('Payment was not completed. ' . ($q['result_desc'] ?? ''));
+
+                $pdo->prepare("
+                    UPDATE mpesa_transactions
+                    SET status = 'failed', result_code = ?, result_desc = ?, updated_at = NOW()
+                    WHERE checkout_request_id = ?
+                ")->execute([$code, $q['result_desc'] ?? 'Failed via stkQuery', $checkoutId]);
+
+                $pdo->prepare("UPDATE payments SET status = 'failed' WHERE transaction_id = ? AND status = 'pending'")
+                    ->execute([$checkoutId]);
+
+                echo json_encode(['status' => 'failed', 'message' => $msg]);
+                exit;
+            }
+        } catch (Throwable $e) {
+            error_log("hotspot_payment_status stkQuery [$checkoutId]: " . $e->getMessage());
+            // Fall through and keep polling
+        }
+    }
+
     echo json_encode(['status' => 'pending']);
 
 } catch (Throwable $e) {

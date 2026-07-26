@@ -80,6 +80,20 @@ Routers are provisioned via the RouterOS API. Package changes (upgrade/downgrade
 - `cron/sync_hotspot_pages.php` — hourly server-side sweep over reachable routers; CGNAT routers are skipped and rely on their own scheduler.
 - Admin UI: **Sync Portal** button on `mikrotik.php` (`router_id=all`), plus per-router deploy.
 
+### Never Trust the Callback Alone
+M-Pesa callbacks are not guaranteed to arrive — a CDN/WAF in front of the callback URL, a Safaricom hiccup, or a customer who cancels all leave `mpesa_transactions` stuck on `pending`. Every payment path therefore needs a pull-based resolution:
+
+- `hotspot_payment_status.php` calls `stkQuery()` inline once the transaction is ~25s old, throttled to roughly every 12s. This is what surfaces "you cancelled the payment" (ResultCode 1032) instead of spinning for five minutes.
+- `cron/stk_poll.php` is the backstop for anyone who closed the portal. **It must be in crontab** — it is easy to miss because it was absent from this file's cron list for a long time.
+- ResultCodes worth naming to the customer: `1032` cancelled, `1037` PIN timeout, `1019` expired, `2001` wrong PIN, `1` insufficient balance.
+
+### Platform Suspension Loop
+`check_suspensions.php` suspends on **outstanding invoices**, not on dates. Consequences that are not obvious from the super-admin UI:
+
+- Setting a tenant to `active` or extending their days does **not** stick — the next daily run re-suspends them while any invoice is unpaid. The only durable fix is settling or waiving the invoices (`settle_all_invoices`, or per-invoice `mark_invoice_paid`).
+- `super_admin/billing.php` defaulted its invoice list to the *current month*, so the older overdue invoices actually causing the suspension were invisible and their Mark as Paid buttons unreachable. Use `?all=1` / the **All Outstanding** button.
+- The tenant detail page shows an outstanding-invoice banner explaining this, with Mark All Paid / Waive All.
+
 ### Paybill Account Matching
 `includes/account_resolver.php` — `resolveAccountRef($pdo, $billRef, $msisdn, $tenantId|null)` is the **only** place that decides who paid. All four C2B handlers (platform + tenant, validation + confirmation) use it, so validation can never reject a reference confirmation would accept.
 
@@ -151,6 +165,10 @@ Runs daily. Marks overdue invoices (past due_date + 7 grace days), sends 3-day w
 
 # Client expiry enforcement — every 15 minutes
 */15 * * * * php /var/www/html/cron/check_expiry.php >> /var/log/fortunett_expiry.log 2>&1
+
+# STK reconciliation — every 2 minutes. REQUIRED, not optional: without it a
+# missing callback leaves the payment 'pending' forever.
+*/2 * * * * php /var/www/html/cron/stk_poll.php >> /var/log/fortunett_stk_poll.log 2>&1
 
 # Captive portal sweep — hourly, offset from the top of the hour to spread load
 30 * * * * php /var/www/html/cron/sync_hotspot_pages.php >> /var/log/fortunett_portal_sync.log 2>&1

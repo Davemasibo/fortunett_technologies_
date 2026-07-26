@@ -8,6 +8,12 @@ $monthFilter  = $_GET['month']  ?? date('Y-m');
 $search       = trim($_GET['q'] ?? '');
 $invoiceId    = (int)($_GET['invoice'] ?? 0);
 
+// The month filter defaulted to the current month with no way to escape it, so
+// overdue invoices from previous months — precisely the ones keeping a tenant
+// suspended — were invisible, and the Mark as Paid buttons on them unreachable.
+// ?all=1 lists every period.
+$showAllMonths = isset($_GET['all']) && $_GET['all'] !== '0';
+
 // Single invoice detail
 $invoiceDetail = null;
 if ($invoiceId) {
@@ -23,8 +29,13 @@ if ($invoiceId) {
 }
 
 // Build invoice list query
-$where  = ["billing_period LIKE ?"];
-$params = [$monthFilter . '%'];
+$where  = [];
+$params = [];
+
+if (!$showAllMonths) {
+    $where[]  = 'billing_period LIKE ?';
+    $params[] = $monthFilter . '%';
+}
 
 if ($statusFilter) { $where[] = 'pi.status = ?'; $params[] = $statusFilter; }
 if ($search) {
@@ -36,8 +47,9 @@ $invoices = $pdo->prepare("
     SELECT pi.*, t.company_name, t.subdomain
     FROM platform_invoices pi
     JOIN tenants t ON t.id = pi.tenant_id
-    WHERE " . implode(' AND ', $where) . "
+    " . ($where ? 'WHERE ' . implode(' AND ', $where) : '') . "
     ORDER BY pi.billing_period DESC, pi.status ASC
+    LIMIT 500
 ");
 $invoices->execute($params);
 $invoices = $invoices->fetchAll(PDO::FETCH_ASSOC);
@@ -247,7 +259,15 @@ table a:hover{color:#93c5fd;}
         <form method="GET" class="filters-bar">
             <div>
                 <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Month</label>
-                <input type="month" name="month" value="<?= $monthFilter ?>">
+                <input type="month" name="month" value="<?= $monthFilter ?>" <?= $showAllMonths ? 'disabled' : '' ?>>
+            </div>
+            <div>
+                <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Period</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#e2e8f0;padding:8px 0;white-space:nowrap;">
+                    <input type="checkbox" name="all" value="1" <?= $showAllMonths ? 'checked' : '' ?>
+                           onchange="this.form.submit()">
+                    All months
+                </label>
             </div>
             <div>
                 <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Status</label>
@@ -263,6 +283,11 @@ table a:hover{color:#93c5fd;}
                 <input type="text" name="q" placeholder="Company or subdomain" value="<?= htmlspecialchars($search) ?>">
             </div>
             <button type="submit" class="btn-filter"><i class="fas fa-search me-1"></i> Filter</button>
+            <a href="?all=1&status=pending" class="btn-filter"
+               style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.25);"
+               title="Every unpaid invoice across all billing periods — these are what keep tenants suspended">
+                <i class="fas fa-triangle-exclamation"></i> All Outstanding
+            </a>
         </form>
 
         <!-- Invoice table -->

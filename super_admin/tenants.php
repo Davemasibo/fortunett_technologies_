@@ -225,6 +225,36 @@ table a:hover{color:#93c5fd;}
             </form>
         </div>
 
+        <?php
+        // Anything unpaid is what check_suspensions.php acts on. Show it plainly:
+        // "Activate" alone never sticks while these exist, which is the single
+        // most confusing behaviour in this panel.
+        $openInv = $pdo->prepare("SELECT COUNT(*) c, COALESCE(SUM(total_due),0) t FROM platform_invoices WHERE tenant_id = ? AND status <> 'paid'");
+        $openInv->execute([(int)$_GET['id']]);
+        $open = $openInv->fetch(PDO::FETCH_ASSOC);
+        ?>
+        <?php if ((int)$open['c'] > 0): ?>
+        <div class="card" style="border:1px solid rgba(239,68,68,.35);background:rgba(239,68,68,.08);margin-bottom:18px;">
+            <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+                <div>
+                    <h3 style="font-size:15px;font-weight:700;color:#fca5a5;margin-bottom:4px;">
+                        <i class="fas fa-triangle-exclamation"></i>
+                        <?= (int)$open['c'] ?> outstanding invoice<?= (int)$open['c'] === 1 ? '' : 's' ?> — KSH <?= number_format((float)$open['t'], 2) ?>
+                    </h3>
+                    <p style="font-size:13px;color:#cbd5e1;margin:0;">
+                        While these are unpaid, the daily suspension check will keep re-suspending this tenant.
+                        Activating or extending days will not hold — settle or waive the invoices instead.
+                    </p>
+                </div>
+                <div style="display:flex;gap:8px;flex-shrink:0;">
+                    <button class="btn-mark-paid" onclick="settleAll('paid', this)">Mark All Paid</button>
+                    <button class="btn-mark-paid" style="background:rgba(148,163,184,.15);color:#cbd5e1;border-color:rgba(148,163,184,.3);"
+                            onclick="settleAll('waived', this)">Waive All</button>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- Invoice history -->
         <div class="card">
             <div style="padding:16px 20px;border-bottom:1px solid #f1f5f9;"><h3 style="font-size:15px;font-weight:700;">Invoice History</h3></div>
@@ -416,6 +446,47 @@ function saveNotes(e, tenantId) {
     })
     .then(r => r.json())
     .then(d => { alert(d.success ? 'Notes saved.' : (d.message || 'Failed')); });
+}
+
+/* Clear everything this tenant owes in one go. 'paid' records real money that
+   arrived off-platform; 'waived' writes it off. Either way the suspension cron
+   stops re-suspending them, which Activate on its own never achieved. */
+function settleAll(mode, btn) {
+    const tenantId = <?= isset($_GET['id']) ? (int)$_GET['id'] : 0 ?>;
+    const verb = mode === 'waived' ? 'WAIVE (write off)' : 'mark PAID';
+
+    let ref = '';
+    if (mode === 'paid') {
+        ref = prompt('Mark ALL outstanding invoices for this tenant as PAID.\n\n' +
+                     'Enter the payment reference (M-Pesa code, bank ref, or note).\n' +
+                     'Leave blank to auto-generate one.', '');
+        if (ref === null) return;
+        ref = ref.trim();
+    } else if (!confirm('Write off ALL outstanding invoices for this tenant?\n\n' +
+                        'This records them as waived, not paid. Revenue reports will reflect that.')) {
+        return;
+    }
+
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Working…';
+
+    fetch('../api/super_admin/tenants.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'settle_all_invoices',
+            tenant_id: tenantId,
+            mode: mode,
+            transaction_ref: ref
+        })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) { alert(d.message); location.reload(); }
+        else { btn.disabled = false; btn.textContent = original; alert(d.message || 'Failed to ' + verb); }
+    })
+    .catch(() => { btn.disabled = false; btn.textContent = original; alert('Network error.'); });
 }
 
 /* Mark a platform invoice as manually settled (bank transfer, cash, off-platform
