@@ -182,16 +182,23 @@ try {
 // ── 5. Provisioning retry queue ───────────────────────────────────────────────
 h('5. Provisioning queue (activated in the DB but not pushed to a router)');
 try {
-    $rows = $pdo->query("SELECT client_id, tenant_id, attempts, last_error, created_at
-                         FROM pending_provisions ORDER BY created_at DESC LIMIT 20")->fetchAll(PDO::FETCH_ASSOC);
+    // SELECT * — this table's columns differ between deployments, and a
+    // diagnostic must never fail on the thing it is trying to inspect.
+    $rows = $pdo->query("SELECT * FROM pending_provisions LIMIT 20")->fetchAll(PDO::FETCH_ASSOC);
     if (!$rows) {
         ok('Queue empty — nothing is stuck waiting for a router.');
     } else {
         bad(count($rows) . ' client(s) waiting to be provisioned on a router');
         foreach ($rows as $r) {
-            printf("       client#%-5s tenant#%-3s attempts=%-2s %s — %s\n",
-                $r['client_id'], $r['tenant_id'], $r['attempts'], $r['created_at'],
-                substr((string)$r['last_error'], 0, 60));
+            // Report whichever of the usual columns this schema happens to have
+            $bits = [];
+            foreach (['client_id', 'tenant_id', 'attempts', 'status', 'created_at'] as $k) {
+                if (isset($r[$k])) $bits[] = "$k={$r[$k]}";
+            }
+            foreach (['last_error', 'error', 'message', 'notes'] as $k) {
+                if (!empty($r[$k])) { $bits[] = substr((string)$r[$k], 0, 60); break; }
+            }
+            info('  ' . implode('  ', $bits));
         }
         info('cron/retry_provisions.php drains this queue — confirm it is in crontab.');
     }
