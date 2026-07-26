@@ -56,6 +56,12 @@ if (!$_ip_ok && (getenv('APP_ENV') === 'production' || getenv('MPESA_IP_STRICT')
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../includes/auto_provision.php';
 require_once __DIR__ . '/../../includes/payment_pipeline.php';
+require_once __DIR__ . '/../../includes/schema_guard.php';
+
+// The callback flips statuses to completed/failed and activates the client.
+// Guard the enums here too — a truncation here would take the money but leave
+// the customer offline, which is worse than failing the STK push outright.
+ensurePaymentStatusEnums($pdo);
 
 $data = json_decode($content);
 if (!$data || !isset($data->Body->stkCallback)) {

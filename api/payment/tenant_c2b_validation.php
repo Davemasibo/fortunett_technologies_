@@ -16,6 +16,7 @@
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../includes/db_master.php';
+require_once __DIR__ . '/../../includes/account_resolver.php';
 
 $logDir = __DIR__ . '/../../logs';
 if (!is_dir($logDir)) @mkdir($logDir, 0755, true);
@@ -35,11 +36,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $data       = json_decode($content, true) ?? [];
 $accountRef = strtoupper(trim($data['BillRefNumber'] ?? ''));
+$phone      = $data['MSISDN'] ?? '';
 
-if (empty($accountRef)) {
-    echo json_encode(['ResultCode' => 'C2B00011', 'ResultDesc' => 'Missing account reference']);
-    exit;
-}
+// No account ref at all still gets accepted — the payer's MSISDN alone is often
+// enough for the resolver to find the client.
 
 // Detect tenant from subdomain
 $httpHost  = explode(':', $_SERVER['HTTP_HOST'] ?? '')[0];
@@ -62,14 +62,19 @@ if (!$tenantId) {
 }
 
 try {
-    $clientId = resolveClientFromRef($pdo, $accountRef, (int)$tenantId);
+    // Same resolver as the confirmation handler — validation must never reject a
+    // reference confirmation would have accepted.
+    $match = resolveAccountRef($pdo, $accountRef, $phone ?? '', (int)$tenantId);
 
-    if ($clientId) {
+    if ($match) {
         echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
     } else {
+        // Accept regardless: bouncing the payment at the till strands a customer
+        // who mistyped, whereas confirmation logs it as UNMATCHED for a human to
+        // reconcile. Taking the money and fixing the mapping is the better failure.
         @file_put_contents($logDir . '/tenant_c2b.log',
-            date('Y-m-d H:i:s') . " VALIDATE REJECT: account={$accountRef} tenant={$tenantId}\n", FILE_APPEND | LOCK_EX);
-        echo json_encode(['ResultCode' => 'C2B00011', 'ResultDesc' => 'Account number not found']);
+            date('Y-m-d H:i:s') . " VALIDATE UNRESOLVED (accepted anyway): account={$accountRef} tenant={$tenantId}\n", FILE_APPEND | LOCK_EX);
+        echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
     }
 } catch (Throwable $e) {
     @file_put_contents($logDir . '/mpesa_errors.log',

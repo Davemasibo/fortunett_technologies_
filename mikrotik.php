@@ -386,6 +386,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <button class="sync-btn" id="syncPkgBtn" onclick="syncPackageProfiles(this)" title="Push all package speed profiles to every active router — run this after adding a new router">
                     <i class="fas fa-layer-group"></i> Sync Profiles
                 </button>
+                <button class="sync-btn" id="syncPortalBtn" onclick="deployHotspotLoginAll(this)" title="Push the branded hotspot login page to every active router and install the auto-update scheduler on each">
+                    <i class="fas fa-wifi"></i> Sync Portal
+                </button>
                 <button class="add-router-btn" onclick="openWizard()">
                     <i class="fas fa-plus"></i> Add Router
                 </button>
@@ -1699,6 +1702,36 @@ function deployHotspotLogin(routerId, btn) {
             if (d.success) {
                 // Re-check status after a brief delay (router needs a moment to pull the file)
                 setTimeout(() => checkHotspotLoginStatus(routerId), 3000);
+            }
+        })
+        .catch(() => { btn.innerHTML = orig; btn.disabled = false; showToast('Network error.', 'error'); });
+}
+
+/**
+ * Push the captive portal to every active router at once.
+ * Each router also gets the auto-update scheduler, so this is normally only
+ * needed after adding a router — later portal edits propagate on their own.
+ */
+function deployHotspotLoginAll(btn) {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing…';
+    btn.disabled = true;
+
+    const fd = new FormData(); fd.append('router_id', 'all');
+    fetch('api/mikrotik/deploy_hotspot_login.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            btn.innerHTML = orig; btn.disabled = false;
+            showToast(d.message || (d.success ? 'Deployed.' : 'Failed.'), d.success ? 'success' : 'error');
+
+            // Name the routers that failed — "3 of 5" alone isn't actionable
+            const failed = (d.results || []).filter(r => !r.success);
+            failed.forEach(r => showToast(r.router + ': ' + r.message, 'error'));
+
+            // Only refresh the status dots when there's nothing left to read —
+            // a reload would wipe the error toasts the operator still needs.
+            if (d.success && !failed.length) {
+                setTimeout(() => location.reload(), 4000);
             }
         })
         .catch(() => { btn.innerHTML = orig; btn.disabled = false; showToast('Network error.', 'error'); });

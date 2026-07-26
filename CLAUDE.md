@@ -68,6 +68,40 @@ Environment loaded from `.env` via `includes/env.php`. Sensitive config:
 ### MikroTik Provisioning
 Routers are provisioned via the RouterOS API. Package changes (upgrade/downgrade/expiry) trigger API calls to add/remove/update PPPoE profiles or hotspot users. The provisioning script template is at `provisioning_script_template.rsc`.
 
+### Captive Portal Auto-Sync
+**Never re-provision a router just to publish a login-page change.** Every router runs a `FortuNett-Portal-Sync` script + scheduler (hourly + on startup) that pulls updates itself.
+
+- `hotspot/login.html` — the template. MikroTik vars (`$(link-login-only)`, `$(mac-esc)`, `$(error)`, `$(username)`, `$(link-logout)`) must survive rendering; never introduce a literal `$(` anywhere else in the file.
+- `hotspot/render_login.php` — builds the page. Single source of truth for both the served page and its version hash.
+- `hotspot/login_serve.php?token=` — serves the rendered page to `/tool fetch`.
+- `hotspot/login_version.php?token=` — returns `substr(sha1($renderedPage), 0, 12)`. The router fetches this first and only downloads the page when it differs, so edits to the template, a tenant's brand colour or their packages all publish automatically. There is no version number to bump.
+- `includes/hotspot_sync.php` — `hotspotPortalUrls()`, the RouterOS script body, `installHotspotSyncScheduler()` (API install) and `hotspotSyncInstallerRsc()` (paste-able block).
+- `hotspot/self_update_script.php` — serves that paste-able block for routers the API can't reach.
+- `cron/sync_hotspot_pages.php` — hourly server-side sweep over reachable routers; CGNAT routers are skipped and rely on their own scheduler.
+- Admin UI: **Sync Portal** button on `mikrotik.php` (`router_id=all`), plus per-router deploy.
+
+### Paybill Account Matching
+`includes/account_resolver.php` — `resolveAccountRef($pdo, $billRef, $msisdn, $tenantId|null)` is the **only** place that decides who paid. All four C2B handlers (platform + tenant, validation + confirmation) use it, so validation can never reject a reference confirmation would accept.
+
+Match order: exact `clients.account_number` → phone (from the BillRef **or** the paying MSISDN, last 9 digits) → `PREFIX+client_id` → bare client id (tenant-scoped only). Phone matching matters because the captive portal's manual-paybill instructions tell customers to enter *their phone number* as the account.
+
+Two rules that must not be relaxed:
+- Duplicates **within one tenant** resolve to the active/newest row; a phone spanning **different tenants** must refuse — crediting the wrong ISP is worse than manual reconciliation.
+- The prefix lookup mirrors `AccountNumberGenerator::getPrefix()` precedence (`tenant_settings` → `users.account_prefix` **any role** → subdomain → admin username). The old resolver checked only `users.account_prefix WHERE role='admin'`, so tenants whose admin row has another role could never be matched.
+
+Validation handlers **accept unresolved references** rather than returning `C2B00011`. Bouncing the payment at the till strands a customer who mistyped one character; confirmation logs it as UNROUTABLE for a human instead.
+
+### Schema Guards
+`includes/schema_guard.php` repairs schema drift in place when a deployment is missing a migration. Call `ensurePaymentStatusEnums($pdo)` at the top of any endpoint on the payment path. One-shot repair: `php tools/repair_status_enums.php` (or `sql/migrations/2026-07-26-payment-autoactivation.sql`).
+
+It covers two distinct failure modes:
+- **Out-of-range ENUM value** — production runs `STRICT_TRANS_TABLES`, so this throws `SQLSTATE[01000] 1265 Data truncated`. Surfaced to customers as "Payment could not be initiated" (`clients.status='pending'`) and silently blanked `payments.payment_method='mpesa_paybill'`.
+- **Missing column** — a hard 1054 on *every* configuration. `mpesa_transactions` lacked `tenant_id`, `mpesa_receipt_number` and `raw_callback`; that INSERT sits **before** `process_payment_success()` in the C2B handlers, so the handler aborted and the customer was never activated despite the money arriving. `tenant_id` is also SELECTed by `hotspot_payment_status.php`, so STK polling never saw `completed` either.
+
+**Diagnosing "paid but not connected": `php tools/diagnose_autoactivation.php`.** It walks the whole chain — callback logs, per-tenant M-Pesa wiring, C2B registration URLs, completed-payments-with-inactive-clients, the provisioning queue — and prints the broken links most-likely-cause first.
+
+Note when reading column metadata: **MariaDB returns `information_schema.COLUMN_DEFAULT` already quoted** (`'inactive'`) while MySQL returns it raw (`inactive`). Quoting it again produces `DEFAULT '\'inactive\''` and a 1067 error.
+
 ## SaaS Platform Layer
 
 ### Super Admin Portal (`/super_admin/`)
@@ -101,6 +135,9 @@ Runs daily. Marks overdue invoices (past due_date + 7 grace days), sends 3-day w
 
 # Client expiry enforcement — every 15 minutes
 */15 * * * * php /var/www/html/cron/check_expiry.php >> /var/log/fortunett_expiry.log 2>&1
+
+# Captive portal sweep — hourly, offset from the top of the hour to spread load
+30 * * * * php /var/www/html/cron/sync_hotspot_pages.php >> /var/log/fortunett_portal_sync.log 2>&1
 ```
 
 ### Database Isolation Rules (enforced post-migration)

@@ -19,6 +19,10 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../includes/auto_provision.php';
 require_once __DIR__ . '/../../includes/payment_pipeline.php';
+require_once __DIR__ . '/../../includes/account_resolver.php';
+require_once __DIR__ . '/../../includes/schema_guard.php';
+
+ensurePaymentStatusEnums($pdo);
 
 $logDir = __DIR__ . '/../../logs';
 if (!is_dir($logDir)) @mkdir($logDir, 0755, true);
@@ -79,12 +83,14 @@ try {
         exit;
     }
 
-    // Resolve client
-    $clientId = resolveClientFromRef($pdo, $accountRef, (int)$tenantId);
+    // Resolve client — account number, phone (what the portal tells customers to
+    // enter), PREFIX+id or bare id, all scoped to this tenant.
+    $match    = resolveAccountRef($pdo, $accountRef, $phone, (int)$tenantId);
+    $clientId = $match['client_id'] ?? null;
 
     if (!$clientId) {
         @file_put_contents($logDir . '/tenant_c2b.log',
-            date('Y-m-d H:i:s') . " CONFIRM UNMATCHED: account={$accountRef} tenant={$tenantId} tx={$transactionId}\n", FILE_APPEND | LOCK_EX);
+            date('Y-m-d H:i:s') . " CONFIRM UNMATCHED: account={$accountRef} phone={$phone} tenant={$tenantId} tx={$transactionId}\n", FILE_APPEND | LOCK_EX);
         // Still return 0 — Safaricom considers this final. Log and reconcile manually.
         echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
         exit;

@@ -21,6 +21,12 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../includes/auto_provision.php';
 require_once __DIR__ . '/../../includes/payment_pipeline.php';
+require_once __DIR__ . '/../../includes/account_resolver.php';
+require_once __DIR__ . '/../../includes/schema_guard.php';
+
+// The pipeline flips clients.status to 'active'; guard the enums so a missing
+// migration can't silently swallow an activation after the money is taken.
+ensurePaymentStatusEnums($pdo);
 
 $logDir = __DIR__ . '/../../logs';
 if (!is_dir($logDir)) {
@@ -51,43 +57,25 @@ if (empty($accountRef) || $amount <= 0) {
 }
 
 try {
-    // ── Parse account number into prefix + client_id ──────────────────────────
-    // e.g. "J0023" → prefix="J", client_id=23
-    //      "J20005" → prefix="J2", client_id=5
-    // Strategy: try longest prefix match first (up to 3 chars), then 2, then 1
-    $tenant_id  = null;
-    $client_id  = null;
-    $foundPrefix = '';
+    // ── Work out who paid ─────────────────────────────────────────────────────
+    // Accepts the account number, the customer's phone (what the captive
+    // portal's paybill instructions actually tell them to enter), PREFIX+id, or
+    // a bare client id. See includes/account_resolver.php.
+    $match = resolveAccountRef($pdo, $accountRef, $phone, null);
 
-    for ($prefixLen = 3; $prefixLen >= 1; $prefixLen--) {
-        if (strlen($accountRef) <= $prefixLen) continue;
-        $candidatePrefix = substr($accountRef, 0, $prefixLen);
-        $candidateId     = ltrim(substr($accountRef, $prefixLen), '0') ?: '0';
-
-        if (!ctype_digit($candidateId)) continue;
-
-        // Look up tenant admin with this prefix
-        $prefixStmt = $pdo->prepare("
-            SELECT u.tenant_id FROM users u
-            WHERE u.account_prefix = ? AND u.role = 'admin' AND u.tenant_id IS NOT NULL
-            LIMIT 1
-        ");
-        $prefixStmt->execute([$candidatePrefix]);
-        $row = $prefixStmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($row) {
-            $tenant_id   = (int)$row['tenant_id'];
-            $client_id   = (int)$candidateId;
-            $foundPrefix = $candidatePrefix;
-            break;
-        }
-    }
-
-    if (!$tenant_id || !$client_id) {
-        file_put_contents($logDir . '/mpesa_c2b.log', date('Y-m-d H:i:s') . " UNROUTABLE: account=$accountRef\n", FILE_APPEND | LOCK_EX);
+    if (!$match) {
+        file_put_contents($logDir . '/mpesa_c2b.log',
+            date('Y-m-d H:i:s') . " UNROUTABLE: account=$accountRef phone=$phone amount=$amount tx=$transactionId\n",
+            FILE_APPEND | LOCK_EX);
         echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
         exit;
     }
+
+    $tenant_id = $match['tenant_id'];
+    $client_id = $match['client_id'];
+    file_put_contents($logDir . '/mpesa_c2b.log',
+        date('Y-m-d H:i:s') . " MATCHED via {$match['matched_by']}: account=$accountRef -> tenant=$tenant_id client=$client_id\n",
+        FILE_APPEND | LOCK_EX);
 
     // Verify client belongs to this tenant
     $clientStmt = $pdo->prepare("SELECT id, package_id FROM clients WHERE id = ? AND tenant_id = ? LIMIT 1");

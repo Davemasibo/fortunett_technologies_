@@ -16,6 +16,13 @@ require_once __DIR__ . '/../../classes/MpesaAPI.php';
 require_once __DIR__ . '/../../includes/account_number_generator.php';
 require_once __DIR__ . '/../../includes/auto_provision.php';
 require_once __DIR__ . '/../../includes/credential_helper.php';
+require_once __DIR__ . '/../../includes/schema_guard.php';
+
+// This endpoint writes clients.status='pending' and payments/mpesa_transactions
+// status='pending'. On a strict-mode server missing the enum migration those
+// writes throw 1265 "Data truncated" and the customer never gets the STK prompt.
+// Widen the columns in place if the migration was never applied.
+ensurePaymentStatusEnums($pdo);
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'POST required']);
@@ -29,7 +36,8 @@ $password   = trim($_POST['password'] ?? '');
 $packageId  = (int)($_POST['package_id'] ?? 0);
 $macAddress = strtoupper(preg_replace('/[^a-fA-F0-9:]/', '', $_POST['mac_address'] ?? ''));
 $tenantId   = (int)($_POST['tenant_id'] ?? 0);
-$amount     = (float)($_POST['amount'] ?? 0);
+// NOTE: no $amount is read from the request — both paid flows charge the price
+// on the package row. See the 'paid' and 'renew' branches below.
 
 if (!$tenantId) {
     // Fallback: detect from HTTP_HOST
@@ -72,8 +80,15 @@ try {
 
     $isFree = (float)$package['price'] == 0;
 
+    // The price on the package row decides whether this is free — never the
+    // client's action parameter. Posting action=free with a paid package_id
+    // must not hand out paid internet.
+    if ($action === 'free' && !$isFree) {
+        $action = 'paid';
+    }
+
     // ── FREE PACKAGE FLOW ──────────────────────────────────────────────────────
-    if ($action === 'free' || $isFree) {
+    if ($isFree) {
         // Check MAC has not already used a free trial
         if ($macAddress) {
             try {
@@ -170,7 +185,10 @@ try {
 
     // ── PAID PACKAGE FLOW ──────────────────────────────────────────────────────
     if ($action === 'paid') {
-        if ($amount <= 0) $amount = (float)$package['price'];
+        // Price comes from the package row, never from the POST body — this
+        // endpoint is public, so a client-supplied amount would let anyone pay
+        // KES 1 for any plan.
+        $amount = (float)$package['price'];
         if ($amount <= 0) {
             echo json_encode(['success' => false, 'message' => 'Package price is zero — use free registration.']);
             exit;
@@ -301,7 +319,11 @@ try {
             exit;
         }
         $clientId = (int)$renewClient['id'];
-        if ($amount <= 0) $amount = (float)$package['price'];
+        $amount   = (float)$package['price'];   // same rule as the paid flow
+        if ($amount <= 0) {
+            echo json_encode(['success' => false, 'message' => 'Selected plan has no price set.']);
+            exit;
+        }
         $renewPhone = preg_replace('/[^0-9]/', '', $renewClient['phone'] ?: $phone);
         if (substr($renewPhone, 0, 1) === '0') $renewPhone = '254' . substr($renewPhone, 1);
         if (!$renewPhone || strlen($renewPhone) < 10) {

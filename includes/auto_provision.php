@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/../classes/MikrotikAPI.php';
 require_once __DIR__ . '/radius_client.php';
+require_once __DIR__ . '/hotspot_sync.php';
 
 /**
  * Provision a newly activated client on their tenant's first active router.
@@ -874,6 +875,26 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
 
             if (!$fetched) {
                 error_log("_uploadHotspotLoginPage: both HTTPS and HTTP fetch failed for $dstPath");
+            }
+        }
+
+        // ── Step 5: install the self-update scheduler ─────────────────────────
+        // This is what makes future portal changes automatic. Once the router
+        // holds this script it re-checks hourly on its own, so editing
+        // login.html or a tenant's packages never requires touching a router
+        // again — including routers behind CGNAT the server can't dial into.
+        $urls = hotspotPortalUrls($pdo, $tenantId);
+        if ($urls) {
+            try {
+                $mk5 = new MikrotikAPI(...$mkArgs);
+                $mk5->connect();
+                $res = installHotspotSyncScheduler($mk5, $urls['page'], $urls['version']);
+                try { $mk5->disconnect(); } catch (Throwable $_e) {}
+                if (!$res['installed']) {
+                    error_log('_uploadHotspotLoginPage: sync scheduler not installed — ' . $res['message']);
+                }
+            } catch (Throwable $_e) {
+                error_log('_uploadHotspotLoginPage scheduler: ' . $_e->getMessage());
             }
         }
 
