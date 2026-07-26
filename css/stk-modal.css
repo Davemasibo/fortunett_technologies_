@@ -1,0 +1,108 @@
+/**
+ * Shared M-Pesa STK Push UI
+ * ─────────────────────────────────────────────────────────────────────────────
+ * The four-step stepper from the hotspot captive portal, extracted so every STK
+ * flow in the platform looks and behaves the same: tenant invoice settlement,
+ * customer renewal, customer registration.
+ *
+ * The captive portal itself keeps its own inline copy of these styles — that
+ * page is served off the router's flash to a device with no internet yet, so it
+ * cannot reference an external stylesheet. Keep the two visually in step.
+ *
+ * Brand colour is taken from --primary-color / --brand when the host page sets
+ * one, so this drops into the admin portal, the customer portal and the
+ * super-admin portal without per-page overrides.
+ */
+
+.stk {
+    --stk-brand:      var(--primary-color, var(--brand, #3B6EA5));
+    --stk-brand-lite: var(--primary-light, var(--brand-light, #6f9fd8));
+    --stk-ink:        #e8e8e6;
+    --stk-dim:        rgba(255, 255, 255, .45);
+    --stk-faint:      rgba(255, 255, 255, .28);
+    --stk-ok:         #34d399;
+    --stk-warn:       #fbbf24;
+    --stk-bad:        #f87171;
+    padding: 6px 0 4px;
+}
+
+/* ── Stepper ─────────────────────────────────────────────────────────────── */
+.stk-steps { display: flex; flex-direction: column; gap: 2px; margin-bottom: 18px; }
+
+.stk-step {
+    display: flex; align-items: flex-start; gap: 11px;
+    padding: 7px 0; opacity: .35; transition: opacity .35s;
+}
+.stk-step.is-active, .stk-step.is-done { opacity: 1; }
+
+.stk-dot {
+    width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, .07);
+    border: 1.5px solid rgba(255, 255, 255, .14);
+    transition: all .35s;
+}
+.stk-step.is-done .stk-dot { background: var(--stk-ok); border-color: var(--stk-ok); }
+.stk-step.is-done .stk-dot::after {
+    content: ''; width: 5px; height: 9px;
+    border: solid #0e0e0d; border-width: 0 2px 2px 0;
+    transform: rotate(43deg) translate(-1px, -1px);
+}
+.stk-step.is-active .stk-dot { border-color: var(--stk-brand); background: rgba(59, 110, 165, .2); }
+.stk-step.is-active .stk-dot::after {
+    content: ''; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--stk-brand-lite);
+    animation: stkPulse 1.3s ease-in-out infinite;
+}
+@keyframes stkPulse {
+    0%, 100% { transform: scale(1);    opacity: 1; }
+    50%      { transform: scale(1.45); opacity: .55; }
+}
+
+/* Connector between dots */
+.stk-step:not(:last-child) .stk-dot::before {
+    content: ''; position: absolute; top: 24px; left: 50%; transform: translateX(-50%);
+    width: 1.5px; height: 17px; background: rgba(255, 255, 255, .11);
+}
+.stk-step.is-done:not(:last-child) .stk-dot::before { background: var(--stk-ok); }
+
+.stk-txt   { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
+.stk-title { font-size: 13px;   font-weight: 700; color: var(--stk-ink); }
+.stk-sub   { font-size: 11.5px; color: var(--stk-faint); line-height: 1.4; }
+
+.stk-countdown { text-align: center; font-size: 11.5px; color: var(--stk-faint); margin-top: 2px; }
+.stk-countdown b { color: var(--stk-dim); font-variant-numeric: tabular-nums; }
+
+/* ── Result ──────────────────────────────────────────────────────────────── */
+.stk-result-ok, .stk-result-fail { border-radius: 13px; padding: 15px; margin-bottom: 12px; }
+.stk-result-ok   { background: rgba(52, 211, 153, .1);  border: 1px solid rgba(52, 211, 153, .26); }
+.stk-result-fail { background: rgba(248, 113, 113, .1); border: 1px solid rgba(248, 113, 113, .26); }
+.stk-result-title { font-size: 14px; font-weight: 800; margin-bottom: 5px; display: flex; align-items: center; gap: 8px; }
+.stk-result-ok   .stk-result-title { color: #6ee7b7; }
+.stk-result-fail .stk-result-title { color: #fca5a5; }
+.stk-result-sub  { font-size: 12.5px; color: var(--stk-dim); line-height: 1.55; }
+
+.stk-notice {
+    border-radius: 11px; padding: 11px 13px; font-size: 12.5px;
+    line-height: 1.5; margin-bottom: 12px;
+}
+.stk-notice.is-warn { background: rgba(251, 191, 36, .11);  border: 1px solid rgba(251, 191, 36, .28);  color: #fcd34d; }
+.stk-notice.is-err  { background: rgba(248, 113, 113, .11); border: 1px solid rgba(248, 113, 113, .28); color: #fca5a5; }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.stk-btn-ghost {
+    width: 100%; padding: 11px; border-radius: 12px; cursor: pointer;
+    font-family: inherit; font-size: 13px; font-weight: 700;
+    background: rgba(255, 255, 255, .05);
+    border: 1px solid rgba(255, 255, 255, .1);
+    color: var(--stk-dim); transition: all .18s; margin-top: 9px;
+}
+.stk-btn-ghost:hover { background: rgba(255, 255, 255, .09); color: var(--stk-ink); }
+
+@media (prefers-reduced-motion: reduce) {
+    .stk *, .stk *::before, .stk *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+    }
+}

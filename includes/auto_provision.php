@@ -208,6 +208,40 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
 // ── Private helpers ────────────────────────────────────────────────────────────
 
 /**
+ * Clear a per-record rate-limit that would override the package profile's cap.
+ *
+ * Sent as its own request, and only when the earlier /print actually returned a
+ * non-empty rate-limit for this record. Two reasons:
+ *
+ *  - The property does not exist on /ppp/secret in every RouterOS build.
+ *    Including it in the main set() made the whole call fail with
+ *    "unknown parameter rate", which broke customer creation entirely.
+ *  - Isolating it means a failure here cannot take the provisioning with it.
+ *
+ * @param array $printed Rows previously returned by the matching /print
+ */
+function _clearStaleRateLimit($api, string $path, array $printed, string $recordId): void
+{
+    $stale = false;
+    foreach ($printed as $row) {
+        if (($row['.id'] ?? null) !== $recordId) continue;
+        $stale = array_key_exists('rate-limit', $row) && trim((string)$row['rate-limit']) !== '';
+        break;
+    }
+    if (!$stale) {
+        return;
+    }
+
+    try {
+        $api->comm($path . '/set', ['=.id=' . $recordId, '=rate-limit=']);
+        error_log("_clearStaleRateLimit: cleared per-user rate-limit on $path $recordId");
+    } catch (Throwable $e) {
+        // Non-fatal — the profile cap still applies to new sessions
+        error_log("_clearStaleRateLimit($path): " . $e->getMessage());
+    }
+}
+
+/**
  * Create or update a PPPoE secret and ensure it is enabled.
  * Uses the package-level profile (profileName). Creates the profile on the router
  * if it doesn't exist yet (e.g. router was offline when the package was saved).
@@ -247,15 +281,18 @@ function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, s
     }
 
     if ($secretId !== null) {
-        // rate-limit blanked for the same reason as hotspot users: a value on the
-        // secret itself overrides the profile's cap in RouterOS.
         $api->comm('/ppp/secret/set', [
             '=.id='       . $secretId,
             '=password='  . $password,
             '=profile='   . $profileName,
             '=service=pppoe',
-            '=rate-limit=',
         ]);
+        // A rate-limit set on the secret itself overrides the profile's cap, so a
+        // stale one must go. It is cleared in a SEPARATE call, and only when the
+        // print output actually reported the property — not every RouterOS build
+        // exposes rate-limit on /ppp/secret, and blindly sending it fails the
+        // whole request with "unknown parameter", which breaks provisioning.
+        _clearStaleRateLimit($api, '/ppp/secret', $secrets, $secretId);
         // Re-enable in case it was disabled
         $api->comm('/ppp/secret/enable', ['=.id=' . $secretId]);
         // Kick any live session so the CPE must re-auth with the new password.
@@ -338,31 +375,30 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
         // Credential update — clear MAC so device must re-auth at the captive portal
         // with the new password rather than bypassing via MAC auth.
         //
-        // rate-limit is cleared deliberately: a value set directly on the hotspot
-        // USER overrides the profile's in RouterOS. Any leftover per-user limit
-        // (set by an older build or by hand in WinBox) silently beat the package
-        // cap, which is how a 5M plan delivered line speed. Blanking it here makes
-        // the package profile the single source of truth.
         $api->comm('/ip/hotspot/user/set', [
             '=.id='         . $userId,
             '=password='    . $password,
             '=profile='     . $profileName,
             '=mac-address=',
-            '=rate-limit=',
         ]);
+        // A rate-limit on the USER overrides the profile's cap — that is how a 5M
+        // plan ended up delivering line speed. Cleared separately and only when
+        // the record actually carries the property (see _clearStaleRateLimit).
+        _clearStaleRateLimit($api, '/ip/hotspot/user', $users, $userId);
         // Re-enable in case it was disabled by expiry/suspension
         $api->comm('/ip/hotspot/user/enable', ['=.id=' . $userId]);
         // Kick any live session so the device is redirected to the captive portal
         $api->kickHotspotSession($username);
     } else {
         $isNewUser = true;
+        // No rate-limit here: a fresh user has none, and the property is not
+        // accepted on /add across all RouterOS builds. The profile governs.
         $addResp = $api->comm('/ip/hotspot/user/add', [
             '=name='       . $username,
             '=password='   . $password,
             '=profile='    . $profileName,
             '=comment='    . $comment,
             '=server='     . $hotspotServer,
-            '=rate-limit=',   // profile governs — never a per-user override
         ]);
         // Check for RouterOS trap (error) — e.g. hotspot not configured on router
         foreach ($addResp as $r) {
