@@ -188,7 +188,7 @@ table a:hover{color:#93c5fd;}
         <li><a href="settings.php"><i class="fas fa-cogs"></i><span>System Settings</span></a></li>
         <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i><span>Logout</span></a></li>
     </ul>
-    <div class="sidebar-footer">Logged in as <strong><?= htmlspecialchars($_SESSION['username']) ?></strong></div>
+    <div class="sidebar-footer">Logged in as <strong><?= htmlspecialchars($_SESSION['username'] ?? 'Super Admin') ?></strong></div>
 </div>
 
 <!-- Main -->
@@ -197,7 +197,7 @@ table a:hover{color:#93c5fd;}
         <h1>Subscription Plans</h1>
         <div class="user-info">
             <span><?= count($plans) ?> plans &bull; <?= $totalTenants ?> tenants</span>
-            <div style="width:34px;height:34px;background:rgba(255,255,255,.12);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;border:1.5px solid rgba(255,255,255,.15);"><?= strtoupper(substr($_SESSION['username'],0,1)) ?></div>
+            <div style="width:34px;height:34px;background:rgba(255,255,255,.12);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;border:1.5px solid rgba(255,255,255,.15);"><?= strtoupper(substr($_SESSION['username'] ?? 'S',0,1)) ?></div>
         </div>
     </div>
 

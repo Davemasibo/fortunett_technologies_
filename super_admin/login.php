@@ -39,52 +39,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0e0e0d">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <title>Super Admin Login — FortuNett Technologies</title>
+    <title>Super Admin Login &mdash; FortuNett Technologies</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Shared dark-neumorphic auth styling. This page used to be a white card on
+         a blue gradient, the only light-theme surface left in the platform. -->
+    <link href="../css/auth.css" rel="stylesheet">
     <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%); min-height:100vh; display:flex; align-items:center; justify-content:center; }
-        .card { background:#fff; border-radius:14px; box-shadow:0 24px 64px rgba(0,0,0,.4); width:100%; max-width:420px; overflow:hidden; }
-        .card-header { background:linear-gradient(135deg,#1a1a2e,#0f3460); padding:36px 30px; text-align:center; color:#fff; }
-        .card-header .badge { display:inline-block; background:rgba(255,255,255,.15); padding:4px 14px; border-radius:20px; font-size:12px; letter-spacing:1px; margin-bottom:16px; }
-        .card-header h1 { font-size:22px; font-weight:700; }
-        .card-header p { font-size:13px; opacity:.75; margin-top:6px; }
-        .card-body { padding:36px 30px; }
-        .form-group { margin-bottom:20px; }
-        .form-group label { display:block; font-size:13px; font-weight:600; color:#374151; margin-bottom:7px; }
-        .form-group input { width:100%; padding:12px 14px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; background:#f9fafb; transition:all .2s; }
-        .form-group input:focus { outline:none; border-color:#0f3460; background:#fff; box-shadow:0 0 0 3px rgba(15,52,96,.1); }
-        .btn { width:100%; padding:13px; background:linear-gradient(135deg,#1a1a2e,#0f3460); color:#fff; border:none; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; transition:opacity .2s; display:flex; align-items:center; justify-content:center; gap:8px; }
-        .btn:hover { opacity:.9; }
-        .alert { background:#fee2e2; color:#991b1b; border-left:4px solid #ef4444; padding:12px 14px; border-radius:8px; font-size:14px; margin-bottom:20px; display:flex; align-items:center; gap:10px; }
-        .back-link { text-align:center; margin-top:18px; font-size:13px; color:#6b7280; }
-        .back-link a { color:#0f3460; text-decoration:none; }
+      /* Super admin keeps the platform navy rather than a tenant brand colour */
+      :root {
+        --brand:          #0f3460;
+        --brand-glow:     rgba(15, 52, 96, 0.42);
+        --brand-gradient: linear-gradient(135deg, #0d1117 0%, rgba(15,52,96,0.92) 100%);
+      }
     </style>
 </head>
-<body>
-<div class="card">
-    <div class="card-header">
-        <div class="badge">SUPER ADMIN</div>
-        <h1><i class="fas fa-shield-alt me-2"></i> FortuNett Technologies</h1>
+<body class="auth-page">
+<div class="auth-container">
+    <div class="auth-header">
+        <div class="auth-header-badge">Super Admin</div>
+        <h1><i class="fas fa-shield-halved"></i> FortuNett Technologies</h1>
         <p>Platform Administration Portal</p>
     </div>
-    <div class="card-body">
+
+    <div class="auth-body">
         <?php if ($error): ?>
-        <div class="alert"><i class="fas fa-exclamation-circle"></i><?= htmlspecialchars($error) ?></div>
+        <div class="alert alert-danger">
+            <i class="fas fa-circle-exclamation"></i>
+            <span><?= htmlspecialchars($error) ?></span>
+        </div>
         <?php endif; ?>
-        <form method="POST">
+
+        <div class="auth-subtitle">
+            <h2>Sign in</h2>
+            <p>Restricted to FortuNett platform staff.</p>
+        </div>
+
+        <form method="POST" autocomplete="on">
             <div class="form-group">
-                <label>Username or Email</label>
-                <input type="text" name="username" required autofocus placeholder="admin@fortunetttech.site">
+                <label for="su-user">Username or Email</label>
+                <div class="input-wrapper">
+                    <input type="text" id="su-user" name="username" class="form-control-auth"
+                           required autofocus autocomplete="username"
+                           placeholder="admin@fortunetttech.site"
+                           value="<?= htmlspecialchars($_POST['username'] ?? '') ?>">
+                </div>
             </div>
+
             <div class="form-group">
-                <label>Password</label>
-                <input type="password" name="password" required placeholder="••••••••">
+                <label for="su-pass">Password</label>
+                <div class="input-wrapper">
+                    <input type="password" id="su-pass" name="password" class="form-control-auth"
+                           required autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;">
+                </div>
             </div>
-            <button type="submit" class="btn"><i class="fas fa-lock"></i> Secure Login</button>
+
+            <button type="submit" class="btn-auth">
+                <i class="fas fa-lock"></i> Secure Login
+            </button>
         </form>
-        <div class="back-link"><a href="../login.php"><i class="fas fa-arrow-left"></i> Back to tenant login</a></div>
+
+        <div class="auth-link">
+            <a href="../login.php"><i class="fas fa-arrow-left"></i> Back to tenant login</a>
+        </div>
     </div>
 </div>
 </body>

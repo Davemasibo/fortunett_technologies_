@@ -361,3 +361,86 @@ select option { background: var(--neu-s2); color: var(--neu-text); }
 /* Super admin stat number animation on load */
 @keyframes countUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .stat-card .value { animation: countUp .5s cubic-bezier(.22,1,.36,1) both; }
+
+/* ── Invoice detail ──────────────────────────────────────────────────────────
+   The invoice view used hard-coded light values (#f8fafc panels, #64748b text,
+   #d1d5db inputs) that rendered as a near-white block on the dark page. These
+   classes replace the inline styles so the view matches the rest of the app. */
+.inv-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 22px;
+}
+.inv-eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--neu-muted); margin-bottom: 4px;
+}
+.inv-number { font-size: 24px; font-weight: 800; color: var(--neu-text); letter-spacing: -.01em; }
+.inv-sub    { font-size: 13.5px; color: var(--neu-muted); margin-top: 4px; }
+.inv-sub strong { color: var(--neu-text); font-weight: 600; }
+
+/* Line items — inset panel, the neumorphic counterpart of the old #f8fafc box */
+.inv-lines {
+    background: var(--neu-surf);
+    border: 1px solid var(--neu-border);
+    border-radius: 12px;
+    padding: 6px 18px;
+    box-shadow: inset 4px 4px 10px rgba(0,0,0,.45), inset -2px -2px 6px rgba(255,255,255,.03);
+}
+.line-item {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+    padding: 13px 0; font-size: 14px; color: var(--neu-muted);
+    border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.line-item:last-of-type { border-bottom: none; }
+.line-item strong { color: var(--neu-text); font-weight: 600; white-space: nowrap; }
+.line-total {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+    padding: 15px 0 13px; margin-top: 2px;
+    border-top: 1px solid rgba(255,255,255,.12);
+    font-size: 16px; font-weight: 800; color: var(--neu-text);
+}
+.line-total span:last-child { color: #6ee7b7; white-space: nowrap; }
+
+.detail-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 16px; margin-top: 22px;
+}
+.detail-item label {
+    display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--neu-muted); margin-bottom: 5px;
+}
+.detail-item span { font-size: 14px; color: var(--neu-text); word-break: break-word; }
+
+/* Settle bar */
+.inv-actions {
+    margin-top: 22px; padding-top: 20px;
+    border-top: 1px solid var(--neu-border);
+    display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;
+}
+.inv-actions .field { flex: 1 1 240px; min-width: 200px; }
+.inv-actions label {
+    display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--neu-muted); margin-bottom: 6px;
+}
+.inv-actions input[type="text"] {
+    width: 100%; padding: 10px 13px; font-family: inherit; font-size: 14px;
+    color: var(--neu-text); background: var(--neu-bg);
+    border: 1px solid var(--neu-border); border-radius: 9px; outline: none;
+    box-shadow: inset 3px 3px 7px rgba(0,0,0,.5), inset -2px -2px 5px rgba(255,255,255,.03);
+    transition: border-color .2s, box-shadow .2s;
+}
+.inv-actions input[type="text"]:focus {
+    border-color: #3B6EA5;
+    box-shadow: inset 3px 3px 7px rgba(0,0,0,.5), 0 0 0 3px rgba(59,110,165,.22);
+}
+.inv-actions input::placeholder { color: rgba(255,255,255,.22); }
+
+.btn-paid {
+    background: rgba(16,185,129,.15) !important; color: #6ee7b7 !important;
+    border: 1px solid rgba(16,185,129,.28) !important;
+    padding: 11px 20px !important; font-size: 13.5px !important; font-weight: 700 !important;
+    border-radius: 9px !important; cursor: pointer; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 7px; transition: all .18s;
+}
+.btn-paid:hover:not(:disabled) { background: rgba(16,185,129,.3) !important; color: #fff !important; }
+.btn-paid:disabled { opacity: .5; cursor: not-allowed; }

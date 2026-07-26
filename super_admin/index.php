@@ -163,7 +163,7 @@ table a:hover{color:#93c5fd;}
         <li><a href="settings.php"><i class="fas fa-cogs"></i><span>System Settings</span></a></li>
         <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i><span>Logout</span></a></li>
     </ul>
-    <div class="sidebar-footer">Logged in as <strong><?= htmlspecialchars($_SESSION['username']) ?></strong></div>
+    <div class="sidebar-footer">Logged in as <strong><?= htmlspecialchars($_SESSION['username'] ?? 'Super Admin') ?></strong></div>
 </div>
 
 <!-- Main -->
@@ -172,7 +172,7 @@ table a:hover{color:#93c5fd;}
         <h1>Platform Dashboard</h1>
         <div class="user-info">
             <span><?= date('l, d M Y') ?></span>
-            <div class="avatar"><?= strtoupper(substr($_SESSION['username'],0,1)) ?></div>
+            <div class="avatar"><?= strtoupper(substr($_SESSION['username'] ?? 'S',0,1)) ?></div>
         </div>
     </div>
 
@@ -242,7 +242,7 @@ table a:hover{color:#93c5fd;}
                     <tbody>
                     <?php foreach ($pendingInvoices as $inv): ?>
                     <tr>
-                        <td><strong><?= htmlspecialchars($inv['company_name']) ?></strong><br><small style="color:#94a3b8;"><?= $inv['subdomain'] ?>.fortunetttech.site</small></td>
+                        <td><strong><?= htmlspecialchars($inv['company_name']) ?></strong><br><small style="color:var(--neu-muted);"><?= $inv['subdomain'] ?>.fortunetttech.site</small></td>
                         <td><?= date('M Y', strtotime($inv['billing_period'])) ?></td>
                         <td><strong>KSH <?= number_format($inv['total_due'], 2) ?></strong></td>
                         <td><?= date('d M Y', strtotime($inv['due_date'])) ?></td>
@@ -270,7 +270,7 @@ table a:hover{color:#93c5fd;}
                     <tr>
                         <td>
                             <strong><?= htmlspecialchars($t['company_name']) ?></strong><br>
-                            <small style="color:#94a3b8;"><?= htmlspecialchars($t['admin_email'] ?? '') ?></small>
+                            <small style="color:var(--neu-muted);"><?= htmlspecialchars($t['admin_email'] ?? '') ?></small>
                         </td>
                         <td><a href="https://<?= $t['subdomain'] ?>.fortunetttech.site" target="_blank" style="color:#2563eb;text-decoration:none;"><?= $t['subdomain'] ?></a></td>
                         <td><?= htmlspecialchars($t['plan_name'] ?? 'Starter') ?></td>
@@ -287,7 +287,7 @@ table a:hover{color:#93c5fd;}
                     </tr>
                     <?php endforeach; ?>
                     <?php if (empty($recentTenants)): ?>
-                    <tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:30px;">No tenants yet.</td></tr>
+                    <tr><td colspan="6" style="text-align:center;color:var(--neu-muted);padding:30px;">No tenants yet.</td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>
@@ -323,7 +323,7 @@ new Chart(document.getElementById('statusChart'), {
     type: 'doughnut',
     data: {
         labels: ['Active','Trial','Suspended','Expired'],
-        datasets: [{ data: statusData, backgroundColor: ['#22c55e','#f59e0b','#ef4444','#94a3b8'], borderWidth: 0 }]
+        datasets: [{ data: statusData, backgroundColor: ['#22c55e','#f59e0b','#ef4444','var(--neu-muted)'], borderWidth: 0 }]
     },
     options: { responsive:true, plugins:{ legend:{ position:'bottom' } } }
 });

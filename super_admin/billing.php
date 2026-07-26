@@ -157,7 +157,7 @@ table a:hover{color:#93c5fd;}
         <li><a href="settings.php"><i class="fas fa-cogs"></i><span>System Settings</span></a></li>
         <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i><span>Logout</span></a></li>
     </ul>
-    <div class="sidebar-footer">Logged in as <strong><?= htmlspecialchars($_SESSION['username']) ?></strong></div>
+    <div class="sidebar-footer">Logged in as <strong><?= htmlspecialchars($_SESSION['username'] ?? 'Super Admin') ?></strong></div>
 </div>
 
 <div class="main">
@@ -178,17 +178,22 @@ table a:hover{color:#93c5fd;}
     <?php if ($invoiceDetail): ?>
         <a href="billing.php?month=<?= $monthFilter ?>" class="back-link"><i class="fas fa-arrow-left"></i> Back to billing</a>
         <div class="detail-panel">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
+            <div class="inv-head">
                 <div>
-                    <div style="font-size:12px;color:#94a3b8;font-weight:600;letter-spacing:.5px;">INVOICE</div>
-                    <h2 style="font-size:22px;font-weight:700;"><?= htmlspecialchars($invoiceDetail['invoice_number']) ?></h2>
-                    <div style="font-size:14px;color:#64748b;">Tenant: <strong><?= htmlspecialchars($invoiceDetail['company_name']) ?></strong> &bull; <?= date('M Y', strtotime($invoiceDetail['billing_period'])) ?></div>
+                    <div class="inv-eyebrow">Invoice</div>
+                    <h2 class="inv-number"><?= htmlspecialchars($invoiceDetail['invoice_number']) ?></h2>
+                    <div class="inv-sub">
+                        <a href="tenants.php?id=<?= (int)$invoiceDetail['tenant_id'] ?>" style="color:#93c5fd;text-decoration:none;">
+                            <strong><?= htmlspecialchars($invoiceDetail['company_name']) ?></strong>
+                        </a>
+                        &bull; <?= date('M Y', strtotime($invoiceDetail['billing_period'])) ?>
+                    </div>
                 </div>
                 <span class="badge badge-<?= $invoiceDetail['status'] ?>" style="font-size:14px;padding:6px 16px;"><?= ucfirst($invoiceDetail['status']) ?></span>
             </div>
 
             <!-- Line items -->
-            <div style="background:#f8fafc;border-radius:10px;padding:18px;">
+            <div class="inv-lines">
                 <div class="line-item">
                     <span>PPPoE Users (<?= $invoiceDetail['pppoe_user_count'] ?> × KSH <?= number_format($invoiceDetail['pppoe_fee_per_user'], 2) ?>)</span>
                     <strong>KSH <?= number_format($invoiceDetail['pppoe_subtotal'], 2) ?></strong>
@@ -209,7 +214,7 @@ table a:hover{color:#93c5fd;}
                 </div>
             </div>
 
-            <div class="detail-grid" style="margin-top:20px;">
+            <div class="detail-grid">
                 <div class="detail-item"><label>Billing Period</label><span><?= date('M Y', strtotime($invoiceDetail['billing_period'])) ?></span></div>
                 <div class="detail-item"><label>Due Date</label><span><?= date('d M Y', strtotime($invoiceDetail['due_date'])) ?></span></div>
                 <div class="detail-item"><label>Paid At</label><span><?= $invoiceDetail['paid_at'] ? date('d M Y H:i', strtotime($invoiceDetail['paid_at'])) : '—' ?></span></div>
@@ -218,15 +223,19 @@ table a:hover{color:#93c5fd;}
             </div>
 
             <?php if ($invoiceDetail['status'] !== 'paid'): ?>
-            <div style="margin-top:20px;padding-top:20px;border-top:1px solid #f1f5f9;display:flex;gap:12px;align-items:flex-end;">
-                <div>
-                    <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Transaction Reference (optional)</label>
-                    <input type="text" id="txRef" placeholder="e.g. QHK2YXM3Q1" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;width:260px;">
+            <div class="inv-actions">
+                <div class="field">
+                    <label for="txRef">Transaction Reference <span style="text-transform:none;letter-spacing:0;font-weight:500;">(optional)</span></label>
+                    <input type="text" id="txRef" placeholder="e.g. QHK2YXM3Q1">
                 </div>
-                <button class="btn-sm btn-paid" style="padding:9px 18px;font-size:13px;" onclick="markPaid(<?= $invoiceDetail['id'] ?>, <?= $invoiceDetail['tenant_id'] ?>)">
+                <button class="btn-paid" onclick="markPaid(<?= $invoiceDetail['id'] ?>, <?= $invoiceDetail['tenant_id'] ?>, this)">
                     <i class="fas fa-check"></i> Mark as Paid
                 </button>
             </div>
+            <p style="margin-top:12px;font-size:12.5px;color:var(--neu-muted);line-height:1.5;">
+                Marking this paid clears it from the tenant's outstanding balance. If it is their
+                last open invoice, a suspended tenant is reactivated immediately.
+            </p>
             <?php endif; ?>
         </div>
 
@@ -245,7 +254,7 @@ table a:hover{color:#93c5fd;}
             </div>
             <div class="stat-card">
                 <div class="label">Outstanding</div>
-                <div class="value" style="color:#dc2626;">KSH <?= number_format($summary['total_outstanding'] ?? 0, 0) ?></div>
+                <div class="value" style="color:#fca5a5;">KSH <?= number_format($summary['total_outstanding'] ?? 0, 0) ?></div>
                 <div class="sub"><?= $summary['overdue_count'] ?? 0 ?> overdue</div>
             </div>
             <div class="stat-card">
@@ -258,19 +267,19 @@ table a:hover{color:#93c5fd;}
         <!-- Filters -->
         <form method="GET" class="filters-bar">
             <div>
-                <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Month</label>
+                <label style="font-size:12px;font-weight:600;color:var(--neu-muted);display:block;margin-bottom:4px;">Month</label>
                 <input type="month" name="month" value="<?= $monthFilter ?>" <?= $showAllMonths ? 'disabled' : '' ?>>
             </div>
             <div>
-                <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Period</label>
-                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#e2e8f0;padding:8px 0;white-space:nowrap;">
+                <label style="font-size:12px;font-weight:600;color:var(--neu-muted);display:block;margin-bottom:4px;">Period</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--neu-border);padding:8px 0;white-space:nowrap;">
                     <input type="checkbox" name="all" value="1" <?= $showAllMonths ? 'checked' : '' ?>
                            onchange="this.form.submit()">
                     All months
                 </label>
             </div>
             <div>
-                <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Status</label>
+                <label style="font-size:12px;font-weight:600;color:var(--neu-muted);display:block;margin-bottom:4px;">Status</label>
                 <select name="status">
                     <option value="">All</option>
                     <option value="pending" <?= $statusFilter==='pending'?'selected':'' ?>>Pending</option>
@@ -279,7 +288,7 @@ table a:hover{color:#93c5fd;}
                 </select>
             </div>
             <div>
-                <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Search</label>
+                <label style="font-size:12px;font-weight:600;color:var(--neu-muted);display:block;margin-bottom:4px;">Search</label>
                 <input type="text" name="q" placeholder="Company or subdomain" value="<?= htmlspecialchars($search) ?>">
             </div>
             <button type="submit" class="btn-filter"><i class="fas fa-search me-1"></i> Filter</button>
@@ -302,7 +311,7 @@ table a:hover{color:#93c5fd;}
                     <td style="font-family:monospace;"><?= htmlspecialchars($inv['invoice_number']) ?></td>
                     <td>
                         <strong><?= htmlspecialchars($inv['company_name']) ?></strong><br>
-                        <small style="color:#94a3b8;"><?= $inv['subdomain'] ?></small>
+                        <small style="color:var(--neu-muted);"><?= $inv['subdomain'] ?></small>
                     </td>
                     <td><?= date('M Y', strtotime($inv['billing_period'])) ?></td>
                     <td><?= $inv['pppoe_user_count'] ?> users</td>
@@ -313,13 +322,13 @@ table a:hover{color:#93c5fd;}
                     <td>
                         <a href="billing.php?invoice=<?= $inv['id'] ?>" class="btn-sm btn-view"><i class="fas fa-eye"></i> View</a>
                         <?php if ($inv['status'] !== 'paid'): ?>
-                        <button class="btn-sm btn-paid" onclick="markPaid(<?= $inv['id'] ?>, <?= $inv['tenant_id'] ?>)"><i class="fas fa-check"></i> Paid</button>
+                        <button class="btn-sm btn-paid" onclick="markPaid(<?= $inv['id'] ?>, <?= $inv['tenant_id'] ?>, this)"><i class="fas fa-check"></i> Paid</button>
                         <?php endif; ?>
                     </td>
                 </tr>
                 <?php endforeach; ?>
                 <?php if (empty($invoices)): ?>
-                <tr><td colspan="9" style="text-align:center;padding:36px;color:#94a3b8;">No invoices found. Use "Generate Invoices" above to create them.</td></tr>
+                <tr><td colspan="9" style="text-align:center;padding:36px;color:var(--neu-muted);">No invoices found. Use "Generate Invoices" above to create them.</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -330,14 +339,37 @@ table a:hover{color:#93c5fd;}
 </div>
 
 <script>
-function markPaid(invoiceId, tenantId) {
-    const ref = document.getElementById('txRef') ? document.getElementById('txRef').value : '';
-    if (!confirm('Mark this invoice as paid?')) return;
+function markPaid(invoiceId, tenantId, btn) {
+    const refEl = document.getElementById('txRef');
+    /* The list view has no reference field — prompt there so a reference can
+       still be captured. It is the only audit trail tying the invoice to money. */
+    let ref = refEl ? refEl.value.trim() : null;
+    if (ref === null) {
+        ref = prompt('Payment reference (M-Pesa code, bank ref, or note).\nLeave blank to auto-generate.', '');
+        if (ref === null) return;
+        ref = ref.trim();
+    } else if (!confirm('Mark this invoice as paid?')) {
+        return;
+    }
+
+    const original = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = 'Saving…'; }
+
     fetch('../api/super_admin/tenants.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'mark_invoice_paid', tenant_id: tenantId, invoice_id: invoiceId, transaction_ref: ref })
-    }).then(r => r.json()).then(d => { if (d.success) location.reload(); else alert(d.message || 'Failed'); });
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) { location.reload(); return; }
+        if (btn) { btn.disabled = false; btn.innerHTML = original; }
+        alert(d.message || 'Failed');
+    })
+    .catch(() => {
+        if (btn) { btn.disabled = false; btn.innerHTML = original; }
+        alert('Network error.');
+    });
 }
 </script>
 </body>

@@ -128,19 +128,7 @@ tr:hover td{background:rgba(255,255,255,.035);}
 .btn-view{background:rgba(255,255,255,.07);color:var(--neu-muted);border:1px solid var(--neu-border);}
 .btn-view:hover{background:rgba(255,255,255,.13);color:var(--neu-text);}
 .btn-danger{background:linear-gradient(135deg,#b91c1c,#ef4444);color:#fff;border:none;}
-.btn-extend{background:rgba(99,102,241,.15);color:#a5b4fc;border:1px solid rgba(99,102,241,.25);}
-.btn-extend:hover{background:rgba(99,102,241,.28);color:#fff;}
 /* Extend modal */
-#extendModal{display:none;position:fixed;inset:0;z-index:1000;align-items:center;justify-content:center;background:rgba(0,0,0,.6);}
-#extendModal.open{display:flex;}
-#extendModal .modal-box{background:var(--neu-s2);border-radius:14px;padding:28px 32px;width:340px;border:1px solid var(--neu-border);box-shadow:0 20px 60px rgba(0,0,0,.7);}
-#extendModal h3{font-size:16px;font-weight:700;margin-bottom:18px;color:var(--neu-text);}
-#extendModal label{display:block;font-size:12px;font-weight:600;color:var(--neu-muted);margin-bottom:6px;}
-#extendModal input[type=number]{width:100%;padding:9px 12px;border:1px solid rgba(255,255,255,.1);border-radius:7px;background:#1a1a19;color:var(--neu-text);font-size:14px;box-shadow:inset 3px 3px 7px rgba(0,0,0,.3);}
-#extendModal .modal-actions{display:flex;gap:10px;margin-top:20px;justify-content:flex-end;}
-#extendModal .btn-ok{padding:8px 20px;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;}
-#extendModal .btn-cancel{padding:8px 16px;background:rgba(255,255,255,.07);color:var(--neu-muted);border:1px solid var(--neu-border);border-radius:7px;font-size:13px;cursor:pointer;}
-#extendModal .modal-info{font-size:12px;color:var(--neu-muted);margin-bottom:14px;}
 .empty-row td{text-align:center;color:var(--neu-muted);padding:36px;}
 /* Detail panel */
 .detail-panel{background:var(--neu-s2);border-radius:14px;padding:28px;border:1px solid var(--neu-border);box-shadow:14px 14px 28px rgba(0,0,0,.5),-7px -7px 18px rgba(255,255,255,.035),0 0 0 1px var(--neu-border);margin-bottom:24px;}
@@ -169,7 +157,7 @@ table a:hover{color:#93c5fd;}
         <li><a href="settings.php"><i class="fas fa-cogs"></i><span>System Settings</span></a></li>
         <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i><span>Logout</span></a></li>
     </ul>
-    <div class="sidebar-footer">Logged in as <strong><?= htmlspecialchars($_SESSION['username']) ?></strong></div>
+    <div class="sidebar-footer">Logged in as <strong><?= htmlspecialchars($_SESSION['username'] ?? 'Super Admin') ?></strong></div>
 </div>
 
 <div class="main">
@@ -177,7 +165,7 @@ table a:hover{color:#93c5fd;}
         <h1><?= $detailTenant ? 'Tenant Detail' : 'Tenant Management' ?></h1>
         <div class="user-info">
             <span style="font-size:13px;"><?= count($tenants) ?> tenants total</span>
-            <div class="avatar" style="width:34px;height:34px;background:rgba(255,255,255,.12);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;border:1.5px solid rgba(255,255,255,.15);"><?= strtoupper(substr($_SESSION['username'],0,1)) ?></div>
+            <div class="avatar" style="width:34px;height:34px;background:rgba(255,255,255,.12);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;border:1.5px solid rgba(255,255,255,.15);"><?= strtoupper(substr($_SESSION['username'] ?? 'S',0,1)) ?></div>
         </div>
     </div>
     <div class="content">
@@ -187,18 +175,26 @@ table a:hover{color:#93c5fd;}
         <div class="detail-panel">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                 <div>
-                    <h2 style="font-size:20px;font-weight:700;color:#1e293b;"><?= htmlspecialchars($detailTenant['company_name']) ?></h2>
+                    <h2 style="font-size:20px;font-weight:700;color:var(--neu-text);"><?= htmlspecialchars($detailTenant['company_name']) ?></h2>
                     <a href="https://<?= $detailTenant['subdomain'] ?>.fortunetttech.site" target="_blank" style="color:#2563eb;font-size:13px;"><?= $detailTenant['subdomain'] ?>.fortunetttech.site</a>
                 </div>
                 <div style="display:flex;gap:8px;">
                     <?php
-                        $detailExpiry = $detailTenant['trial_ends_at'] ?? $detailTenant['subscription_ends_at'] ?? null;
-                        $detailExpiryLabel = $detailExpiry ? date('d M Y', strtotime($detailExpiry)) : 'No expiry set';
-                        $detailModalInfo = "Tenant: {$detailTenant['company_name']} | Current expiry: {$detailExpiryLabel}";
+                        // Outstanding invoices decide whether Activate can hold. While any
+                        // exist, check_suspensions.php re-suspends on its next run, so the
+                        // button is hidden rather than offered and silently undone.
+                        $owedSt = $pdo->prepare("SELECT COUNT(*) FROM platform_invoices WHERE tenant_id = ? AND status <> 'paid'");
+                        $owedSt->execute([(int)$detailTenant['id']]);
+                        $owedCount = (int)$owedSt->fetchColumn();
                     ?>
-                    <button class="btn-sm btn-extend" onclick="openExtendModal(<?= $detailTenant['id'] ?>, <?= htmlspecialchars(json_encode($detailModalInfo), ENT_QUOTES) ?>)"><i class="fas fa-calendar-plus"></i> Extend Days</button>
                     <?php if ($detailTenant['status'] === 'suspended'): ?>
-                    <button class="btn-sm btn-activate" onclick="changeTenantStatus(<?= $detailTenant['id'] ?>,'active')"><i class="fas fa-play"></i> Activate</button>
+                        <?php if ($owedCount === 0): ?>
+                        <button class="btn-sm btn-activate" onclick="changeTenantStatus(<?= $detailTenant['id'] ?>,'active')"><i class="fas fa-play"></i> Activate</button>
+                        <?php else: ?>
+                        <span style="font-size:12px;color:var(--neu-muted);">
+                            Settle the outstanding invoices below to reactivate
+                        </span>
+                        <?php endif; ?>
                     <?php else: ?>
                     <button class="btn-sm btn-suspend" onclick="changeTenantStatus(<?= $detailTenant['id'] ?>,'suspended')"><i class="fas fa-pause"></i> Suspend</button>
                     <?php endif; ?>
@@ -208,8 +204,8 @@ table a:hover{color:#93c5fd;}
                 <div class="detail-item"><label>Status</label><span><span class="badge badge-<?= $detailTenant['status'] ?>"><?= ucfirst($detailTenant['status']) ?></span></span></div>
                 <div class="detail-item"><label>Admin Email</label><span><?= htmlspecialchars($detailTenant['admin_email'] ?? 'N/A') ?></span></div>
                 <div class="detail-item"><label>Plan</label><span><?= htmlspecialchars($detailTenant['plan_name'] ?? 'Starter') ?></span></div>
-                <div class="detail-item"><label>Trial Ends</label><span><?= $detailTenant['trial_ends_at'] ? date('d M Y', strtotime($detailTenant['trial_ends_at'])) : 'N/A' ?></span></div>
-                <div class="detail-item"><label>Subscription Ends</label><span><?= $detailTenant['subscription_ends_at'] ? date('d M Y', strtotime($detailTenant['subscription_ends_at'])) : 'N/A' ?></span></div>
+                <div class="detail-item"><label>Trial Ends</label><span><?= !empty($detailTenant['trial_ends_at']) ? date('d M Y', strtotime($detailTenant['trial_ends_at'])) : 'N/A' ?></span></div>
+                <div class="detail-item"><label>Subscription Ends</label><span><?= !empty($detailTenant['subscription_ends_at']) ? date('d M Y', strtotime($detailTenant['subscription_ends_at'])) : 'N/A' ?></span></div>
                 <div class="detail-item"><label>Registered</label><span><?= date('d M Y', strtotime($detailTenant['created_at'])) ?></span></div>
                 <div class="detail-item"><label>PPPoE Fee / User</label><span>KSH <?= number_format($detailTenant['pppoe_fee_per_user'] ?? 25, 2) ?></span></div>
                 <div class="detail-item"><label>Hotspot Commission</label><span><?= round(($detailTenant['hotspot_commission_rate'] ?? 0.03)*100, 2) ?>%</span></div>
@@ -219,8 +215,8 @@ table a:hover{color:#93c5fd;}
             </div>
             <!-- Notes edit form -->
             <form onsubmit="saveNotes(event, <?= $detailTenant['id'] ?>)" style="margin-top:12px;">
-                <label style="font-size:12px;font-weight:600;color:#94a3b8;display:block;margin-bottom:6px;">INTERNAL NOTES</label>
-                <textarea id="notesField" rows="3" style="width:100%;border:1px solid #d1d5db;border-radius:7px;padding:9px;font-size:13px;resize:vertical;"><?= htmlspecialchars($detailTenant['notes'] ?? '') ?></textarea>
+                <label style="font-size:12px;font-weight:600;color:var(--neu-muted);display:block;margin-bottom:6px;">INTERNAL NOTES</label>
+                <textarea id="notesField" rows="3" style="width:100%;border:1px solid var(--neu-border);border-radius:7px;padding:9px;font-size:13px;resize:vertical;"><?= htmlspecialchars($detailTenant['notes'] ?? '') ?></textarea>
                 <button type="submit" class="btn-sm btn-view" style="margin-top:8px;"><i class="fas fa-save"></i> Save Notes</button>
             </form>
         </div>
@@ -257,7 +253,7 @@ table a:hover{color:#93c5fd;}
 
         <!-- Invoice history -->
         <div class="card">
-            <div style="padding:16px 20px;border-bottom:1px solid #f1f5f9;"><h3 style="font-size:15px;font-weight:700;">Invoice History</h3></div>
+            <div style="padding:16px 20px;border-bottom:1px solid var(--neu-border);"><h3 style="font-size:15px;font-weight:700;">Invoice History</h3></div>
             <table>
                 <thead><tr><th>Invoice #</th><th>Period</th><th>PPPoE Users</th><th>Hotspot Rev.</th><th>Total Due</th><th>Status</th><th>Paid At</th><th></th></tr></thead>
                 <tbody>
@@ -277,7 +273,7 @@ table a:hover{color:#93c5fd;}
                             Mark Paid
                         </button>
                         <?php else: ?>
-                        <span style="color:#94a3b8;font-size:12px;">
+                        <span style="color:var(--neu-muted);font-size:12px;">
                             <?= htmlspecialchars($inv['transaction_ref'] ?? '') ?>
                         </span>
                         <?php endif; ?>
@@ -295,11 +291,11 @@ table a:hover{color:#93c5fd;}
         <!-- Filters -->
         <form method="GET" class="filters-bar">
             <div>
-                <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Search</label>
+                <label style="font-size:12px;font-weight:600;color:var(--neu-muted);display:block;margin-bottom:4px;">Search</label>
                 <input type="text" name="q" placeholder="Company, subdomain, email..." value="<?= htmlspecialchars($search) ?>" style="width:240px;">
             </div>
             <div>
-                <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Status</label>
+                <label style="font-size:12px;font-weight:600;color:var(--neu-muted);display:block;margin-bottom:4px;">Status</label>
                 <select name="status">
                     <option value="">All Statuses</option>
                     <option value="active" <?= $statusFilter==='active'?'selected':'' ?>>Active</option>
@@ -309,7 +305,7 @@ table a:hover{color:#93c5fd;}
                 </select>
             </div>
             <div>
-                <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Plan</label>
+                <label style="font-size:12px;font-weight:600;color:var(--neu-muted);display:block;margin-bottom:4px;">Plan</label>
                 <select name="plan">
                     <option value="">All Plans</option>
                     <?php foreach ($plans as $pl): ?>
@@ -318,7 +314,7 @@ table a:hover{color:#93c5fd;}
                 </select>
             </div>
             <button type="submit" class="btn-filter"><i class="fas fa-search me-1"></i> Filter</button>
-            <a href="tenants.php" style="padding:8px 14px;font-size:13px;color:#64748b;text-decoration:none;">Clear</a>
+            <a href="tenants.php" style="padding:8px 14px;font-size:13px;color:var(--neu-muted);text-decoration:none;">Clear</a>
         </form>
 
         <!-- Tenant Table -->
@@ -342,24 +338,27 @@ table a:hover{color:#93c5fd;}
                     <td>
                         <strong><?= htmlspecialchars($t['company_name']) ?></strong><br>
                         <a href="https://<?= $t['subdomain'] ?>.fortunetttech.site" target="_blank" style="color:#2563eb;font-size:12px;"><?= $t['subdomain'] ?>.fortunetttech.site</a>
-                        <?php if ($t['admin_email']): ?><br><small style="color:#94a3b8;"><?= htmlspecialchars($t['admin_email']) ?></small><?php endif; ?>
+                        <?php if ($t['admin_email']): ?><br><small style="color:var(--neu-muted);"><?= htmlspecialchars($t['admin_email']) ?></small><?php endif; ?>
                     </td>
                     <td><?= htmlspecialchars($t['plan_name'] ?? 'Starter') ?></td>
                     <td><?= $t['client_count'] ?></td>
                     <td><?= $t['router_count'] ?></td>
-                    <td><?= $t['outstanding'] > 0 ? '<strong style="color:#dc2626;">KSH '.number_format($t['outstanding'],0).'</strong>' : '<span style="color:#94a3b8;">—</span>' ?></td>
+                    <td><?= $t['outstanding'] > 0 ? '<strong style="color:#fca5a5;">KSH '.number_format($t['outstanding'],0).'</strong>' : '<span style="color:var(--neu-muted);">—</span>' ?></td>
                     <td><span class="badge badge-<?= $t['status'] ?>"><?= ucfirst($t['status']) ?></span></td>
                     <td style="white-space:nowrap;"><?= date('d M Y', strtotime($t['created_at'])) ?></td>
                     <td style="white-space:nowrap;">
                         <a href="tenants.php?id=<?= $t['id'] ?>" class="btn-sm btn-view"><i class="fas fa-eye"></i></a>
-                        <?php
-                            $listExpiry = $t['trial_ends_at'] ?? $t['subscription_ends_at'] ?? null;
-                            $listExpiryLabel = $listExpiry ? date('d M Y', strtotime($listExpiry)) : 'No expiry';
-                            $listModalInfo = "{$t['company_name']} | Expiry: {$listExpiryLabel}";
-                        ?>
-                        <button class="btn-sm btn-extend" onclick="openExtendModal(<?= $t['id'] ?>, <?= htmlspecialchars(json_encode($listModalInfo), ENT_QUOTES) ?>)"><i class="fas fa-calendar-plus"></i></button>
                         <?php if ($t['status'] === 'suspended'): ?>
-                        <button class="btn-sm btn-activate" onclick="changeTenantStatus(<?= $t['id'] ?>,'active')"><i class="fas fa-play"></i> Activate</button>
+                            <?php if ((float)($t['outstanding'] ?? 0) > 0): ?>
+                            <!-- Activating would be reverted by the suspension cron; send
+                                 the operator to the invoices that actually control this. -->
+                            <a href="tenants.php?id=<?= (int)$t['id'] ?>" class="btn-sm btn-view"
+                               style="text-decoration:none;" title="Outstanding invoices must be settled first">
+                                <i class="fas fa-file-invoice-dollar"></i> Settle
+                            </a>
+                            <?php else: ?>
+                            <button class="btn-sm btn-activate" onclick="changeTenantStatus(<?= $t['id'] ?>,'active')"><i class="fas fa-play"></i> Activate</button>
+                            <?php endif; ?>
                         <?php else: ?>
                         <button class="btn-sm btn-suspend" onclick="changeTenantStatus(<?= $t['id'] ?>,'suspended')"><i class="fas fa-pause"></i> Suspend</button>
                         <?php endif; ?>
@@ -377,52 +376,8 @@ table a:hover{color:#93c5fd;}
     </div>
 </div>
 
-<!-- Extend Days Modal -->
-<div id="extendModal" role="dialog" aria-modal="true">
-    <div class="modal-box">
-        <h3><i class="fas fa-calendar-plus" style="color:#818cf8;margin-right:8px;"></i>Extend Subscription Days</h3>
-        <p class="modal-info" id="extendModalInfo"></p>
-        <label for="extendDaysInput">Number of days to add</label>
-        <input type="number" id="extendDaysInput" min="1" max="3650" value="30" placeholder="e.g. 30">
-        <div class="modal-actions">
-            <button class="btn-cancel" onclick="closeExtendModal()">Cancel</button>
-            <button class="btn-ok" onclick="submitExtend()">Extend</button>
-        </div>
-    </div>
-</div>
 
 <script>
-let _extendTenantId = null;
-
-function openExtendModal(tenantId, info) {
-    _extendTenantId = tenantId;
-    document.getElementById('extendModalInfo').textContent = info || '';
-    document.getElementById('extendDaysInput').value = 30;
-    document.getElementById('extendModal').classList.add('open');
-    document.getElementById('extendDaysInput').focus();
-}
-function closeExtendModal() {
-    document.getElementById('extendModal').classList.remove('open');
-    _extendTenantId = null;
-}
-function submitExtend() {
-    const days = parseInt(document.getElementById('extendDaysInput').value, 10);
-    if (!days || days < 1) { alert('Enter a valid number of days.'); return; }
-    fetch('../api/super_admin/tenants.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'extend_days', tenant_id: _extendTenantId, days: days })
-    })
-    .then(r => r.json())
-    .then(d => {
-        closeExtendModal();
-        if (d.success) { location.reload(); }
-        else { alert(d.message || 'Failed to extend'); }
-    });
-}
-document.getElementById('extendModal').addEventListener('click', function(e) {
-    if (e.target === this) closeExtendModal();
-});
 
 function changeTenantStatus(tenantId, status) {
     const label = status === 'suspended' ? 'suspend' : 'activate';
