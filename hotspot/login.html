@@ -964,6 +964,16 @@ function pollBuyStatus() {
   fetch(url)
     .then(function (r) { return r.json(); })
     .then(function (d) {
+      /* Paid, but the router hasn't been provisioned yet. Keep waiting rather
+         than submitting credentials the hotspot doesn't know about — doing that
+         bounces the customer back to the sign-in page. */
+      if (d.status === 'processing') {
+        setStep(4);
+        var sub = document.querySelector('#st-4 .step-sub');
+        if (sub) sub.textContent = d.message || 'Setting up your connection…';
+        return;
+      }
+
       if (d.status === 'completed') {
         clearInterval(_buyTimer);
         _buyReqId = null;

@@ -60,7 +60,7 @@ try {
 
         // Fetch client credentials
         $clSt = $pdo->prepare("
-            SELECT mikrotik_username, mikrotik_password, status, account_number
+            SELECT mikrotik_username, mikrotik_password, status, account_number, tenant_id
             FROM clients WHERE id = ? LIMIT 1
         ");
         $clSt->execute([$resolvedClientId]);
@@ -78,6 +78,61 @@ try {
                     ->execute([$resolvedClientId]);
                 $client['status'] = 'active';
             } catch (Throwable $_e) {}
+        }
+
+        // ── Do not hand out credentials before the router knows them ──────────
+        // callback.php flips mpesa_transactions.status to 'completed' BEFORE the
+        // pipeline provisions the router. Returning credentials in that window
+        // made the portal auto-submit a login for a hotspot user that did not
+        // exist yet — RouterOS rejected it and the customer landed back on the
+        // sign-in page, which is exactly the "not authenticated automatically"
+        // complaint. Report 'processing' until provisioning is confirmed.
+        $resolvedTenantId = (int)($client['tenant_id'] ?? $tx['tenant_id'] ?? 0);
+        $provisioned = false;
+        try {
+            $psSt = $pdo->prepare("
+                SELECT 1 FROM router_services
+                WHERE client_id = ? AND status = 'active' LIMIT 1
+            ");
+            $psSt->execute([$resolvedClientId]);
+            $provisioned = (bool)$psSt->fetchColumn();
+        } catch (Throwable $_e) {
+            // router_services missing on this deployment — fall back to assuming
+            // the pipeline handled it rather than blocking the customer forever.
+            $provisioned = true;
+        }
+
+        if (!$provisioned && $resolvedTenantId) {
+            // The pipeline may still be running, or the router was briefly
+            // unreachable. autoProvisionClient() is idempotent, so retrying here
+            // is safe and usually completes on the first poll.
+            try {
+                require_once __DIR__ . '/../../includes/auto_provision.php';
+                $prov = autoProvisionClient($pdo, $resolvedClientId, $resolvedTenantId);
+                $provisioned = (bool)($prov['success'] ?? false);
+            } catch (Throwable $e) {
+                error_log("hotspot_payment_status provision retry [$resolvedClientId]: " . $e->getMessage());
+            }
+        }
+
+        if (!$provisioned) {
+            echo json_encode([
+                'status'  => 'processing',
+                'message' => 'Payment confirmed. Setting up your connection…',
+            ]);
+            exit;
+        }
+
+        // Re-read credentials — provisioning may have just written them
+        $clSt->execute([$resolvedClientId]);
+        $client = $clSt->fetch(PDO::FETCH_ASSOC) ?: $client;
+
+        if (empty($client['mikrotik_username']) || empty($client['mikrotik_password'])) {
+            echo json_encode([
+                'status'  => 'processing',
+                'message' => 'Payment confirmed. Preparing your credentials…',
+            ]);
+            exit;
         }
 
         // Create auto-login token for customer portal

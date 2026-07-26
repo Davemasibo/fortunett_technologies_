@@ -121,6 +121,10 @@ tr:hover td{background:rgba(255,255,255,.035);}
 .btn-suspend:hover{background:rgba(239,68,68,.28);color:#fff;}
 .btn-activate{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.25);}
 .btn-activate:hover{background:rgba(16,185,129,.28);color:#fff;}
+.btn-mark-paid{padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .18s;
+  background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.25);}
+.btn-mark-paid:hover:not(:disabled){background:rgba(16,185,129,.28);color:#fff;}
+.btn-mark-paid:disabled{opacity:.5;cursor:not-allowed;}
 .btn-view{background:rgba(255,255,255,.07);color:var(--neu-muted);border:1px solid var(--neu-border);}
 .btn-view:hover{background:rgba(255,255,255,.13);color:var(--neu-text);}
 .btn-danger{background:linear-gradient(135deg,#b91c1c,#ef4444);color:#fff;border:none;}
@@ -225,10 +229,10 @@ table a:hover{color:#93c5fd;}
         <div class="card">
             <div style="padding:16px 20px;border-bottom:1px solid #f1f5f9;"><h3 style="font-size:15px;font-weight:700;">Invoice History</h3></div>
             <table>
-                <thead><tr><th>Invoice #</th><th>Period</th><th>PPPoE Users</th><th>Hotspot Rev.</th><th>Total Due</th><th>Status</th><th>Paid At</th></tr></thead>
+                <thead><tr><th>Invoice #</th><th>Period</th><th>PPPoE Users</th><th>Hotspot Rev.</th><th>Total Due</th><th>Status</th><th>Paid At</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($invoicesDetail as $inv): ?>
-                <tr>
+                <tr id="inv-row-<?= (int)$inv['id'] ?>">
                     <td><?= htmlspecialchars($inv['invoice_number']) ?></td>
                     <td><?= date('M Y', strtotime($inv['billing_period'])) ?></td>
                     <td><?= $inv['pppoe_user_count'] ?></td>
@@ -236,10 +240,22 @@ table a:hover{color:#93c5fd;}
                     <td><strong>KSH <?= number_format($inv['total_due'], 2) ?></strong></td>
                     <td><span class="badge badge-<?= $inv['status'] ?>"><?= ucfirst($inv['status']) ?></span></td>
                     <td><?= $inv['paid_at'] ? date('d M Y', strtotime($inv['paid_at'])) : '—' ?></td>
+                    <td style="text-align:right;">
+                        <?php if ($inv['status'] !== 'paid'): ?>
+                        <button class="btn-mark-paid"
+                                onclick="markInvoicePaid(<?= (int)$inv['id'] ?>, '<?= htmlspecialchars($inv['invoice_number'], ENT_QUOTES) ?>', '<?= number_format($inv['total_due'], 2) ?>', this)">
+                            Mark Paid
+                        </button>
+                        <?php else: ?>
+                        <span style="color:#94a3b8;font-size:12px;">
+                            <?= htmlspecialchars($inv['transaction_ref'] ?? '') ?>
+                        </span>
+                        <?php endif; ?>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
                 <?php if (empty($invoicesDetail)): ?>
-                <tr class="empty-row"><td colspan="7">No invoices generated yet.</td></tr>
+                <tr class="empty-row"><td colspan="8">No invoices generated yet.</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -400,6 +416,49 @@ function saveNotes(e, tenantId) {
     })
     .then(r => r.json())
     .then(d => { alert(d.success ? 'Notes saved.' : (d.message || 'Failed')); });
+}
+
+/* Mark a platform invoice as manually settled (bank transfer, cash, off-platform
+   M-Pesa). The reference is optional but strongly encouraged — it is the only
+   audit trail linking the invoice to the money that actually arrived. */
+function markInvoicePaid(invoiceId, invoiceNumber, amount, btn) {
+    const ref = prompt(
+        'Mark ' + invoiceNumber + ' (KSH ' + amount + ') as PAID.\n\n' +
+        'Enter the payment reference (M-Pesa code, bank ref, or note).\n' +
+        'Leave blank to auto-generate one.',
+        ''
+    );
+    if (ref === null) return;   // cancelled
+
+    const tenantId = <?= isset($_GET['id']) ? (int)$_GET['id'] : 0 ?>;
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    fetch('../api/super_admin/tenants.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'mark_invoice_paid',
+            tenant_id: tenantId,
+            invoice_id: invoiceId,
+            transaction_ref: ref.trim()
+        })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) { location.reload(); }
+        else {
+            btn.disabled = false;
+            btn.textContent = original;
+            alert(d.message || 'Could not mark the invoice as paid.');
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.textContent = original;
+        alert('Network error.');
+    });
 }
 </script>
 </body>

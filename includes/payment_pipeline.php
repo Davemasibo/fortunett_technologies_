@@ -329,55 +329,9 @@ function process_payment_success(
         $results['steps']['radius'] = false;
     }
 
-    // ── 9. SMS notification ────────────────────────────────────────────────────
-    try {
-        if (!empty($client['phone'])) {
-            // Avoid duplicate SMS: check sms_logs if table exists
-            $alreadySent = false;
-            try {
-                $smsCk = $pdo->prepare("
-                    SELECT 1 FROM sms_logs
-                    WHERE client_id = ? AND tenant_id = ? AND reference = ? LIMIT 1
-                ");
-                $smsCk->execute([$clientId, $tenantId, $receipt]);
-                $alreadySent = (bool)$smsCk->fetchColumn();
-            } catch (Throwable $_e) { /* table may not exist */ }
-
-            if (!$alreadySent) {
-                $expiryHuman = $expiryDate ? date('d M Y H:i', strtotime($expiryDate)) : 'N/A';
-                $pkgName     = $package['name'] ?? 'your plan';
-                $firstName   = explode(' ', trim($results['client_name']))[0];
-                $msg = "Hi {$firstName}, KSH " . number_format($amount, 2)
-                     . " received. {$pkgName} active until {$expiryHuman}. Ref: {$receipt}. Thank you!";
-
-                require_once __DIR__ . '/../classes/SMSHelper.php';
-                $sms = new SMSHelper($pdo, $tenantId);
-                $smsResult = $sms->send($client['phone'], $msg, $clientId);
-                $results['steps']['sms'] = $smsResult['success'] ?? false;
-
-                // Record in sms_logs if the table exists (best-effort)
-                try {
-                    $pdo->prepare("
-                        INSERT INTO sms_logs (client_id, tenant_id, phone, message, status, reference)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ")->execute([
-                        $clientId, $tenantId, $client['phone'], $msg,
-                        ($smsResult['success'] ?? false) ? 'sent' : 'failed',
-                        $receipt,
-                    ]);
-                } catch (Throwable $_e) { /* sms_logs may not exist */ }
-            } else {
-                $results['steps']['sms'] = 'already_sent';
-            }
-        } else {
-            $results['steps']['sms'] = 'no_phone';
-        }
-    } catch (Throwable $e) {
-        error_log("pipeline sms [$receipt]: " . $e->getMessage());
-        $results['steps']['sms'] = false;
-    }
-
-    // ── 10. Auto-provision on MikroTik ─────────────────────────────────────────
+    // ── 9. Auto-provision on MikroTik ──────────────────────────────────────────
+    // Runs BEFORE the customer is notified: the SMS and email carry their login
+    // credentials, and those are only final once the router has been programmed.
     try {
         if ($resolvedPackageId) {
             $provResult = autoProvisionClient($pdo, $clientId, $tenantId);
@@ -413,6 +367,107 @@ function process_payment_success(
     } catch (Throwable $e) {
         error_log("pipeline provision [$receipt]: " . $e->getMessage());
         $results['steps']['provision'] = false;
+    }
+
+    // ── 10. Notify the customer — SMS + email, including their credentials ─────
+    // Deliberately after provisioning: mikrotik_username/password are written by
+    // autoProvisionClient(), so sending earlier delivered a receipt with no way
+    // to actually log in. Customers then had to be told their password by hand.
+    $creds = ['username' => '', 'password' => ''];
+    try {
+        $cr = $pdo->prepare("SELECT mikrotik_username, mikrotik_password, email FROM clients WHERE id = ? AND tenant_id = ? LIMIT 1");
+        $cr->execute([$clientId, $tenantId]);
+        $crRow = $cr->fetch(PDO::FETCH_ASSOC) ?: [];
+        $creds['username'] = (string)($crRow['mikrotik_username'] ?? '');
+        $creds['password'] = (string)($crRow['mikrotik_password'] ?? '');
+        $client['email']   = $crRow['email'] ?? ($client['email'] ?? '');
+    } catch (Throwable $_e) {}
+
+    $expiryHuman = $expiryDate ? date('d M Y H:i', strtotime($expiryDate)) : 'N/A';
+    $pkgName     = $package['name'] ?? 'your plan';
+    $firstName   = explode(' ', trim($results['client_name']))[0] ?: 'there';
+    $hasCreds    = $creds['username'] !== '' && $creds['password'] !== '';
+
+    // ── 10a. SMS ───────────────────────────────────────────────────────────────
+    try {
+        if (!empty($client['phone'])) {
+            // sms_logs.reference makes this idempotent across Safaricom's retries
+            $alreadySent = false;
+            try {
+                $smsCk = $pdo->prepare("SELECT 1 FROM sms_logs WHERE client_id = ? AND tenant_id = ? AND reference = ? LIMIT 1");
+                $smsCk->execute([$clientId, $tenantId, $receipt]);
+                $alreadySent = (bool)$smsCk->fetchColumn();
+            } catch (Throwable $_e) { /* table may not exist */ }
+
+            if (!$alreadySent) {
+                $msg = "Hi {$firstName}, KSH " . number_format($amount, 2)
+                     . " received. {$pkgName} active until {$expiryHuman}.";
+                if ($hasCreds) {
+                    $msg .= " Login: {$creds['username']} / {$creds['password']}";
+                }
+                $msg .= " Ref: {$receipt}. Thank you!";
+
+                require_once __DIR__ . '/../classes/SMSHelper.php';
+                $sms       = new SMSHelper($pdo, $tenantId);
+                $smsResult = $sms->send($client['phone'], $msg, $clientId);
+                $results['steps']['sms'] = $smsResult['success'] ?? false;
+
+                try {
+                    $pdo->prepare("
+                        INSERT INTO sms_logs (client_id, tenant_id, phone, message, status, reference)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ")->execute([
+                        $clientId, $tenantId, $client['phone'], $msg,
+                        ($smsResult['success'] ?? false) ? 'sent' : 'failed',
+                        $receipt,
+                    ]);
+                } catch (Throwable $_e) { /* sms_logs may not exist */ }
+            } else {
+                $results['steps']['sms'] = 'already_sent';
+            }
+        } else {
+            $results['steps']['sms'] = 'no_phone';
+        }
+    } catch (Throwable $e) {
+        error_log("pipeline sms [$receipt]: " . $e->getMessage());
+        $results['steps']['sms'] = false;
+    }
+
+    // ── 10b. Email ─────────────────────────────────────────────────────────────
+    try {
+        if (!empty($client['email']) && filter_var($client['email'], FILTER_VALIDATE_EMAIL)) {
+            $credBlock = $hasCreds
+                ? '<div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin:16px 0">'
+                . '<div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Your login details</div>'
+                . '<div style="font-family:monospace;font-size:15px;color:#0f172a">'
+                . 'Username: <strong>' . htmlspecialchars($creds['username']) . '</strong><br>'
+                . 'Password: <strong>' . htmlspecialchars($creds['password']) . '</strong>'
+                . '</div></div>'
+                : '';
+
+            $body = '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:520px;color:#0f172a">'
+                  . '<h2 style="margin:0 0 4px;font-size:20px">Payment received</h2>'
+                  . '<p style="margin:0 0 16px;color:#475569">Hi ' . htmlspecialchars($firstName) . ', thank you for your payment.</p>'
+                  . '<table style="width:100%;border-collapse:collapse;font-size:14px">'
+                  . '<tr><td style="padding:6px 0;color:#64748b">Amount</td><td style="padding:6px 0;text-align:right"><strong>KSH ' . number_format($amount, 2) . '</strong></td></tr>'
+                  . '<tr><td style="padding:6px 0;color:#64748b">Plan</td><td style="padding:6px 0;text-align:right">' . htmlspecialchars($pkgName) . '</td></tr>'
+                  . '<tr><td style="padding:6px 0;color:#64748b">Active until</td><td style="padding:6px 0;text-align:right">' . htmlspecialchars($expiryHuman) . '</td></tr>'
+                  . '<tr><td style="padding:6px 0;color:#64748b">Reference</td><td style="padding:6px 0;text-align:right;font-family:monospace">' . htmlspecialchars($receipt) . '</td></tr>'
+                  . '</table>'
+                  . $credBlock
+                  . '<p style="margin:16px 0 0;color:#94a3b8;font-size:12px">Keep these details safe — you will need them to sign in.</p>'
+                  . '</div>';
+
+            require_once __DIR__ . '/../classes/EmailHelper.php';
+            $mailer = new EmailHelper($pdo, $tenantId);
+            $mailRes = $mailer->send($client['email'], 'Payment received — ' . $pkgName, $body, $clientId);
+            $results['steps']['email'] = is_array($mailRes) ? ($mailRes['success'] ?? false) : (bool)$mailRes;
+        } else {
+            $results['steps']['email'] = 'no_email';
+        }
+    } catch (Throwable $e) {
+        error_log("pipeline email [$receipt]: " . $e->getMessage());
+        $results['steps']['email'] = false;
     }
 
     // ── 11. Activity log ───────────────────────────────────────────────────────

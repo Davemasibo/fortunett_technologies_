@@ -91,6 +91,22 @@ Two rules that must not be relaxed:
 
 Validation handlers **accept unresolved references** rather than returning `C2B00011`. Bouncing the payment at the till strands a customer who mistyped one character; confirmation logs it as UNROUTABLE for a human instead.
 
+### Speed Limit Enforcement
+Rate limits live on the **package profile only**, never on the individual user.
+
+- `rate-limit` format is `rx/tx` from the router's view — `{upload}M/{download}M`. See [[feedback_mikrotik_rate_limit]].
+- A `rate-limit` set directly on an `/ip hotspot user` or `/ppp secret` **overrides the profile's**. Provisioning blanks it explicitly (`=rate-limit=`) on every add and update so the profile is the single source of truth. A leftover per-user value is how a 5M plan delivered line speed.
+- The profile name must never resolve to `default` — RouterOS's default profile has no rate-limit, so falling back to it disables the cap entirely. `autoProvisionClient()` generates `pkg{id}-{slug}` when the package has no explicit `mikrotik_profile`.
+- Never invent a speed. Missing `download_speed` used to default to 10 Mbps, silently over-delivering; it now provisions uncapped and logs loudly so the misconfigured package is findable.
+- Changing a profile's rate-limit does not affect established sessions — kick them (`kickPPPoESession` / `kickHotspotSession`) or the old rate persists.
+
+### Expiry Enforcement
+`cron/check_expiry.php` runs every 15 min: `active` → `grace` (throttled) after expiry, → `inactive` (disabled + kicked) after `$graceDays`.
+
+Two rules learned the hard way:
+- **Never hard-code an `ALTER TABLE … MODIFY … ENUM(…)` in a cron.** This file used to reassert `ENUM('active','inactive','suspended','grace')` every 15 minutes, deleting the `pending` and `expired` members and re-breaking the hotspot STK push within the quarter hour of every migration. Use `ensurePaymentStatusEnums()`, which only ever adds members.
+- Status-driven passes alone are not enough. A client already marked inactive — by an admin, a failed run, or an unreachable router — is never revisited, so their session stays up forever. The **enforcement sweep** at the end works from the router's view instead: list live PPPoE/hotspot sessions and cut any whose client is not currently `active` with a future expiry. It only touches usernames that map to a client of that tenant, so the operator's own admin links are never severed.
+
 ### Schema Guards
 `includes/schema_guard.php` repairs schema drift in place when a deployment is missing a migration. Call `ensurePaymentStatusEnums($pdo)` at the top of any endpoint on the payment path. One-shot repair: `php tools/repair_status_enums.php` (or `sql/migrations/2026-07-26-payment-autoactivation.sql`).
 

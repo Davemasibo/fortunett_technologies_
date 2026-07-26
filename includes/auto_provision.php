@@ -63,15 +63,41 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
             ?: ('user_' . substr(preg_replace('/\D/', '', $client['phone'] ?? ''), -8));
         $password = $client['mikrotik_password'] ?: bin2hex(random_bytes(4));
 
-        $downloadSpeed = max(1, (int)($package['download_speed'] ?? 10));
-        $uploadSpeed   = max(1, (int)($package['upload_speed']   ?? 5));
-        // RouterOS rate-limit format: rx-rate/tx-rate (router perspective)
-        // rx-rate = client upload speed, tx-rate = client download speed
-        $rateLimit     = "{$uploadSpeed}M/{$downloadSpeed}M";
-        // Use the package-level profile (one shared profile per package, not per user).
-        $profileName   = $package['mikrotik_profile']
-            ?: preg_replace('/[^a-zA-Z0-9-]/', '', strtolower($package['name']));
-        if (empty($profileName)) $profileName = 'default';
+        // Speeds come from the package and nowhere else. The old code defaulted a
+        // missing download_speed to 10 Mbps, which silently handed out 10 Mbps on
+        // any package whose speed column was NULL — the customer got far more than
+        // they paid for and nothing in the UI explained why.
+        $downloadSpeed = (int)($package['download_speed'] ?? 0);
+        $uploadSpeed   = (int)($package['upload_speed']   ?? 0);
+
+        if ($downloadSpeed > 0 && $uploadSpeed <= 0) {
+            // Only a download cap configured — mirror it so upload is capped too
+            // rather than left wide open.
+            $uploadSpeed = $downloadSpeed;
+        }
+
+        // RouterOS rate-limit format: rx-rate/tx-rate from the ROUTER's view.
+        // rx = what the client uploads, tx = what the client downloads.
+        $rateLimit = ($downloadSpeed > 0)
+            ? "{$uploadSpeed}M/{$downloadSpeed}M"
+            : '';   // empty = uncapped; only when the package genuinely has no speed
+
+        if ($rateLimit === '') {
+            error_log(sprintf(
+                'autoProvisionClient(%d): package #%d "%s" has no download_speed — provisioning UNCAPPED. Set a speed on the package to enforce a limit.',
+                $clientId, (int)$package['id'], $package['name'] ?? '?'
+            ));
+        }
+
+        // One shared profile per package. It must never resolve to "default":
+        // RouterOS's default profile carries no rate-limit, so falling back to it
+        // silently disabled the speed cap entirely.
+        $profileName = trim((string)($package['mikrotik_profile'] ?? ''));
+        if ($profileName === '' || strcasecmp($profileName, 'default') === 0) {
+            $slug = preg_replace('/[^a-zA-Z0-9-]/', '', strtolower($package['name'] ?? ''));
+            // Package id keeps it unique — two packages can sanitise to the same slug
+            $profileName = 'pkg' . (int)$package['id'] . ($slug !== '' ? '-' . substr($slug, 0, 20) : '');
+        }
 
         // ── Connect to router — prefer VPN IP (WireGuard) over public IP ─────
         $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
@@ -221,11 +247,14 @@ function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, s
     }
 
     if ($secretId !== null) {
+        // rate-limit blanked for the same reason as hotspot users: a value on the
+        // secret itself overrides the profile's cap in RouterOS.
         $api->comm('/ppp/secret/set', [
-            '=.id='      . $secretId,
-            '=password=' . $password,
-            '=profile='  . $profileName,
+            '=.id='       . $secretId,
+            '=password='  . $password,
+            '=profile='   . $profileName,
             '=service=pppoe',
+            '=rate-limit=',
         ]);
         // Re-enable in case it was disabled
         $api->comm('/ppp/secret/enable', ['=.id=' . $secretId]);
@@ -259,26 +288,42 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
     // ── Ensure package profile exists with correct rate-limit ─────────────────
     // One profile per package; create on first use, update rate-limit on every
     // provisioning call so speed caps are enforced even on new/re-added routers.
-    if ($profileName !== 'default') {
-        $profiles = $api->comm('/ip/hotspot/user/profile/print', ['?name=' . $profileName]);
-        $profileId = null;
-        foreach ($profiles as $p) {
-            if (isset($p['!re']) && ($p['name'] ?? '') === $profileName) { $profileId = $p['.id'] ?? null; break; }
-        }
-        if ($profileId !== null) {
-            // Profile exists — enforce rate-limit in case it changed or was never set
-            $api->comm('/ip/hotspot/user/profile/set', [
-                '=.id='          . $profileId,
-                '=rate-limit='   . $rateLimit,
-                '=shared-users=' . $sharedUsers,
-            ]);
-        } else {
-            $api->comm('/ip/hotspot/user/profile/add', [
-                '=name='         . $profileName,
-                '=rate-limit='   . $rateLimit,
-                '=shared-users=' . $sharedUsers,
-            ]);
-        }
+    // $profileName is guaranteed by the caller never to be "default" — RouterOS's
+    // default profile has no rate-limit, so using it means no cap at all.
+    $profiles = $api->comm('/ip/hotspot/user/profile/print', ['?name=' . $profileName]);
+    $profileId = null;
+    foreach ($profiles as $p) {
+        if (isset($p['!re']) && ($p['name'] ?? '') === $profileName) { $profileId = $p['.id'] ?? null; break; }
+    }
+    if ($profileId !== null) {
+        // Profile exists — enforce rate-limit in case it changed or was never set
+        $api->comm('/ip/hotspot/user/profile/set', [
+            '=.id='          . $profileId,
+            '=rate-limit='   . $rateLimit,
+            '=shared-users=' . $sharedUsers,
+        ]);
+    } else {
+        $api->comm('/ip/hotspot/user/profile/add', [
+            '=name='         . $profileName,
+            '=rate-limit='   . $rateLimit,
+            '=shared-users=' . $sharedUsers,
+        ]);
+    }
+
+    // Read back and confirm the cap actually stuck. A profile that silently keeps
+    // an old or empty rate-limit is exactly how customers end up on line speed.
+    if ($rateLimit !== '') {
+        try {
+            $verify = $api->comm('/ip/hotspot/user/profile/print', ['?name=' . $profileName]);
+            foreach ($verify as $v) {
+                if (!isset($v['!re']) || ($v['name'] ?? '') !== $profileName) continue;
+                $actual = trim($v['rate-limit'] ?? '');
+                if ($actual !== $rateLimit) {
+                    error_log("_provisionHotspot: profile '$profileName' rate-limit is '$actual', expected '$rateLimit'");
+                }
+                break;
+            }
+        } catch (Throwable $_e) { /* verification only */ }
     }
 
     // ── Upsert hotspot user ───────────────────────────────────────────────────
@@ -292,11 +337,18 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
     if ($userId !== null) {
         // Credential update — clear MAC so device must re-auth at the captive portal
         // with the new password rather than bypassing via MAC auth.
+        //
+        // rate-limit is cleared deliberately: a value set directly on the hotspot
+        // USER overrides the profile's in RouterOS. Any leftover per-user limit
+        // (set by an older build or by hand in WinBox) silently beat the package
+        // cap, which is how a 5M plan delivered line speed. Blanking it here makes
+        // the package profile the single source of truth.
         $api->comm('/ip/hotspot/user/set', [
             '=.id='         . $userId,
             '=password='    . $password,
             '=profile='     . $profileName,
             '=mac-address=',
+            '=rate-limit=',
         ]);
         // Re-enable in case it was disabled by expiry/suspension
         $api->comm('/ip/hotspot/user/enable', ['=.id=' . $userId]);
@@ -305,11 +357,12 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
     } else {
         $isNewUser = true;
         $addResp = $api->comm('/ip/hotspot/user/add', [
-            '=name='     . $username,
-            '=password=' . $password,
-            '=profile='  . $profileName,
-            '=comment='  . $comment,
-            '=server='   . $hotspotServer,
+            '=name='       . $username,
+            '=password='   . $password,
+            '=profile='    . $profileName,
+            '=comment='    . $comment,
+            '=server='     . $hotspotServer,
+            '=rate-limit=',   // profile governs — never a per-user override
         ]);
         // Check for RouterOS trap (error) — e.g. hotspot not configured on router
         foreach ($addResp as $r) {

@@ -2,7 +2,7 @@
 /**
  * Super Admin — Tenant Management API
  * POST /api/super_admin/tenants.php
- * Actions: set_status | save_notes | set_plan
+ * Actions: set_status | save_notes | set_plan | extend_days | mark_invoice_paid
  */
 header('Content-Type: application/json');
 
@@ -135,12 +135,50 @@ try {
                 echo json_encode(['success' => false, 'message' => 'invoice_id required']);
                 exit;
             }
-            $pdo->prepare("
+            $upd = $pdo->prepare("
                 UPDATE platform_invoices
                 SET status = 'paid', paid_at = NOW(), payment_method = 'manual', transaction_ref = ?
                 WHERE id = ? AND tenant_id = ?
-            ")->execute([$ref ?: 'MANUAL-' . strtoupper(bin2hex(random_bytes(3))), $invoiceId, $tenantId]);
-            echo json_encode(['success' => true, 'message' => 'Invoice marked as paid']);
+            ");
+            $upd->execute([$ref ?: 'MANUAL-' . strtoupper(bin2hex(random_bytes(3))), $invoiceId, $tenantId]);
+
+            if ($upd->rowCount() === 0) {
+                echo json_encode(['success' => false, 'message' => 'Invoice not found for this tenant']);
+                exit;
+            }
+
+            // Settling the last outstanding invoice should restore service now, not
+            // whenever check_suspensions.php next runs. Waiting up to 24h after the
+            // operator has confirmed payment is the sort of delay that generates
+            // support calls.
+            $message = 'Invoice marked as paid';
+            try {
+                $out = $pdo->prepare("
+                    SELECT COUNT(*) FROM platform_invoices
+                    WHERE tenant_id = ? AND status <> 'paid'
+                ");
+                $out->execute([$tenantId]);
+                $stillOwing = (int)$out->fetchColumn();
+
+                if ($stillOwing === 0) {
+                    $st = $pdo->prepare("SELECT status FROM tenants WHERE id = ? LIMIT 1");
+                    $st->execute([$tenantId]);
+                    if ($st->fetchColumn() === 'suspended') {
+                        $pdo->prepare("
+                            UPDATE tenants
+                            SET status = 'active', suspended_at = NULL, suspended_reason = NULL
+                            WHERE id = ?
+                        ")->execute([$tenantId]);
+                        $message = 'Invoice marked as paid — tenant reactivated (no outstanding invoices)';
+                    }
+                } else {
+                    $message = "Invoice marked as paid — {$stillOwing} invoice(s) still outstanding";
+                }
+            } catch (Throwable $e) {
+                error_log('mark_invoice_paid reactivation check: ' . $e->getMessage());
+            }
+
+            echo json_encode(['success' => true, 'message' => $message]);
             break;
 
         default:
