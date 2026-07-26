@@ -22,6 +22,7 @@ require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../includes/auto_provision.php';
 require_once __DIR__ . '/../../includes/payment_pipeline.php';
 require_once __DIR__ . '/../../includes/account_resolver.php';
+require_once __DIR__ . '/../../includes/platform_billing.php';
 require_once __DIR__ . '/../../includes/schema_guard.php';
 
 // The pipeline flips clients.status to 'active'; guard the enums so a missing
@@ -57,6 +58,24 @@ if (empty($accountRef) || $amount <= 0) {
 }
 
 try {
+    // ── Is this a TENANT paying FortuNett, not an end customer? ───────────────
+    // The same paybill serves both flows, so the reference decides. Checked
+    // first because a tenant billing code ("FN5") must never fall through to
+    // end-customer matching and get credited to somebody's internet.
+    $platformTenantId = resolvePlatformBillingRef($pdo, $accountRef);
+    if ($platformTenantId) {
+        $res = applyPlatformPayment(
+            $pdo, $platformTenantId, $amount, $transactionId,
+            $phone, $accountRef, 'c2b', $content
+        );
+        file_put_contents($logDir . '/mpesa_c2b.log',
+            date('Y-m-d H:i:s') . " PLATFORM BILLING: tenant={$platformTenantId} ref={$accountRef} "
+            . "amount={$amount} tx={$transactionId} -> " . ($res['ok'] ? $res['message'] : 'FAILED: ' . $res['message']) . "\n",
+            FILE_APPEND | LOCK_EX);
+        echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
+        exit;
+    }
+
     // ── Work out who paid ─────────────────────────────────────────────────────
     // Accepts the account number, the customer's phone (what the captive
     // portal's paybill instructions actually tell them to enter), PREFIX+id, or

@@ -128,14 +128,36 @@ try {
             WHERE checkout_request_id = ?
         ")->execute([$resultCode, $resultDesc, $receipt, $content, $checkoutRequestId]);
 
-        // Handle billing invoice payment (no client_id, result_desc starts with BILLING:)
+        // ── Tenant settling their own platform invoice by STK ────────────────
+        // Marked by result_desc "BILLING:<id>" when the STK was initiated from
+        // the tenant's billing page (no client_id — this is tenant → FortuNett).
+        //
+        // This used to flip tenant_bills.status only. platform_invoices, which is
+        // what check_suspensions.php actually enforces and what the super admin
+        // sees, was never touched — so a tenant paid, watched their bill go
+        // green, and was suspended that night anyway. Everything now settles
+        // through applyPlatformPayment() against platform_invoices.
         if ($tx && !$tx['client_id'] && str_starts_with((string)($tx['result_desc'] ?? ''), 'BILLING:')) {
-            $resolvedTenantId = $tenant_id ?? ($tx['tenant_id'] ?? null);
+            $resolvedTenantId = (int)($tenant_id ?? ($tx['tenant_id'] ?? 0));
             $billId = (int)substr($tx['result_desc'], 8);
-            if ($billId && $resolvedTenantId) {
-                $pdo->prepare(
-                    "UPDATE tenant_bills SET status = 'paid' WHERE id = ? AND tenant_id = ?"
-                )->execute([$billId, $resolvedTenantId]);
+
+            if ($resolvedTenantId) {
+                require_once __DIR__ . '/../../includes/platform_billing.php';
+                $res = applyPlatformPayment(
+                    $pdo, $resolvedTenantId, (float)($tx['amount'] ?? 0),
+                    $receipt ?: $checkoutRequestId, (string)($tx['phone_number'] ?? ''),
+                    'STK', 'stk', $content
+                );
+                error_log("[callback] platform billing tenant=$resolvedTenantId: " . $res['message']);
+
+                // Keep the legacy row in step so the tenant's page and any old
+                // reports do not contradict the invoice.
+                if ($billId) {
+                    try {
+                        $pdo->prepare("UPDATE tenant_bills SET status = 'paid', paid_at = NOW(), transaction_ref = ? WHERE id = ? AND tenant_id = ?")
+                            ->execute([$receipt ?: $checkoutRequestId, $billId, $resolvedTenantId]);
+                    } catch (Throwable $_e) {}
+                }
             }
         }
 

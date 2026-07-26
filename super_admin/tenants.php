@@ -152,6 +152,7 @@ table a:hover{color:#93c5fd;}
         <li><a href="index.php"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a></li>
         <li><a href="tenants.php" class="active"><i class="fas fa-building"></i><span>Tenants</span></a></li>
         <li><a href="billing.php"><i class="fas fa-file-invoice-dollar"></i><span>Platform Billing</span></a></li>
+        <li><a href="collections.php"><i class="fas fa-hand-holding-dollar"></i><span>Collections</span></a></li>
         <li><a href="plans.php"><i class="fas fa-layer-group"></i><span>Subscription Plans</span></a></li>
         <li><a href="mpesa.php"><i class="fas fa-mobile-alt"></i><span>Platform M-Pesa</span></a></li>
         <li><a href="settings.php"><i class="fas fa-cogs"></i><span>System Settings</span></a></li>
@@ -219,6 +220,30 @@ table a:hover{color:#93c5fd;}
                 <textarea id="notesField" rows="3" style="width:100%;border:1px solid var(--neu-border);border-radius:7px;padding:9px;font-size:13px;resize:vertical;"><?= htmlspecialchars($detailTenant['notes'] ?? '') ?></textarea>
                 <button type="submit" class="btn-sm btn-view" style="margin-top:8px;"><i class="fas fa-save"></i> Save Notes</button>
             </form>
+        </div>
+
+        <?php
+        require_once __DIR__ . '/../includes/platform_billing.php';
+        $billingCode = platformBillingCode($pdo, (int)$_GET['id']);
+        $platformPaybill = '';
+        try {
+            $platformPaybill = (string)$pdo->query("SELECT shortcode FROM platform_mpesa_config LIMIT 1")->fetchColumn();
+        } catch (Throwable $_e) {}
+        ?>
+        <div class="card" style="margin-bottom:18px;">
+            <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+                <div>
+                    <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">How this tenant pays you</h3>
+                    <p style="font-size:13px;color:var(--neu-muted);margin:0;">
+                        Paybill <strong style="color:var(--neu-text);"><?= htmlspecialchars($platformPaybill ?: 'not configured') ?></strong>,
+                        account <strong style="color:#93c5fd;font-family:ui-monospace,Menlo,monospace;"><?= htmlspecialchars($billingCode) ?></strong>.
+                        Payments settle their oldest unpaid invoice first and reactivate them automatically.
+                    </p>
+                </div>
+                <a href="collections.php?tab=in" class="btn-sm btn-view" style="text-decoration:none;flex-shrink:0;">
+                    <i class="fas fa-hand-holding-dollar"></i> View collections
+                </a>
+            </div>
         </div>
 
         <?php

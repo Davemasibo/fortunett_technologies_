@@ -81,25 +81,39 @@ $invoiceNumber = 'INV-' . $orgSlug . '/' . $invoiceDate;
 $dueDate       = date('d M Y', strtotime('+14 days'));
 $issueDate     = date('d M Y');
 
-// --- Upsert into tenant_bills ---
-$checkBill = $pdo->prepare("SELECT id FROM tenant_bills WHERE tenant_id = ? AND billing_period = ?");
-$checkBill->execute([$tenant_id, $currentMonthStart]);
-$billId = $checkBill->fetchColumn();
+// --- Bills come from platform_invoices, the same rows the super admin sees ---
+// This page used to compute its own figures into tenant_bills on every view.
+// That table is invisible to cron/check_suspensions.php, so a tenant could pay
+// here, see "Paid", and still be suspended overnight against an unpaid
+// platform_invoices row they were never shown. One table now, one truth.
+require_once __DIR__ . '/includes/platform_billing.php';
+ensureCurrentPlatformInvoice($pdo, $tenant_id);
 
-try {
-    if ($billId) {
-        $upd = $pdo->prepare("UPDATE tenant_bills SET total_collections = ?, base_fee = ?, commission_amount = ? WHERE id = ? AND status = 'pending'");
-        $upd->execute([$currentRevenue, $pppoeSubtotal, $hotspotFee, $billId]);
-    } else {
-        $ins = $pdo->prepare("INSERT INTO tenant_bills (tenant_id, billing_period, total_collections, base_fee, commission_rate, commission_amount, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')");
-        $ins->execute([$tenant_id, $currentMonthStart, $currentRevenue, $pppoeSubtotal, 3, $hotspotFee]);
-    }
-} catch (Exception $e) {}
-
-// --- Fetch All Bills ---
-$billsStmt = $pdo->prepare("SELECT * FROM tenant_bills WHERE tenant_id = ? ORDER BY billing_period DESC");
+// Aliased to the column names this page's markup already expects, so the
+// existing UI keeps working against the new source.
+$billsStmt = $pdo->prepare("
+    SELECT id,
+           invoice_number,
+           billing_period,
+           hotspot_collections            AS total_collections,
+           pppoe_subtotal                 AS base_fee,
+           hotspot_commission_rate        AS commission_rate,
+           hotspot_commission             AS commission_amount,
+           total_due,
+           COALESCE(amount_paid, 0)       AS amount_paid,
+           GREATEST(total_due - COALESCE(amount_paid,0), 0) AS balance_due,
+           status,
+           paid_at,
+           transaction_ref
+    FROM platform_invoices
+    WHERE tenant_id = ?
+    ORDER BY billing_period DESC
+");
 $billsStmt->execute([$tenant_id]);
 $bills = $billsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// The tenant's permanent paybill reference, shown alongside the manual option
+$platformBillingCode = platformBillingCode($pdo, $tenant_id);
 
 // Current pending bill
 $currentBill = null;
@@ -108,6 +122,19 @@ foreach ($bills as $b) {
         $currentBill = $b;
         break;
     }
+}
+
+// Display the invoice's stored figures rather than the values recomputed above.
+// The two are calculated the same way, but only the stored row is what the
+// tenant is actually charged and what the suspension engine enforces — showing
+// anything else means the amount on screen can drift from the amount owed.
+if ($currentBill) {
+    $pppoeSubtotal = (float)$currentBill['base_fee'];
+    $hotspotFee    = (float)$currentBill['commission_amount'];
+    $currentRevenue = (float)$currentBill['total_collections'];
+    $hotspotRate   = (float)$currentBill['commission_rate'];
+    $totalDue      = (float)$currentBill['balance_due'];   // what is still owed
+    $pppoeCount    = (int)($currentBill['pppoe_user_count'] ?? $pppoeCount);
 }
 
 // --- Platform Collections (payments via FortuNett shared paybill) ---
@@ -591,9 +618,11 @@ include 'includes/sidebar.php';
             <div style="font-size:12px; color:#9CA3AF; margin-top:4px;">Total Due</div>
         </div>
         <?php
-        // Always use live-computed amounts; only take id and status from DB record
+        // Figures come from the stored invoice (see above) so the modal, the
+        // STK amount and the super admin's view can never disagree.
         $viewBill = [
             'id'                => $currentBill['id'] ?? 0,
+            'invoice_number'    => $currentBill['invoice_number'] ?? '',
             'billing_period'    => $currentMonthStart,
             'total_collections' => $currentRevenue,
             'base_fee'          => $pppoeSubtotal,
@@ -601,7 +630,10 @@ include 'includes/sidebar.php';
             'commission_amount' => $hotspotFee,
             'pppoe_count'       => $pppoeCount,
             'pppoe_rate'        => $pppoeRate,
+            'amount_paid'       => (float)($currentBill['amount_paid'] ?? 0),
+            'balance_due'       => (float)($currentBill['balance_due'] ?? $totalDue),
             'status'            => $currentBill['status'] ?? 'pending',
+            'billing_code'      => $platformBillingCode,
         ];
         ?>
         <button class="view-invoice-btn" onclick='openInvoiceModal(<?php echo json_encode($viewBill); ?>)'>
