@@ -295,7 +295,8 @@ table a:hover{color:#93c5fd;}
                             No end date set — this tenant is never date-blocked.
                         <?php elseif ($accessExpired): ?>
                             <span style="color:#fcd34d;font-weight:600;">
-                                Expired <?= saRemainingHuman(time() - $accessTs) ?> ago
+                                <?= $accessField === 'trial_ends_at' ? 'Trial ended' : 'Subscription ended' ?>
+                                <?= saRemainingHuman(time() - $accessTs) ?> ago
                                 (<?= date('D d M Y, H:i', $accessTs) ?>).
                             </span>
                             Their team is being redirected to <code style="color:#93c5fd;">billing.php?<?= $accessField === 'trial_ends_at' ? 'trial_expired' : 'subscription_expired' ?>=1</code> on every page.
@@ -513,7 +514,8 @@ table a:hover{color:#93c5fd;}
                         if ($lclGated && $lclTs < time()):
                         ?>
                         <br><small style="color:#fcd34d;font-size:11px;" title="Locked out by date — extend to restore access">
-                            <i class="fas fa-hourglass-end"></i> date expired
+                            <i class="fas fa-hourglass-end"></i>
+                            <?= $t['status'] === 'trial' ? 'trial ended' : 'subscription ended' ?>
                         </small>
                         <?php elseif ($lclGated): ?>
                         <br><small style="color:var(--neu-muted);font-size:11px;" title="<?= date('D d M Y, H:i', $lclTs) ?>">

@@ -150,8 +150,17 @@ table a:hover{color:#93c5fd;}
 /* Alerts */
 .alert-success{background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);color:#6ee7b7;border-radius:9px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:14px;}
 .alert-error{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:#fca5a5;border-radius:9px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:14px;}
-/* Edit form panel */
-.edit-panel{background:var(--neu-s2);border-radius:14px;border:1px solid var(--neu-border);box-shadow:14px 14px 28px rgba(0,0,0,.5),-7px -7px 18px rgba(255,255,255,.035),0 0 0 1px var(--neu-border);margin-bottom:24px;overflow:hidden;}
+/* Edit form — a real modal above all chrome.
+   It used to be an inline panel inside .main, revealed with scrollIntoView().
+   That put it under the sticky topbar, left the sidebar holding the left 240px,
+   and gave it a header in the *same* gradient as the sidebar — so it read as
+   having opened behind the navigation. z-index 300 clears the sidebar (101),
+   backdrop (100) and topbar (99), so nothing can sit over the form. */
+.edit-modal{position:fixed;inset:0;z-index:300;display:none;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;overscroll-behavior:contain;}
+.edit-modal.open{display:flex;}
+.edit-modal-backdrop{position:fixed;inset:0;background:rgba(10,10,9,.8);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}
+.edit-panel{position:relative;z-index:1;width:100%;max-width:900px;margin:auto 0;background:var(--neu-s2);border-radius:14px;border:1px solid var(--neu-border);box-shadow:0 32px 80px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.05);overflow:hidden;}
+@media(max-width:700px){.edit-modal{padding:16px 12px;}}
 .edit-panel-head{padding:16px 20px;background:linear-gradient(135deg,#16213e,#0f3460);color:#fff;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.1);}
 .edit-panel-head h3{font-size:15px;font-weight:700;}
 .edit-panel-body{padding:24px 20px;}
@@ -245,8 +254,10 @@ table a:hover{color:#93c5fd;}
             <?php endif; ?>
         </div>
 
-        <!-- Edit form (hidden until "Edit" clicked) -->
-        <div class="edit-panel" id="editPanel" style="display:none;">
+        <!-- Edit form (modal, hidden until "Edit" clicked) -->
+        <div class="edit-modal" id="editModal" aria-hidden="true">
+        <div class="edit-modal-backdrop" data-close-modal></div>
+        <div class="edit-panel" id="editPanel" role="dialog" aria-modal="true" aria-labelledby="editPanelTitle">
             <div class="edit-panel-head">
                 <h3><i class="fas fa-edit me-2"></i>Edit Plan: <span id="editPanelTitle"></span></h3>
                 <button onclick="closeEditPanel()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px;"><i class="fas fa-times"></i></button>
@@ -298,6 +309,7 @@ table a:hover{color:#93c5fd;}
                 </form>
             </div>
         </div>
+        </div><!-- /edit-modal -->
 
         <!-- Plans table -->
         <div class="card">
@@ -417,15 +429,34 @@ function openEditPanel(plan) {
     document.getElementById('fMaxRouters').value      = plan.max_routers !== null ? plan.max_routers : '';
     document.getElementById('fTrialDays').value       = plan.trial_days;
 
-    var panel = document.getElementById('editPanel');
-    panel.style.display = 'block';
-    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var modal = document.getElementById('editModal');
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    /* Lock the page behind the modal, otherwise scrolling drags the table
+       around underneath the form. */
+    document.body.style.overflow = 'hidden';
+    document.getElementById('fName').focus();
 }
 
 function closeEditPanel() {
-    document.getElementById('editPanel').style.display = 'none';
+    var modal = document.getElementById('editModal');
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
     document.getElementById('editForm').reset();
 }
+
+/* Click-away and Escape. The backdrop carries data-close-modal so a click
+   inside the form never bubbles up as a dismiss. */
+document.addEventListener('click', function (e) {
+    if (e.target.hasAttribute && e.target.hasAttribute('data-close-modal')) closeEditPanel();
+});
+document.addEventListener('keydown', function (e) {
+    if ((e.key === 'Escape' || e.key === 'Esc') &&
+        document.getElementById('editModal').classList.contains('open')) {
+        closeEditPanel();
+    }
+});
 </script>
 </body>
 </html>

@@ -166,14 +166,17 @@ if (isLoggedIn()) {
                     }
 
                     // Under a day, "0 days remaining" reads as already dead. Super
-                    // admins hand out hour-long extensions; show the hours.
+                    // admins hand out hour-long extensions; show the hours. Once
+                    // it runs out, name what ended — "Expired" alone left tenants
+                    // guessing which clock they had run down.
+                    $endedLabel = ($tInfo['status'] === 'trial') ? 'Trial ended' : 'Subscription ended';
                     $remainLabel = $daysLeft >= 1
                         ? $daysLeft . ' day' . ($daysLeft !== 1 ? 's' : '') . ' remaining'
                         : ($secsLeft >= 3600
                             ? intdiv($secsLeft, 3600) . ' hour' . (intdiv($secsLeft, 3600) !== 1 ? 's' : '') . ' remaining'
                             : ($secsLeft > 0
                                 ? max(1, intdiv($secsLeft, 60)) . ' min remaining'
-                                : 'Expired'));
+                                : $endedLabel));
             ?>
             <div class="sidebar-tenant-footer">
                 <div class="plan-badge">
