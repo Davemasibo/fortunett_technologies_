@@ -17,6 +17,15 @@ chdir(dirname(__DIR__));
 
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../includes/db_master.php';
+require_once __DIR__ . '/../includes/cron_heartbeat.php';
+require_once __DIR__ . '/../includes/schema_guard.php';
+
+cron_heartbeat($pdo, 'check_suspensions');
+
+// trial_ends_at must be DATETIME before the NOW() comparison below is safe: on a
+// DATE column '2026-08-24' reads as midnight, which would suspend a tenant whose
+// trial still has the whole day to run.
+ensureTenantExpiryPrecision($pdo);
 
 $graceDays    = 7;    // Days after due_date before suspension
 $warningDays  = 3;    // Days before due_date to send warning
@@ -34,7 +43,7 @@ $expiredTrials = $pdo->query("
     FROM tenants t
     LEFT JOIN users u ON u.id = t.admin_user_id
     WHERE t.status = 'trial'
-      AND t.trial_ends_at < CURDATE()
+      AND t.trial_ends_at < NOW()
 ")->fetchAll(PDO::FETCH_ASSOC);
 
 foreach ($expiredTrials as $t) {

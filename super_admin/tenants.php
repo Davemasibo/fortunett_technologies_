@@ -45,6 +45,22 @@ $tenants = $tenants->fetchAll(PDO::FETCH_ASSOC);
 
 $plans = $pdo->query("SELECT id, name FROM platform_subscription_plans WHERE is_active = 1")->fetchAll(PDO::FETCH_ASSOC);
 
+/**
+ * The moment a tenant's access ends. Mirrors tenantExpiryTimestamp() in
+ * includes/auth.php — a deployment still on the DATE columns returns
+ * 'YYYY-MM-DD', which meant "through the end of that day", so reading it as
+ * midnight would show a tenant as expired while the portal still lets them in.
+ */
+function saExpiryTs($value): ?int
+{
+    if (empty($value)) return null;
+    $value = trim((string)$value);
+    if (strncmp($value, '0000-00-00', 10) === 0) return null;
+    $ts = strtotime($value);
+    if ($ts === false) return null;
+    return strlen($value) <= 10 ? strtotime('+1 day -1 second', $ts) : $ts;
+}
+
 // Single tenant detail view
 $detailTenant = null;
 if (isset($_GET['id'])) {
@@ -128,7 +144,13 @@ tr:hover td{background:rgba(255,255,255,.035);}
 .btn-view{background:rgba(255,255,255,.07);color:var(--neu-muted);border:1px solid var(--neu-border);}
 .btn-view:hover{background:rgba(255,255,255,.13);color:var(--neu-text);}
 .btn-danger{background:linear-gradient(135deg,#b91c1c,#ef4444);color:#fff;border:none;}
-/* Extend modal */
+/* Subscription extend controls */
+.btn-extend{padding:6px 12px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;
+  background:rgba(59,110,165,.18);color:#93c5fd;border:1px solid rgba(59,110,165,.35);transition:all .18s;}
+.btn-extend:hover:not(:disabled){background:rgba(59,110,165,.34);color:#fff;transform:translateY(-1px);}
+.btn-extend:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+.btn-extend i{font-size:11px;}
+#extAmount:focus,#extUnit:focus,#extUntil:focus{outline:none;border-color:#3B6EA5;}
 .empty-row td{text-align:center;color:var(--neu-muted);padding:36px;}
 /* Detail panel */
 .detail-panel{background:var(--neu-s2);border-radius:14px;padding:28px;border:1px solid var(--neu-border);box-shadow:14px 14px 28px rgba(0,0,0,.5),-7px -7px 18px rgba(255,255,255,.035),0 0 0 1px var(--neu-border);margin-bottom:24px;}
@@ -205,8 +227,8 @@ table a:hover{color:#93c5fd;}
                 <div class="detail-item"><label>Status</label><span><span class="badge badge-<?= $detailTenant['status'] ?>"><?= ucfirst($detailTenant['status']) ?></span></span></div>
                 <div class="detail-item"><label>Admin Email</label><span><?= htmlspecialchars($detailTenant['admin_email'] ?? 'N/A') ?></span></div>
                 <div class="detail-item"><label>Plan</label><span><?= htmlspecialchars($detailTenant['plan_name'] ?? 'Starter') ?></span></div>
-                <div class="detail-item"><label>Trial Ends</label><span><?= !empty($detailTenant['trial_ends_at']) ? date('d M Y', strtotime($detailTenant['trial_ends_at'])) : 'N/A' ?></span></div>
-                <div class="detail-item"><label>Subscription Ends</label><span><?= !empty($detailTenant['subscription_ends_at']) ? date('d M Y', strtotime($detailTenant['subscription_ends_at'])) : 'N/A' ?></span></div>
+                <div class="detail-item"><label>Trial Ends</label><span><?= !empty($detailTenant['trial_ends_at']) ? date('d M Y, H:i', strtotime($detailTenant['trial_ends_at'])) : 'N/A' ?></span></div>
+                <div class="detail-item"><label>Subscription Ends</label><span><?= !empty($detailTenant['subscription_ends_at']) ? date('d M Y, H:i', strtotime($detailTenant['subscription_ends_at'])) : 'N/A' ?></span></div>
                 <div class="detail-item"><label>Registered</label><span><?= date('d M Y', strtotime($detailTenant['created_at'])) ?></span></div>
                 <div class="detail-item"><label>PPPoE Fee / User</label><span>KSH <?= number_format($detailTenant['pppoe_fee_per_user'] ?? 25, 2) ?></span></div>
                 <div class="detail-item"><label>Hotspot Commission</label><span><?= round(($detailTenant['hotspot_commission_rate'] ?? 0.03)*100, 2) ?>%</span></div>
@@ -220,6 +242,96 @@ table a:hover{color:#93c5fd;}
                 <textarea id="notesField" rows="3" style="width:100%;border:1px solid var(--neu-border);border-radius:7px;padding:9px;font-size:13px;resize:vertical;"><?= htmlspecialchars($detailTenant['notes'] ?? '') ?></textarea>
                 <button type="submit" class="btn-sm btn-view" style="margin-top:8px;"><i class="fas fa-save"></i> Save Notes</button>
             </form>
+        </div>
+
+        <?php
+        // ── Subscription access ───────────────────────────────────────────────
+        // A tenant reading "active" can still be bounced to
+        // billing.php?subscription_expired=1, because requireTenantActive() also
+        // checks the date. This panel is the only place that date can be moved.
+        $accessField   = $detailTenant['status'] === 'trial' ? 'trial_ends_at' : 'subscription_ends_at';
+        $accessLabel   = $accessField === 'trial_ends_at' ? 'Trial' : 'Subscription';
+        $accessTs      = saExpiryTs($detailTenant[$accessField] ?? null);
+        $accessExpired = $accessTs !== null && $accessTs < time();
+
+        if (!function_exists('saRemainingHuman')) {
+            function saRemainingHuman(int $secs): string {
+                $secs = abs($secs);
+                if ($secs < 3600)   return max(1, intdiv($secs, 60)) . ' min';
+                if ($secs < 86400)  return intdiv($secs, 3600) . 'h ' . intdiv($secs % 3600, 60) . 'm';
+                if ($secs < 2592000) return intdiv($secs, 86400) . ' day' . (intdiv($secs, 86400) === 1 ? '' : 's');
+                return round($secs / 2592000, 1) . ' months';
+            }
+        }
+        ?>
+        <div class="card" style="margin-bottom:18px;<?= $accessExpired ? 'border:1px solid rgba(245,158,11,.35);' : '' ?>">
+            <div style="padding:16px 20px 8px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+                <div>
+                    <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">
+                        <i class="fas fa-hourglass-half" style="color:#93c5fd;"></i> <?= $accessLabel ?> access
+                    </h3>
+                    <p style="font-size:13px;color:var(--neu-muted);margin:0;">
+                        <?php if ($accessTs === null): ?>
+                            No end date set — this tenant is never date-blocked.
+                        <?php elseif ($accessExpired): ?>
+                            <span style="color:#fcd34d;font-weight:600;">
+                                Expired <?= saRemainingHuman(time() - $accessTs) ?> ago
+                                (<?= date('D d M Y, H:i', $accessTs) ?>).
+                            </span>
+                            Their team is being redirected to <code style="color:#93c5fd;">billing.php?<?= $accessField === 'trial_ends_at' ? 'trial_expired' : 'subscription_expired' ?>=1</code> on every page.
+                        <?php else: ?>
+                            Runs until <strong style="color:var(--neu-text);"><?= date('D d M Y, H:i', $accessTs) ?></strong>
+                            — <?= saRemainingHuman($accessTs - time()) ?> left.
+                        <?php endif; ?>
+                    </p>
+                </div>
+                <label style="font-size:12px;color:var(--neu-muted);display:flex;align-items:center;gap:6px;flex-shrink:0;cursor:pointer;">
+                    <input type="checkbox" id="extFromNow"> Start from now (discard time left)
+                </label>
+            </div>
+
+            <div style="padding:4px 20px 18px;">
+                <?php
+                $groups = [
+                    'Hours'  => ['hours',  [1, 3, 6, 12, 24]],
+                    'Days'   => ['days',   [1, 3, 7, 10, 14]],
+                    'Months' => ['months', [1, 3, 6]],
+                ];
+                foreach ($groups as $gLabel => [$gUnit, $gAmounts]): ?>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;">
+                    <span style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--neu-muted);width:56px;flex-shrink:0;"><?= $gLabel ?></span>
+                    <?php foreach ($gAmounts as $n): ?>
+                    <button class="btn-extend" onclick="extendSub('<?= $gUnit ?>', <?= $n ?>, this)">
+                        +<?= $n ?><?= $gUnit === 'hours' ? 'h' : ($gUnit === 'days' ? ($n === 1 ? ' day' : ' days') : ($n === 1 ? ' month' : ' months')) ?>
+                    </button>
+                    <?php endforeach; ?>
+                </div>
+                <?php endforeach; ?>
+
+                <div style="display:flex;align-items:center;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--neu-border);flex-wrap:wrap;">
+                    <span style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--neu-muted);width:56px;flex-shrink:0;">Custom</span>
+                    <input type="number" id="extAmount" min="1" value="30" style="width:80px;padding:6px 10px;border:1px solid var(--neu-border);border-radius:7px;background:#1a1a19;color:var(--neu-text);font-size:13px;">
+                    <select id="extUnit" style="padding:6px 10px;border:1px solid var(--neu-border);border-radius:7px;background:#1a1a19;color:var(--neu-text);font-size:13px;">
+                        <option value="hours">hours</option>
+                        <option value="days" selected>days</option>
+                        <option value="months">months</option>
+                    </select>
+                    <button class="btn-extend" onclick="extendSubCustom(this)"><i class="fas fa-plus"></i> Extend</button>
+
+                    <span style="width:18px;"></span>
+
+                    <span style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--neu-muted);flex-shrink:0;">Exact</span>
+                    <input type="datetime-local" id="extUntil" style="padding:6px 10px;border:1px solid var(--neu-border);border-radius:7px;background:#1a1a19;color:var(--neu-text);font-size:13px;color-scheme:dark;">
+                    <button class="btn-extend" onclick="extendSubUntil(this)"><i class="fas fa-calendar-check"></i> Set</button>
+                </div>
+
+                <p style="font-size:12px;color:var(--neu-muted);margin:14px 0 0;">
+                    Extensions stack onto whatever time is left unless <em>Start from now</em> is ticked.
+                    <?php if ($detailTenant['status'] === 'trial'): ?>
+                        This tenant is on <strong>trial</strong>, so the trial end date moves.
+                    <?php endif; ?>
+                </p>
+            </div>
         </div>
 
         <?php
@@ -369,7 +481,21 @@ table a:hover{color:#93c5fd;}
                     <td><?= $t['client_count'] ?></td>
                     <td><?= $t['router_count'] ?></td>
                     <td><?= $t['outstanding'] > 0 ? '<strong style="color:#fca5a5;">KSH '.number_format($t['outstanding'],0).'</strong>' : '<span style="color:var(--neu-muted);">—</span>' ?></td>
-                    <td><span class="badge badge-<?= $t['status'] ?>"><?= ucfirst($t['status']) ?></span></td>
+                    <td>
+                        <span class="badge badge-<?= $t['status'] ?>"><?= ucfirst($t['status']) ?></span>
+                        <?php
+                        // "Active" is not the whole story — requireTenantActive()
+                        // also walls a tenant off once the date passes, which is
+                        // the state that reads as working here but locks them out.
+                        $lclField = $t['status'] === 'trial' ? 'trial_ends_at' : 'subscription_ends_at';
+                        $lclTs    = saExpiryTs($t[$lclField] ?? null);
+                        if (in_array($t['status'], ['active', 'trial'], true) && $lclTs !== null && $lclTs < time()):
+                        ?>
+                        <br><small style="color:#fcd34d;font-size:11px;" title="Locked out by date — use Extend on the detail page">
+                            <i class="fas fa-hourglass-end"></i> date expired
+                        </small>
+                        <?php endif; ?>
+                    </td>
                     <td style="white-space:nowrap;"><?= date('d M Y', strtotime($t['created_at'])) ?></td>
                     <td style="white-space:nowrap;">
                         <a href="tenants.php?id=<?= $t['id'] ?>" class="btn-sm btn-view"><i class="fas fa-eye"></i></a>
@@ -414,6 +540,60 @@ function changeTenantStatus(tenantId, status) {
     })
     .then(r => r.json())
     .then(d => { if (d.success) location.reload(); else alert(d.message || 'Operation failed'); });
+}
+
+/* Move the tenant's access expiry. This is what unsticks a tenant whose status
+   reads "active" but who is being redirected to billing.php?subscription_expired=1
+   — requireTenantActive() checks the date as well as the status. */
+function sendExtend(payload, btn) {
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '…';
+
+    fetch('../api/super_admin/tenants.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({
+            action: 'extend_subscription',
+            tenant_id: <?= isset($_GET['id']) ? (int)$_GET['id'] : 0 ?>,
+            from_now: document.getElementById('extFromNow')?.checked || false
+        }, payload))
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            alert(d.message + (d.warning ? '\n\n⚠ ' + d.warning : ''));
+            location.reload();
+        } else {
+            btn.disabled = false;
+            btn.innerHTML = original;
+            alert(d.message || 'Could not extend the subscription.');
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = original;
+        alert('Network error.');
+    });
+}
+
+function extendSub(unit, amount, btn) {
+    sendExtend({ unit: unit, amount: amount }, btn);
+}
+
+function extendSubCustom(btn) {
+    const amount = parseInt(document.getElementById('extAmount').value, 10);
+    const unit   = document.getElementById('extUnit').value;
+    if (!amount || amount < 1) { alert('Enter how many ' + unit + ' to add.'); return; }
+    sendExtend({ unit: unit, amount: amount }, btn);
+}
+
+function extendSubUntil(btn) {
+    const until = document.getElementById('extUntil').value;
+    if (!until) { alert('Pick the exact date and time access should end.'); return; }
+    /* datetime-local has no timezone; the server reads it in its own zone, which
+       is what the operator sees everywhere else on this page. */
+    sendExtend({ until: until.replace('T', ' ') }, btn);
 }
 
 function saveNotes(e, tenantId) {

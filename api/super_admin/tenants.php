@@ -2,12 +2,43 @@
 /**
  * Super Admin — Tenant Management API
  * POST /api/super_admin/tenants.php
- * Actions: set_status | save_notes | set_plan | extend_days | mark_invoice_paid
+ * Actions: set_status | save_notes | set_plan | extend_subscription | extend_days
+ *          | mark_invoice_paid | settle_all_invoices
  */
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../includes/db_master.php';
+require_once __DIR__ . '/../../includes/schema_guard.php';
 require_once __DIR__ . '/../../super_admin/includes/auth.php';
+
+/**
+ * Add whole months without the Jan-31 → Mar-3 overflow PHP's "+1 month" gives.
+ * Clamps the day to the last day of the target month; keeps the time of day.
+ */
+function _addMonthsClamped(DateTimeImmutable $d, int $n): DateTimeImmutable
+{
+    $firstOfTarget = $d->modify("first day of +{$n} month");
+    $day = min((int)$d->format('j'), (int)$firstOfTarget->format('t'));
+    return $firstOfTarget->setDate(
+        (int)$firstOfTarget->format('Y'),
+        (int)$firstOfTarget->format('n'),
+        $day
+    );
+}
+
+/** "3 hours", "1 day", "2 months 4 days" — how long until $when. */
+function _untilHuman(DateTimeImmutable $when, DateTimeImmutable $now): string
+{
+    $diff = $now->diff($when);
+    $bits = [];
+    if ($diff->y) $bits[] = $diff->y . ' year'  . ($diff->y > 1 ? 's' : '');
+    if ($diff->m) $bits[] = $diff->m . ' month' . ($diff->m > 1 ? 's' : '');
+    if ($diff->d) $bits[] = $diff->d . ' day'   . ($diff->d > 1 ? 's' : '');
+    if (!$diff->y && !$diff->m && $diff->h) $bits[] = $diff->h . ' hour'   . ($diff->h > 1 ? 's' : '');
+    if (!$diff->y && !$diff->m && !$diff->d && $diff->i) $bits[] = $diff->i . ' minute' . ($diff->i > 1 ? 's' : '');
+    if (!$bits) $bits[] = 'less than a minute';
+    return implode(' ', array_slice($bits, 0, 2));
+}
 
 if (!isSuperAdmin()) {
     http_response_code(403);
@@ -88,43 +119,125 @@ try {
             echo json_encode(['success' => true, 'message' => 'Plan updated']);
             break;
 
+        // Legacy shim — the old UI only ever sent whole days.
         case 'extend_days':
-            $days = (int)($data['days'] ?? 0);
-            if ($days < 1 || $days > 3650) {
-                echo json_encode(['success' => false, 'message' => 'days must be between 1 and 3650']);
-                exit;
-            }
+            $data['unit']   = 'days';
+            $data['amount'] = (int)($data['days'] ?? 0);
+            // fall through
 
-            // Fetch current tenant to know which date field to extend
+        case 'extend_subscription':
+            // Hour precision only exists once the DATE columns are DATETIME.
+            ensureTenantExpiryPrecision($pdo);
+
+            $now = new DateTimeImmutable('now');
+
             $tRow = $pdo->prepare("SELECT status, trial_ends_at, subscription_ends_at FROM tenants WHERE id = ?");
             $tRow->execute([$tenantId]);
             $tRow = $tRow->fetch(PDO::FETCH_ASSOC);
 
-            // Determine the base date: if the date is already in the future use it,
-            // otherwise start the extension from today so we don't lose days.
-            $today = date('Y-m-d');
-            if ($tRow['status'] === 'trial') {
-                $current = $tRow['trial_ends_at'] ?? $today;
-                $base    = $current > $today ? $current : $today;
-                $newDate = date('Y-m-d', strtotime($base . ' +' . $days . ' days'));
-                $pdo->prepare("UPDATE tenants SET trial_ends_at = ?, status = 'trial' WHERE id = ?")
-                    ->execute([$newDate, $tenantId]);
-                $field = 'trial_ends_at';
+            // A tenant still on trial keeps their trial clock; everyone else —
+            // active, suspended, expired — is on the subscription clock, which is
+            // what requireTenantActive() bounces them off with subscription_expired=1.
+            $isTrial = ($tRow['status'] === 'trial');
+            $field   = $isTrial ? 'trial_ends_at' : 'subscription_ends_at';
+            // A zero date or anything unparseable counts as "no expiry set" —
+            // never as a base to extend from, which would throw.
+            $current   = $tRow[$field] ?: null;
+            $currentDt = null;
+            if ($current && strncmp((string)$current, '0000-00-00', 10) !== 0) {
+                try { $currentDt = new DateTimeImmutable($current); } catch (Throwable $e) { $currentDt = null; }
+            }
+
+            // 'until' sets an exact moment; otherwise add a period. 'from_now'
+            // restarts the clock instead of stacking onto unused time.
+            if (!empty($data['until'])) {
+                $ts = strtotime((string)$data['until']);
+                if ($ts === false) {
+                    echo json_encode(['success' => false, 'message' => 'Could not read that date/time']);
+                    exit;
+                }
+                $new = (new DateTimeImmutable())->setTimestamp($ts);
+                if ($new <= $now) {
+                    echo json_encode(['success' => false, 'message' => 'That date is in the past — pick a future one']);
+                    exit;
+                }
+                $applied  = 'an exact end date';
+                $headline = 'Access end date set';
             } else {
-                $current = $tRow['subscription_ends_at'] ?? $today;
-                $base    = $current > $today ? $current : $today;
-                $newDate = date('Y-m-d', strtotime($base . ' +' . $days . ' days'));
-                // If tenant was suspended/expired because of date, reactivate them
-                $newStatus = in_array($tRow['status'], ['suspended', 'expired']) ? 'active' : $tRow['status'];
-                $pdo->prepare("UPDATE tenants SET subscription_ends_at = ?, status = ?, suspended_at = NULL, suspended_reason = NULL WHERE id = ?")
-                    ->execute([$newDate, $newStatus, $tenantId]);
-                $field = 'subscription_ends_at';
+                $unit   = strtolower(trim((string)($data['unit'] ?? '')));
+                $amount = (int)($data['amount'] ?? 0);
+
+                $limits = ['hours' => 8760, 'days' => 3650, 'months' => 120];
+                // Tolerate singulars from hand-written calls
+                $unit = rtrim($unit, 's') . 's';
+                if (!isset($limits[$unit])) {
+                    echo json_encode(['success' => false, 'message' => 'unit must be hours, days or months']);
+                    exit;
+                }
+                if ($amount < 1 || $amount > $limits[$unit]) {
+                    echo json_encode(['success' => false, 'message' => "amount must be between 1 and {$limits[$unit]} $unit"]);
+                    exit;
+                }
+
+                // Start from the existing expiry when it is still in the future so
+                // unused time is not thrown away; otherwise start from now, or the
+                // extension would land in the past and change nothing.
+                $fromNow = !empty($data['from_now']);
+                $base = (!$fromNow && $currentDt && $currentDt > $now) ? $currentDt : $now;
+
+                $new = ($unit === 'months')
+                     ? _addMonthsClamped($base, $amount)
+                     : $base->modify("+{$amount} {$unit}");
+
+                $applied  = $amount . ' ' . ($amount === 1 ? rtrim($unit, 's') : $unit);
+                $headline = 'Access extended by ' . $applied;
+            }
+
+            $newValue = $new->format('Y-m-d H:i:s');
+
+            if ($isTrial) {
+                $pdo->prepare("UPDATE tenants SET trial_ends_at = ?, status = 'trial' WHERE id = ?")
+                    ->execute([$newValue, $tenantId]);
+                $newStatus = 'trial';
+            } else {
+                // A tenant parked on suspended/expired stays walled off no matter
+                // how far out the date goes, so lift that too.
+                $newStatus = in_array($tRow['status'], ['suspended', 'expired'], true) ? 'active' : $tRow['status'];
+                $pdo->prepare("
+                    UPDATE tenants
+                    SET subscription_ends_at = ?, status = ?, suspended_at = NULL, suspended_reason = NULL
+                    WHERE id = ?
+                ")->execute([$newValue, $newStatus, $tenantId]);
+            }
+
+            error_log(sprintf(
+                '[super_admin] tenant #%d %s extended by %s to %s by %s',
+                $tenantId, $field, $applied, $newValue, $_SESSION['username'] ?? 'super admin'
+            ));
+
+            // Extending a date does not clear what they owe, and
+            // check_suspensions.php suspends on OUTSTANDING INVOICES rather than
+            // dates — so say plainly that this grace has an expiry of its own.
+            $warning = null;
+            try {
+                $owed = $pdo->prepare("SELECT COUNT(*) FROM platform_invoices WHERE tenant_id = ? AND status <> 'paid'");
+                $owed->execute([$tenantId]);
+                if ((int)$owed->fetchColumn() > 0) {
+                    $warning = 'This tenant still has outstanding invoices — the daily suspension check '
+                             . 'will re-suspend them. Settle or waive the invoices to make this stick.';
+                }
+            } catch (Throwable $e) {
+                error_log('extend_subscription invoice check: ' . $e->getMessage());
             }
 
             echo json_encode([
-                'success'  => true,
-                'message'  => "Extended by $days day(s). New {$field}: $newDate",
-                'new_date' => $newDate,
+                'success'    => true,
+                'message'    => "{$headline} — {$tenant['company_name']} now runs until "
+                              . $new->format('D d M Y, H:i') . ' (' . _untilHuman($new, $now) . ' from now)',
+                'warning'    => $warning,
+                'field'      => $field,
+                'new_date'   => $newValue,
+                'new_status' => $newStatus,
             ]);
             break;
 

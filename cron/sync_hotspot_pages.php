@@ -26,6 +26,9 @@ require_once __DIR__ . '/../includes/auto_provision.php';
 require_once __DIR__ . '/../includes/hotspot_sync.php';
 require_once __DIR__ . '/../hotspot/render_login.php';
 require_once __DIR__ . '/../classes/MikrotikAPI.php';
+require_once __DIR__ . '/../includes/cron_heartbeat.php';
+
+cron_heartbeat($pdo, 'sync_hotspot_pages');
 
 $opts       = getopt('', ['tenant::', 'router::', 'force']);
 $onlyTenant = isset($opts['tenant']) ? (int)$opts['tenant'] : 0;

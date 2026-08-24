@@ -151,6 +151,102 @@ function ensureColumn(PDO $pdo, string $table, string $column, string $definitio
 }
 
 /**
+ * Give tenants.trial_ends_at / subscription_ends_at hour precision.
+ *
+ * Both shipped as DATE, so the shortest grace a super admin could hand out was a
+ * whole day. Widening them to DATETIME lets access be extended by an hour while
+ * an operator sorts out a payment.
+ *
+ * The conversion has one trap: a DATE of '2026-08-24' meant "valid through the
+ * end of the 24th" (the comparisons are all `< today`), but MySQL widens it to
+ * '2026-08-24 00:00:00' — which under a time-aware comparison expires the tenant
+ * a full day early. Every value sitting exactly on midnight is therefore pushed
+ * to 23:59:59 of the same day. That normalisation runs once ever, flagged in
+ * platform_settings, so a tenant genuinely extended to midnight later on is not
+ * silently given another day.
+ */
+function ensureTenantExpiryPrecision(PDO $pdo): bool
+{
+    static $done = null;
+    if ($done !== null) {
+        return $done;
+    }
+    $done = false;
+
+    $columns = ['trial_ends_at', 'subscription_ends_at'];
+
+    try {
+        $st = $pdo->prepare("
+            SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants' AND COLUMN_NAME IN (?, ?)
+        ");
+        $st->execute($columns);
+        $found = $st->fetchAll(PDO::FETCH_ASSOC);
+        if (!$found) {
+            return false;   // table absent on this deployment
+        }
+
+        foreach ($found as $col) {
+            if (strcasecmp($col['DATA_TYPE'], 'date') !== 0) {
+                continue;   // already datetime/timestamp
+            }
+            $null = $col['IS_NULLABLE'] === 'NO' ? 'NOT NULL' : 'NULL DEFAULT NULL';
+            $pdo->exec(sprintf(
+                'ALTER TABLE `tenants` MODIFY COLUMN `%s` DATETIME %s',
+                $col['COLUMN_NAME'],
+                $null
+            ));
+            error_log('[schema_guard] widened tenants.' . $col['COLUMN_NAME'] . ' to DATETIME');
+        }
+
+        $done = true;
+
+        // One-shot: lift midnight values to end-of-day so nobody loses a day.
+        // Kept in its own try so a missing platform_settings table cannot make
+        // the (already applied) column conversion look like a failure. Re-running
+        // the UPDATEs is harmless anyway — 23:59:59 no longer matches.
+        try {
+            $flag = $pdo->prepare("SELECT setting_value FROM platform_settings WHERE setting_key = ? LIMIT 1");
+            $flag->execute(['tenant_expiry_precision_migrated']);
+            if ($flag->fetchColumn()) {
+                return true;
+            }
+        } catch (Throwable $e) {
+            error_log('[schema_guard] tenant expiry flag unreadable: ' . $e->getMessage());
+        }
+
+        $pdo->exec("
+            UPDATE tenants
+            SET trial_ends_at = DATE_ADD(trial_ends_at, INTERVAL 86399 SECOND)
+            WHERE trial_ends_at IS NOT NULL AND TIME(trial_ends_at) = '00:00:00'
+        ");
+        $pdo->exec("
+            UPDATE tenants
+            SET subscription_ends_at = DATE_ADD(subscription_ends_at, INTERVAL 86399 SECOND)
+            WHERE subscription_ends_at IS NOT NULL AND TIME(subscription_ends_at) = '00:00:00'
+        ");
+        error_log('[schema_guard] normalised tenant expiry midnights to end-of-day');
+
+        try {
+            $pdo->prepare("
+                INSERT INTO platform_settings (setting_key, setting_value)
+                VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+            ")->execute(['tenant_expiry_precision_migrated', date('c')]);
+        } catch (Throwable $e) {
+            error_log('[schema_guard] tenant expiry flag unwritable: ' . $e->getMessage());
+        }
+
+        return true;
+
+    } catch (Throwable $e) {
+        error_log('[schema_guard] tenant expiry precision: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Every status enum the payment/provisioning path writes to.
  * Keep in sync with the values actually used in code, not with the schema file.
  */

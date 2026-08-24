@@ -29,6 +29,9 @@ require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/../includes/auto_provision.php';
 require_once __DIR__ . '/../includes/payment_pipeline.php';
 require_once __DIR__ . '/../classes/MpesaAPI.php';
+require_once __DIR__ . '/../includes/cron_heartbeat.php';
+
+cron_heartbeat($pdo, 'stk_poll');
 
 $logDir = __DIR__ . '/../logs';
 if (!is_dir($logDir)) { @mkdir($logDir, 0755, true); }

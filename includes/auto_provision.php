@@ -556,6 +556,29 @@ function _setupPPPoECaptivePortal(MikrotikAPI $api, string $serverIp): void
         ]);
     }
 
+    // ── 3b. NAT: masquerade the limited subnet ────────────────────────────────
+    // The dst-nat above rewrites the destination, but the packet still leaves the
+    // router with a 10.88.0.x source. Without a matching srcnat the reply never
+    // comes back, so an unactivated customer sees a blank page instead of the
+    // payment portal and has no way to pay their way out of it.
+    $natMasqComment = 'FortuNett-PPPoE-Limited-NAT';
+    $masqExists = false;
+    foreach ($natRules as $r) {
+        if (($r['comment'] ?? '') === $natMasqComment) { $masqExists = true; break; }
+    }
+    if (!$masqExists) {
+        try {
+            $api->comm('/ip/firewall/nat/add', [
+                '=chain=srcnat',
+                '=src-address=' . $limitedNet,
+                '=action=masquerade',
+                '=comment=' . $natMasqComment,
+            ]);
+        } catch (Throwable $_e) {
+            error_log('_setupPPPoECaptivePortal masquerade: ' . $_e->getMessage());
+        }
+    }
+
     // ── 4a. Filter: allow limited → portal server ─────────────────────────────
     $filterRules = $api->comm('/ip/firewall/filter/print');
     $allowExists = false;

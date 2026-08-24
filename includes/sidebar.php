@@ -142,17 +142,38 @@ if (isLoggedIn()) {
                 }
 
                 if ($tInfo):
-                    $expiryDate = $tInfo['trial_ends_at'] ?? $tInfo['subscription_ends_at'] ?? null;
+                    // Read the clock that actually gates this tenant. A paying
+                    // tenant usually still has trial_ends_at set from signup, so
+                    // `trial ?? subscription` counted down a date that stopped
+                    // mattering months ago — and never reflected an extension.
+                    $expiryDate = ($tInfo['status'] === 'trial')
+                        ? ($tInfo['trial_ends_at'] ?: null)
+                        : ($tInfo['subscription_ends_at'] ?: $tInfo['trial_ends_at'] ?: null);
+
                     $daysLeft   = 0;
+                    $secsLeft   = 0;
                     $pct        = 100;
                     $barClass   = '';
                     if ($expiryDate) {
-                        $diff = (new DateTime())->diff(new DateTime($expiryDate));
-                        $daysLeft = max(0, (int)$diff->days * ($diff->invert ? -1 : 1));
+                        $expiryTs = function_exists('tenantExpiryTimestamp')
+                            ? tenantExpiryTimestamp($expiryDate)
+                            : strtotime($expiryDate);
+                        $secsLeft = max(0, (int)$expiryTs - time());
+                        $daysLeft = intdiv($secsLeft, 86400);
                         $total = ($tInfo['status'] === 'trial') ? 14 : 30;
-                        $pct   = max(0, min(100, round(($daysLeft / $total) * 100)));
+                        $pct   = max(0, min(100, round(($secsLeft / ($total * 86400)) * 100)));
                         $barClass = $pct < 20 ? 'danger' : ($pct < 40 ? 'warning' : '');
                     }
+
+                    // Under a day, "0 days remaining" reads as already dead. Super
+                    // admins hand out hour-long extensions; show the hours.
+                    $remainLabel = $daysLeft >= 1
+                        ? $daysLeft . ' day' . ($daysLeft !== 1 ? 's' : '') . ' remaining'
+                        : ($secsLeft >= 3600
+                            ? intdiv($secsLeft, 3600) . ' hour' . (intdiv($secsLeft, 3600) !== 1 ? 's' : '') . ' remaining'
+                            : ($secsLeft > 0
+                                ? max(1, intdiv($secsLeft, 60)) . ' min remaining'
+                                : 'Expired'));
             ?>
             <div class="sidebar-tenant-footer">
                 <div class="plan-badge">
@@ -166,10 +187,10 @@ if (isLoggedIn()) {
                 <div class="trial-bar-wrap">
                     <div class="trial-bar <?= $barClass ?>" style="width:<?= $pct ?>%"></div>
                 </div>
-                <div class="trial-label"><?= $daysLeft ?> day<?= $daysLeft !== 1 ? 's' : '' ?> remaining</div>
+                <div class="trial-label"><?= $remainLabel ?></div>
                 <?php if ($tInfo['status'] === 'trial' && $daysLeft <= 3): ?>
                 <a href="billing.php" class="billing-alert" style="background:rgba(124,58,237,.18);border-color:rgba(124,58,237,.4);color:#c4b5fd;">
-                    <i class="fas fa-arrow-circle-up"></i> <?= $daysLeft === 0 ? 'Trial ended — Upgrade now' : 'Trial ending soon — Upgrade' ?>
+                    <i class="fas fa-arrow-circle-up"></i> <?= $secsLeft <= 0 ? 'Trial ended — Upgrade now' : 'Trial ending soon — Upgrade' ?>
                 </a>
                 <?php endif; ?>
                 <?php endif; ?>

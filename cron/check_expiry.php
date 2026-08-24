@@ -41,6 +41,9 @@ $log("=== Expiry Check: " . date('Y-m-d H:i:s') . " | grace={$graceDays}d ===");
 // "1265 Data truncated for column 'status'" no matter how often it was fixed.
 // The guard only ever adds members, never removes them.
 require_once __DIR__ . '/../includes/schema_guard.php';
+require_once __DIR__ . '/../includes/cron_heartbeat.php';
+
+cron_heartbeat($pdo, 'check_expiry');
 ensurePaymentStatusEnums($pdo);
 // Silently add reminder flag columns (no-op if already present)
 try {

@@ -519,22 +519,22 @@ include 'includes/sidebar.php';
         $dunningState = 'suspended';
     } elseif (
         ($tenant['status'] ?? '') === 'trial' &&
-        !empty($tenant['trial_ends_at']) &&
-        $tenant['trial_ends_at'] < date('Y-m-d')
+        tenantExpiryPassed($tenant['trial_ends_at'] ?? null)
     ) {
         $dunningState = 'trial_expired';
     } elseif (
         ($tenant['status'] ?? '') === 'active' &&
-        !empty($tenant['subscription_ends_at']) &&
-        $tenant['subscription_ends_at'] < date('Y-m-d')
+        tenantExpiryPassed($tenant['subscription_ends_at'] ?? null)
     ) {
         $dunningState = 'subscription_expired';
-    } elseif (!empty($_GET['suspended'])) {
-        $dunningState = 'suspended';
-    } elseif (!empty($_GET['trial_expired'])) {
-        $dunningState = 'trial_expired';
-    } elseif (!empty($_GET['subscription_expired'])) {
-        $dunningState = 'subscription_expired';
+    } elseif (empty($tenant)) {
+        // Tenant row unreadable — fall back to whatever requireTenantActive() said.
+        // Once the row does load the checks above are the authority: after a super
+        // admin extends the expiry, a stale ?subscription_expired=1 sitting in an
+        // open tab or a bookmark must not re-raise the wall.
+        if (!empty($_GET['suspended']))            $dunningState = 'suspended';
+        elseif (!empty($_GET['trial_expired']))    $dunningState = 'trial_expired';
+        elseif (!empty($_GET['subscription_expired'])) $dunningState = 'subscription_expired';
     }
 
     if ($dunningState): ?>

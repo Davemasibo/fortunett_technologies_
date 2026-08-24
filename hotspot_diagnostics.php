@@ -125,7 +125,28 @@ require_once 'includes/sidebar.php';
     .hd-alert { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.25); color: #fbbf24; border-radius: 10px; padding: 16px 18px; font-size: 14px; }
     .hd-alert a { color: #fcd34d; font-weight: 600; }
 
-    @media (max-width: 600px) { .hd-container { padding: 16px; } .lr-grid { grid-template-columns: 1fr; } }
+    /* Sub-sections inside a router card (coexistence, VPN tunnel) */
+    .hd-sec { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--neu-border); }
+    .hd-sec-title { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .09em; color: rgba(255,255,255,.35); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .hd-sec-title .hd-mini { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: none; padding: 4px 10px; border-radius: 6px; cursor: pointer; border: 1px solid rgba(245,158,11,.3); background: rgba(245,158,11,.1); color: #fbbf24; }
+    .hd-sec-title .hd-mini:hover { background: rgba(245,158,11,.2); }
+    .hd-sec-title .hd-mini[disabled] { opacity: .5; cursor: default; }
+    .hd-check .fixhint { display: block; font-size: 11px; color: rgba(255,255,255,.3); margin-top: 3px; font-style: italic; }
+    /* Detail text can be a full sentence — let it wrap instead of squeezing the badge */
+    .hd-check.wrap { align-items: flex-start; }
+    .hd-check.wrap .val { text-align: left; flex: 2 1 60%; line-height: 1.45; }
+    .hd-check.wrap .lbl { flex: 1 1 34%; }
+
+    /* Automation chain panel */
+    .hd-auto { background: var(--neu-s2); border: 1px solid var(--neu-border); box-shadow: var(--neu-card); border-radius: 10px; padding: 22px 24px; margin-bottom: 24px; }
+    .hd-auto h3 { font-size: 16px; font-weight: 600; color: #e2e2e0; margin: 0 0 4px; }
+    .hd-auto .sub { font-size: 13px; color: rgba(255,255,255,.4); margin: 0 0 16px; }
+    .hd-auto-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; margin-top: 16px; }
+    .hd-auto-group { background: var(--neu-surf); border: 1px solid var(--neu-border); border-radius: 8px; padding: 14px 16px; }
+    .hd-auto-group h5 { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: rgba(255,255,255,.4); margin: 0 0 8px; }
+    .hd-act-hint { font-size: 11px; color: #93c5fd; margin-top: 4px; display: block; }
+
+    @media (max-width: 600px) { .hd-container { padding: 16px; } .lr-grid { grid-template-columns: 1fr; } .hd-check.wrap { flex-direction: column; align-items: flex-start; gap: 4px; } }
 </style>
 
 <div class="main-content-wrapper" id="mainContent">
@@ -139,6 +160,17 @@ require_once 'includes/sidebar.php';
     <button class="hd-btn primary" onclick="runAllChecks()">
       <i class="fas fa-arrows-rotate"></i> Verify All
     </button>
+  </div>
+
+  <!-- Payment → Access automation chain (tenant-wide, independent of any router) -->
+  <div class="hd-auto">
+    <h3><i class="fas fa-bolt me-2" style="color:var(--primary-color)"></i>Payment → Access Automation</h3>
+    <p class="sub">Every link that has to hold for a customer to pay and be connected without anyone touching anything.</p>
+    <div class="hd-verdict loading" id="auto-verdict">
+      <span class="v-icon"><span class="hd-spinner"></span></span>
+      <div><h4>Checking the chain…</h4><p>Gateway, callbacks, schema, routers and the last 7 days of live payments.</p></div>
+    </div>
+    <div class="hd-auto-groups" id="auto-groups"></div>
   </div>
 
   <?php if (empty($routers)): ?>
@@ -176,9 +208,36 @@ require_once 'includes/sidebar.php';
           <ul id="wg-list-<?= (int)$r['id'] ?>"></ul>
         </div>
 
+        <!-- Hotspot + PPPoE coexistence on the same bridge -->
+        <div class="hd-sec">
+          <div class="hd-sec-title">
+            <span>Hotspot + PPPoE on one bridge</span>
+            <button class="hd-mini" id="coexfix-<?= (int)$r['id'] ?>" style="display:none;"
+                    onclick="fixCoex(<?= (int)$r['id'] ?>, this)">Repair conflicts</button>
+          </div>
+          <div class="hd-verdict loading" id="coexverdict-<?= (int)$r['id'] ?>">
+            <span class="v-icon"><span class="hd-spinner"></span></span>
+            <div><h4>Checking coexistence…</h4><p>Pools, NAT, DHCP and interface bindings.</p></div>
+          </div>
+          <div id="coex-<?= (int)$r['id'] ?>"></div>
+        </div>
+
+        <!-- WireGuard management tunnel -->
+        <div class="hd-sec">
+          <div class="hd-sec-title"><span>WireGuard management tunnel</span></div>
+          <div class="hd-verdict loading" id="vpnverdict-<?= (int)$r['id'] ?>">
+            <span class="v-icon"><span class="hd-spinner"></span></span>
+            <div><h4>Checking tunnel…</h4><p>Peer, handshake and API reachability.</p></div>
+          </div>
+          <div id="vpn-<?= (int)$r['id'] ?>"></div>
+        </div>
+
         <div class="hd-actions">
           <button class="hd-act primary" onclick="recheck(<?= (int)$r['id'] ?>)">
             <i class="fas fa-stethoscope"></i> Verify Hotspot
+          </button>
+          <button class="hd-act primary" onclick="checkCoex(<?= (int)$r['id'] ?>); checkVpn(<?= (int)$r['id'] ?>)">
+            <i class="fas fa-diagram-project"></i> Re-check Coexistence + VPN
           </button>
           <button class="hd-act deploy" onclick="redeploy(<?= (int)$r['id'] ?>, this)">
             <i class="fas fa-cloud-arrow-up"></i> Re-deploy Login Page
@@ -336,9 +395,162 @@ function row(label, badge, val) {
     return '<div class="hd-check"><span class="lbl">' + label + '</span><span class="val">' + escHtml(val) + '</span><span class="hd-badge ' + badge + '">' + badge.toUpperCase() + '</span></div>';
 }
 
+// Wrapping variant — coexistence/VPN details are full sentences, not values.
+function rowWide(label, level, detail, hint) {
+    return '<div class="hd-check wrap"><span class="lbl">' + escHtml(label) + '</span>'
+         + '<span class="val">' + escHtml(detail)
+         + (hint ? '<span class="fixhint">' + escHtml(hint) + '</span>' : '')
+         + '</span><span class="hd-badge ' + level + '">' + level.toUpperCase() + '</span></div>';
+}
+
+const VERDICT_ICON = {
+    ok:   '<i class="fas fa-circle-check"></i>',
+    warn: '<i class="fas fa-triangle-exclamation"></i>',
+    fail: '<i class="fas fa-circle-xmark"></i>'
+};
+
+// ─── Hotspot + PPPoE coexistence ─────────────────────────────────────────────
+function checkCoex(routerId) {
+    const body    = document.getElementById('coex-' + routerId);
+    const verdict = document.getElementById('coexverdict-' + routerId);
+    const fixBtn  = document.getElementById('coexfix-' + routerId);
+    body.innerHTML = '';
+    fixBtn.style.display = 'none';
+    setVerdict(verdict, 'loading', '<span class="hd-spinner"></span>', 'Checking coexistence…', 'Pools, NAT, DHCP and interface bindings.');
+
+    const fd = new FormData();
+    fd.append('router_id', routerId);
+
+    fetch(checkUrl('coexistence_check.php'), { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) {
+                setVerdict(verdict, 'fail', VERDICT_ICON.fail, 'Check failed', d.error || 'Unknown error');
+                return;
+            }
+            const v = d.verdict || { level: 'warn', title: '—', message: '' };
+            setVerdict(verdict, v.level, VERDICT_ICON[v.level] || VERDICT_ICON.warn, v.title, v.message);
+
+            body.innerHTML = (d.checks || []).map(c =>
+                rowWide(c.label, c.level, c.detail, c.fixable && c.level !== 'ok' ? 'Repairable from this page.' : null)
+            ).join('');
+
+            // Summary line — the two servers side by side, which is what the
+            // question "can both run on this bridge" actually asks.
+            if (d.bridge) {
+                const hs = d.hotspot, pp = d.pppoe;
+                body.insertAdjacentHTML('afterbegin',
+                    '<div class="lr-grid" style="margin-bottom:12px">'
+                    + '<div class="lr-cell"><div class="lc-label">Hotspot server</div><div class="lc-val">'
+                    + (hs.present ? escHtml(hs.name || 'unnamed') : '—')
+                    + '</div><div class="lc-sub">' + (hs.present ? 'on ' + escHtml(hs.interface || '?')
+                        + (hs.cidr ? ' · ' + escHtml(hs.cidr) : '')
+                        + (hs.sessions !== null ? ' · ' + hs.sessions + ' online' : '') : 'not configured') + '</div></div>'
+                    + '<div class="lr-cell"><div class="lc-label">PPPoE server</div><div class="lc-val">'
+                    + (pp.present ? escHtml(pp.service_name || 'unnamed') : '—')
+                    + '</div><div class="lc-sub">' + (pp.present ? 'on ' + escHtml(pp.interface || '?')
+                        + (pp.cidr ? ' · ' + escHtml(pp.cidr) : '')
+                        + (pp.sessions !== null ? ' · ' + pp.sessions + ' online' : '') : 'not configured') + '</div></div>'
+                    + '</div>');
+            }
+
+            if (d.fixes && d.fixes.length) {
+                fixBtn.style.display = '';
+                fixBtn.dataset.fixes = d.fixes.join(',');
+                fixBtn.textContent = 'Repair ' + d.fixes.length + ' conflict' + (d.fixes.length === 1 ? '' : 's');
+            }
+        })
+        .catch(e => setVerdict(verdict, 'fail', VERDICT_ICON.fail, 'Request failed', e.message));
+}
+
+function fixCoex(routerId, btn) {
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Repairing…';
+
+    const fd = new FormData();
+    fd.append('router_id', routerId);
+    fd.append('fixes', btn.dataset.fixes || 'all');
+
+    fetch(checkUrl('fix_coexistence.php'), { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            btn.disabled = false;
+            btn.textContent = orig;
+            const lines = [].concat(d.applied || [], d.skipped || [], d.failed || []);
+            if (typeof showToast === 'function') {
+                showToast(d.message || d.error || (lines[0] || 'Done'), d.success ? 'success' : 'error');
+            }
+            setTimeout(() => checkCoex(routerId), 800);
+        })
+        .catch(e => {
+            btn.disabled = false;
+            btn.textContent = orig;
+            if (typeof showToast === 'function') showToast('Repair failed: ' + e.message, 'error');
+        });
+}
+
+// ─── WireGuard tunnel ────────────────────────────────────────────────────────
+function checkVpn(routerId) {
+    const body    = document.getElementById('vpn-' + routerId);
+    const verdict = document.getElementById('vpnverdict-' + routerId);
+    body.innerHTML = '';
+    setVerdict(verdict, 'loading', '<span class="hd-spinner"></span>', 'Checking tunnel…', 'Peer, handshake and API reachability.');
+
+    const fd = new FormData();
+    fd.append('router_id', routerId);
+
+    fetch('api/routers/wireguard_status.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) {
+                setVerdict(verdict, 'fail', VERDICT_ICON.fail, 'Check failed', d.error || 'Unknown error');
+                return;
+            }
+            const v = d.verdict || { level: 'warn', title: '—', message: '' };
+            setVerdict(verdict, v.level, VERDICT_ICON[v.level] || VERDICT_ICON.warn, v.title, v.message);
+            body.innerHTML = (d.checks || []).map(c => rowWide(c.label, c.level, c.detail)).join('');
+        })
+        .catch(e => setVerdict(verdict, 'fail', VERDICT_ICON.fail, 'Request failed', e.message));
+}
+
+// ─── Payment → Access automation chain ───────────────────────────────────────
+function checkAutomation() {
+    const verdict = document.getElementById('auto-verdict');
+    const groups  = document.getElementById('auto-groups');
+    groups.innerHTML = '';
+    setVerdict(verdict, 'loading', '<span class="hd-spinner"></span>', 'Checking the chain…',
+        'Gateway, callbacks, schema, routers and the last 7 days of live payments.');
+
+    fetch('api/diagnostics/automation_chain.php', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) {
+                setVerdict(verdict, 'fail', VERDICT_ICON.fail, 'Check failed', d.error || 'Unknown error');
+                return;
+            }
+            const v = d.verdict;
+            setVerdict(verdict, v.level, VERDICT_ICON[v.level] || VERDICT_ICON.warn, v.title, v.message);
+
+            let html = '';
+            Object.keys(d.groups).forEach(key => {
+                const g = d.groups[key];
+                if (!g.checks.length) return;
+                html += '<div class="hd-auto-group"><h5>' + escHtml(g.title) + '</h5>'
+                     +  g.checks.map(c => rowWide(c.label, c.level, c.detail, c.action)).join('')
+                     + '</div>';
+            });
+            groups.innerHTML = html;
+        })
+        .catch(e => setVerdict(verdict, 'fail', VERDICT_ICON.fail, 'Request failed', e.message));
+}
+
 function runAllChecks() {
+    checkAutomation();
     <?php foreach ($routers as $r): ?>
     recheck(<?= (int)$r['id'] ?>);
+    checkCoex(<?= (int)$r['id'] ?>);
+    checkVpn(<?= (int)$r['id'] ?>);
     <?php endforeach; ?>
 }
 

@@ -121,6 +121,68 @@ class WireGuardManager
     }
 
     /**
+     * Live status of every peer on wg0, keyed by public key.
+     *
+     * Parses `wg show wg0 dump`, whose peer lines are:
+     *   publickey  presharedkey  endpoint  allowed-ips  latest-handshake
+     *   rx-bytes   tx-bytes      persistent-keepalive
+     *
+     * latest-handshake is a unix timestamp, or 0 when the peer has never
+     * completed one. That single number is what separates "configured" from
+     * "actually connected" — an interface can sit in `running` state forever
+     * with a peer that has never handshaked.
+     *
+     * @return array<string, array{endpoint:string, allowed_ips:string, handshake:int,
+     *                             handshake_age:?int, rx:int, tx:int, keepalive:string}>
+     */
+    public static function peerStatus(): array
+    {
+        $dump = shell_exec('sudo wg show ' . escapeshellarg(self::WG_INTERFACE) . ' dump 2>/dev/null');
+        if (!$dump) return [];
+
+        $peers = [];
+        $lines = preg_split('/\r?\n/', trim($dump));
+        // Line 0 is the interface itself (private, public, listen-port, fwmark)
+        foreach (array_slice($lines, 1) as $line) {
+            $f = preg_split('/\t/', trim($line));
+            if (count($f) < 8) continue;
+            $handshake = (int)$f[4];
+            $peers[$f[0]] = [
+                'endpoint'      => $f[2] === '(none)' ? '' : $f[2],
+                'allowed_ips'   => $f[3],
+                'handshake'     => $handshake,
+                'handshake_age' => $handshake > 0 ? max(0, time() - $handshake) : null,
+                'rx'            => (int)$f[5],
+                'tx'            => (int)$f[6],
+                'keepalive'     => $f[7],
+            ];
+        }
+        return $peers;
+    }
+
+    /**
+     * Is the VPS listening for WireGuard traffic on the expected UDP port?
+     * A tunnel cannot form if the port is closed or bound elsewhere, and this is
+     * invisible from the router's side — it just never handshakes.
+     */
+    public static function isListening(): bool
+    {
+        $out = shell_exec('ss -lun 2>/dev/null | grep -c ":' . self::WG_PORT . ' " 2>/dev/null');
+        return (int)trim((string)$out) > 0;
+    }
+
+    /**
+     * Does the on-disk config carry this peer? Peers added with `wg set` alone
+     * vanish on reboot, so a tunnel that works today can be gone tomorrow.
+     */
+    public static function peerPersisted(string $publicKey): bool
+    {
+        $confPath = '/etc/wireguard/' . self::WG_INTERFACE . '.conf';
+        if (!is_readable($confPath)) return false;
+        return strpos((string)file_get_contents($confPath), $publicKey) !== false;
+    }
+
+    /**
      * Check whether WireGuard is available and wg0 is running.
      */
     public static function isAvailable(): bool

@@ -64,6 +64,7 @@ try {
     // Resolve tenant portal info for walled garden + login page fetch
     $portalHost     = '';
     $loginServeUrl  = '';
+    $portalIp       = '';
     try {
         $tSt = $pdo->prepare("SELECT subdomain, provisioning_token FROM tenants WHERE id = ? LIMIT 1");
         $tSt->execute([$tenantId]);
@@ -83,6 +84,20 @@ try {
                 $loginServeUrl = 'https://' . $portalHost . '/hotspot/login_serve.php?token='
                     . rawurlencode($tRow['provisioning_token']);
             }
+        }
+
+        // The portal's IP, for the walled-garden IP entry. A dst-host entry only
+        // matches the plaintext HTTP Host header, so HTTPS to the portal — and
+        // therefore the M-Pesa STK push fired from the login page — stays blocked
+        // until an IP entry exists. This was the missing piece that made the
+        // captive portal load but "Pay" do nothing.
+        try {
+            $ipSt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='server_external_ip' LIMIT 1");
+            $portalIp = $ipSt ? trim((string)($ipSt->fetchColumn() ?: '')) : '';
+        } catch (Throwable $_e) {}
+        if (!filter_var($portalIp, FILTER_VALIDATE_IP) && $portalHost) {
+            $resolved = @gethostbyname($portalHost);
+            $portalIp = ($resolved && $resolved !== $portalHost && filter_var($resolved, FILTER_VALIDATE_IP)) ? $resolved : '';
         }
     } catch (Throwable $_e) {}
 
@@ -120,6 +135,12 @@ try {
         $parts[] = '/ip pool add name=pppoe-pool ranges=10.10.10.2-10.10.10.254';
         $parts[] = '/ppp profile add name=pppoe-profile local-address=10.10.10.1 remote-address=pppoe-pool dns-server=8.8.8.8,8.8.4.4';
         $parts[] = '/interface pppoe-server server add service-name=pppoe-service interface=$bn default-profile=pppoe-profile disabled=no';
+        // NAT for the PPPoE pool. Without this the customer authenticates, gets an
+        // address, and has no internet — the classic "connected but no data" call.
+        // The hotspot block below adds its own rule for 10.5.50.0/24; a rule scoped
+        // to that subnet does nothing for PPPoE, so each service needs its own.
+        $parts[] = ':do {/ip firewall nat remove [find comment="FortuNett-PPPoE-NAT"]} on-error={}';
+        $parts[] = '/ip firewall nat add chain=srcnat src-address=10.10.10.0/24 action=masquerade comment="FortuNett-PPPoE-NAT"';
     }
 
     if (in_array('hotspot', $services, true)) {
@@ -149,7 +170,11 @@ try {
         // hotspot can't find login.html → it serves a 404 instead of the portal.
         // "hotspot" resolves to flash/hotspot, which is where the fetch below writes.
         $parts[] = '/ip hotspot profile add name=hsprof1 dns-name=hotspot.fortunett.com hotspot-address=10.5.50.1 html-directory=hotspot login-by=http-pap,cookie';
-        $parts[] = '/ip hotspot user profile set [find name=default] rate-limit=5M/5M shared-users=' . $sharedUsers;
+        // shared-users only. The default profile must carry NO rate-limit: any user
+        // that falls back to it would silently receive that speed regardless of the
+        // package they paid for, and a hard-coded 5M/5M here is a speed nobody sold.
+        // Caps live on the per-package profile that autoProvisionClient() creates.
+        $parts[] = '/ip hotspot user profile set [find name=default] rate-limit="" shared-users=' . $sharedUsers;
         $parts[] = '/ip hotspot add name=hotspot1 interface=$bn address-pool=hs-pool profile=hsprof1 disabled=no';
         $parts[] = ':do {/ip firewall nat remove [find comment="FortuNett-Hotspot-NAT"]} on-error={}';
         $parts[] = '/ip firewall nat add chain=srcnat src-address=10.5.50.0/24 action=masquerade comment="FortuNett-Hotspot-NAT"';
@@ -157,6 +182,13 @@ try {
         if ($portalHost) {
             $parts[] = ':do {/ip hotspot walled-garden remove [find comment="FortuNett-Portal"]} on-error={}';
             $parts[] = '/ip hotspot walled-garden add dst-host="' . $portalHost . '" comment="FortuNett-Portal"';
+        }
+        if ($portalIp) {
+            // dst-host matches the HTTP Host header only. The IP entry is what lets
+            // an unauthenticated client open the portal over HTTPS and complete an
+            // STK push; without it the page loads and paying silently fails.
+            $parts[] = ':do {/ip hotspot walled-garden ip remove [find comment="FortuNett-Portal-IP"]} on-error={}';
+            $parts[] = '/ip hotspot walled-garden ip add dst-address=' . $portalIp . '/32 action=accept comment="FortuNett-Portal-IP"';
         }
         if ($loginServeUrl) {
             $parts[] = ':do {/file remove [find name="flash/hotspot/login.html"]} on-error={}';

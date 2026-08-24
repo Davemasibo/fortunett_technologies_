@@ -21,6 +21,7 @@ require_once __DIR__ . '/../../includes/auto_provision.php';
 require_once __DIR__ . '/../../includes/payment_pipeline.php';
 require_once __DIR__ . '/../../includes/account_resolver.php';
 require_once __DIR__ . '/../../includes/schema_guard.php';
+require_once __DIR__ . '/../../includes/unmatched_payments.php';
 
 ensurePaymentStatusEnums($pdo);
 
@@ -70,6 +71,10 @@ if (count($hostParts) >= 3 && $hostParts[0] !== 'www') {
 if (!$tenantId) {
     @file_put_contents($logDir . '/tenant_c2b.log',
         date('Y-m-d H:i:s') . " CONFIRM UNROUTED: host={$httpHost} tx={$transactionId} amount={$amount}\n", FILE_APPEND | LOCK_EX);
+    // The money is already banked and Safaricom will never replay this. Capture it
+    // so it shows up in the admin UI instead of dying in a log file.
+    record_unmatched_payment($pdo, null, $transactionId, $amount, $phone, $accountRef,
+        'unrouted', 'c2b_tenant', $content, (string)($data['FirstName'] ?? ''));
     echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
     exit;
 }
@@ -91,7 +96,12 @@ try {
     if (!$clientId) {
         @file_put_contents($logDir . '/tenant_c2b.log',
             date('Y-m-d H:i:s') . " CONFIRM UNMATCHED: account={$accountRef} phone={$phone} tenant={$tenantId} tx={$transactionId}\n", FILE_APPEND | LOCK_EX);
-        // Still return 0 — Safaricom considers this final. Log and reconcile manually.
+        // Still return 0 — Safaricom considers this final and will not replay it.
+        // Queue it for one-click assignment rather than leaving the customer's
+        // money credited to nobody with only a log line to show for it.
+        record_unmatched_payment($pdo, (int)$tenantId, $transactionId, $amount, $phone, $accountRef,
+            ($match['reason'] ?? '') === 'ambiguous' ? 'ambiguous' : 'unmatched',
+            'c2b_tenant', $content, (string)($data['FirstName'] ?? ''));
         echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
         exit;
     }

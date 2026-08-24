@@ -93,10 +93,18 @@ try {
     // Get server public IP from settings
     $serverIp = '';
     try {
-        $serverIp = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='server_external_ip' LIMIT 1")->fetchColumn() ?: '';
+        $serverIp = trim((string)($pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='server_external_ip' LIMIT 1")->fetchColumn() ?: ''));
     } catch (\Throwable $_e) {}
-    if (!$serverIp) {
+    if (!filter_var($serverIp, FILTER_VALIDATE_IP)) {
         $serverIp = $_SERVER['SERVER_ADDR'] ?? '';
+    }
+    // Without a real endpoint the router builds a peer that can never handshake,
+    // and the failure is invisible until the API calls start timing out.
+    if (!filter_var($serverIp, FILTER_VALIDATE_IP)) {
+        throw new \RuntimeException(
+            'No usable VPS public IP. Set platform_settings.server_external_ip to the address that accepts UDP '
+            . WireGuardManager::WG_PORT . ' before generating tunnel commands.'
+        );
     }
 
     $wgPort = WireGuardManager::WG_PORT;
@@ -120,10 +128,28 @@ try {
     $parts[] = "/interface/wireguard add name=\"wg-fortunett\" listen-port=13231 private-key=\"{$routerPrivKey}\"";
     $parts[] = "/interface/wireguard/peers add interface=\"wg-fortunett\" public-key=\"{$vpsPublicKey}\" endpoint-address={$serverIp} endpoint-port={$wgPort} allowed-address=10.200.200.0/24 persistent-keepalive=25";
     $parts[] = "/ip address add address=\"{$vpnIp}/24\" interface=\"wg-fortunett\"";
-    $parts[] = "/ip service set api disabled=no port=8728 address={$vpsVpnIp}/32";
+    // RFC1918 is included alongside the VPN IP on purpose: locking the API to
+    // 10.200.200.1/32 alone means a dropped tunnel makes the router unmanageable
+    // from the LAN too, and recovery becomes a site visit. The router sits behind
+    // NAT, so the private ranges add no public exposure.
+    $parts[] = "/ip service set api disabled=no port=8728 address={$vpsVpnIp}/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
     $parts[] = ':do {/ip firewall filter remove [find comment="Fortunett-API-VPN"]} on-error={}';
     $parts[] = "/ip firewall filter add chain=input action=accept protocol=tcp src-address={$vpsVpnIp} dst-port=8728 comment=\"Fortunett-API-VPN\"";
     $parts[] = '/ip firewall filter move [find comment="Fortunett-API-VPN"] destination=0';
+
+    // Watchdog — a peer caches its resolved endpoint, so a WAN IP change or an ISP
+    // reconnect can silently stop the handshake with the interface still showing
+    // "running". Ping the VPS over the tunnel every 2 minutes and re-arm on failure.
+    $wgWatch = ':local ok [/ping ' . $vpsVpnIp . ' count=3 interval=200ms]; '
+             . ':if ($ok=0) do={'
+             . ':log warning \\"[Fortunett] WireGuard unreachable - re-arming tunnel\\"; '
+             . ':do {/interface/wireguard set [find name=\\"wg-fortunett\\"] disabled=yes} on-error={}; '
+             . ':delay 2s; '
+             . ':do {/interface/wireguard set [find name=\\"wg-fortunett\\"] disabled=no} on-error={}; '
+             . ':do {/interface/wireguard/peers set [find interface=\\"wg-fortunett\\"] endpoint-address=' . $serverIp . ' endpoint-port=' . $wgPort . '} on-error={}'
+             . '}';
+    $parts[] = ':do {/system scheduler remove [find name="fortunett_wg_watchdog"]} on-error={}';
+    $parts[] = "/system scheduler add name=\"fortunett_wg_watchdog\" interval=2m start-time=startup on-event=\"{$wgWatch}\"";
 
     $commands = implode('; ', $parts) . ';';
 

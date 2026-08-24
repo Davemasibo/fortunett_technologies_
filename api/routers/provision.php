@@ -38,10 +38,33 @@ try {
         $serverUrl = $protocol . $_SERVER['HTTP_HOST'] . $basePath . '/auto_register.php';
         $mode      = str_starts_with($serverUrl, 'https://') ? 'mode=https' : 'mode=http';
 
-        $serverAddr = $_SERVER['SERVER_ADDR'] ?? '';
-        $serverIp   = (filter_var($serverAddr, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE))
-                      ? $serverAddr
-                      : (@gethostbyname($_SERVER['HTTP_HOST']) ?: '');
+        // ── VPS public IP — this is the WireGuard endpoint the router dials ───
+        //
+        // Order matters and used to be wrong. SERVER_ADDR is the *private* address
+        // on any VPS behind a load balancer or NAT, so it fails the public-IP filter
+        // and we fell through to gethostbyname(HTTP_HOST) — which on a proxied
+        // domain resolves to the CDN/WAF edge, not the VPS. The router then pointed
+        // its WireGuard peer at an address that does not answer UDP 51820 and the
+        // handshake never completed. Every router provisioned that way came up with
+        // a dead tunnel.
+        //
+        // platform_settings.server_external_ip is the operator-declared truth and
+        // must win. Only fall back to auto-detection when it is unset.
+        $serverIp = '';
+        try {
+            $ipSt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='server_external_ip' LIMIT 1");
+            $serverIp = $ipSt ? trim((string)($ipSt->fetchColumn() ?: '')) : '';
+        } catch (\Throwable $_e) {}
+
+        if (!filter_var($serverIp, FILTER_VALIDATE_IP)) {
+            $serverAddr = $_SERVER['SERVER_ADDR'] ?? '';
+            $serverIp   = (filter_var($serverAddr, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE))
+                          ? $serverAddr
+                          : (@gethostbyname($_SERVER['HTTP_HOST']) ?: '');
+            $serverIpAutodetected = true;
+        } else {
+            $serverIpAutodetected = false;
+        }
 
         // ── Managed admin credentials ─────────────────────────────────────────
         $adminPassword = bin2hex(random_bytes(8));
@@ -54,19 +77,47 @@ try {
             mt_rand(0, 0x0fff) | 0x4000, mt_rand(0, 0x3fff) | 0x8000,
             mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff));
 
-        $wgAvailable   = WireGuardManager::isAvailable();
         $routerWgPriv  = '';
         $routerWgPub   = '';
         $vpnIp         = '';
         $vpsWgPub      = '';
         $wgNote        = '';
+        $wgSkipReason  = '';
+
+        // Resolve the VPS public key cache-first. isAvailable() shells out to
+        // `sudo wg show` on every call; if PHP-FPM cannot sudo — or wg0 is briefly
+        // down during a restart — it returned false and provisioning silently
+        // emitted a "# WireGuard skipped" comment. The router came up with no
+        // tunnel and nobody noticed until the API calls started failing. The
+        // cached key in platform_settings survives all of that.
+        $wgAvailable = false;
+        try {
+            $cached = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='wg_vps_public_key' LIMIT 1")->fetchColumn();
+            if ($cached) {
+                $vpsWgPub    = (string)$cached;
+                $wgAvailable = true;
+            } else {
+                $vpsWgPub = WireGuardManager::getVpsPublicKey();
+                $pdo->prepare("INSERT INTO platform_settings (setting_key, setting_value) VALUES ('wg_vps_public_key',?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)")
+                    ->execute([$vpsWgPub]);
+                $wgAvailable = true;
+            }
+        } catch (\Throwable $wgKeyEx) {
+            $wgSkipReason = 'VPS public key unavailable: ' . $wgKeyEx->getMessage();
+        }
+
+        // A tunnel endpoint we cannot name is a tunnel that will never connect.
+        if ($wgAvailable && !filter_var($serverIp, FILTER_VALIDATE_IP)) {
+            $wgAvailable  = false;
+            $wgSkipReason = 'No usable VPS public IP. Set platform_settings.server_external_ip to the VPS address that '
+                          . 'accepts UDP ' . WireGuardManager::WG_PORT . '.';
+        }
 
         if ($wgAvailable) {
             try {
                 $keys         = WireGuardManager::generateKeyPair();
                 $routerWgPriv = $keys['private'];
                 $routerWgPub  = $keys['public'];
-                $vpsWgPub     = WireGuardManager::getVpsPublicKey();
 
                 // Insert pending row to get a router ID → derive VPN IP
                 // Use only base columns first, then try to set WG columns (may not exist yet)
@@ -105,12 +156,22 @@ try {
                 WireGuardManager::addPeer($routerWgPub, $vpnIp);
 
             } catch (\Exception $wgEx) {
-                $wgAvailable = false;
-                $wgNote      = '# WireGuard setup skipped: ' . $wgEx->getMessage() . "\n";
+                $wgAvailable  = false;
+                $wgSkipReason = $wgEx->getMessage();
                 error_log('[provision.php] WireGuard error: ' . $wgEx->getMessage());
             }
-        } else {
-            $wgNote = "# WireGuard not running on VPS — tunnel skipped. Run setup_wireguard_server.sh first.\n";
+        }
+
+        if (!$wgAvailable) {
+            // Make this impossible to miss. A '#' comment scrolls past unread in
+            // the RouterOS terminal, which is how a whole fleet ended up with no
+            // tunnel; :log error + :put land in the router log and on screen.
+            $reason  = $wgSkipReason ?: 'WireGuard is not running on the VPS. Run setup_wireguard_server.sh first.';
+            $wgNote  = "# ── WireGuard tunnel NOT configured ──────────────────────────────────\n";
+            $wgNote .= '# ' . str_replace(["\n", "\r"], ' ', $reason) . "\n";
+            $wgNote .= ':log error "[Fortunett] WireGuard tunnel NOT configured — ' . addslashes(substr(str_replace(['"', "\n", "\r"], ["'", ' ', ' '], $reason), 0, 160)) . '";' . "\n";
+            $wgNote .= ':put "[Fortunett] WARNING: no WireGuard tunnel. This router will NOT be manageable from the portal.";' . "\n";
+            error_log('[provision.php] WireGuard skipped for tenant ' . $tenantId . ': ' . $reason);
         }
 
         $t = $token;
@@ -121,7 +182,9 @@ try {
         echo "# Tenant ID:    $tenantId\n";
         echo "# Provision ID: $provisionId\n";
         if ($vpnIp) echo "# VPN IP:       $vpnIp\n";
-        echo "# Server IP:    " . ($serverIp ?: 'unknown') . "\n";
+        echo "# Server IP:    " . ($serverIp ?: 'unknown')
+             . ($serverIpAutodetected ? '  (AUTO-DETECTED — if this is a CDN/proxy address the tunnel will not connect;'
+                                        . ' set platform_settings.server_external_ip)' : '  (from platform_settings)') . "\n";
         echo "# Safe to re-run — cleans up previous config first.\n\n";
 
         echo ":log info \"[Fortunett] Starting provisioning — $identity\";\n\n";
@@ -135,26 +198,62 @@ try {
 
         // 3. WireGuard VPN tunnel (bypasses NAT — required for VPS→router API calls)
         if ($wgAvailable && $vpnIp && $routerWgPriv && $vpsWgPub) {
-            $vpsEndpoint = $serverIp ?: $_SERVER['HTTP_HOST'];
+            $vpsEndpoint = $serverIp;
+            $wgPort      = WireGuardManager::WG_PORT;
+            $vpsVpnIp    = WireGuardManager::VPS_VPN_IP;
+
             echo "# ── WireGuard VPN tunnel ──────────────────────────────────────────────\n";
-            echo ":do { /interface/wireguard remove [find name=\"wg-fortunett\"] } on-error={};\n";
+
+            // Wipe ALL WireGuard state first, not just the interface named
+            // wg-fortunett. Re-running provisioning used to leave orphaned
+            // interfaces (*8, *9, …) behind, and every one of their peers also
+            // claimed allowed-address=10.200.200.0/24. RouterOS then had several
+            // interfaces competing for the same route, picked one at random, and
+            // the handshake never settled — the single biggest cause of tunnels
+            // that come up and then fall behind. These routers are platform-managed
+            // for this VPN only, so wiping is safe and makes the result deterministic.
+            echo ":do { /interface/wireguard/peers remove [find] } on-error={};\n";
+            echo ":do { /interface/wireguard remove [find] } on-error={};\n";
+            echo ":do { /ip address remove [find address~\"10.200.200.\"] } on-error={};\n";
+
             echo "/interface/wireguard add name=\"wg-fortunett\" listen-port=13231 private-key=\"$routerWgPriv\";\n";
-            echo ":do { /interface/wireguard/peers remove [find interface=\"wg-fortunett\"] } on-error={};\n";
             echo "/interface/wireguard/peers add interface=\"wg-fortunett\" public-key=\"$vpsWgPub\"";
-            echo " endpoint-address=$vpsEndpoint endpoint-port=" . WireGuardManager::WG_PORT;
+            echo " endpoint-address=$vpsEndpoint endpoint-port=$wgPort";
             echo " allowed-address=10.200.200.0/24 persistent-keepalive=25;\n";
-            echo ":do { /ip address remove [find interface=\"wg-fortunett\"] } on-error={};\n";
             echo "/ip address add address=\"$vpnIp/24\" interface=\"wg-fortunett\";\n\n";
 
-            // API service: restrict to VPN only
-            echo "/ip service set api disabled=no port=8728 address=" . WireGuardManager::VPS_VPN_IP . "/32;\n\n";
+            // API service. The address list deliberately includes RFC1918 as well
+            // as the VPS VPN IP: restricting the API to 10.200.200.1/32 alone means
+            // that the moment the tunnel drops, the router is unmanageable from the
+            // portal AND from its own LAN, and the only recovery is a site visit.
+            // The router is behind NAT, so the private ranges add no public exposure.
+            echo "/ip service set api disabled=no port=8728 address=$vpsVpnIp/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;\n\n";
 
-            // Firewall: allow API from VPN IP only
+            // Firewall: allow API from the VPN IP, placed at the top of input.
             echo ":do { /ip firewall filter remove [find comment=\"Fortunett-API-VPN\"] } on-error={};\n";
             echo ":do { /ip firewall filter remove [find comment=\"Fortunett-API\"] } on-error={};\n";
             echo "/ip firewall filter add chain=input action=accept protocol=tcp";
-            echo " src-address=" . WireGuardManager::VPS_VPN_IP . " dst-port=8728 comment=\"Fortunett-API-VPN\";\n";
+            echo " src-address=$vpsVpnIp dst-port=8728 comment=\"Fortunett-API-VPN\";\n";
             echo "/ip firewall filter move [find comment=\"Fortunett-API-VPN\"] destination=0;\n\n";
+
+            // ── Tunnel watchdog ──────────────────────────────────────────────
+            // A WireGuard peer caches its resolved endpoint. After a WAN IP change,
+            // an ISP reconnect or a router reboot the handshake can stop without
+            // the interface ever reporting a fault — this is exactly what "falling
+            // behind" looks like from the portal side. The watchdog pings the VPS
+            // over the tunnel every 2 minutes and, after two consecutive failures,
+            // re-arms the interface and re-pins the endpoint, which forces a new
+            // handshake. Costs nothing when the tunnel is healthy.
+            $wgWatch  = ':local ok [/ping ' . $vpsVpnIp . ' count=3 interval=200ms];';
+            $wgWatch .= ':if ($ok=0) do={';
+            $wgWatch .=   ':log warning \\"[Fortunett] WireGuard unreachable - re-arming tunnel\\";';
+            $wgWatch .=   ':do {/interface/wireguard set [find name=\\"wg-fortunett\\"] disabled=yes} on-error={};';
+            $wgWatch .=   ':delay 2s;';
+            $wgWatch .=   ':do {/interface/wireguard set [find name=\\"wg-fortunett\\"] disabled=no} on-error={};';
+            $wgWatch .=   ':do {/interface/wireguard/peers set [find interface=\\"wg-fortunett\\"] endpoint-address=' . $vpsEndpoint . ' endpoint-port=' . $wgPort . '} on-error={};';
+            $wgWatch .= '}';
+            echo ":do { /system scheduler remove [find name=\"fortunett_wg_watchdog\"] } on-error={};\n";
+            echo "/system scheduler add name=\"fortunett_wg_watchdog\" interval=2m start-time=startup on-event=\"$wgWatch\";\n\n";
         } else {
             echo $wgNote;
             // WireGuard unavailable — enable API but DO NOT set an address restriction.

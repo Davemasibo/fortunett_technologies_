@@ -107,6 +107,43 @@ function getSubscriptionDaysLeft($expiry_date) {
 }
 
 /**
+ * Resolve a tenant expiry column to the exact moment access ends.
+ *
+ * trial_ends_at / subscription_ends_at are DATETIME so a super admin can grant an
+ * hour of access, but deployments that have not hit
+ * ensureTenantExpiryPrecision() yet still return a bare DATE. A bare date always
+ * meant "valid through the end of that day" — reading it as midnight would cut
+ * the tenant off a full day early — so it is pushed to 23:59:59 here.
+ *
+ * @return int|null Unix timestamp, or null when no expiry is set.
+ */
+function tenantExpiryTimestamp($value): ?int
+{
+    if (empty($value)) {
+        return null;
+    }
+    $value = trim((string)$value);
+    if (strncmp($value, '0000-00-00', 10) === 0) {
+        return null;    // MySQL zero date — no expiry was ever set
+    }
+    $ts = strtotime($value);
+    if ($ts === false) {
+        return null;
+    }
+    if (strlen($value) <= 10) {          // 'YYYY-MM-DD' — no time component
+        $ts = strtotime('+1 day -1 second', $ts);
+    }
+    return $ts;
+}
+
+/** True when the tenant's access window has already closed. */
+function tenantExpiryPassed($value): bool
+{
+    $ts = tenantExpiryTimestamp($value);
+    return $ts !== null && $ts < time();
+}
+
+/**
  * Redirect to billing.php if the tenant's platform subscription is suspended.
  * Call after tenant_id is resolved in header.php.
  * Exempt pages: billing.php, login.php, logout.php, and all /api/ endpoints.
@@ -134,12 +171,12 @@ function requireTenantActive(PDO $pdo, $tenant_id) {
         exit;
     }
 
-    if ($tenant['status'] === 'trial' && !empty($tenant['trial_ends_at']) && $tenant['trial_ends_at'] < date('Y-m-d')) {
+    if ($tenant['status'] === 'trial' && tenantExpiryPassed($tenant['trial_ends_at'])) {
         header('Location: billing.php?trial_expired=1');
         exit;
     }
 
-    if ($tenant['status'] === 'active' && !empty($tenant['subscription_ends_at']) && $tenant['subscription_ends_at'] < date('Y-m-d')) {
+    if ($tenant['status'] === 'active' && tenantExpiryPassed($tenant['subscription_ends_at'])) {
         header('Location: billing.php?subscription_expired=1');
         exit;
     }

@@ -94,6 +94,14 @@ M-Pesa callbacks are not guaranteed to arrive — a CDN/WAF in front of the call
 - `super_admin/billing.php` defaulted its invoice list to the *current month*, so the older overdue invoices actually causing the suspension were invisible and their Mark as Paid buttons unreachable. Use `?all=1` / the **All Outstanding** button.
 - The tenant detail page shows an outstanding-invoice banner explaining this, with Mark All Paid / Waive All.
 
+### Two Independent Locks: Status *and* Date
+`requireTenantActive()` walls a tenant off for either reason, so a tenant reading **active** in the super-admin list can still be redirected to `billing.php?subscription_expired=1` on every page — the status is fine, the date has passed. The list marks these rows *date expired* under the status badge.
+
+- **Subscription access** on `super_admin/tenants.php?id=N` is the only place that date moves: quick grants of 1/3/6/12/24 hours, 1/3/7/10/14 days, 1/3/6 months, plus a custom amount and an exact end datetime. API action `extend_subscription` (`unit` + `amount`, or `until`; `from_now` discards unused time instead of stacking).
+- `trial_ends_at` / `subscription_ends_at` shipped as **DATE** and are widened to DATETIME by `ensureTenantExpiryPrecision()`. Converting is not just an `ALTER`: a bare DATE meant "valid through the end of that day", so midnight values are pushed to `23:59:59` or every tenant loses a day. `tenantExpiryTimestamp()` in `includes/auth.php` applies the same rule to any deployment still on DATE — never compare these columns as raw strings.
+- A tenant on `trial` has their trial clock extended; everyone else moves `subscription_ends_at` and is lifted out of `suspended`/`expired`. **This does not clear what they owe**, so the extension is a grace period, not a fix — the response carries a warning saying so.
+- `billing.php` derives the dunning wall from the DB, not the `?subscription_expired=1` hint, so an extension takes effect without the tenant clearing a stale tab.
+
 ### Paybill Account Matching
 `includes/account_resolver.php` — `resolveAccountRef($pdo, $billRef, $msisdn, $tenantId|null)` is the **only** place that decides who paid. All four C2B handlers (platform + tenant, validation + confirmation) use it, so validation can never reject a reference confirmation would accept.
 
@@ -120,6 +128,33 @@ Rate limits live on the **package profile only**, never on the individual user.
 Two rules learned the hard way:
 - **Never hard-code an `ALTER TABLE … MODIFY … ENUM(…)` in a cron.** This file used to reassert `ENUM('active','inactive','suspended','grace')` every 15 minutes, deleting the `pending` and `expired` members and re-breaking the hotspot STK push within the quarter hour of every migration. Use `ensurePaymentStatusEnums()`, which only ever adds members.
 - Status-driven passes alone are not enough. A client already marked inactive — by an admin, a failed run, or an unreachable router — is never revisited, so their session stays up forever. The **enforcement sweep** at the end works from the router's view instead: list live PPPoE/hotspot sessions and cut any whose client is not currently `active` with a future expiry. It only touches usernames that map to a client of that tenant, so the operator's own admin links are never severed.
+
+### Hotspot + PPPoE on One Bridge
+Both servers on one bridge is legal — PPPoE frames are ethertype 0x8863/0x8864 and never reach the hotspot's IP-layer servlet. What breaks is everything *around* them, silently. `hotspot_diagnostics.php` verifies all of it per router via `api/mikrotik/coexistence_check.php`; `api/mikrotik/fix_coexistence.php` applies the additive repairs.
+
+The failures worth knowing:
+- **NAT is per-subnet.** `configure_service.php` used to add a masquerade only for `10.5.50.0/24`, so PPPoE customers on `10.10.10.0/24` — and unactivated ones on `10.88.0.0/24` — authenticated fine and had no internet. Every subnet needs its own rule, or one catch-all.
+- **Two DHCP servers on the bridge** race; half the leases land on the wrong subnet and those clients never reach the portal.
+- **Overlapping pools** are reported, never auto-fixed — renumbering a live subnet drops every session on it.
+- The `default` hotspot user profile must carry **no** rate-limit. `configure_service.php` used to hard-code `5M/5M` there, a speed nobody sold.
+- Walled garden needs an **IP** entry, not just `dst-host`. `dst-host` matches the plaintext HTTP Host header only, so the portal loads and the STK push silently fails.
+
+### WireGuard Tunnels
+`api/routers/wireguard_status.php` walks the chain and names the first broken link. Four causes accounted for the fleet-wide failures:
+- **Endpoint resolution order.** `provision.php` read `SERVER_ADDR` first, which is private on any VPS behind a proxy, then fell back to `gethostbyname(HTTP_HOST)` — the CDN edge, which does not answer UDP 51820. `platform_settings.server_external_ip` now wins; provisioning refuses to emit a tunnel without a valid public IP.
+- **Partial cleanup.** The RSC only removed the interface named `wg-fortunett`. Orphans from earlier runs kept peers claiming `allowed-address=10.200.200.0/24`, so RouterOS had several interfaces fighting for one route. Both paths now wipe all WG state first.
+- **Silent skip.** A `#` comment in the RSC scrolls past unread. Failure now emits `:log error` + `:put`, and the VPS public key is read cache-first from `platform_settings.wg_vps_public_key` so a momentary `sudo wg` failure no longer disables the tunnel.
+- **Lockout.** `/ip service set api address=10.200.200.1/32` meant a dropped tunnel made the router unmanageable from its own LAN too. RFC1918 is now included — the router is behind NAT, so this adds no public exposure.
+
+A `fortunett_wg_watchdog` scheduler pings the VPS over the tunnel every 2 min and re-arms the interface after failure; peers cache their resolved endpoint, so a WAN IP change stops the handshake with the interface still showing `running`.
+
+### Verifying Full Automation
+`api/diagnostics/automation_chain.php` (rendered at the top of `hotspot_diagnostics.php`) checks the whole money-in→internet-on path: gateway completeness and sandbox-vs-live, callback URL sanity, C2B registration, cron liveness, the two schema faults that abort handlers mid-write, router reachability, and the last 7 days of real payments.
+
+Cron liveness comes from `includes/cron_heartbeat.php` — each scheduled script stamps `platform_settings.cron_last_run_<name>`. This exists because a cron line missing from crontab is invisible; `stk_poll.php` was absent for a long time and nothing could say so.
+
+### Unmatched Paybill Payments
+Daraja has no API that lists past C2B transactions, so a poller cannot recover an unroutable paybill payment the way `stk_poll.php` recovers a missing STK callback. `includes/unmatched_payments.php` captures every one into `unmatched_payments` (self-installing table) with its full payload; `api/payment/unmatched.php` lists them with suggested customers and credits them through the same `process_payment_success()` pipeline a matched payment would use. The suggester is deliberately looser than `resolveAccountRef()` — that one must never auto-credit the wrong ISP, but here a human confirms.
 
 ### Schema Guards
 `includes/schema_guard.php` repairs schema drift in place when a deployment is missing a migration. Call `ensurePaymentStatusEnums($pdo)` at the top of any endpoint on the payment path. One-shot repair: `php tools/repair_status_enums.php` (or `sql/migrations/2026-07-26-payment-autoactivation.sql`).
@@ -170,9 +205,15 @@ Runs daily. Marks overdue invoices (past due_date + 7 grace days), sends 3-day w
 # missing callback leaves the payment 'pending' forever.
 */2 * * * * php /var/www/html/cron/stk_poll.php >> /var/log/fortunett_stk_poll.log 2>&1
 
+# Provisioning retry — every 5 minutes. Drains pending_provisions: customers who
+# paid while their router was unreachable. Without it they stay paid-and-offline.
+*/5 * * * * php /var/www/html/cron/retry_provisions.php >> /var/log/fortunett_provision.log 2>&1
+
 # Captive portal sweep — hourly, offset from the top of the hour to spread load
 30 * * * * php /var/www/html/cron/sync_hotspot_pages.php >> /var/log/fortunett_portal_sync.log 2>&1
 ```
+
+Every one of these stamps a heartbeat (`includes/cron_heartbeat.php`). The Payment → Access panel on `hotspot_diagnostics.php` reports "last ran 41s ago" or "never run — add to crontab", so a missing crontab line is visible instead of silent.
 
 ### Database Isolation Rules (enforced post-migration)
 All queries against `clients`, `packages`, `payments`, `mikrotik_routers`, `payment_gateways`, `messages`, `vouchers`, `customer_sessions`, `payment_auto_logins`, `customer_activity_log` **must** include `tenant_id = ?`. The migration `sql/migrations/2026-03-26-saas-upgrade.sql` adds `tenant_id` columns to the five tables that were missing it and back-fills them.
