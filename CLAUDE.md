@@ -175,7 +175,9 @@ Separate portal for FortuNett staff only. Auth guard: `super_admin/includes/auth
 - `super_admin/index.php` — MRR dashboard, revenue trend charts, overdue invoice alerts
 - `super_admin/tenants.php` — Tenant list/detail, suspend/activate buttons
 - `super_admin/billing.php` — Platform invoice management, mark-paid, generate invoices
-- `api/super_admin/tenants.php` — REST API: `set_status`, `save_notes`, `set_plan`, `mark_invoice_paid`
+- `api/super_admin/tenants.php` — REST API: `set_status`, `save_notes`, `set_plan`, `extend_subscription`, `mark_invoice_paid`, `settle_all_invoices`
+
+Every super-admin page hand-rolls its own copy of the sidebar markup and CSS — there is no shared header include. `super_admin/css/shell.css` + `js/shell.js` make that sidebar collapsible (desktop icon rail, off-canvas drawer below 900px) **without touching the markup**: the JS injects the toggle, backdrop and body class at runtime, so enabling it on a new page is two lines after the `css/dark.css` link and nothing else. Every rule is scoped under `body.sa-shell` because each page's inline `<style>` block loads *after* the stylesheet links and would otherwise win on the cascade.
 - `api/super_admin/billing.php` — Invoice generation endpoint (also used by billing page form)
 
 ### Platform Subscription Plans (`platform_subscription_plans` table)

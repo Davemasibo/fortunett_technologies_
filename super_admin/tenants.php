@@ -92,6 +92,8 @@ if (isset($_GET['id'])) {
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 <link href="css/dark.css?v=2" rel="stylesheet">
+<link href="css/shell.css?v=1" rel="stylesheet">
+<script src="js/shell.js?v=1" defer></script>
 <style>
 :root{--sa-dark:#0f3460;--sa-mid:#16213e;--sa-accent:#e94560;--sidebar-w:240px;
       --neu-bg:#141414;--neu-surf:#1c1c1b;--neu-s2:#222221;--neu-border:rgba(255,255,255,.06);--neu-text:#e2e2e0;--neu-muted:#9a9a95;}
@@ -150,7 +152,25 @@ tr:hover td{background:rgba(255,255,255,.035);}
 .btn-extend:hover:not(:disabled){background:rgba(59,110,165,.34);color:#fff;transform:translateY(-1px);}
 .btn-extend:disabled{opacity:.5;cursor:not-allowed;transform:none;}
 .btn-extend i{font-size:11px;}
+/* In a table row it sits beside .btn-sm buttons — match their metrics. */
+.btn-extend.row-extend{padding:4px 10px;}
 #extAmount:focus,#extUnit:focus,#extUntil:focus{outline:none;border-color:#3B6EA5;}
+/* Per-row extend popover. Lives on <body> rather than inside the row: the card
+   is overflow-x:auto on narrow screens, which would clip an in-table dropdown. */
+.sa-extend-pop{position:fixed;z-index:200;min-width:190px;padding:6px;display:none;
+  background:#1c1c1b;border:1px solid rgba(255,255,255,.1);border-radius:11px;
+  box-shadow:0 18px 44px rgba(0,0,0,.65),0 0 0 1px rgba(255,255,255,.04);}
+.sa-extend-pop.open{display:block;}
+.sa-extend-pop .pop-head{padding:7px 10px 8px;font-size:11px;font-weight:700;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--neu-muted);border-bottom:1px solid var(--neu-border);margin-bottom:4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px;}
+.sa-extend-pop button{display:block;width:100%;text-align:left;padding:7px 10px;border:none;background:none;
+  color:var(--neu-text);font-size:13px;border-radius:7px;cursor:pointer;transition:background .14s;}
+.sa-extend-pop button:hover:not(:disabled){background:rgba(59,110,165,.28);color:#fff;}
+.sa-extend-pop button:disabled{opacity:.5;cursor:not-allowed;}
+.sa-extend-pop .pop-sep{height:1px;background:var(--neu-border);margin:5px 0;}
+.sa-extend-pop .pop-group{padding:5px 10px 2px;font-size:10px;font-weight:700;letter-spacing:.5px;
+  text-transform:uppercase;color:#6b7280;}
 .empty-row td{text-align:center;color:var(--neu-muted);padding:36px;}
 /* Detail panel */
 .detail-panel{background:var(--neu-s2);border-radius:14px;padding:28px;border:1px solid var(--neu-border);box-shadow:14px 14px 28px rgba(0,0,0,.5),-7px -7px 18px rgba(255,255,255,.035),0 0 0 1px var(--neu-border);margin-bottom:24px;}
@@ -489,16 +509,28 @@ table a:hover{color:#93c5fd;}
                         // the state that reads as working here but locks them out.
                         $lclField = $t['status'] === 'trial' ? 'trial_ends_at' : 'subscription_ends_at';
                         $lclTs    = saExpiryTs($t[$lclField] ?? null);
-                        if (in_array($t['status'], ['active', 'trial'], true) && $lclTs !== null && $lclTs < time()):
+                        $lclGated = in_array($t['status'], ['active', 'trial'], true) && $lclTs !== null;
+                        if ($lclGated && $lclTs < time()):
                         ?>
-                        <br><small style="color:#fcd34d;font-size:11px;" title="Locked out by date — use Extend on the detail page">
+                        <br><small style="color:#fcd34d;font-size:11px;" title="Locked out by date — extend to restore access">
                             <i class="fas fa-hourglass-end"></i> date expired
+                        </small>
+                        <?php elseif ($lclGated): ?>
+                        <br><small style="color:var(--neu-muted);font-size:11px;" title="<?= date('D d M Y, H:i', $lclTs) ?>">
+                            until <?= date('d M, H:i', $lclTs) ?>
                         </small>
                         <?php endif; ?>
                     </td>
                     <td style="white-space:nowrap;"><?= date('d M Y', strtotime($t['created_at'])) ?></td>
                     <td style="white-space:nowrap;">
-                        <a href="tenants.php?id=<?= $t['id'] ?>" class="btn-sm btn-view"><i class="fas fa-eye"></i></a>
+                        <a href="tenants.php?id=<?= $t['id'] ?>" class="btn-sm btn-view" title="Open tenant"><i class="fas fa-eye"></i></a>
+                        <button class="btn-sm btn-extend row-extend"
+                                title="Grant more time without opening this tenant"
+                                data-tenant-id="<?= (int)$t['id'] ?>"
+                                data-tenant-name="<?= htmlspecialchars($t['company_name'], ENT_QUOTES) ?>"
+                                data-clock="<?= $t['status'] === 'trial' ? 'trial' : 'subscription' ?>">
+                            <i class="fas fa-hourglass-half"></i> Extend
+                        </button>
                         <?php if ($t['status'] === 'suspended'): ?>
                             <?php if ((float)($t['outstanding'] ?? 0) > 0): ?>
                             <!-- Activating would be reverted by the suspension cron; send
@@ -545,7 +577,7 @@ function changeTenantStatus(tenantId, status) {
 /* Move the tenant's access expiry. This is what unsticks a tenant whose status
    reads "active" but who is being redirected to billing.php?subscription_expired=1
    — requireTenantActive() checks the date as well as the status. */
-function sendExtend(payload, btn) {
+function sendExtend(payload, btn, tenantId) {
     const original = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '…';
@@ -555,7 +587,8 @@ function sendExtend(payload, btn) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(Object.assign({
             action: 'extend_subscription',
-            tenant_id: <?= isset($_GET['id']) ? (int)$_GET['id'] : 0 ?>,
+            /* The list view passes an id per row; the detail view has only one. */
+            tenant_id: tenantId || <?= isset($_GET['id']) ? (int)$_GET['id'] : 0 ?>,
             from_now: document.getElementById('extFromNow')?.checked || false
         }, payload))
     })
@@ -587,6 +620,113 @@ function extendSubCustom(btn) {
     if (!amount || amount < 1) { alert('Enter how many ' + unit + ' to add.'); return; }
     sendExtend({ unit: unit, amount: amount }, btn);
 }
+
+/* ── Per-row extend, list view ────────────────────────────────────────────────
+   Same API as the detail panel, reached without opening the tenant. The menu is
+   built once and re-anchored to whichever row was clicked. */
+(function () {
+    var rows = document.querySelectorAll('.row-extend');
+    if (!rows.length) return;   // detail view — nothing to wire
+
+    var PRESETS = [
+        ['Hours',  [[1, 'hours'], [3, 'hours'], [6, 'hours'], [12, 'hours'], [24, 'hours']]],
+        ['Days',   [[1, 'days'], [3, 'days'], [7, 'days'], [10, 'days'], [14, 'days']]],
+        ['Months', [[1, 'months'], [3, 'months'], [6, 'months']]]
+    ];
+
+    var pop = document.createElement('div');
+    pop.className = 'sa-extend-pop';
+    var head = document.createElement('div');
+    head.className = 'pop-head';
+    pop.appendChild(head);
+
+    var current = null;   // the .row-extend button that opened the menu
+
+    function label(n, unit) {
+        return '+' + n + ' ' + (n === 1 ? unit.replace(/s$/, '') : unit);
+    }
+
+    function apply(payload) {
+        if (!current) return;
+        var btn = current;
+        close();
+        sendExtend(payload, btn, parseInt(btn.dataset.tenantId, 10));
+    }
+
+    PRESETS.forEach(function (group) {
+        var title = document.createElement('div');
+        title.className = 'pop-group';
+        title.textContent = group[0];
+        pop.appendChild(title);
+        group[1].forEach(function (p) {
+            var item = document.createElement('button');
+            item.type = 'button';
+            item.textContent = label(p[0], p[1]);
+            item.addEventListener('click', function () { apply({ unit: p[1], amount: p[0] }); });
+            pop.appendChild(item);
+        });
+    });
+
+    var sep = document.createElement('div');
+    sep.className = 'pop-sep';
+    pop.appendChild(sep);
+
+    var custom = document.createElement('button');
+    custom.type = 'button';
+    custom.textContent = 'Custom…';
+    custom.addEventListener('click', function () {
+        var raw = prompt('How much time to add?\n\nExamples: 2 hours, 45 days, 3 months', '30 days');
+        if (raw === null) return;
+        var m = /^\s*(\d+)\s*(hours?|hrs?|h|days?|d|months?|mo)\s*$/i.exec(raw);
+        if (!m) { alert('Could not read "' + raw + '".\n\nUse a number and a unit, e.g. "6 hours", "10 days", "2 months".'); return; }
+        var n = parseInt(m[1], 10);
+        var u = m[2].toLowerCase();
+        var unit = (u[0] === 'h') ? 'hours' : (u[0] === 'd' ? 'days' : 'months');
+        apply({ unit: unit, amount: n });
+    });
+    pop.appendChild(custom);
+
+    document.body.appendChild(pop);
+
+    function close() {
+        pop.classList.remove('open');
+        current = null;
+    }
+
+    function open(btn) {
+        current = btn;
+        head.textContent = btn.dataset.tenantName + ' · ' + btn.dataset.clock;
+        pop.classList.add('open');   // must be visible to measure
+
+        var r = btn.getBoundingClientRect();
+        var w = pop.offsetWidth, h = pop.offsetHeight;
+        /* Keep it on screen: flip above when the row is near the bottom, and
+           pull left when the Actions column is hard against the right edge. */
+        var top  = (r.bottom + h + 8 > window.innerHeight) ? r.top - h - 6 : r.bottom + 6;
+        var left = Math.min(r.left, window.innerWidth - w - 12);
+        pop.style.top  = Math.max(8, top) + 'px';
+        pop.style.left = Math.max(8, left) + 'px';
+    }
+
+    Array.prototype.forEach.call(rows, function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (current === btn) { close(); return; }
+            open(btn);
+        });
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!pop.contains(e.target)) close();
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' || e.key === 'Esc') close();
+    });
+    window.addEventListener('resize', close);
+    /* position:fixed does not follow the page, so a scroll would leave the menu
+       floating away from its row. */
+    window.addEventListener('scroll', close, true);
+})();
 
 function extendSubUntil(btn) {
     const until = document.getElementById('extUntil').value;
