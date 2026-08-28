@@ -49,11 +49,24 @@ $phone         = $data['MSISDN']          ?? '';
 $accountRef    = strtoupper(trim($data['BillRefNumber'] ?? ''));
 $transTime     = $data['TransTime']       ?? date('YmdHis');
 
-if (empty($accountRef) || $amount <= 0) {
+$payerName     = trim(preg_replace('/\s+/', ' ', ($data['FirstName'] ?? '') . ' ' . ($data['MiddleName'] ?? '') . ' ' . ($data['LastName'] ?? '')));
+$txType        = (string)($data['TransactionType'] ?? '');
+
+// A Buy Goods (Till) confirmation has no BillRefNumber - a till gives the
+// customer nowhere to type an account. Exiting on an empty ref discarded every
+// till payment before the resolver or the unmatched queue ever saw it.
+// resolveAccountRef() can still match on the paying MSISDN, and anything it
+// cannot match is queued below. Only a zero amount is nothing to act on.
+if ($amount <= 0) {
     @file_put_contents($logDir . '/tenant_c2b.log',
-        date('Y-m-d H:i:s') . " CONFIRM SKIPPED: missing ref or zero amount\n", FILE_APPEND | LOCK_EX);
+        date('Y-m-d H:i:s') . " CONFIRM SKIPPED: zero amount tx={$transactionId}\n", FILE_APPEND | LOCK_EX);
     echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
     exit;
+}
+if ($accountRef === '') {
+    @file_put_contents($logDir . '/tenant_c2b.log',
+        date('Y-m-d H:i:s') . " CONFIRM NO REF (till / buy-goods, type='{$txType}') - resolving by MSISDN {$phone}, tx={$transactionId}\n",
+        FILE_APPEND | LOCK_EX);
 }
 
 // Detect tenant from subdomain
@@ -74,7 +87,7 @@ if (!$tenantId) {
     // The money is already banked and Safaricom will never replay this. Capture it
     // so it shows up in the admin UI instead of dying in a log file.
     record_unmatched_payment($pdo, null, $transactionId, $amount, $phone, $accountRef,
-        'unrouted', 'c2b_tenant', $content, (string)($data['FirstName'] ?? ''));
+        'unrouted', 'c2b_tenant', $content, $payerName);
     echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
     exit;
 }
@@ -101,7 +114,7 @@ try {
         // money credited to nobody with only a log line to show for it.
         record_unmatched_payment($pdo, (int)$tenantId, $transactionId, $amount, $phone, $accountRef,
             ($match['reason'] ?? '') === 'ambiguous' ? 'ambiguous' : 'unmatched',
-            'c2b_tenant', $content, (string)($data['FirstName'] ?? ''));
+            'c2b_tenant', $content, $payerName);
         echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
         exit;
     }

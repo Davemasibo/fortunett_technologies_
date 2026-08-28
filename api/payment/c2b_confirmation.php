@@ -24,6 +24,7 @@ require_once __DIR__ . '/../../includes/payment_pipeline.php';
 require_once __DIR__ . '/../../includes/account_resolver.php';
 require_once __DIR__ . '/../../includes/platform_billing.php';
 require_once __DIR__ . '/../../includes/schema_guard.php';
+require_once __DIR__ . '/../../includes/unmatched_payments.php';
 
 // The pipeline flips clients.status to 'active'; guard the enums so a missing
 // migration can't silently swallow an activation after the money is taken.
@@ -51,10 +52,25 @@ $phone          = $data['MSISDN']           ?? '';
 $accountRef     = strtoupper(trim($data['BillRefNumber'] ?? ''));
 $transTime      = $data['TransTime']        ?? date('YmdHis');
 
-if (empty($accountRef) || $amount <= 0) {
-    file_put_contents($logDir . '/mpesa_c2b.log', date('Y-m-d H:i:s') . " SKIPPED: missing account ref or amount\n", FILE_APPEND | LOCK_EX);
+$payerName      = trim(preg_replace('/\s+/', ' ', ($data['FirstName'] ?? '') . ' ' . ($data['MiddleName'] ?? '') . ' ' . ($data['LastName'] ?? '')));
+$txType         = (string)($data['TransactionType'] ?? '');
+
+// A Buy Goods (Till) confirmation carries NO BillRefNumber - there is no
+// account field on the customer's phone for a till, only an amount. This block
+// used to exit here, so every shilling paid to a till was written to the log
+// and thrown away. An empty ref is not a reason to stop: resolveAccountRef()
+// can still identify the payer by their MSISDN, and when it cannot,
+// record_unmatched_payment() queues the money for a human below. Only a zero
+// amount is genuinely nothing to act on.
+if ($amount <= 0) {
+    file_put_contents($logDir . '/mpesa_c2b.log', date('Y-m-d H:i:s') . " SKIPPED: zero amount tx={$transactionId}\n", FILE_APPEND | LOCK_EX);
     echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
     exit;
+}
+if ($accountRef === '') {
+    file_put_contents($logDir . '/mpesa_c2b.log',
+        date('Y-m-d H:i:s') . " NO REF (till / buy-goods, type='{$txType}') - resolving by MSISDN {$phone}, tx={$transactionId}\n",
+        FILE_APPEND | LOCK_EX);
 }
 
 try {
@@ -86,6 +102,15 @@ try {
         file_put_contents($logDir . '/mpesa_c2b.log',
             date('Y-m-d H:i:s') . " UNROUTABLE: account=$accountRef phone=$phone amount=$amount tx=$transactionId\n",
             FILE_APPEND | LOCK_EX);
+        // The money is banked and Safaricom never replays a C2B confirmation.
+        // The tenant handler has always queued these; the platform handler only
+        // logged them, so platform paybill / till money that failed to route was
+        // invisible in every UI. Capture it for one-click assignment instead.
+        record_unmatched_payment(
+            $pdo, null, $transactionId, $amount, $phone, $accountRef,
+            'unrouted', 'c2b_platform', $content, $payerName
+        );
+
         echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
         exit;
     }
@@ -103,6 +128,11 @@ try {
 
     if (!$client) {
         file_put_contents($logDir . '/mpesa_c2b.log', date('Y-m-d H:i:s') . " CLIENT NOT FOUND: tenant=$tenant_id client=$client_id\n", FILE_APPEND | LOCK_EX);
+        record_unmatched_payment(
+            $pdo, (int)$tenant_id, $transactionId, $amount, $phone, $accountRef,
+            'unmatched', 'c2b_platform', $content, $payerName
+        );
+
         echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
         exit;
     }

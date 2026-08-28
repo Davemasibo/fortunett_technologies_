@@ -64,8 +64,16 @@ function um_suggest(PDO $pdo, int $tenantId, string $ref, string $phone): array
 try {
     if ($action === 'list') {
         _unmatched_ensure_table($pdo);
-        // tenant_id IS NULL rows are unrouted payments — the subdomain did not
-        // resolve. Surface them too; whoever is looking is the likeliest owner.
+        // tenant_id IS NULL rows are unrouted payments — the confirmation could
+        // not be attributed to any ISP. Buy Goods (Till) payments land here as a
+        // matter of course, because a till gives the customer nowhere to type an
+        // account number, so these are no longer the rare case they once were.
+        //
+        // They are still surfaced, but NOT to everybody: an unrouted row is only
+        // offered to a tenant who has a customer it could plausibly belong to
+        // (um_suggest() finds a match on account ref, payer phone, name or
+        // username). Without that filter every ISP on the platform would see —
+        // and could claim — every other ISP's orphaned till money.
         $st = $pdo->prepare("
             SELECT * FROM unmatched_payments
             WHERE status = 'open' AND (tenant_id = ? OR tenant_id IS NULL)
@@ -74,11 +82,17 @@ try {
         $st->execute([$tenantId]);
         $rows = $st->fetchAll(PDO::FETCH_ASSOC);
 
-        foreach ($rows as &$r) {
+        $visible = [];
+        foreach ($rows as $r) {
             unset($r['raw_payload']);   // large and not needed in the list
             $r['suggestions'] = um_suggest($pdo, $tenantId, (string)$r['account_ref'], (string)$r['phone']);
+            if ($r['tenant_id'] === null && !$r['suggestions']) {
+                continue;   // somebody else's orphan, or nobody's yet
+            }
+            $r['unrouted'] = ($r['tenant_id'] === null);
+            $visible[] = $r;
         }
-        unset($r);
+        $rows = $visible;
 
         ob_clean();
         echo json_encode(['success' => true, 'payments' => $rows, 'count' => count($rows)]);
@@ -91,9 +105,22 @@ try {
         if (!$rowId || !$clientId) {
             ob_clean(); echo json_encode(['success' => false, 'error' => 'id and client_id required']); exit;
         }
-        // Claim an unrouted (tenant_id IS NULL) row for this tenant before resolving
-        $pdo->prepare("UPDATE unmatched_payments SET tenant_id = ? WHERE id = ? AND tenant_id IS NULL")
-            ->execute([$tenantId, $rowId]);
+        // Claim an unrouted (tenant_id IS NULL) row for this tenant before
+        // resolving — but only if this tenant actually has a customer it could
+        // belong to. The list filter already hides other ISPs' orphans; this
+        // repeats the check server-side so a hand-crafted POST cannot skip it.
+        $orphan = $pdo->prepare("SELECT account_ref, phone FROM unmatched_payments WHERE id = ? AND tenant_id IS NULL");
+        $orphan->execute([$rowId]);
+        if ($o = $orphan->fetch(PDO::FETCH_ASSOC)) {
+            if (!um_suggest($pdo, $tenantId, (string)$o['account_ref'], (string)$o['phone'])) {
+                ob_clean();
+                echo json_encode(['success' => false,
+                    'error' => 'This payment does not match any of your customers. It may belong to another ISP.']);
+                exit;
+            }
+            $pdo->prepare("UPDATE unmatched_payments SET tenant_id = ? WHERE id = ? AND tenant_id IS NULL")
+                ->execute([$tenantId, $rowId]);
+        }
 
         $res = resolve_unmatched_payment($pdo, $rowId, $clientId, $tenantId, $userId);
         ob_clean();
@@ -103,9 +130,11 @@ try {
 
     if ($action === 'ignore') {
         $rowId = (int)($_POST['id'] ?? 0);
+        // Only rows already owned by this tenant can be dismissed. Dismissing an
+        // unrouted row would hide another ISP's money from them permanently.
         $pdo->prepare("
             UPDATE unmatched_payments SET status = 'ignored', resolved_by = ?, resolved_at = NOW()
-            WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL) AND status = 'open'
+            WHERE id = ? AND tenant_id = ? AND status = 'open'
         ")->execute([$userId, $rowId, $tenantId]);
         ob_clean();
         echo json_encode(['success' => true, 'message' => 'Dismissed.']);

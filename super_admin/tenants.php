@@ -181,6 +181,36 @@ tr:hover td{background:rgba(255,255,255,.035);}
 .back-link:hover{color:#fff;}
 table a{color:#3B6EA5;text-decoration:none;}
 table a:hover{color:#93c5fd;}
+
+/* ── Live collections panel ──────────────────────────────────────────────── */
+.live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;
+          box-shadow:0 0 0 0 rgba(16,185,129,.7);animation:liveBeat 1.8s infinite;}
+.live-dot.paused{background:#6b7280;animation:none;box-shadow:none;}
+@keyframes liveBeat{0%{box-shadow:0 0 0 0 rgba(16,185,129,.6);}70%{box-shadow:0 0 0 7px rgba(16,185,129,0);}100%{box-shadow:0 0 0 0 rgba(16,185,129,0);}}
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;padding:18px 20px;}
+.stat-tile{background:var(--neu-bg);border:1px solid var(--neu-border);border-radius:11px;padding:14px 16px;
+           box-shadow:inset 3px 3px 8px rgba(0,0,0,.35),inset -2px -2px 6px rgba(255,255,255,.02);}
+.stat-tile label{display:block;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--neu-muted);margin-bottom:6px;}
+.stat-tile .v{font-size:19px;font-weight:700;color:var(--neu-text);line-height:1.15;font-variant-numeric:tabular-nums;}
+.stat-tile .s{font-size:11px;color:var(--neu-muted);margin-top:3px;}
+.stat-tile.accent{border-color:rgba(16,185,129,.3);}
+.stat-tile.accent .v{color:#6ee7b7;}
+.stat-tile.warn{border-color:rgba(245,158,11,.35);}
+.stat-tile.warn .v{color:#fcd34d;}
+.stat-tile.danger{border-color:rgba(239,68,68,.4);}
+.stat-tile.danger .v{color:#fca5a5;}
+.feed-table td{font-size:12.5px;}
+.feed-table .amt{font-weight:700;color:#6ee7b7;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.feed-table .muted{color:var(--neu-muted);font-size:11px;}
+.feed-table tr.fresh{animation:freshFlash 3.2s ease-out 1;}
+@keyframes freshFlash{0%{background:rgba(16,185,129,.28);}100%{background:transparent;}}
+.chip{display:inline-block;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.3px;}
+.chip-platform{background:rgba(59,130,246,.16);color:#93c5fd;}
+.chip-direct{background:rgba(148,163,184,.14);color:#cbd5e1;}
+.chip-held{background:rgba(245,158,11,.16);color:#fcd34d;}
+.alert-strip{margin:0 20px 16px;padding:12px 16px;border-radius:10px;font-size:13px;display:flex;gap:12px;align-items:flex-start;}
+.alert-strip.danger{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#fca5a5;}
+.alert-strip.warn{background:rgba(245,158,11,.09);border:1px solid rgba(245,158,11,.28);color:#fcd34d;}
 </style>
 </head>
 <body>
@@ -409,6 +439,53 @@ table a:hover{color:#93c5fd;}
         </div>
         <?php endif; ?>
 
+        <!-- ── Live collections ─────────────────────────────────────────────
+             What this tenant's customers are paying, as it lands. The invoice
+             table below is the opposite direction: what the tenant owes us.
+             Everything here is filled by api/super_admin/tenant_collections.php
+             on a poll, so an operator can leave the page open during a payment
+             run and watch rows appear. -->
+        <div class="card" style="margin-bottom:18px;">
+            <div style="padding:16px 20px;border-bottom:1px solid var(--neu-border);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+                <div>
+                    <h3 style="font-size:15px;font-weight:700;">
+                        <i class="fas fa-hand-holding-dollar" style="color:#6ee7b7;"></i> Customer collections
+                        <span id="liveDot" class="live-dot" style="margin-left:8px;" title="Live"></span>
+                    </h3>
+                    <p style="font-size:12px;color:var(--neu-muted);margin:4px 0 0;">
+                        End-customer money collected by <?= htmlspecialchars($detailTenant['company_name']) ?>.
+                        <span id="liveStamp"></span>
+                    </p>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button class="btn-sm btn-view" id="liveToggle" onclick="toggleLive()"><i class="fas fa-pause"></i> Pause</button>
+                    <button class="btn-sm btn-view" onclick="loadCollections(true)"><i class="fas fa-rotate"></i> Refresh</button>
+                    <a class="btn-sm btn-view" href="collections.php?tab=in" style="text-decoration:none;"><i class="fas fa-list"></i> All collections</a>
+                </div>
+            </div>
+
+            <div class="stat-row" id="collStats">
+                <div class="stat-tile"><label>Today</label><div class="v">—</div></div>
+                <div class="stat-tile"><label>Last 7 days</label><div class="v">—</div></div>
+                <div class="stat-tile"><label>Last 30 days</label><div class="v">—</div></div>
+                <div class="stat-tile"><label>All time</label><div class="v">—</div></div>
+            </div>
+
+            <div id="collAlerts"></div>
+
+            <div style="overflow-x:auto;">
+            <table class="feed-table">
+                <thead><tr>
+                    <th>When</th><th>Customer</th><th>Account</th><th>Amount</th>
+                    <th>Method</th><th>M-Pesa ref</th><th>Status</th><th>Routing</th>
+                </tr></thead>
+                <tbody id="collFeed">
+                    <tr class="empty-row"><td colspan="8">Loading…</td></tr>
+                </tbody>
+            </table>
+            </div>
+        </div>
+
         <!-- Invoice history -->
         <div class="card">
             <div style="padding:16px 20px;border-bottom:1px solid var(--neu-border);"><h3 style="font-size:15px;font-weight:700;">Invoice History</h3></div>
@@ -563,6 +640,162 @@ table a:hover{color:#93c5fd;}
 
 
 <script>
+<?php if ($detailTenant): ?>
+/* ── Live collections feed ────────────────────────────────────────────────
+   Polls api/super_admin/tenant_collections.php. Rows that arrived since the
+   last poll are flashed green, so money landing is visible without reading
+   timestamps. Polling pauses when the tab is hidden — a super-admin leaves
+   these pages open all day and there is no reason to hammer the DB for a
+   screen nobody is looking at. */
+const COLL_TENANT_ID = <?= (int)$detailTenant['id'] ?>;
+let collTimer = null, collLive = true, collSeenMax = 0, collFirstLoad = true;
+
+function collMoney(n) {
+    return 'KSH ' + Number(n || 0).toLocaleString('en-KE', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+}
+function collEsc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+        return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+    });
+}
+
+function loadCollections() {
+    fetch('../api/super_admin/tenant_collections.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({action: 'feed', tenant_id: COLL_TENANT_ID, limit: 40})
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+        if (!d.success) { renderCollError(d.message || 'Could not load collections'); return; }
+        renderCollStats(d);
+        renderCollAlerts(d);
+        renderCollFeed(d);
+        document.getElementById('liveStamp').textContent =
+            (collLive ? 'Live — updated ' : 'Paused — last updated ') + d.server_time;
+    })
+    .catch(function (e) { renderCollError(e.message); });
+}
+
+function renderCollStats(d) {
+    var t = d.totals, f = d.float;
+    var tiles = [
+        {label: 'Today',        v: collMoney(t.today.amount), s: t.today.count + (t.today.count === 1 ? ' payment' : ' payments'), cls: t.today.count ? 'accent' : ''},
+        {label: 'Last 7 days',  v: collMoney(t.week.amount),  s: t.week.count  + ' payments', cls: ''},
+        {label: 'Last 30 days', v: collMoney(t.month.amount), s: t.month.count + ' payments', cls: ''},
+        {label: 'All time',     v: collMoney(t.all.amount),   s: t.all.count   + ' payments', cls: ''}
+    ];
+    // Float only exists for tenants collecting through the platform paybill.
+    if (f.unreleased > 0 || f.released > 0) {
+        tiles.push({
+            label: 'Held for payout', v: collMoney(f.unreleased),
+            s: f.unreleased_count + ' unreleased' + (f.oldest_ago !== '—' ? ', oldest ' + f.oldest_ago : ''),
+            cls: f.unreleased > 0 ? 'warn' : ''
+        });
+    }
+    // Pending is a health signal, not revenue: STK pushes with no callback back.
+    if (d.pending_24h.count > 0) {
+        tiles.push({label: 'Pending 24h', v: d.pending_24h.count, s: collMoney(d.pending_24h.amount) + ' awaiting callback', cls: 'warn'});
+    }
+    if (d.unmatched.count > 0) {
+        tiles.push({label: 'Unmatched', v: d.unmatched.count, s: collMoney(d.unmatched.amount) + ' credited to nobody', cls: 'danger'});
+    }
+    document.getElementById('collStats').innerHTML = tiles.map(function (x) {
+        return '<div class="stat-tile ' + x.cls + '"><label>' + collEsc(x.label) + '</label>' +
+               '<div class="v">' + collEsc(x.v) + '</div><div class="s">' + collEsc(x.s) + '</div></div>';
+    }).join('');
+}
+
+function renderCollAlerts(d) {
+    var out = [];
+    if (d.unmatched.count > 0) {
+        out.push('<div class="alert-strip danger"><i class="fas fa-triangle-exclamation" style="margin-top:2px;"></i><div>' +
+            '<strong>' + d.unmatched.count + (d.unmatched.count === 1 ? ' payment' : ' payments') +
+            ' (' + collMoney(d.unmatched.amount) + ') arrived and matched no customer.</strong><br>' +
+            'Those customers paid and are still offline. Latest: ' +
+            d.unmatched.rows.slice(0, 3).map(function (r) {
+                return collEsc(r.transaction_id) + ' ' + collMoney(r.amount) +
+                       (r.account_ref ? ' acct ' + collEsc(r.account_ref) : ' <em>no account ref (till)</em>') +
+                       ' from ' + collEsc(r.phone || '?') + ' (' + collEsc(r.ago) + ')';
+            }).join(' · ') +
+            '</div></div>');
+    }
+    if (d.unmatched.unrouted_global > 0) {
+        out.push('<div class="alert-strip warn"><i class="fas fa-circle-question" style="margin-top:2px;"></i><div>' +
+            d.unmatched.unrouted_global + (d.unmatched.unrouted_global === 1 ? ' platform payment' : ' platform payments') +
+            ' could not be attributed to any tenant. A till payment carries no account number, ' +
+            'so it lands here until somebody assigns it.</div></div>');
+    }
+    if (d.pending_24h.count > 0 && d.totals.today.count === 0) {
+        out.push('<div class="alert-strip warn"><i class="fas fa-clock" style="margin-top:2px;"></i><div>' +
+            d.pending_24h.count + (d.pending_24h.count === 1 ? ' payment' : ' payments') +
+            ' was initiated in the last 24h and nothing completed today. If money did leave the customers phones, ' +
+            'the callback is not arriving — check the C2B/STK callback URL and that cron/stk_poll.php is in crontab.' +
+            '</div></div>');
+    }
+    document.getElementById('collAlerts').innerHTML = out.join('');
+}
+
+function renderCollFeed(d) {
+    var tb = document.getElementById('collFeed');
+    if (!d.payments.length) {
+        tb.innerHTML = '<tr class="empty-row"><td colspan="8">No customer payments recorded for this tenant yet.' +
+            ((d.unmatched.count || d.unmatched.unrouted_global)
+                ? ' Money has arrived but matched nobody — see the alert above.' : '') + '</td></tr>';
+        collFirstLoad = false;
+        return;
+    }
+    // Anything above the previous high-water mark arrived since the last poll.
+    var prevMax = collSeenMax;
+    tb.innerHTML = d.payments.map(function (p) {
+        var fresh = !collFirstLoad && p.id > prevMax;
+        var routing = p.collection_type === 'platform'
+            ? (p.released ? '<span class="chip chip-platform">Platform · paid out</span>'
+                          : '<span class="chip chip-held">Platform · held</span>')
+            : '<span class="chip chip-direct">Direct to ISP</span>';
+        var badge = p.status === 'completed' ? 'badge-paid'
+                  : (p.status === 'pending' ? 'badge-pending' : 'badge-overdue');
+        return '<tr' + (fresh ? ' class="fresh"' : '') + '>' +
+            '<td>' + collEsc(p.time) + '<div class="muted">' + collEsc(p.ago) + '</div></td>' +
+            '<td>' + collEsc(p.client_name) + '<div class="muted">' + collEsc(p.phone) + '</div></td>' +
+            '<td>' + (p.account_number ? collEsc(p.account_number) : '<span class="muted">—</span>') + '</td>' +
+            '<td class="amt">' + collMoney(p.amount) + '</td>' +
+            '<td class="muted">' + collEsc(p.method) + '</td>' +
+            '<td class="muted">' + collEsc(p.transaction_id || '—') + '</td>' +
+            '<td><span class="badge ' + badge + '">' + collEsc(p.status) + '</span></td>' +
+            '<td>' + routing + '</td></tr>';
+    }).join('');
+    collSeenMax = d.max_id;
+    collFirstLoad = false;
+}
+
+function renderCollError(msg) {
+    document.getElementById('collFeed').innerHTML =
+        '<tr class="empty-row"><td colspan="8" style="color:#fca5a5;">' + collEsc(msg) + '</td></tr>';
+}
+
+function toggleLive() {
+    collLive = !collLive;
+    var btn = document.getElementById('liveToggle');
+    document.getElementById('liveDot').classList.toggle('paused', !collLive);
+    btn.innerHTML = collLive ? '<i class="fas fa-pause"></i> Pause' : '<i class="fas fa-play"></i> Resume';
+    scheduleColl();
+}
+
+function scheduleColl() {
+    if (collTimer) { clearInterval(collTimer); collTimer = null; }
+    if (collLive) {
+        collTimer = setInterval(function () { if (!document.hidden) loadCollections(); }, 8000);
+    }
+}
+
+document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && collLive) loadCollections();
+});
+loadCollections();
+scheduleColl();
+<?php endif; ?>
+
 
 function changeTenantStatus(tenantId, status) {
     const label = status === 'suspended' ? 'suspend' : 'activate';

@@ -85,15 +85,56 @@ try {
 } catch (Throwable $e) { /* table may not exist */ }
 
 // ── 3. Unmatched paybill money — arrived but routed nowhere ──────────────────
-$unmatched = [];
+// Read from unmatched_payments, not from logs/mpesa_c2b.log. The log only ever
+// held the last few hundred lines, said nothing about what had been resolved
+// since, and could not be acted on. The table is the durable record: every C2B
+// confirmation that could not be credited is captured there with its payload.
+//
+// Till (Buy Goods) payments are the common case now - a till gives the customer
+// nowhere to type an account number, so unless the paying phone is already on a
+// client record the payment can only be attributed by hand.
+require_once __DIR__ . '/../includes/unmatched_payments.php';
+
+$unmatched      = [];
+$unmatchedTotal = ['count' => 0, 'amount' => 0.0, 'unrouted' => 0];
+$unmatchedError = null;
+try {
+    _unmatched_ensure_table($pdo);
+    $unmatched = $pdo->query("
+        SELECT u.*, t.company_name, t.subdomain
+        FROM unmatched_payments u
+        LEFT JOIN tenants t ON t.id = u.tenant_id
+        WHERE u.status = 'open'
+        ORDER BY u.created_at DESC
+        LIMIT 100
+    ")->fetchAll(PDO::FETCH_ASSOC);
+
+    $row = $pdo->query("
+        SELECT COUNT(*) c, COALESCE(SUM(amount),0) a,
+               COUNT(CASE WHEN tenant_id IS NULL THEN 1 END) u
+        FROM unmatched_payments WHERE status = 'open'
+    ")->fetch(PDO::FETCH_ASSOC) ?: [];
+    $unmatchedTotal = [
+        'count'    => (int)($row['c'] ?? 0),
+        'amount'   => (float)($row['a'] ?? 0),
+        'unrouted' => (int)($row['u'] ?? 0),
+    ];
+} catch (Throwable $e) {
+    $unmatchedError = $e->getMessage();
+}
+
+// The raw log still helps when the table shows nothing but money is missing - a
+// handler that aborted before capture leaves a trace here and nowhere else.
+$unmatchedLog = [];
 $logFile = __DIR__ . '/../logs/mpesa_c2b.log';
 if (is_readable($logFile)) {
     foreach (array_slice(array_filter(explode("\n", (string)@file_get_contents($logFile))), -400) as $line) {
-        if (stripos($line, 'UNROUTABLE') !== false || stripos($line, 'UNMATCHED') !== false) {
-            $unmatched[] = $line;
+        if (stripos($line, 'UNROUTABLE') !== false || stripos($line, 'UNMATCHED') !== false
+            || stripos($line, 'SKIPPED') !== false || stripos($line, 'NO REF') !== false) {
+            $unmatchedLog[] = $line;
         }
     }
-    $unmatched = array_slice(array_reverse($unmatched), 0, 25);
+    $unmatchedLog = array_slice(array_reverse($unmatchedLog), 0, 25);
 }
 ?>
 <!DOCTYPE html>
@@ -209,7 +250,7 @@ tr:hover td{background:rgba(255,255,255,.03);}
         <div class="tabs">
             <a class="tab <?= $tab === 'in'   ? 'active' : '' ?>" href="?tab=in&days=<?= $days ?>">Money in from tenants</a>
             <a class="tab <?= $tab === 'held' ? 'active' : '' ?>" href="?tab=held">Held for ISPs</a>
-            <a class="tab <?= $tab === 'unmatched' ? 'active' : '' ?>" href="?tab=unmatched">Unmatched<?= $unmatched ? ' (' . count($unmatched) . ')' : '' ?></a>
+            <a class="tab <?= $tab === 'unmatched' ? 'active' : '' ?>" href="?tab=unmatched">Unmatched<?= $unmatchedTotal['count'] ? ' (' . $unmatchedTotal['count'] . ')' : '' ?></a>
         </div>
 
         <?php if ($tab === 'in'): ?>
@@ -307,16 +348,65 @@ tr:hover td{background:rgba(255,255,255,.03);}
                     <p>Money that arrived but could not be tied to a tenant or a customer. Each of these is someone who paid and got nothing.</p>
                 </div>
             </div>
+            <?php if ($unmatchedError): ?>
+                <div class="note" style="color:#fca5a5;">Could not read the unmatched queue: <?= htmlspecialchars($unmatchedError) ?></div>
+            <?php endif; ?>
+
             <?php if ($unmatched): ?>
-                <?php foreach ($unmatched as $line): ?>
-                <div class="logline"><?= htmlspecialchars($line) ?></div>
-                <?php endforeach; ?>
                 <div class="note">
-                    Usually the payer's phone is not on any client record, or they typed a reference nobody recognises.
-                    Fix the client's phone number, or hand them their account number, then reconcile the payment manually.
+                    <strong>KSH <?= number_format($unmatchedTotal['amount'], 2) ?></strong> across
+                    <?= $unmatchedTotal['count'] ?> payment<?= $unmatchedTotal['count'] === 1 ? '' : 's' ?>.
+                    <?php if ($unmatchedTotal['unrouted']): ?>
+                        <?= $unmatchedTotal['unrouted'] ?> of them could not even be attributed to an ISP &mdash;
+                        that is what a Till (Buy Goods) payment looks like, because a till gives the customer
+                        nowhere to type an account number.
+                    <?php endif; ?>
+                    A tenant admin assigns these to a customer from their own Payments page; doing so runs the
+                    same pipeline a matched payment would have, so the customer is activated on the spot.
+                </div>
+                <div style="overflow-x:auto;">
+                <table>
+                    <thead><tr>
+                        <th>Received</th><th>M-Pesa ref</th><th>Amount</th><th>Payer</th>
+                        <th>Phone</th><th>Account typed</th><th>Belongs to</th><th>Why</th>
+                    </tr></thead>
+                    <tbody>
+                    <?php foreach ($unmatched as $u): ?>
+                    <tr>
+                        <td><?= date('d M H:i', strtotime($u['created_at'])) ?></td>
+                        <td><code><?= htmlspecialchars($u['transaction_id']) ?></code></td>
+                        <td><strong>KSH <?= number_format((float)$u['amount'], 2) ?></strong></td>
+                        <td><?= htmlspecialchars($u['payer_name'] ?: '—') ?></td>
+                        <td><?= htmlspecialchars($u['phone'] ?: '—') ?></td>
+                        <td><?= $u['account_ref'] !== '' && $u['account_ref'] !== null
+                                ? htmlspecialchars($u['account_ref'])
+                                : '<em style="opacity:.7;">none (till)</em>' ?></td>
+                        <td><?php if ($u['tenant_id']): ?>
+                                <a href="tenants.php?id=<?= (int)$u['tenant_id'] ?>"><?= htmlspecialchars($u['company_name'] ?: ('Tenant ' . $u['tenant_id'])) ?></a>
+                            <?php else: ?>
+                                <span style="color:#fcd34d;">no ISP identified</span>
+                            <?php endif; ?></td>
+                        <td><?= htmlspecialchars($u['reason']) ?> <span style="opacity:.6;">via <?= htmlspecialchars($u['source']) ?></span></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
                 </div>
             <?php else: ?>
-                <div class="empty">Nothing unmatched — every payment found an owner.</div>
+                <div class="empty">Nothing unmatched &mdash; every captured payment found an owner.</div>
+            <?php endif; ?>
+
+            <?php if ($unmatchedLog): ?>
+                <div class="card-head" style="margin-top:18px;">
+                    <div>
+                        <h3 style="font-size:14px;">Handler log</h3>
+                        <p>Raw lines from <code>logs/mpesa_c2b.log</code>. If money is missing and the table above is
+                           empty, the handler aborted before it could capture anything &mdash; the trace is here.</p>
+                    </div>
+                </div>
+                <?php foreach ($unmatchedLog as $line): ?>
+                <div class="logline"><?= htmlspecialchars($line) ?></div>
+                <?php endforeach; ?>
             <?php endif; ?>
         </div>
         <?php endif; ?>
