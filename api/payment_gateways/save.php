@@ -9,6 +9,57 @@ require_once '../../includes/payment_gateway.php';
 
 redirectIfNotLoggedIn();
 
+/**
+ * Switch on auto-activation for direct-to-ISP payments as soon as the ISP has
+ * working M-Pesa credentials.
+ *
+ * Registering C2B is the *only* thing that makes a payment sent straight to the
+ * ISP's own paybill/till reconnect the customer by itself. It was previously a
+ * button an admin had to know existed — and it was hidden outright for Buy Goods
+ * tills — so most tenants never turned it on and spent their days activating
+ * customers by hand. Saving credentials is the moment the intent is unambiguous,
+ * so do it here.
+ *
+ * Never fatal: the credentials save has already succeeded by the time this runs,
+ * and the manual button plus the banner on payments.php remain the fallback.
+ *
+ * @return array extra response keys describing what happened, for the UI toast
+ */
+function maybeAutoRegisterC2B(PDO $db, int $tenantId, int $gatewayId, string $gatewayType, array $credentials): array
+{
+    if ($gatewayType !== 'mpesa_api') return [];
+    if (!empty($credentials['c2b_registered'])) return ['c2b_status' => 'already'];
+
+    // Nothing to register against yet.
+    foreach (['consumer_key', 'consumer_secret', 'shortcode'] as $required) {
+        if (empty($credentials[$required])) return ['c2b_status' => 'incomplete'];
+    }
+
+    require_once __DIR__ . '/../../includes/c2b_registration.php';
+
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    if (!c2bHostIsPublic($host)) {
+        return [
+            'c2b_status'  => 'skipped',
+            'c2b_message' => 'Auto-activation could not be switched on from a local address — '
+                           . 'register C2B once this is running on your public domain.',
+        ];
+    }
+
+    try {
+        $https  = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+        $result = registerTenantC2B($db, $tenantId, $gatewayId, $host, $https, true);
+    } catch (Throwable $e) {
+        error_log("maybeAutoRegisterC2B(tenant=$tenantId): " . $e->getMessage());
+        return ['c2b_status' => 'error', 'c2b_message' => 'Auto-activation could not be switched on automatically.'];
+    }
+
+    return !empty($result['success'])
+        ? ['c2b_status' => 'registered',
+           'c2b_message' => 'Auto-activation is ON — customers paying you directly are now reconnected automatically.']
+        : ['c2b_status' => 'failed', 'c2b_message' => $result['error'] ?? 'C2B registration failed.'];
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['success' => false, 'message' => 'Method not allowed']);
@@ -138,6 +189,25 @@ try {
             if (empty($credentials['consumer_secret'])) $credentials['consumer_secret'] = $existing['credentials']['consumer_secret'] ?? '';
             if (empty($credentials['passkey']))         $credentials['passkey']         = $existing['credentials']['passkey']         ?? '';
             if (empty($credentials['callback_url']))    $credentials['callback_url']    = $existing['credentials']['callback_url']    ?? '';
+
+            // $credentials is rebuilt from scratch on every save, so the C2B
+            // registration flags used to be silently dropped whenever an admin
+            // edited anything at all. The UI then offered "Register C2B" again
+            // on a shortcode Safaricom was already calling, and the auto-
+            // activation banner read OFF while it was in fact on.
+            //
+            // Carry them forward, but only while they still describe the
+            // shortcode being collected on — registration belongs to a number,
+            // not to a gateway row.
+            require_once __DIR__ . '/../../includes/c2b_registration.php';
+            foreach (['c2b_registered', 'c2b_registered_at', 'c2b_registered_for',
+                      'c2b_validation_url', 'c2b_confirmation_url'] as $k) {
+                if (isset($existing['credentials'][$k])) $credentials[$k] = $existing['credentials'][$k];
+            }
+            $wasFor = (string)($credentials['c2b_registered_for'] ?? c2bEffectiveShortcode($existing['credentials']));
+            if ($wasFor !== c2bEffectiveShortcode($credentials)) {
+                $credentials = c2bForgetRegistration($credentials);
+            }
         } elseif ($gatewayType === 'paypal' && isset($existing['credentials'])) {
             if (empty($credentials['secret'])) $credentials['secret'] = $existing['credentials']['secret'] ?? '';
         } elseif ($gatewayType === 'kopo_kopo' && isset($existing['credentials'])) {
@@ -153,11 +223,12 @@ try {
         );
         
         if ($success) {
-            echo json_encode([
+            $c2b = maybeAutoRegisterC2B($db, (int)$tenantId, (int)$gatewayIdPost, $gatewayType, $credentials);
+            echo json_encode(array_merge([
                 'success' => true,
                 'message' => 'Payment gateway updated successfully',
                 'gateway_id' => $gatewayIdPost
-            ]);
+            ], $c2b));
         } else {
             http_response_code(500);
             echo json_encode(['success' => false, 'message' => 'Failed to update payment gateway']);
@@ -173,11 +244,12 @@ try {
         );
         
         if ($gatewayId) {
-            echo json_encode([
+            $c2b = maybeAutoRegisterC2B($db, (int)$tenantId, (int)$gatewayId, $gatewayType, $credentials);
+            echo json_encode(array_merge([
                 'success' => true,
                 'message' => 'Payment gateway saved successfully',
                 'gateway_id' => $gatewayId
-            ]);
+            ], $c2b));
         } else {
             http_response_code(500);
             echo json_encode(['success' => false, 'message' => 'Failed to save payment gateway']);

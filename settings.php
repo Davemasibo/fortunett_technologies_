@@ -97,7 +97,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $credentials['client_secret'] = $_POST['paypal_client_secret'] ?? '';
             $credentials['mode']          = $_POST['paypal_mode'] ?? 'sandbox';
         }
+        // Credentials are stored encrypted everywhere else (PaymentGatewayManager,
+        // registerTenantC2B). This page used json_encode/json_decode directly, so
+        // once anything wrote an encrypted blob, json_decode() here returned null,
+        // $existingCreds became [] and the "keep the old secret if the field was
+        // left blank" merge below silently blanked consumer_secret and passkey —
+        // taking the ISP's M-Pesa integration down on an unrelated edit.
+        require_once __DIR__ . '/includes/credential_helper.php';
+        require_once __DIR__ . '/includes/c2b_registration.php';
+
         try {
+            $savedGatewayId = null;
             if ($gateway_id) {
                 $cur = $pdo->prepare("SELECT is_active, credentials FROM payment_gateways WHERE id=? AND tenant_id=?");
                 $cur->execute([$gateway_id, $tenant_id]);
@@ -105,16 +115,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$curRow) {
                     $action_result = 'error|Gateway not found or access denied';
                 } else {
-                    $existingCreds = json_decode($curRow['credentials'], true) ?? [];
+                    $existingCreds = decrypt_gateway_credentials((string)$curRow['credentials']);
                     if ($gateway_type === 'mpesa_api') {
                         if (empty($credentials['consumer_secret'])) $credentials['consumer_secret'] = $existingCreds['consumer_secret'] ?? '';
                         if (empty($credentials['passkey']))          $credentials['passkey']          = $existingCreds['passkey'] ?? '';
                         if (empty($credentials['callback_url']))     $credentials['callback_url']     = $existingCreds['callback_url'] ?? '';
+
+                        // Carry the C2B registration forward — it belongs to the
+                        // shortcode, not to this form submission. Dropping it made
+                        // auto-activation read OFF (and offered to re-register)
+                        // after any unrelated edit.
+                        foreach (['c2b_registered', 'c2b_registered_at', 'c2b_registered_for',
+                                  'c2b_validation_url', 'c2b_confirmation_url'] as $k) {
+                            if (isset($existingCreds[$k])) $credentials[$k] = $existingCreds[$k];
+                        }
+                        $wasFor = (string)($credentials['c2b_registered_for'] ?? c2bEffectiveShortcode($existingCreds));
+                        if ($wasFor !== c2bEffectiveShortcode($credentials)) {
+                            $credentials = c2bForgetRegistration($credentials);
+                        }
                     } elseif ($gateway_type === 'paypal') {
                         if (empty($credentials['client_secret'])) $credentials['client_secret'] = $existingCreds['client_secret'] ?? '';
                     }
                     $pdo->prepare("UPDATE payment_gateways SET gateway_type=?,gateway_name=?,credentials=?,is_active=? WHERE id=? AND tenant_id=?")
-                        ->execute([$gateway_type, $gateway_name, json_encode($credentials), (int)$curRow['is_active'], $gateway_id, $tenant_id]);
+                        ->execute([$gateway_type, $gateway_name, encrypt_gateway_credentials($credentials), (int)$curRow['is_active'], $gateway_id, $tenant_id]);
+                    $savedGatewayId = (int)$gateway_id;
                     $action_result = 'success|Gateway updated successfully';
                 }
             } else {
@@ -125,8 +149,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $action_result = 'error|A ' . $gateway_type . ' gateway already exists. Edit the existing one instead.';
                 } else {
                     $pdo->prepare("INSERT INTO payment_gateways (tenant_id,gateway_type,gateway_name,credentials,is_active) VALUES (?,?,?,?,1)")
-                        ->execute([$tenant_id, $gateway_type, $gateway_name, json_encode($credentials)]);
+                        ->execute([$tenant_id, $gateway_type, $gateway_name, encrypt_gateway_credentials($credentials)]);
+                    $savedGatewayId = (int)$pdo->lastInsertId();
                     $action_result = 'success|New payment gateway added successfully';
+                }
+            }
+
+            // Switch auto-activation on the moment the ISP has working M-Pesa
+            // credentials. Registering C2B is the only thing that makes a payment
+            // sent straight to their own paybill/till reconnect the customer by
+            // itself — leaving it behind a button most admins never found is why
+            // direct payments had to be activated by hand, one at a time.
+            if ($savedGatewayId
+                && $gateway_type === 'mpesa_api'
+                && empty($credentials['c2b_registered'])
+                && !empty($credentials['consumer_key'])
+                && !empty($credentials['consumer_secret'])
+                && !empty($credentials['shortcode'])
+                && c2bHostIsPublic($_SERVER['HTTP_HOST'] ?? '')) {
+                try {
+                    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+                    $reg   = registerTenantC2B($pdo, (int)$tenant_id, $savedGatewayId, $_SERVER['HTTP_HOST'] ?? '', $https, true);
+                    // Never downgrade a successful save into a failure — the
+                    // credentials are stored either way and the manual Register
+                    // button plus the banner on payments.php remain the fallback.
+                    $action_result .= !empty($reg['success'])
+                        ? ' — auto-activation is now ON for payments made straight to you'
+                        : ' (auto-activation not switched on: ' . ($reg['error'] ?? 'registration failed') . ')';
+                } catch (Throwable $e) {
+                    error_log("settings.php C2B auto-register tenant=$tenant_id: " . $e->getMessage());
                 }
             }
         } catch (Exception $e) {

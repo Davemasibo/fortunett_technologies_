@@ -688,7 +688,7 @@ function renderCollStats(d) {
     // Float only exists for tenants collecting through the platform paybill.
     if (f.unreleased > 0 || f.released > 0) {
         tiles.push({
-            label: 'Held for payout', v: collMoney(f.unreleased),
+            label: 'Awaiting disbursement', v: collMoney(f.unreleased),
             s: f.unreleased_count + ' unreleased' + (f.oldest_ago !== '—' ? ', oldest ' + f.oldest_ago : ''),
             cls: f.unreleased > 0 ? 'warn' : ''
         });
@@ -749,10 +749,13 @@ function renderCollFeed(d) {
     var prevMax = collSeenMax;
     tb.innerHTML = d.payments.map(function (p) {
         var fresh = !collFirstLoad && p.id > prevMax;
+        // Wording matters here: 'platform' means FortuNett banked the money and
+        // still owes it to the ISP. Calling that anything like "direct" reads as
+        // "the ISP has it" and hides a liability.
         var routing = p.collection_type === 'platform'
-            ? (p.released ? '<span class="chip chip-platform">Platform · paid out</span>'
-                          : '<span class="chip chip-held">Platform · held</span>')
-            : '<span class="chip chip-direct">Direct to ISP</span>';
+            ? (p.released ? '<span class="chip chip-platform">Disbursed to ISP</span>'
+                          : '<span class="chip chip-held">Awaiting disbursement</span>')
+            : '<span class="chip chip-direct">Paid to ISP directly</span>';
         var badge = p.status === 'completed' ? 'badge-paid'
                   : (p.status === 'pending' ? 'badge-pending' : 'badge-overdue');
         return '<tr' + (fresh ? ' class="fresh"' : '') + '>' +

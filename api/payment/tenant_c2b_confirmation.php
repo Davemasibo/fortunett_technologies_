@@ -126,8 +126,8 @@ try {
 
     // Record in payments table
     $pdo->prepare("
-        INSERT INTO payments (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date, notes)
-        VALUES (?, ?, ?, 'mpesa_paybill', ?, 'completed', NOW(), ?)
+        INSERT INTO payments (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date, collection_type, notes)
+        VALUES (?, ?, ?, 'mpesa_paybill', ?, 'completed', NOW(), 'direct', ?)
     ")->execute([
         $clientId, $tenantId, $amount, $transactionId,
         'Tenant C2B — paybill — ref: ' . $accountRef,

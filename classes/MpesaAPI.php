@@ -291,9 +291,19 @@ class MpesaAPI {
             return ['success' => false, 'error' => 'Failed to get access token' . $detail];
         }
 
+        // For Buy Goods, RegisterURL is keyed on the ORGANISATION shortcode (the
+        // store / head-office number), not the till the customer pays to. Sending
+        // the till number here fails, which is part of why till-based ISPs never
+        // got auto-activation working. Same precedence as stkPush() uses for
+        // BusinessShortCode.
+        $isTill    = ($this->shortcode_type === 'till');
+        $regShortcode = ($isTill && !empty($this->store_number))
+            ? $this->store_number
+            : $this->shortcode;
+
         $url  = $this->base_url . '/mpesa/c2b/v1/registerurl';
         $body = [
-            'ShortCode'       => $this->shortcode,
+            'ShortCode'       => $regShortcode,
             'ResponseType'    => $responseType,
             'ConfirmationURL' => $confirmationUrl,
             'ValidationURL'   => $validationUrl,

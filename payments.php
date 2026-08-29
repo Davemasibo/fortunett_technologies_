@@ -43,8 +43,19 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     header('Content-Type: text/csv; charset=UTF-8');
     header('Content-Disposition: attachment; filename="payments_export_' . $exp_from . '_to_' . $exp_to . '.csv"');
     $out = fopen('php://output', 'w');
-    fputcsv($out, ['ID','Customer','Phone','Account No','Amount (KES)','Method','Transaction ID','Status','Date','Notes']);
+    // Settlement columns are exported too, so an ISP reconciling against their
+    // own M-Pesa statement can tell at a glance which rows should appear in it
+    // (Paid to you directly) and which never will (collected by the FortuNett
+    // till and owed to them instead).
+    fputcsv($out, ['ID','Customer','Phone','Account No','Amount (KES)','Method','Transaction ID','Status','Settlement','Disbursed On','Date','Notes']);
     foreach ($rows as $r) {
+        $rColl = $r['collection_type'] ?? 'direct';
+        $rRel  = $r['released_at'] ?? null;
+        $rSettle = ($r['status'] ?? '') === 'failed'
+            ? 'No funds moved'
+            : ($rColl === 'platform'
+                ? ($rRel ? 'Disbursed to you' : 'Awaiting disbursement')
+                : 'Paid to you directly');
         fputcsv($out, [
             $r['id'],
             $r['full_name']     ?? 'Unknown',
@@ -54,6 +65,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             strtoupper($r['payment_method'] ?? ''),
             $r['transaction_id']?? '',
             $r['status']        ?? '',
+            $rSettle,
+            $rRel               ?? '',
             $r['payment_date']  ?? '',
             $r['notes']         ?? '',
         ]);
@@ -90,6 +103,50 @@ try {
     $pending_payments = 0;
     $failed_transactions = 0;
 }
+
+// ── Settlement position ──────────────────────────────────────────────────────
+// An ISP has two very different piles of money and only ever saw one number.
+// `direct`   — the customer paid the ISP's own paybill/till. Already in the bank.
+// `platform` — the customer paid the FortuNett shared till. FortuNett is holding
+//              it and owes the ISP a payout; released_at says whether it has
+//              been sent. Showing that as anything resembling "direct" hides a
+//              debt owed to the ISP, which is what this page used to do.
+require_once __DIR__ . '/includes/c2b_registration.php';
+
+$settlement = [
+    'direct_amount'     => 0.0, 'direct_count'     => 0,
+    'awaiting_amount'   => 0.0, 'awaiting_count'   => 0,
+    'disbursed_amount'  => 0.0, 'disbursed_count'  => 0,
+];
+// released_at is created lazily by billing.php on deployments that predate the
+// disbursement feature. An ISP can reach this page without ever opening billing,
+// so create it here too rather than letting the whole panel read zero.
+try { $pdo->exec("ALTER TABLE payments ADD COLUMN released_at DATETIME DEFAULT NULL"); } catch (Exception $e) {}
+
+try {
+    $sSt = $pdo->prepare("
+        SELECT
+            COALESCE(SUM(CASE WHEN collection_type <> 'platform' THEN amount END), 0)                          AS direct_amount,
+            COUNT(CASE WHEN collection_type <> 'platform' THEN 1 END)                                          AS direct_count,
+            COALESCE(SUM(CASE WHEN collection_type = 'platform' AND released_at IS NULL THEN amount END), 0)    AS awaiting_amount,
+            COUNT(CASE WHEN collection_type = 'platform' AND released_at IS NULL THEN 1 END)                    AS awaiting_count,
+            COALESCE(SUM(CASE WHEN collection_type = 'platform' AND released_at IS NOT NULL THEN amount END), 0) AS disbursed_amount,
+            COUNT(CASE WHEN collection_type = 'platform' AND released_at IS NOT NULL THEN 1 END)                 AS disbursed_count
+        FROM payments
+        WHERE tenant_id = ? AND status = 'completed'
+    ");
+    $sSt->execute([$tenant_id]);
+    $settlement = $sSt->fetch(PDO::FETCH_ASSOC) ?: $settlement;
+} catch (Exception $e) {
+    // released_at is added lazily by billing.php on older deployments
+}
+
+// Is auto-activation actually on for payments made straight to this ISP?
+$c2bStatus = tenantC2BStatus($pdo, (int)$tenant_id);
+
+// Direct payments that arrived but matched no customer — money sitting unclaimed.
+require_once __DIR__ . '/includes/unmatched_payments.php';
+$unmatchedCount = count_unmatched_payments($pdo, (int)$tenant_id);
 
 // Get filters
 $search = $_GET['search'] ?? '';
@@ -228,6 +285,50 @@ include 'includes/sidebar.php';
     .tx-tab.active { background: rgba(255,255,255,.1); color: #fff; border-color: rgba(255,255,255,.2); }
     .tx-tab .tc { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,.1); min-width: 18px; text-align: center; }
     .tx-tab.active .tc { background: rgba(255,255,255,.2); }
+    .tx-tabs .tx-tab-sep { width: 1px; align-self: stretch; margin: 2px 6px; background: rgba(255,255,255,.1); }
+
+    /* Settlement position — where each shilling actually is */
+    .settle-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .settle-card { background: #1e1e1d; border: 1px solid rgba(255,255,255,.07); border-left-width: 3px; border-radius: 12px; padding: 16px 18px; }
+    .settle-card.direct    { border-left-color: #10b981; }
+    .settle-card.awaiting  { border-left-color: #f59e0b; }
+    .settle-card.disbursed { border-left-color: #3b82f6; }
+    .settle-label { font-size: 12px; font-weight: 600; color: rgba(255,255,255,.55); display: flex; align-items: center; gap: 7px; }
+    .settle-card.direct    .settle-label i { color: #6ee7b7; }
+    .settle-card.awaiting  .settle-label i { color: #fcd34d; }
+    .settle-card.disbursed .settle-label i { color: #93c5fd; }
+    .settle-value { font-size: 21px; font-weight: 700; color: #e2e2e0; margin: 8px 0 5px; }
+    .settle-sub { font-size: 11px; color: rgba(255,255,255,.38); line-height: 1.5; }
+
+    /* Auto-activation / unmatched banners */
+    .autoact-banner { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; border-radius: 12px; margin-bottom: 18px; font-size: 13px; }
+    .autoact-banner.on  { background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.22); color: #6ee7b7; }
+    .autoact-banner.off { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.22); color: #fcd34d; }
+    .autoact-banner > i { font-size: 19px; flex-shrink: 0; }
+    .autoact-banner strong { color: #fff; font-size: 14px; }
+
+    /* Per-payment settlement chip */
+    .route-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .route-chip .dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+    .route-chip.direct    { background: rgba(16,185,129,.13); color: #6ee7b7; border: 1px solid rgba(16,185,129,.25); }
+    .route-chip.direct .dot { background: #10b981; }
+    .route-chip.awaiting  { background: rgba(245,158,11,.13); color: #fcd34d; border: 1px solid rgba(245,158,11,.25); }
+    .route-chip.awaiting .dot { background: #f59e0b; animation: pulse-dot 1.5s ease infinite; }
+    .route-chip.disbursed { background: rgba(59,130,246,.13); color: #93c5fd; border: 1px solid rgba(59,130,246,.25); }
+    .route-chip.disbursed .dot { background: #3b82f6; }
+    .route-chip.none      { background: rgba(255,255,255,.05); color: rgba(255,255,255,.35); border: 1px solid rgba(255,255,255,.08); }
+    .route-chip.none .dot { background: rgba(255,255,255,.25); }
+    .route-sub { font-size: 10px; color: rgba(255,255,255,.3); margin-top: 3px; }
+
+    /* Unmatched payment rows */
+    .um-row { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+    .um-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline; }
+    .um-amt { font-size: 17px; font-weight: 700; color: #e2e2e0; }
+    .um-meta { font-size: 11px; color: rgba(255,255,255,.38); line-height: 1.7; margin-top: 4px; }
+    .um-meta code { font-family: monospace; color: #cbd5e1; }
+    .um-sugg { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; margin-top: 8px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06); border-radius: 8px; }
+    .um-sugg-btn { padding: 5px 12px; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; background: linear-gradient(135deg,var(--primary-dark,#2C5282) 0%,var(--primary-color,#3B6EA5) 100%); color: #fff; }
+    .um-sugg-btn[disabled] { opacity: .55; cursor: default; }
 
     /* Payment modal shared input style */
     .pay-input {
@@ -371,6 +472,67 @@ include 'includes/sidebar.php';
             </form>
         </div>
 
+        <!-- ── Where your money is ──────────────────────────────────────────
+             Two piles, never one: what customers paid you directly, and what
+             FortuNett collected on your behalf and still owes you. -->
+        <div class="settle-strip">
+            <div class="settle-card direct">
+                <div class="settle-label"><i class="fas fa-building-columns"></i> Paid to you directly</div>
+                <div class="settle-value">KES <?php echo number_format((float)$settlement['direct_amount'], 2); ?></div>
+                <div class="settle-sub"><?php echo (int)$settlement['direct_count']; ?> payment(s) — already in your own M-Pesa account</div>
+            </div>
+            <div class="settle-card awaiting">
+                <div class="settle-label"><i class="fas fa-clock"></i> Awaiting disbursement</div>
+                <div class="settle-value">KES <?php echo number_format((float)$settlement['awaiting_amount'], 2); ?></div>
+                <div class="settle-sub"><?php echo (int)$settlement['awaiting_count']; ?> payment(s) — collected by the FortuNett till, owed to you</div>
+            </div>
+            <div class="settle-card disbursed">
+                <div class="settle-label"><i class="fas fa-check-circle"></i> Disbursed to you</div>
+                <div class="settle-value">KES <?php echo number_format((float)$settlement['disbursed_amount'], 2); ?></div>
+                <div class="settle-sub"><?php echo (int)$settlement['disbursed_count']; ?> payment(s) — already remitted to your account</div>
+            </div>
+        </div>
+
+        <!-- Auto-activation status for direct-to-ISP payments -->
+        <?php if ($c2bStatus['mode'] === 'direct'): ?>
+        <div class="autoact-banner <?php echo $c2bStatus['active'] ? 'on' : 'off'; ?>">
+            <i class="fas fa-<?php echo $c2bStatus['active'] ? 'bolt' : 'triangle-exclamation'; ?>"></i>
+            <div style="flex:1;min-width:220px;">
+                <strong><?php echo $c2bStatus['active'] ? 'Auto-activation is ON' : 'Auto-activation is OFF'; ?></strong>
+                <div style="font-size:12px;opacity:.85;margin-top:3px;line-height:1.5;">
+                    <?php echo htmlspecialchars($c2bStatus['reason']); ?>
+                    <?php if ($c2bStatus['active'] && $c2bStatus['registered_at']): ?>
+                        <br>Registered <?php echo date('d M Y H:i', strtotime($c2bStatus['registered_at'])); ?>.
+                    <?php endif; ?>
+                    <?php if ($c2bStatus['environment'] !== 'production' && $c2bStatus['environment'] !== 'live'): ?>
+                        <br><strong>Sandbox credentials</strong> — real customer payments will not reach this.
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php if (!$c2bStatus['active']): ?>
+            <button class="filter-btn primary" onclick="turnOnAutoActivation(<?php echo (int)$c2bStatus['gateway_id']; ?>, this)">
+                <i class="fas fa-bolt"></i> Turn on
+            </button>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($unmatchedCount > 0): ?>
+        <div class="autoact-banner off">
+            <i class="fas fa-question-circle"></i>
+            <div style="flex:1;min-width:220px;">
+                <strong><?php echo $unmatchedCount; ?> payment(s) arrived but matched no customer</strong>
+                <div style="font-size:12px;opacity:.85;margin-top:3px;line-height:1.5;">
+                    The money was received and recorded, but the account reference did not identify anyone,
+                    so nobody was reconnected. Assign each one to a customer to credit and provision it.
+                </div>
+            </div>
+            <button class="filter-btn primary" onclick="openUnmatchedModal()">
+                <i class="fas fa-list-check"></i> Review
+            </button>
+        </div>
+        <?php endif; ?>
+
         <!-- Recent Transactions -->
         <div class="transactions-section">
             <div class="transactions-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
@@ -394,6 +556,10 @@ include 'includes/sidebar.php';
                 <button class="tx-tab" onclick="filterTxRows('completed',this)"><span style="color:#6ee7b7;font-size:8px;">●</span> Reconciled <span class="tc" id="tcCompleted">0</span></button>
                 <button class="tx-tab" onclick="filterTxRows('pending',this)"><span style="color:#fcd34d;font-size:8px;">●</span> Pending <span class="tc" id="tcPending">0</span></button>
                 <button class="tx-tab" onclick="filterTxRows('failed',this)"><span style="color:#fca5a5;font-size:8px;">●</span> Failed <span class="tc" id="tcFailed">0</span></button>
+                <span class="tx-tab-sep"></span>
+                <button class="tx-tab" onclick="filterTxRoute('direct',this)"><span style="color:#6ee7b7;font-size:8px;">●</span> Paid to you <span class="tc" id="tcDirect">0</span></button>
+                <button class="tx-tab" onclick="filterTxRoute('awaiting',this)"><span style="color:#fcd34d;font-size:8px;">●</span> Awaiting disbursement <span class="tc" id="tcAwaiting">0</span></button>
+                <button class="tx-tab" onclick="filterTxRoute('disbursed',this)"><span style="color:#93c5fd;font-size:8px;">●</span> Disbursed <span class="tc" id="tcDisbursed">0</span></button>
             </div>
 
           <div class="table-scroll" style="margin-top:14px;">
@@ -405,13 +571,14 @@ include 'includes/sidebar.php';
                         <th>METHOD</th>
                         <th>TRANSACTION ID</th>
                         <th>STATUS</th>
+                        <th>SETTLEMENT</th>
                         <th>DATE</th>
                         <th style="text-align:center;">ACTIONS</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($transactions)): ?>
-                        <tr><td colspan="7" style="text-align:center;padding:20px;">No transactions found.</td></tr>
+                        <tr><td colspan="8" style="text-align:center;padding:20px;">No transactions found.</td></tr>
                     <?php else: ?>
                     <?php foreach ($transactions as $tx):
                         $status = $tx['status'] ?? 'pending';
@@ -431,9 +598,36 @@ include 'includes/sidebar.php';
                         } else {
                             $badgeClass = 'pending'; $badgeLabel = 'Pending';
                         }
+
+                        // Settlement routing — whose account this money is in.
+                        // 'platform' is FortuNett's till holding money owed to
+                        // this ISP; released_at is the moment it was sent on.
+                        // A failed/cancelled payment never moved money, so it
+                        // gets no routing chip at all rather than a misleading one.
+                        $collType = $tx['collection_type'] ?? 'direct';
+                        $released = !empty($tx['released_at']);
+                        if ($badgeClass === 'failed') {
+                            $routeKey = 'none'; $routeLabel = 'No funds moved'; $routeSub = '';
+                        } elseif ($badgeClass === 'pending') {
+                            // Nothing has landed anywhere yet — claiming it is
+                            // already in the ISP's account is how a failed STK
+                            // gets counted as revenue.
+                            $routeKey = 'none'; $routeLabel = 'Not yet received';
+                            $routeSub = $collType === 'platform' ? 'Will settle via FortuNett till' : 'Will settle to you directly';
+                        } elseif ($collType === 'platform') {
+                            $routeKey   = $released ? 'disbursed' : 'awaiting';
+                            $routeLabel = $released ? 'Disbursed' : 'Awaiting disbursement';
+                            $routeSub   = $released
+                                ? 'Sent ' . date('d M Y', strtotime($tx['released_at']))
+                                : 'Held by FortuNett till';
+                        } else {
+                            $routeKey = 'direct'; $routeLabel = 'Paid to you directly';
+                            $routeSub = strtolower($tx['payment_method'] ?? '') === 'cash'
+                                ? 'Cash / manual entry' : 'Your own M-Pesa account';
+                        }
                     ?>
                     <?php $txJson = htmlspecialchars(json_encode($tx), ENT_QUOTES, 'UTF-8'); ?>
-                    <tr data-status="<?php echo $badgeClass; ?>">
+                    <tr data-status="<?php echo $badgeClass; ?>" data-routing="<?php echo $routeKey; ?>">
                         <td>
                             <div class="customer-name"><?php echo htmlspecialchars($tx['full_name'] ?? 'Unknown'); ?></div>
                             <div class="customer-id"><?php echo htmlspecialchars($tx['phone'] ?? 'N/A'); ?></div>
@@ -468,6 +662,12 @@ include 'includes/sidebar.php';
                             <span class="status-badge <?php echo $badgeClass; ?>">
                                 <?php echo $badgeLabel; ?>
                             </span>
+                        </td>
+                        <td>
+                            <span class="route-chip <?php echo $routeKey; ?>">
+                                <span class="dot"></span><?php echo $routeLabel; ?>
+                            </span>
+                            <?php if ($routeSub): ?><div class="route-sub"><?php echo htmlspecialchars($routeSub); ?></div><?php endif; ?>
                         </td>
                         <td><?php echo date('d/m/Y H:i', strtotime($tx['payment_date'] ?? $tx['created_at'])); ?></td>
                         <td style="text-align:center;">
@@ -973,11 +1173,23 @@ function openImportModal(type) {
         packages: _base + '/api/import/packages.php',
     };
     const templates = {
-        payments: 'client_phone,amount,payment_method,transaction_id,payment_date,status,notes\n0712345678,500,cash,CASH001,2026-04-01 10:00:00,completed,Manual entry',
+        // The Safaricom statement's own column names are accepted verbatim, so an
+        // ISP can export from the M-Pesa portal and upload it untouched. This
+        // template mirrors those names rather than inventing a private format.
+        payments: 'Receipt No.,Completion Time,Details,Paid In,Other Party Info,Account No.\nSGH4X2K9LM,2026-04-01 10:04:12,Funds received,500,254712345678 - JOHN DOE,ACC1042',
         clients:  'full_name,phone,email,address,username,package_name,connection_type,status,expiry_date\nJohn Doe,0712345678,john@example.com,,john.doe,Basic Hotspot,hotspot,active,2026-12-31',
         packages: 'name,type,price,download_speed,upload_speed,validity_value,validity_unit,data_limit,device_limit,description,status\nBasic Hotspot,hotspot,500,10,5,30,days,0,1,Entry level,active',
     };
-    const titles = { payments: 'Import Transactions', clients: 'Import Customers', packages: 'Import Packages' };
+    const titles = { payments: 'Import / Reconcile Payments', clients: 'Import Customers', packages: 'Import Packages' };
+    const blurbs = {
+        payments: 'Upload an M-Pesa statement export (or the template below). Matched payments are '
+                + 'credited and the customer reconnected automatically; anything matching no customer '
+                + 'is queued under Unclaimed Payments. Re-uploading an overlapping statement is safe — '
+                + 'receipts already recorded are skipped.',
+        clients: '', packages: ''
+    };
+    const blurbEl = document.getElementById('importModalBlurb');
+    if (blurbEl) { blurbEl.textContent = blurbs[type] || ''; blurbEl.style.display = blurbs[type] ? 'block' : 'none'; }
     document.getElementById('importModalTitle').textContent  = titles[type] || 'Import CSV';
     document.getElementById('importModalForm').action        = endpoints[type];
     document.getElementById('importTemplateLink').href       = 'data:text/csv;charset=utf-8,' + encodeURIComponent(templates[type] || '');
@@ -1035,6 +1247,7 @@ document.addEventListener('DOMContentLoaded', function () {
             <h3 id="importModalTitle" style="margin:0;color:#e2e2e0;font-size:18px;font-weight:600;">Import CSV</h3>
             <button onclick="closeImportModal()" style="background:none;border:none;color:rgba(255,255,255,.5);font-size:20px;cursor:pointer;line-height:1;">&times;</button>
         </div>
+        <p id="importModalBlurb" style="display:none;margin:-10px 0 18px;font-size:12px;color:rgba(255,255,255,.42);line-height:1.6;"></p>
         <form id="importModalForm" method="post" enctype="multipart/form-data">
             <div style="margin-bottom:16px;">
                 <label style="display:block;font-size:13px;color:rgba(255,255,255,.55);margin-bottom:6px;">CSV File <span style="color:#fca5a5">*</span></label>
@@ -1060,6 +1273,25 @@ document.addEventListener('DOMContentLoaded', function () {
                 </button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- ── Unmatched Payments Modal ──────────────────────────────────────────────────
+     Payments that reached the ISP but named nobody. The API behind this is
+     tenant-scoped and already existed; there was simply no way for an ISP admin
+     to reach it, so this money was only ever visible to FortuNett staff. -->
+<div id="unmatchedModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:1100;align-items:flex-start;justify-content:center;padding:40px 16px 24px;box-sizing:border-box;overflow-y:auto;">
+    <div style="background:#1e1e1d;border:1px solid rgba(255,255,255,.08);width:100%;max-width:680px;border-radius:16px;padding:26px;position:relative;box-shadow:0 32px 80px rgba(0,0,0,.85);margin:auto 0;">
+        <button onclick="closeUnmatchedModal()" style="position:absolute;top:18px;right:18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;color:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;">&times;</button>
+        <h3 style="font-size:16px;font-weight:700;color:#e2e2e0;margin:0 0 6px 0;display:flex;align-items:center;gap:10px;">
+            <i class="fas fa-question-circle" style="color:#fcd34d;"></i> Unclaimed Payments
+        </h3>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin:0 0 18px 0;line-height:1.6;">
+            These payments arrived and were recorded, but the account reference matched no customer —
+            common with Buy Goods tills, where the customer has nowhere to type an account number.
+            Assigning one credits it and reconnects that customer immediately.
+        </p>
+        <div id="unmatchedBody"></div>
     </div>
 </div>
 
@@ -1098,23 +1330,179 @@ document.addEventListener('click', function(e) {
 });
 
 // ── Row filter tabs ───────────────────────────────────────────────────────────
-function filterTxRows(status, tabEl) {
+// One tab bar, two independent dimensions: reconciliation status (did the money
+// arrive) and settlement routing (whose account it is in). Only one filter is
+// active at a time — picking a routing tab clears the status filter and back —
+// because "Failed AND Awaiting disbursement" is an empty set by construction.
+function applyTxFilter(key, value, tabEl) {
     document.querySelectorAll('.tx-tab').forEach(t => t.classList.remove('active'));
     tabEl.classList.add('active');
     document.querySelectorAll('.transactions-table tbody tr[data-status]').forEach(tr => {
-        tr.style.display = (status === 'all' || tr.dataset.status === status) ? '' : 'none';
+        tr.style.display = (value === 'all' || tr.dataset[key] === value) ? '' : 'none';
     });
 }
+function filterTxRows(status, tabEl)  { applyTxFilter('status', status, tabEl); }
+function filterTxRoute(routing, tabEl) { applyTxFilter('routing', routing, tabEl); }
 
 // Count tabs on load
 document.addEventListener('DOMContentLoaded', function() {
     const rows = document.querySelectorAll('.transactions-table tbody tr[data-status]');
     const counts = { completed: 0, pending: 0, failed: 0 };
-    rows.forEach(r => { if (counts[r.dataset.status] !== undefined) counts[r.dataset.status]++; });
+    const routes = { direct: 0, awaiting: 0, disbursed: 0 };
+    rows.forEach(r => {
+        if (counts[r.dataset.status]  !== undefined) counts[r.dataset.status]++;
+        if (routes[r.dataset.routing] !== undefined) routes[r.dataset.routing]++;
+    });
     document.getElementById('tcCompleted').textContent = counts.completed;
     document.getElementById('tcPending').textContent   = counts.pending;
     document.getElementById('tcFailed').textContent    = counts.failed;
+    document.getElementById('tcDirect').textContent    = routes.direct;
+    document.getElementById('tcAwaiting').textContent  = routes.awaiting;
+    document.getElementById('tcDisbursed').textContent = routes.disbursed;
 });
+
+// ── Auto-activation ───────────────────────────────────────────────────────────
+// Registers this ISP's C2B URLs with Safaricom so payments made straight to
+// their own paybill/till reconnect the customer without anyone touching it.
+function turnOnAutoActivation(gatewayId, btn) {
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registering...';
+    fetch('api/payment/register_c2b.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gateway_id: gatewayId })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            showToast(d.message || 'Auto-activation is now on.', 'success');
+            setTimeout(() => location.reload(), 1200);
+        } else {
+            showToast(d.error || 'Could not register C2B.', 'error');
+            btn.disabled = false;
+            btn.innerHTML = original;
+        }
+    })
+    .catch(() => {
+        showToast('Network error registering C2B.', 'error');
+        btn.disabled = false;
+        btn.innerHTML = original;
+    });
+}
+
+// ── Unclaimed payments ────────────────────────────────────────────────────────
+function openUnmatchedModal() {
+    document.getElementById('unmatchedModal').style.display = 'flex';
+    loadUnmatched();
+}
+function closeUnmatchedModal() {
+    document.getElementById('unmatchedModal').style.display = 'none';
+}
+document.getElementById('unmatchedModal')?.addEventListener('click', function (e) {
+    if (e.target === this) closeUnmatchedModal();
+});
+
+function loadUnmatched() {
+    const body = document.getElementById('unmatchedBody');
+    body.innerHTML = '<div style="text-align:center;padding:26px;color:rgba(255,255,255,.4);"><i class="fas fa-spinner fa-spin"></i> Loading…</div>';
+
+    const fd = new FormData();
+    fd.append('action', 'list');
+    fetch('api/payment/unmatched.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) {
+                body.innerHTML = '<div style="color:#fca5a5;font-size:13px;">' + (d.error || 'Could not load.') + '</div>';
+                return;
+            }
+            if (!d.payments.length) {
+                body.innerHTML = '<div style="text-align:center;padding:26px;color:rgba(255,255,255,.4);font-size:13px;">'
+                               + '<i class="fas fa-check-circle" style="color:#6ee7b7;font-size:26px;display:block;margin-bottom:10px;"></i>'
+                               + 'Nothing unclaimed — every payment has been credited to a customer.</div>';
+                return;
+            }
+            body.innerHTML = d.payments.map(renderUnmatchedRow).join('');
+        })
+        .catch(() => { body.innerHTML = '<div style="color:#fca5a5;font-size:13px;">Network error.</div>'; });
+}
+
+function renderUnmatchedRow(p) {
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const when = p.created_at ? p.created_at.substring(0, 16).replace('T', ' ') : '';
+
+    const suggestions = (p.suggestions || []).length
+        ? p.suggestions.map(s =>
+            '<div class="um-sugg">'
+          +   '<div style="min-width:0;">'
+          +     '<div style="font-size:13px;color:#e2e2e0;font-weight:600;">' + esc(s.full_name || s.username) + '</div>'
+          +     '<div style="font-size:11px;color:rgba(255,255,255,.35);">' + esc(s.phone || '') + ' · '
+          +        esc(s.account_number || '') + ' · ' + esc(s.status || '') + '</div>'
+          +   '</div>'
+          +   '<button class="um-sugg-btn" onclick="resolveUnmatched(' + p.id + ',' + s.id + ',this)">Credit this customer</button>'
+          + '</div>').join('')
+        : '<div style="font-size:12px;color:rgba(255,255,255,.35);margin-top:8px;">'
+        + 'No likely customer found. Record it manually with <strong>New Payment</strong>, then dismiss this.</div>';
+
+    return '<div class="um-row" id="um-' + p.id + '">'
+         +   '<div class="um-head">'
+         +     '<span class="um-amt">KES ' + parseFloat(p.amount || 0).toLocaleString() + '</span>'
+         +     '<button class="filter-btn" style="padding:4px 12px;font-size:12px;" onclick="ignoreUnmatched(' + p.id + ',this)">Dismiss</button>'
+         +   '</div>'
+         +   '<div class="um-meta">'
+         +     'From <strong>' + esc(p.payer_name || p.phone || 'unknown') + '</strong>'
+         +     (p.phone ? ' (' + esc(p.phone) + ')' : '')
+         +     '<br>Reference typed: <code>' + esc(p.account_ref || '— none (till payment)') + '</code>'
+         +     '<br>Receipt <code>' + esc(p.transaction_id) + '</code> · ' + esc(when)
+         +     (p.unrouted ? '<br><span style="color:#fcd34d;">Could not be attributed to any ISP — confirm it is yours before crediting.</span>' : '')
+         +   '</div>'
+         +   suggestions
+         + '</div>';
+}
+
+function resolveUnmatched(rowId, clientId, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Crediting…';
+    const fd = new FormData();
+    fd.append('action', 'resolve');
+    fd.append('id', rowId);
+    fd.append('client_id', clientId);
+    fetch('api/payment/unmatched.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                showToast(d.message || 'Payment credited and the customer reconnected.', 'success');
+                document.getElementById('um-' + rowId)?.remove();
+            } else {
+                showToast(d.error || 'Could not credit this payment.', 'error');
+                btn.disabled = false;
+                btn.textContent = 'Credit this customer';
+            }
+        })
+        .catch(() => {
+            showToast('Network error.', 'error');
+            btn.disabled = false;
+            btn.textContent = 'Credit this customer';
+        });
+}
+
+function ignoreUnmatched(rowId, btn) {
+    btn.disabled = true;
+    const fd = new FormData();
+    fd.append('action', 'ignore');
+    fd.append('id', rowId);
+    fetch('api/payment/unmatched.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                document.getElementById('um-' + rowId)?.remove();
+            } else {
+                showToast(d.error || 'Could not dismiss.', 'error');
+                btn.disabled = false;
+            }
+        })
+        .catch(() => { showToast('Network error.', 'error'); btn.disabled = false; });
+}
 
 // ── Payment Status modal ──────────────────────────────────────────────────────
 function openPaymentStatus(tx) {
@@ -1143,9 +1531,14 @@ function openPaymentStatus(tx) {
         deliveryIcon  = 'fa-check-circle';
         deliveryColor = '#6ee7b7';
         deliveryText  = 'Delivered';
+        // Distinguish held from already-remitted. Saying "settlement is on the
+        // next cycle" for money that was disbursed weeks ago makes the ISP chase
+        // a payout they have already received.
         deliverySub   = collType === 'platform'
-            ? 'Received via FortuNett shared paybill — settlement to your account is on the next cycle.'
-            : 'Received directly by your paybill.';
+            ? (tx.released_at
+                ? 'Collected by the FortuNett till and disbursed to you on ' + tx.released_at.substring(0, 10) + '.'
+                : 'Collected by the FortuNett shared till — awaiting disbursement to your account.')
+            : 'Paid straight into your own M-Pesa account. Nothing is owed to you for this one.';
     } else if (eff === 'cancelled') {
         deliveryIcon  = 'fa-times-circle';
         deliveryColor = '#fca5a5';
@@ -1170,8 +1563,8 @@ function openPaymentStatus(tx) {
 
     const paybillLine = (method === 'mpesa')
         ? `<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px;">
-               <span style="color:rgba(255,255,255,.45);">Collection via</span>
-               <span style="font-weight:600;color:#e2e2e0;">${collType === 'platform' ? 'FortuNett Shared Paybill' : (collType === 'direct' ? 'Your Own Paybill' : 'M-Pesa')}</span>
+               <span style="color:rgba(255,255,255,.45);">Collected by</span>
+               <span style="font-weight:600;color:#e2e2e0;">${collType === 'platform' ? 'FortuNett shared till' : (collType === 'direct' ? 'Your own paybill / till' : 'M-Pesa')}</span>
            </div>`
         : '';
 

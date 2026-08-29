@@ -153,6 +153,39 @@ A `fortunett_wg_watchdog` scheduler pings the VPS over the tunnel every 2 min an
 
 Cron liveness comes from `includes/cron_heartbeat.php` — each scheduled script stamps `platform_settings.cron_last_run_<name>`. This exists because a cron line missing from crontab is invisible; `stk_poll.php` was absent for a long time and nothing could say so.
 
+### `payments.collection_type` — Whose Bank the Money Is In
+`'platform'` = FortuNett's till took it and owes the ISP a payout. `'direct'` = the ISP's own paybill/till took it; nothing to disburse. This is **not** a payment method and never a UI nicety — every float, settlement figure and payout decision reads it.
+
+Only `stk_push.php` ever wrote the column. `process_payment_success()` queued an ISP payout whenever `$platformCollected` was true but left the row on its DEFAULT `'direct'`, so money FortuNett was holding read as money the ISP already had while a payout for the same shilling sat in `isp_payout_queue`. Every writer now tags it:
+
+- `process_payment_success()` sets it from `$platformCollected` — the one place that knows.
+- Both C2B confirmations tag at INSERT (`platform` / `direct`).
+- `hotspot_stk_push.php` tags the *pending* row too, from `$usingPlatform`.
+- `resolve_unmatched_payment()` derives it from `unmatched_payments.source`, and passes the same value as `$platformCollected` — hard-coding `false` there meant a manually matched platform payment was never disbursed.
+
+Historic rows: `php tools/repair_collection_type.php` (dry run; `--apply` to commit). It re-tags from evidence — a queued payout, a platform-handler note, a charged commission.
+
+**Never label platform money as anything resembling "direct".** It reads as "the ISP has it" and hides a liability. The vocabulary is *Paid to you directly* / *Awaiting disbursement* / *Disbursed*, used identically on `payments.php`, `billing.php` and `super_admin/tenants.php`.
+
+### Auto-Activating Direct-to-ISP Payments
+Registering C2B is the *only* thing that makes a payment sent straight to the ISP's own paybill/till reconnect the customer by itself. It used to be a button an admin had to know existed — and `settings_payments_partial.php` hid the row entirely for Buy Goods tills — so most tenants never switched it on and activated every customer by hand.
+
+`includes/c2b_registration.php` is the single implementation:
+- `registerTenantC2B()` — preflight, register, cache the flags. Called automatically from `settings.php`'s `save_gateway` (and `api/payment_gateways/save.php`) the moment complete credentials are saved; `api/payment/register_c2b.php` is now just the manual re-run.
+- `tenantC2BStatus()` — powers the honest ON/OFF banner at the top of `payments.php`, including the sandbox warning.
+- Registration belongs to a **shortcode**, not a gateway row. `c2b_registered_for` records which one; `c2bForgetRegistration()` clears the flags when the shortcode changes so the banner cannot claim auto-activation for a number Safaricom was never told about.
+
+Two traps this closed:
+- **Buy Goods registers against the store / head-office number**, not the till the customer pays to. `MpesaAPI::registerC2B()` applies the same precedence `stkPush()` uses; without a `store_number` the call fails with an error that reads like bad credentials.
+- **`settings.php` wrote credentials as plain `json_encode` while everything else wrote AES blobs.** Once anything encrypted them, its `json_decode()` returned null, the "keep the old secret if the field is blank" merge blanked `consumer_secret` and `passkey`, and an unrelated edit took the ISP's M-Pesa integration down. It now uses `decrypt_gateway_credentials()` / `encrypt_gateway_credentials()`.
+
+### Reconciling Direct Payments After the Fact
+C2B confirmations are the live path; there is no Daraja API listing past C2B transactions, so nothing can recover a payment that arrived while C2B was unregistered. The ISP's M-Pesa statement is the only remaining record, and `api/import/payments.php` is the backstop.
+
+It used to INSERT a row and stop — money in the ledger, customer still disconnected. It now accepts a **raw Safaricom statement export unedited** (`Receipt No.`, `Completion Time`, `Paid In`, `Other Party Info`, `Account No.`), resolves each row through `resolveAccountRef()`, and runs `process_payment_success()` so the customer is credited, extended and provisioned. Rows it cannot attribute go to `unmatched_payments` rather than being recorded against nobody. Dedupe is on the receipt, so re-importing an overlapping statement is safe.
+
+`api/payment/unmatched.php` was tenant-scoped and complete but had no tenant-facing UI — only FortuNett staff could see this money. The **Unclaimed Payments** modal on `payments.php` now exposes it.
+
 ### Unmatched Paybill Payments
 Daraja has no API that lists past C2B transactions, so a poller cannot recover an unroutable paybill payment the way `stk_poll.php` recovers a missing STK callback. `includes/unmatched_payments.php` captures every one into `unmatched_payments` (self-installing table) with its full payload; `api/payment/unmatched.php` lists them with suggested customers and credits them through the same `process_payment_success()` pipeline a matched payment would use. The suggester is deliberately looser than `resolveAccountRef()` — that one must never auto-credit the wrong ISP, but here a human confirms.
 

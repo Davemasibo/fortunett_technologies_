@@ -120,16 +120,24 @@ function resolve_unmatched_payment(PDO $pdo, int $rowId, int $clientId, int $ten
     $client = $cSt->fetch(PDO::FETCH_ASSOC);
     if (!$client) return ['success' => false, 'message' => 'Client not found for this tenant'];
 
+    // Whose bank the money is in was already decided when the payment arrived —
+    // by which handler captured it. Hard-coding 'direct' here credited the ISP
+    // for money FortuNett's own till was holding: the row read as settled and no
+    // payout was ever queued for it, so a manually matched platform payment was
+    // simply never disbursed.
+    $platformCollected = in_array($row['source'] ?? '', ['c2b_platform', 'platform'], true);
+    $collectionType    = $platformCollected ? 'platform' : 'direct';
+
     try {
         // Guard against a race with a late confirmation retry crediting it first
         $dup = $pdo->prepare("SELECT id FROM payments WHERE transaction_id = ? LIMIT 1");
         $dup->execute([$row['transaction_id']]);
         if (!$dup->fetchColumn()) {
             $pdo->prepare("
-                INSERT INTO payments (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date, notes)
-                VALUES (?, ?, ?, 'mpesa_paybill', ?, 'completed', NOW(), ?)
+                INSERT INTO payments (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date, collection_type, notes)
+                VALUES (?, ?, ?, 'mpesa_paybill', ?, 'completed', NOW(), ?, ?)
             ")->execute([
-                $clientId, $tenantId, (float)$row['amount'], $row['transaction_id'],
+                $clientId, $tenantId, (float)$row['amount'], $row['transaction_id'], $collectionType,
                 'Manually matched paybill payment — original ref: ' . ($row['account_ref'] ?: 'none'),
             ]);
         }
@@ -142,7 +150,7 @@ function resolve_unmatched_payment(PDO $pdo, int $rowId, int $clientId, int $ten
             (string)$row['transaction_id'],
             'mpesa_paybill',
             !empty($client['package_id']) ? (int)$client['package_id'] : null,
-            false
+            $platformCollected
         );
 
         $pdo->prepare("

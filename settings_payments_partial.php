@@ -781,7 +781,15 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                 <button class="gw-btn test" onclick="testGateway(<?= $g['id'] ?>, this)">
                     <i class="fas fa-plug"></i> Test
                 </button>
-                <?php if ($g['gateway_type'] === 'mpesa_api' && ($creds['shortcode_type'] ?? 'paybill') === 'paybill'): ?>
+                <?php
+                // Tills were excluded here, so a Buy Goods ISP had no way to
+                // register C2B at all - which is exactly why their customers'
+                // direct payments never auto-connected and every one of them had
+                // to be activated by hand. Buy Goods registers fine; it just has
+                // to be keyed on the store/head-office number, which
+                // MpesaAPI::registerC2B() now does.
+                ?>
+                <?php if ($g['gateway_type'] === 'mpesa_api'): ?>
                 <button class="gw-btn" id="c2b-btn-<?= $g['id'] ?>"
                         style="color:<?= $c2bRegistered ? '#34d399' : '#fcd34d' ?>;border-color:<?= $c2bRegistered ? 'rgba(52,211,153,.3)' : 'rgba(252,211,77,.3)' ?>;"
                         onclick="registerC2B(<?= $g['id'] ?>, this)"

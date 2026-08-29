@@ -138,17 +138,30 @@ function process_payment_success(
         $pSt->execute([$receipt, $receipt, $clientId]);
         $paymentId = $pSt->fetchColumn() ?: null;
 
+        // collection_type says WHOSE BANK THE MONEY IS IN, and nothing else
+        // wrote it: the column simply took its DEFAULT 'direct'. So money
+        // collected by FortuNett's own till/paybill was recorded as if the ISP
+        // already held it, while step 7 below queued a payout for the very same
+        // shilling. Every float and settlement figure that reads this column -
+        // billing.php, release_payments.php, auto_release_settlements.php, the
+        // super-admin collections view - was wrong in the same direction.
+        //
+        // Set here rather than in each caller because this is the one place
+        // that knows $platformCollected and touches the row.
+        $collectionType = $platformCollected ? 'platform' : 'direct';
+
         if ($paymentId) {
             $pdo->prepare("
-                UPDATE payments SET status = 'completed', transaction_id = ?, updated_at = NOW()
+                UPDATE payments SET status = 'completed', transaction_id = ?,
+                       collection_type = ?, updated_at = NOW()
                 WHERE id = ?
-            ")->execute([$receipt, $paymentId]);
+            ")->execute([$receipt, $collectionType, $paymentId]);
         } else {
             $pdo->prepare("
                 INSERT INTO payments
-                    (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date)
-                VALUES (?, ?, ?, ?, ?, 'completed', NOW())
-            ")->execute([$clientId, $tenantId, $amount, $paymentMethod, $receipt]);
+                    (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date, collection_type)
+                VALUES (?, ?, ?, ?, ?, 'completed', NOW(), ?)
+            ")->execute([$clientId, $tenantId, $amount, $paymentMethod, $receipt, $collectionType]);
             $paymentId = (int)$pdo->lastInsertId();
         }
         $results['steps']['payment'] = true;

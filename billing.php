@@ -650,13 +650,13 @@ include 'includes/sidebar.php';
                 <?php if ((float)$platformSummary['unreleased_amount'] > 0): ?>
                 <span style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.25);color:#fcd34d;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">
                     <i class="fas fa-clock" style="margin-right:5px;"></i>
-                    Pending: KES <?php echo number_format($platformSummary['unreleased_amount'], 2); ?>
+                    Awaiting disbursement: KES <?php echo number_format($platformSummary['unreleased_amount'], 2); ?>
                 </span>
                 <?php endif; ?>
                 <?php if ((float)$platformSummary['released_amount'] > 0): ?>
                 <span style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);color:#6ee7b7;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">
                     <i class="fas fa-check-circle" style="margin-right:5px;"></i>
-                    Released: KES <?php echo number_format($platformSummary['released_amount'], 2); ?>
+                    Disbursed: KES <?php echo number_format($platformSummary['released_amount'], 2); ?>
                 </span>
                 <?php endif; ?>
             </div>
@@ -689,11 +689,11 @@ include 'includes/sidebar.php';
                         <td class="text-center">
                             <?php if ($isReleased): ?>
                             <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.25);">
-                                <span style="width:5px;height:5px;border-radius:50%;background:#10b981;"></span>Released
+                                <span style="width:5px;height:5px;border-radius:50%;background:#10b981;"></span>Disbursed
                             </span>
                             <?php else: ?>
                             <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.25);">
-                                <span style="width:5px;height:5px;border-radius:50%;background:#f59e0b;animation:pulse-dot 1.5s ease infinite;"></span>Processing
+                                <span style="width:5px;height:5px;border-radius:50%;background:#f59e0b;animation:pulse-dot 1.5s ease infinite;"></span>Awaiting disbursement
                             </span>
                             <?php endif; ?>
                         </td>

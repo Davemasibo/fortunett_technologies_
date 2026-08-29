@@ -291,8 +291,12 @@ try {
         } catch (Exception $_e) {}
 
         try {
-            $pdo->prepare("INSERT INTO payments (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status) VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending')")
-                ->execute([$clientId, $tenantId, $amount, $checkoutId]);
+            // Tag whose till the money will land in at insert time. The pipeline
+            // sets this again on completion, but a pending row left on the column
+            // DEFAULT 'direct' shows an ISP money as already theirs while the STK
+            // is still in flight to FortuNett's shared paybill.
+            $pdo->prepare("INSERT INTO payments (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, collection_type) VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending', ?)")
+                ->execute([$clientId, $tenantId, $amount, $checkoutId, $usingPlatform ? 'platform' : 'direct']);
         } catch (Exception $_e) {}
 
         echo json_encode([
@@ -378,8 +382,12 @@ try {
                 ->execute([$clientId, $tenantId, $renewPhone, $amount, $response->MerchantRequestID ?? 'N/A', $checkoutId]);
         } catch (Exception $_e) {}
         try {
-            $pdo->prepare("INSERT INTO payments (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status) VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending')")
-                ->execute([$clientId, $tenantId, $amount, $checkoutId]);
+            // Tag whose till the money will land in at insert time. The pipeline
+            // sets this again on completion, but a pending row left on the column
+            // DEFAULT 'direct' shows an ISP money as already theirs while the STK
+            // is still in flight to FortuNett's shared paybill.
+            $pdo->prepare("INSERT INTO payments (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, collection_type) VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending', ?)")
+                ->execute([$clientId, $tenantId, $amount, $checkoutId, $usingPlatform ? 'platform' : 'direct']);
         } catch (Exception $_e) {}
 
         echo json_encode(['success' => true, 'checkout_request_id' => $checkoutId, 'client_id' => $clientId]);
