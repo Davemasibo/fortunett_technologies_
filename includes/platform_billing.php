@@ -19,7 +19,17 @@
  * platform_invoices is now the single source of truth. Everything that settles
  * money goes through applyPlatformPayment() below, whether it arrived by STK
  * push, by paybill C2B, or was marked paid by hand.
+ *
+ * Every entry point below calls ensurePlatformBillingSchema() first, which
+ * repairs the 2026-07-26 platform-collections migration in place if it was
+ * never applied. It is called inside the functions rather than at include time
+ * because some callers require this file from inside a function body, where the
+ * global $pdo is not in scope - passing null to a PDO-typed parameter would
+ * turn a missing migration into a TypeError, which is worse than the bug it
+ * fixes. The guard is static, so calling it from all three costs one query.
  */
+
+require_once __DIR__ . '/schema_guard.php';
 
 /**
  * A tenant's permanent paybill reference, e.g. "FN5".
@@ -27,6 +37,8 @@
  */
 function platformBillingCode(PDO $pdo, int $tenantId): string
 {
+    ensurePlatformBillingSchema($pdo);
+
     try {
         $st = $pdo->prepare("SELECT platform_billing_code FROM tenants WHERE id = ? LIMIT 1");
         $st->execute([$tenantId]);
@@ -98,6 +110,8 @@ function applyPlatformPayment(
     string $source  = 'c2b',
     string $raw     = ''
 ): array {
+    ensurePlatformBillingSchema($pdo);
+
     $out = ['ok' => false, 'message' => '', 'payment_id' => null, 'allocated' => 0.0, 'reactivated' => false];
 
     if ($amount <= 0) {
@@ -228,6 +242,11 @@ function applyPlatformPayment(
  */
 function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId): ?array
 {
+    // billing.php SELECTs amount_paid immediately after calling this, outside
+    // any try/catch. Healing the schema here is what stops that query throwing
+    // a 1054 and blanking every tenant's billing page with a 500.
+    ensurePlatformBillingSchema($pdo);
+
     $periodStart = date('Y-m-01');
 
     try {

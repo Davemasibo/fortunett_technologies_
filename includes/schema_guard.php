@@ -279,3 +279,103 @@ function ensurePaymentStatusEnums(PDO $pdo): void
     ensureColumn($pdo, 'mpesa_transactions', 'mpesa_receipt_number', 'VARCHAR(32) DEFAULT NULL');
     ensureColumn($pdo, 'mpesa_transactions', 'raw_callback',         'TEXT DEFAULT NULL');
 }
+
+/**
+ * Install everything sql/migrations/2026-07-26-platform-collections.sql adds.
+ *
+ * That migration was never run on at least one production deployment, and the
+ * symptom was as bad as it gets for a page: billing.php SELECTs `amount_paid`
+ * at line 112, outside any try/catch, so a missing column threw
+ *
+ *   PDOException: SQLSTATE[42S22]: Unknown column 'amount_paid' in 'field list'
+ *
+ * and EVERY tenant's billing page returned a blank 500. It was invisible to
+ * `curl` because the fatal is past redirectIfNotLoggedIn() — an unauthenticated
+ * request gets a clean 302 to login.php and never reaches the query. The page
+ * looked healthy from outside and was broken for every logged-in user.
+ *
+ * Nothing else installs `platform_payments` / `platform_payment_allocations`
+ * either — they existed only in the .sql file — so applyPlatformPayment() would
+ * have been the next thing to fail.
+ *
+ * Called from includes/platform_billing.php, which every consumer of
+ * platform_invoices already loads, so all of them heal together.
+ */
+function ensurePlatformBillingSchema(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    // Part-payment support: a tenant paying 500 against a 1,200 invoice must
+    // reduce the balance rather than be rejected or over-credited.
+    if (ensureColumn($pdo, 'platform_invoices', 'amount_paid',
+                     'DECIMAL(12,2) NOT NULL DEFAULT 0')) {
+        try {
+            // An invoice already marked paid is fully paid by definition.
+            $pdo->exec("UPDATE platform_invoices SET amount_paid = total_due
+                        WHERE status = 'paid' AND amount_paid = 0");
+        } catch (Throwable $e) {
+            error_log('[schema_guard] platform_invoices.amount_paid backfill: ' . $e->getMessage());
+        }
+    }
+
+    // The tenant's permanent paybill reference. platformBillingCode() already
+    // degrades to a derived 'FN<id>' without it, so this is not fatal - but
+    // without the column that derived value cannot be persisted and the unique
+    // index that stops two tenants sharing a code never exists.
+    if (ensureColumn($pdo, 'tenants', 'platform_billing_code', 'VARCHAR(16) DEFAULT NULL')) {
+        try {
+            $pdo->exec("UPDATE tenants SET platform_billing_code = CONCAT('FN', id)
+                        WHERE platform_billing_code IS NULL OR platform_billing_code = ''");
+        } catch (Throwable $e) {
+            error_log('[schema_guard] tenants.platform_billing_code backfill: ' . $e->getMessage());
+        }
+        try {
+            $idx = $pdo->prepare("SELECT 1 FROM information_schema.STATISTICS
+                                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants'
+                                    AND INDEX_NAME = 'uniq_platform_billing_code' LIMIT 1");
+            $idx->execute();
+            if (!$idx->fetchColumn()) {
+                $pdo->exec("ALTER TABLE tenants ADD UNIQUE KEY uniq_platform_billing_code (platform_billing_code)");
+            }
+        } catch (Throwable $e) {
+            error_log('[schema_guard] tenants.uniq_platform_billing_code: ' . $e->getMessage());
+        }
+    }
+
+    // Money tenants send US, and which invoice each shilling settled.
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS platform_payments (
+                id             INT AUTO_INCREMENT PRIMARY KEY,
+                tenant_id      INT NOT NULL,
+                amount         DECIMAL(12,2) NOT NULL,
+                allocated      DECIMAL(12,2) NOT NULL DEFAULT 0,
+                phone          VARCHAR(20)  DEFAULT NULL,
+                mpesa_receipt  VARCHAR(32)  DEFAULT NULL,
+                bill_ref       VARCHAR(64)  DEFAULT NULL,
+                source         VARCHAR(16)  NOT NULL DEFAULT 'c2b',
+                raw_callback   TEXT         DEFAULT NULL,
+                paid_at        DATETIME     NOT NULL,
+                created_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_platform_receipt (mpesa_receipt),
+                INDEX idx_pp_tenant (tenant_id),
+                INDEX idx_pp_paid   (paid_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS platform_payment_allocations (
+                id          INT AUTO_INCREMENT PRIMARY KEY,
+                payment_id  INT NOT NULL,
+                invoice_id  INT NOT NULL,
+                amount      DECIMAL(12,2) NOT NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_ppa_payment (payment_id),
+                INDEX idx_ppa_invoice (invoice_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+    } catch (Throwable $e) {
+        error_log('[schema_guard] platform_payments tables: ' . $e->getMessage());
+    }
+}
