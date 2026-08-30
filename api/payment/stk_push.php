@@ -7,6 +7,7 @@ header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
 require_once '../../classes/MpesaAPI.php';
+require_once '../../includes/credential_helper.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -71,7 +72,13 @@ try {
     $tenantGw = $gwCheck->fetch(PDO::FETCH_ASSOC);
     $hasTenantCreds = false;
     if ($tenantGw) {
-        $gwCreds = json_decode($tenantGw['credentials'], true) ?? [];
+        // Credentials are stored as an AES blob. A raw json_decode() reads that
+        // as NULL, so a tenant with a perfectly good gateway looked
+        // unconfigured and their customers' payments were pushed through — and
+        // collected by — FortuNett's shared paybill instead of their own.
+        // decrypt_gateway_credentials() also passes legacy plain-JSON rows
+        // through unchanged.
+        $gwCreds = decrypt_gateway_credentials((string)($tenantGw['credentials'] ?? ''));
         $hasTenantCreds = !empty($gwCreds['consumer_key'])
                        && !empty($gwCreds['consumer_secret'])
                        && !empty($gwCreds['passkey'])

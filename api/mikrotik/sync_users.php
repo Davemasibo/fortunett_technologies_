@@ -5,6 +5,7 @@
 header('Content-Type: application/json');
 require_once '../../includes/config.php';
 require_once '../../classes/MikrotikAPI.php';
+require_once '../../includes/package_profile.php';
 
 // Get router credentials
 $stmt = $pdo->query("SELECT * FROM mikrotik_routers WHERE status IN ('active','online') LIMIT 1");
@@ -47,10 +48,12 @@ try {
                 // Or maybe update profile if package changed?
                 
                 // Retrieve package profile name
-                $pkgStmt = $pdo->prepare("SELECT mikrotik_profile FROM packages WHERE id = ?");
+                $pkgStmt = $pdo->prepare("SELECT id, name, mikrotik_profile FROM packages WHERE id = ?");
                 $pkgStmt->execute([$client['package_id']]);
                 $pkg = $pkgStmt->fetch(PDO::FETCH_ASSOC);
-                $profile = $pkg['mikrotik_profile'] ?? 'default';
+                // Never 'default' and never '': RouterOS's default profile has no
+                // rate-limit, so either value silently removes the speed cap.
+                $profile = packageProfileName($pkg ?: []);
                 
                 if ($rUser['profile'] != $profile) {
                    try {
@@ -66,10 +69,10 @@ try {
         
         if (!$found) {
             // Create user on router
-             $pkgStmt = $pdo->prepare("SELECT mikrotik_profile FROM packages WHERE id = ?");
+             $pkgStmt = $pdo->prepare("SELECT id, name, mikrotik_profile FROM packages WHERE id = ?");
              $pkgStmt->execute([$client['package_id']]);
              $pkg = $pkgStmt->fetch(PDO::FETCH_ASSOC);
-             $profile = $pkg['mikrotik_profile'] ?? 'default';
+             $profile = packageProfileName($pkg ?: []);
              
              try {
                  $api->addPPPoEUser($client['mikrotik_username'], $client['mikrotik_password'], $profile);

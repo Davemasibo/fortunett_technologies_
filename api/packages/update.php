@@ -15,6 +15,7 @@ register_shutdown_function(function() {
 header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
+require_once '../../includes/package_profile.php';
 
 // Validate Inputs
 $id = (int)($_POST['id'] ?? 0);
@@ -24,8 +25,14 @@ $download_speed = isset($_POST['download_speed']) && $_POST['download_speed'] !=
 $upload_speed = isset($_POST['upload_speed']) && $_POST['upload_speed'] !== '' ? (int)$_POST['upload_speed'] : 0;
 $data_limit = isset($_POST['data_limit']) && $_POST['data_limit'] !== '' ? (int)$_POST['data_limit'] : 0;
 $description = $_POST['description'] ?? '';
-$mikrotik_profile = $_POST['mikrotik_profile'] ?? '';
-$rate_limit = $_POST['rate_limit'] ?? ($upload_speed . 'M/' . $download_speed . 'M');
+// See api/packages/create.php: the form always submits this field, so `??` never
+// fired and the empty string was written straight to the column. Blank means
+// "derive it", not "no profile".
+$mikrotik_profile = trim($_POST['mikrotik_profile'] ?? '');
+$rate_limit = trim($_POST['rate_limit'] ?? '');
+if ($rate_limit === '') {
+    $rate_limit = packageRateLimit(['download_speed' => $download_speed, 'upload_speed' => $upload_speed]);
+}
 $connection_type = $_POST['connection_type'] ?? 'pppoe';
 $hotspot_server = trim($_POST['hotspot_server'] ?? '');
 $speed_display = $download_speed . "Mbps / " . $upload_speed . "Mbps";
@@ -54,6 +61,12 @@ if (!$check->fetch()) {
     exit;
 }
 
+$mikrotik_profile = packageProfileName([
+    'id'               => $id,
+    'name'             => $name,
+    'mikrotik_profile' => $mikrotik_profile,
+]);
+
 try {
     $pdo->beginTransaction();
 
@@ -80,16 +93,52 @@ try {
     $setVals[] = $id;
     $stmt = $pdo->prepare("UPDATE packages SET " . implode(',', $setCols) . " WHERE id = ?");
     $stmt->execute($setVals);
-    
-    // Sync to Router (Optional: Update profile limits)
-    // As per current API capability, we might not update existing profiles easily without ID.
-    // For now, assume DB update is primary.
-    
-    // TODO: Implement profile update on router if needed.
-    
+
     $pdo->commit();
+
+    // ── Push the speed change to the routers ──────────────────────────────────
+    // This endpoint used to write the new speed to the database and touch no
+    // router at all, so editing a package's speed changed the price the customer
+    // paid and nothing else - the profile kept its old rate-limit indefinitely.
+    // Runs after the commit: a router that is unreachable must not roll back a
+    // perfectly good package edit.
+    $synced = 0;
+    $failed = [];
+    try {
+        $rSt = $pdo->prepare("SELECT id, ip_address, vpn_ip, username, password, api_port
+                              FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
+        $rSt->execute([$tenant_id]);
+        foreach ($rSt->fetchAll(PDO::FETCH_ASSOC) as $router) {
+            $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
+            try {
+                $api = new MikrotikAPI($connectIp, $router['username'], $router['password'], $router['api_port']);
+                if (!$api->connect()) { $failed[] = $router['ip_address']; continue; }
+                if (syncPackageProfileToRouter($api, $connection_type, $mikrotik_profile, $rate_limit)) {
+                    $synced++;
+                } else {
+                    $failed[] = $router['ip_address'];
+                }
+                $api->disconnect();
+            } catch (Throwable $re) {
+                $failed[] = $router['ip_address'];
+                error_log('Package update router sync (' . $router['ip_address'] . '): ' . $re->getMessage());
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('Package update router sync: ' . $e->getMessage());
+    }
+
+    // An unreachable router is reported, never hidden: the operator otherwise
+    // believes a speed change took effect on a router that never heard about it.
+    $msg = 'Package updated successfully';
+    if ($synced) $msg .= ' - profile "' . $mikrotik_profile . '" set to ' . ($rate_limit !== '' ? $rate_limit : 'uncapped') . ' on ' . $synced . ' router(s)';
+    if ($failed) $msg .= '. Could not reach: ' . implode(', ', array_unique($failed));
+    // RouterOS applies a profile change only to NEW sessions, so anyone online
+    // keeps the old speed until they reconnect.
+    if ($synced) $msg .= '. Customers already online keep the old speed until they reconnect.';
+
     ob_clean();
-    echo json_encode(['success' => true, 'message' => 'Package updated successfully']);
+    echo json_encode(['success' => true, 'message' => $msg, 'profile' => $mikrotik_profile, 'rate_limit' => $rate_limit]);
 
 } catch (Throwable $e) {
     try { if ($pdo->inTransaction()) $pdo->rollBack(); } catch (Throwable $re) {}

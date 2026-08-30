@@ -8,6 +8,7 @@ ini_set('display_errors', 0);
 header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
+require_once '../../includes/package_profile.php';
 
 // Validate Inputs
 $id               = $_POST['id'] ?? 0;
@@ -139,7 +140,11 @@ if (empty($id) || empty($name)) {
                 $profile = null;
                 $hotspot_server = 'all';
                 if ($package_id && !empty($package)) {
-                    $profile = $package['mikrotik_profile'] ?? 'default';
+                    // `?? 'default'` did not catch the empty string this column
+                    // actually held, so an empty profile name went to RouterOS -
+                    // which resolves to the built-in default profile, and that one
+                    // has no rate-limit. The customer ran uncapped.
+                    $profile = packageProfileName($package);
                     $hotspot_server = !empty($package['hotspot_server']) ? $package['hotspot_server'] : 'all';
                 }
 
@@ -153,7 +158,7 @@ if (empty($id) || empty($name)) {
                     } catch (Exception $e) {
                         // Try adding if update failed
                         if (!empty($mikrotik_password)) {
-                            $api->addHotspotUser($mikrotik_username, $mikrotik_password, $profile ?? 'default', $hotspot_server);
+                            $api->addHotspotUser($mikrotik_username, $mikrotik_password, $profile ?: packageProfileName($package ?: []), $hotspot_server);
                         }
                     }
                 } else {
@@ -163,7 +168,7 @@ if (empty($id) || empty($name)) {
                     } catch (Exception $e) {
                          // Try adding if update failed
                          if (!empty($mikrotik_password)) {
-                             $api->addPPPoEUser($mikrotik_username, $mikrotik_password, $profile ?? 'default');
+                             $api->addPPPoEUser($mikrotik_username, $mikrotik_password, $profile ?: packageProfileName($package ?: []));
                          }
                     }
                 }

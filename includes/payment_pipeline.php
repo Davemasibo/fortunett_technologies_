@@ -26,6 +26,7 @@
 
 require_once __DIR__ . '/auto_provision.php';
 require_once __DIR__ . '/radius_client.php';
+require_once __DIR__ . '/payment_routing.php';
 
 /**
  * @param PDO    $pdo
@@ -35,9 +36,15 @@ require_once __DIR__ . '/radius_client.php';
  * @param string $receipt          M-Pesa receipt / TransID — idempotency key
  * @param string $paymentMethod    'mpesa' | 'mpesa_paybill' | 'mpesa_c2b_tenant'
  * @param int|null $packageId      Package to extend; NULL = use client's current package
- * @param bool   $platformCollected TRUE when FortuNett's shared paybill collected the
- *                                  money (payout to ISP is required). FALSE for
+ * @param bool|null $platformCollected TRUE when FortuNett's shared paybill collected
+ *                                  the money (payout to ISP is required). FALSE for
  *                                  tenant-own paybill (ISP already has the money).
+ *                                  NULL — preferred — means "you work it out":
+ *                                  resolveCollectionType() reads the tag written
+ *                                  when the payment was initiated, and only falls
+ *                                  back to the tenant's gateway configuration.
+ *                                  A caller guessing here is how platform money
+ *                                  came to be booked as the ISP's own.
  * @return array  ['expiry_date'=>..., 'steps'=>['radius'=>bool, 'sms'=>bool, ...]]
  */
 function process_payment_success(
@@ -48,7 +55,7 @@ function process_payment_success(
     string $receipt,
     string $paymentMethod   = 'mpesa',
     ?int   $packageId       = null,
-    bool   $platformCollected = false
+    ?bool  $platformCollected = null
 ): array {
     $results = [
         'expiry_date'  => null,
@@ -131,24 +138,39 @@ function process_payment_success(
     try {
         // Try to find an existing pending row by checkout_request_id / receipt
         $pSt = $pdo->prepare("
-            SELECT id FROM payments
+            SELECT id, collection_type FROM payments
             WHERE (transaction_id = ? OR transaction_id = ?) AND client_id = ?
             LIMIT 1
         ");
         $pSt->execute([$receipt, $receipt, $clientId]);
-        $paymentId = $pSt->fetchColumn() ?: null;
+        $pendingRow = $pSt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $paymentId  = $pendingRow ? (int)$pendingRow['id'] : null;
 
-        // collection_type says WHOSE BANK THE MONEY IS IN, and nothing else
-        // wrote it: the column simply took its DEFAULT 'direct'. So money
-        // collected by FortuNett's own till/paybill was recorded as if the ISP
-        // already held it, while step 7 below queued a payout for the very same
-        // shilling. Every float and settlement figure that reads this column -
-        // billing.php, release_payments.php, auto_release_settlements.php, the
-        // super-admin collections view - was wrong in the same direction.
+        // collection_type says WHOSE BANK THE MONEY IS IN, and nothing else.
         //
-        // Set here rather than in each caller because this is the one place
-        // that knows $platformCollected and touches the row.
-        $collectionType = $platformCollected ? 'platform' : 'direct';
+        // Originally nothing wrote it and the column took its DEFAULT 'direct',
+        // so money in FortuNett's till read as money the ISP already had while
+        // step 7 queued a payout for the same shilling. Setting it from the
+        // callers flag fixed that only where the caller actually knew: a
+        // hard-coded `false` in hotspot_payment_status.php then re-broke it by
+        // OVERWRITING the correct 'platform' tag that hotspot_stk_push.php had
+        // put on the pending row when it chose the platform credentials.
+        //
+        // resolveCollectionType() holds the precedence and the reasoning; the
+        // short version is that a recorded 'platform' is never downgraded, and a
+        // recorded 'direct' is only believed from a tenant who actually has a
+        // paybill of their own - 'direct' being the column DEFAULT, it is
+        // otherwise indistinguishable from a row nobody tagged at all.
+        $collectionType = resolveCollectionType(
+            $pdo,
+            $tenantId,
+            $pendingRow['collection_type'] ?? null,
+            $platformCollected
+        );
+
+        // Everything downstream — the ISP payout in step 7 especially — must
+        // follow the value actually booked, not the caller's guess.
+        $platformCollected = ($collectionType === 'platform');
 
         if ($paymentId) {
             $pdo->prepare("

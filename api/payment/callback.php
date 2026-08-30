@@ -181,17 +181,24 @@ try {
             ");
             $rows->execute([$receipt, $checkoutRequestId, $resolvedTenantId, $resolvedTenantId]);
 
-            if ($rows->rowCount() === 0) {
-                $pdo->prepare("
-                    INSERT INTO payments (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date)
-                    VALUES (?, ?, ?, 'mpesa', ?, 'completed', NOW())
-                ")->execute([$clientId, $resolvedTenantId, $amount, $receipt]);
-            }
+            // No INSERT fallback here on purpose. A row created without
+            // collection_type takes the column DEFAULT 'direct', and step 3 of
+            // the pipeline treats an existing tag as authoritative - so an
+            // untagged row written here would permanently book platform money as
+            // the ISP's own. When the rename above matches nothing, the pipeline
+            // creates the row itself with the collection type resolved properly.
 
-            // Determine whether FortuNett collected this payment or the tenant's own paybill did
-            $ownGw = $pdo->prepare("SELECT id FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa' AND is_active = 1 LIMIT 1");
-            $ownGw->execute([$resolvedTenantId]);
-            $platformCollected = !$ownGw->fetchColumn();
+            // Whose till received this money. The old check here queried
+            // gateway_type = 'mpesa', which is not a member of the
+            // payment_gateways ENUM ('paybill_no_api','mpesa_api','bank_account',
+            // 'kopo_kopo','paypal') — it matched nothing, ever, so every payment
+            // confirmed through this callback was flagged platform-collected
+            // whether or not the tenant ran their own paybill.
+            //
+            // NULL lets the pipeline use the tag written when the STK push chose
+            // its credentials, falling back to the same completeness test
+            // stk_push.php routes on.
+            $platformCollected = null;
 
             process_payment_success(
                 $pdo,

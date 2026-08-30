@@ -135,17 +135,15 @@ foreach ($pending as $tx) {
                 ");
                 $rows->execute([$receipt, $checkoutId, $resolvedTenantId, $resolvedTenantId]);
 
-                if ($rows->rowCount() === 0) {
-                    $pdo->prepare("
-                        INSERT INTO payments (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date)
-                        VALUES (?, ?, ?, 'mpesa', ?, 'completed', NOW())
-                    ")->execute([$clientId, $resolvedTenantId, $amount, $receipt]);
-                }
+                // See api/payment/callback.php: no untagged INSERT fallback.
+                // The pipeline creates the row with the right collection_type
+                // when the rename above matched no pending row.
 
-                // Determine whether FortuNett or the tenant collected this payment
-                $ownGw = $pdo->prepare("SELECT id FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa' AND is_active = 1 LIMIT 1");
-                $ownGw->execute([$resolvedTenantId]);
-                $platformCollected = !$ownGw->fetchColumn();
+                // See api/payment/callback.php: the gateway_type = 'mpesa' lookup
+                // that used to live here matched no row on any deployment, so this
+                // backstop tagged everything it recovered as platform-collected.
+                // NULL defers to the tag written at STK-push time.
+                $platformCollected = null;
 
                 process_payment_success(
                     $pdo,

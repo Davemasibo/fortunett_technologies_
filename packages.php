@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/package_profile.php';
 redirectIfNotLoggedIn();
 
 $database = new Database();
@@ -346,11 +347,24 @@ include 'includes/sidebar.php';
                         <td><?php echo $devices; ?></td>
                         <td><strong>KES <?php echo number_format($pkg['price'], 0); ?></strong></td>
                         <td>
-                            <?php $profile = $pkg['mikrotik_profile'] ?? ''; ?>
-                            <?php if ($profile): ?>
-                                <span style="font-family:monospace;font-size:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:3px 8px;color:#a5f3fc;"><?php echo htmlspecialchars($profile); ?></span>
-                            <?php else: ?>
-                                <span style="color:rgba(255,255,255,.2);font-size:12px;">—</span>
+                            <?php
+                            // Show the profile the router ACTUALLY uses, not the
+                            // raw column. The column was blank on every package
+                            // (both write paths used `??` against a form field
+                            // that is always submitted, so '' was stored), and a
+                            // dash here read as "no speed cap configured" when
+                            // provisioning was in fact deriving pkg{id}-{slug}.
+                            $storedProfile = trim((string)($pkg['mikrotik_profile'] ?? ''));
+                            $profile       = packageProfileName($pkg);
+                            $isDerived     = ($storedProfile === '' || strcasecmp($storedProfile, 'default') === 0);
+                            $pkgRate       = packageRateLimit($pkg);
+                            ?>
+                            <span title="rate-limit <?php echo $pkgRate !== '' ? htmlspecialchars($pkgRate) : 'not set - this package is UNCAPPED'; ?>" style="font-family:monospace;font-size:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:3px 8px;color:<?php echo $pkgRate !== '' ? '#a5f3fc' : '#fca5a5'; ?>;"><?php echo htmlspecialchars($profile); ?></span>
+                            <?php if ($isDerived): ?>
+                                <div style="color:rgba(255,255,255,.35);font-size:10px;margin-top:3px;">auto</div>
+                            <?php endif; ?>
+                            <?php if ($pkgRate === ''): ?>
+                                <div style="color:#fca5a5;font-size:10px;margin-top:2px;">no speed set &mdash; uncapped</div>
                             <?php endif; ?>
                         </td>
                         <td>

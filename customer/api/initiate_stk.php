@@ -133,15 +133,29 @@ try {
                  VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, NOW(), NOW())"
             )->execute([$txClientId, $tenantId, $phone, $amount, $merchantId, $checkoutId, $txDesc]);
 
-            // Pending payment row — always link to the real client_id for accounting
+            // Pending payment row — always link to the real client_id for accounting.
+            //
+            // collection_type is tagged HERE because this is the only moment
+            // anything knows which credentials sent the push. The confirmation
+            // handlers cannot tell afterwards, and the pipeline now treats this
+            // tag as authoritative; leaving the column to its DEFAULT 'direct'
+            // booked platform-held money as the ISP's own and suppressed the
+            // payout that should follow it.
+            $collectionType = $usingPlatform ? 'platform' : 'direct';
             try {
+                $pdo->prepare(
+                    "INSERT INTO payments
+                     (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, collection_type)
+                     VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending', ?)"
+                )->execute([$clientId, $tenantId, $amount, $checkoutId, $collectionType]);
+            } catch (PDOException $pe) {
+                // Deployment without the collection_type column — record the
+                // payment anyway; tools/repair_collection_type.php re-tags it.
                 $pdo->prepare(
                     "INSERT INTO payments
                      (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status)
                      VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending')"
                 )->execute([$clientId, $tenantId, $amount, $checkoutId]);
-            } catch (PDOException $pe) {
-                // Non-fatal if collection_type column or other mismatch
             }
         } catch (Exception $dbEx) {
             error_log("Customer STK DB error: " . $dbEx->getMessage());

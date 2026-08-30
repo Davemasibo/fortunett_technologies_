@@ -195,8 +195,8 @@ foreach ($payloads as $tx => $p) {
         // payment_date is the DATE the money actually arrived, not today, so the
         // recovered rows land in the right billing period.
         $pdo->prepare("
-            INSERT INTO payments (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date, notes)
-            VALUES (?, ?, ?, 'mpesa_paybill', ?, 'completed', ?, ?)
+            INSERT INTO payments (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date, collection_type, notes)
+            VALUES (?, ?, ?, 'mpesa_paybill', ?, 'completed', ?, 'platform', ?)
         ")->execute([
             $clientId, $tenantId, $amount, $tx,
             date('Y-m-d', $p['stamp'] ?: time()),

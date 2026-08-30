@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/../classes/MikrotikAPI.php';
 require_once __DIR__ . '/radius_client.php';
+require_once __DIR__ . '/package_profile.php';
 require_once __DIR__ . '/hotspot_sync.php';
 
 /**
@@ -91,12 +92,17 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
 
         // One shared profile per package. It must never resolve to "default":
         // RouterOS's default profile carries no rate-limit, so falling back to it
-        // silently disabled the speed cap entirely.
-        $profileName = trim((string)($package['mikrotik_profile'] ?? ''));
-        if ($profileName === '' || strcasecmp($profileName, 'default') === 0) {
-            $slug = preg_replace('/[^a-zA-Z0-9-]/', '', strtolower($package['name'] ?? ''));
-            // Package id keeps it unique — two packages can sanitise to the same slug
-            $profileName = 'pkg' . (int)$package['id'] . ($slug !== '' ? '-' . substr($slug, 0, 20) : '');
+        // silently disabled the speed cap entirely. packageProfileName() is the
+        // single generator of this name - every other caller uses it too, so the
+        // profile a client is put on is the same one the package page shows and
+        // the same one api/packages/update.php pushes rate-limit changes to.
+        $profileName = packageProfileName($package);
+
+        // Persist the derived name so it stops being invisible: packages.php read
+        // a blank column as "no profile" and the operator had no way to tell which
+        // profile their customers were actually on.
+        if (trim((string)($package['mikrotik_profile'] ?? '')) === '') {
+            ensurePackageProfileName($pdo, $package);
         }
 
         // ── Connect to router — prefer VPN IP (WireGuard) over public IP ─────
@@ -218,7 +224,8 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
  *    "unknown parameter rate", which broke customer creation entirely.
  *  - Isolating it means a failure here cannot take the provisioning with it.
  *
- * @param array $printed Rows previously returned by the matching /print
+ * @param MikrotikAPI $api     Connected API instance.
+ * @param array       $printed Rows previously returned by the matching /print
  */
 function _clearStaleRateLimit($api, string $path, array $printed, string $recordId): void
 {

@@ -16,6 +16,7 @@ register_shutdown_function(function() {
 header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
+require_once '../../includes/package_profile.php';
 
 // Validate Inputs
 $name = $_POST['name'] ?? '';
@@ -26,8 +27,20 @@ $data_limit = isset($_POST['data_limit']) && $_POST['data_limit'] !== '' ? (int)
 
 $speed_display = $download_speed . "Mbps / " . $upload_speed . "Mbps"; // Construct display string
 $description = $_POST['description'] ?? '';
-$mikrotik_profile = $_POST['mikrotik_profile'] ?? preg_replace('/[^a-zA-Z0-9-]/', '', strtolower($name));
-$rate_limit = $_POST['rate_limit'] ?? ($upload_speed . 'M/' . $download_speed . 'M');
+// trim() before the fallback, not `??`. The form always submits this field, so
+// `??` never fired on the empty string and '' was written to the column - which
+// is why every package showed no router profile and why this endpoint went on to
+// create a profile literally named '' on each router. The real name needs the
+// package id, so it is derived after the INSERT below.
+$mikrotik_profile = trim($_POST['mikrotik_profile'] ?? '');
+
+// Rate limit is rx/tx from the ROUTER's view: {upload}M/{download}M. Derived from
+// the speeds unless the operator typed one, and empty (uncapped) rather than
+// '0M/0M' when the package genuinely has no speed set.
+$rate_limit = trim($_POST['rate_limit'] ?? '');
+if ($rate_limit === '') {
+    $rate_limit = packageRateLimit(['download_speed' => $download_speed, 'upload_speed' => $upload_speed]);
+}
 $connection_type = $_POST['connection_type'] ?? 'pppoe';
 $hotspot_server = trim($_POST['hotspot_server'] ?? '');
 
@@ -85,7 +98,20 @@ try {
     $colList      = implode(',', $cols);
     $stmt = $pdo->prepare("INSERT INTO packages ($colList) VALUES ($placeholders)");
     $stmt->execute($vals);
-    $package_id = $pdo->lastInsertId();
+    $package_id = (int)$pdo->lastInsertId();
+
+    // Now that the id exists, settle the profile name and write it back. Uses the
+    // same generator autoProvisionClient() uses, so the profile created here is
+    // the one clients are actually put on rather than a second, empty one.
+    $mikrotik_profile = packageProfileName([
+        'id'               => $package_id,
+        'name'             => $name,
+        'mikrotik_profile' => $mikrotik_profile,
+    ]);
+    if (isset($colCache['mikrotik_profile'])) {
+        $pdo->prepare("UPDATE packages SET mikrotik_profile = ? WHERE id = ?")
+            ->execute([$mikrotik_profile, $package_id]);
+    }
     
     // 2. Create Profile on all active Routers for this tenant
     $router_stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");

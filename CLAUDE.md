@@ -118,9 +118,26 @@ Rate limits live on the **package profile only**, never on the individual user.
 
 - `rate-limit` format is `rx/tx` from the router's view — `{upload}M/{download}M`. See [[feedback_mikrotik_rate_limit]].
 - A `rate-limit` set directly on an `/ip hotspot user` or `/ppp secret` **overrides the profile's**. Provisioning blanks it explicitly (`=rate-limit=`) on every add and update so the profile is the single source of truth. A leftover per-user value is how a 5M plan delivered line speed.
-- The profile name must never resolve to `default` — RouterOS's default profile has no rate-limit, so falling back to it disables the cap entirely. `autoProvisionClient()` generates `pkg{id}-{slug}` when the package has no explicit `mikrotik_profile`.
+- The profile name must never resolve to `default` — RouterOS's default profile has no rate-limit, so falling back to it disables the cap entirely. `packageProfileName()` in `includes/package_profile.php` generates `pkg{id}-{slug}` when the package has no explicit `mikrotik_profile`, and rejects a literal `default` the same way it rejects blank.
 - Never invent a speed. Missing `download_speed` used to default to 10 Mbps, silently over-delivering; it now provisions uncapped and logs loudly so the misconfigured package is findable.
 - Changing a profile's rate-limit does not affect established sessions — kick them (`kickPPPoESession` / `kickHotspotSession`) or the old rate persists.
+
+`includes/package_profile.php` is the single generator of the name and the limit — `packageProfileName()` (never blank, never `default`), `packageRateLimit()` (`{upload}M/{download}M`, empty when no speed is set) and `syncPackageProfileToRouter()`. Every caller uses it, so the profile the package page shows is the profile clients are actually on.
+
+`packages.mikrotik_profile` was blank on **every package on every tenant**, and the cause is worth remembering because it is invisible on review: both writers used `??` against a field the package modal always submits.
+
+```php
+$mikrotik_profile = $_POST['mikrotik_profile'] ?? preg_replace(...);  // create.php
+$mikrotik_profile = $_POST['mikrotik_profile'] ?? '';                 // update.php
+```
+
+`??` only fires on a **missing** key, so the empty string sailed through and `''` was stored — and `create.php` then created a profile literally named `''` on every router.
+
+- `autoProvisionClient()` survived it: it has its own `pkg{id}-{slug}` fallback. That is why speeds still worked for anyone provisioned by a payment.
+- `api/customers/update.php` and `api/mikrotik/sync_users.php` did not. They read the column as `$package['mikrotik_profile'] ?? 'default'` — and `'' ?? 'default'` is `''`, not `'default'` — so they pushed an empty profile name at RouterOS, which resolves to the built-in `default` profile. That profile has **no rate-limit**: every client edited or synced through those two paths was uncapped.
+- `api/packages/update.php` wrote the new speed to the database and touched no router at all, so editing a package's speed changed nothing about what the customer received. It now pushes the profile's rate-limit to every reachable router and says which ones it could not reach.
+
+Backfill: `php tools/backfill_package_profiles.php` (dry run; `--apply` writes the column, `--apply --push` also creates/repairs the profiles on the routers). Packages with no `download_speed` are listed and **skipped** rather than given an invented cap.
 
 ### Expiry Enforcement
 `cron/check_expiry.php` runs every 15 min: `active` → `grace` (throttled) after expiry, → `inactive` (disabled + kicked) after `$graceDays`.
@@ -158,12 +175,27 @@ Cron liveness comes from `includes/cron_heartbeat.php` — each scheduled script
 
 Only `stk_push.php` ever wrote the column. `process_payment_success()` queued an ISP payout whenever `$platformCollected` was true but left the row on its DEFAULT `'direct'`, so money FortuNett was holding read as money the ISP already had while a payout for the same shilling sat in `isp_payout_queue`. Every writer now tags it:
 
-- `process_payment_success()` sets it from `$platformCollected` — the one place that knows.
+- `process_payment_success()` sets it through `resolveCollectionType()` — see the precedence below.
 - Both C2B confirmations tag at INSERT (`platform` / `direct`).
 - `hotspot_stk_push.php` tags the *pending* row too, from `$usingPlatform`.
 - `resolve_unmatched_payment()` derives it from `unmatched_payments.source`, and passes the same value as `$platformCollected` — hard-coding `false` there meant a manually matched platform payment was never disbursed.
 
-Historic rows: `php tools/repair_collection_type.php` (dry run; `--apply` to commit). It re-tags from evidence — a queued payout, a platform-handler note, a charged commission.
+**Deciding it is not each caller's job.** Four handlers derived the answer independently and three were wrong:
+
+- `hotspot_payment_status.php` passed a hard-coded `false`. That path — the inline `stkQuery`, which runs whenever the callback is late or blocked, so most hotspot payments — booked platform money as `direct`, **overwrote** the correct `platform` tag `hotspot_stk_push.php` had already put on the pending row, and skipped step 7 so no payout was queued. This is the one that showed ISPs "Paid to you directly" for money FortuNett was holding.
+- `callback.php` and `stk_poll.php` looked up `gateway_type = 'mpesa'`, which is not a member of the `payment_gateways` ENUM (`paybill_no_api`, `mpesa_api`, `bank_account`, `kopo_kopo`, `paypal`). The query matched nothing on any deployment, so both flagged everything they confirmed as platform-collected.
+- `stk_push.php` read the credentials with a raw `json_decode()` of what is an AES blob, so a tenant with a working gateway looked unconfigured and their customers' money was **routed** to FortuNett's paybill rather than their own.
+
+`includes/payment_routing.php` now owns it. `tenantHasOwnMpesaCredentials()` mirrors the routing test in `stk_push.php` exactly — if the two ever disagree, money routes one way and is booked the other. `resolveCollectionType()` applies one precedence:
+
+1. A recorded `platform` **always** wins; nothing downgrades it. Claiming the ISP already holds money FortuNett has is the failure that hides a liability.
+2. An explicit assertion from a caller that genuinely knows (C2B confirmation, statement import).
+3. A recorded `direct`, **but only from a tenant who has a paybill of their own.** `direct` is the column DEFAULT, so a row from one of the several endpoints that never set the column is indistinguishable from a deliberate `direct` — trusting it blindly cements the bug.
+4. Otherwise derive: no credentials of their own means no account the money could have reached but the platform's.
+
+Two consequences for anything new on this path: pass `null` for `$platformCollected` unless you truly know, and **never INSERT a payments row without `collection_type`** — `callback.php` and `stk_poll.php` had untagged fallback INSERTs that have been removed so the pipeline creates the row instead.
+
+Historic rows: `php tools/repair_collection_type.php` (dry run; `--apply` to commit, `--tenant=N` to scope). It re-tags from evidence — a queued payout, a platform-handler note, a charged commission (that one scoped to tenants with no gateway, since a commission is charged on every hotspot payment), and a tenant with no M-Pesa credentials at all, which is the only signal left for rows the `stkQuery` path booked. It also **backfills the missing `isp_payout_queue` rows**: re-tagging alone leaves the ISP reading "Awaiting disbursement" with nothing queued for FortuNett to release.
 
 **Never label platform money as anything resembling "direct".** It reads as "the ISP has it" and hides a liability. The vocabulary is *Paid to you directly* / *Awaiting disbursement* / *Disbursed*, used identically on `payments.php`, `billing.php` and `super_admin/tenants.php`.
 

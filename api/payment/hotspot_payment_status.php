@@ -221,10 +221,20 @@ try {
                         $cl = $pdo->prepare("SELECT tenant_id, package_id FROM clients WHERE id = ? LIMIT 1");
                         $cl->execute([(int)$tx['client_id']]);
                         if ($clRow = $cl->fetch(PDO::FETCH_ASSOC)) {
+                            // $hasTenantCreds above is the same test that chose
+                            // the credentials this stkQuery ran against, so it is
+                            // the truth about whose till received the money. The
+                            // literal `false` that used to sit here booked every
+                            // platform-collected hotspot payment as 'direct' —
+                            // overwriting the correct tag hotspot_stk_push.php had
+                            // already written on the pending row — so the ISP was
+                            // shown as already holding cash FortuNett had, and no
+                            // payout was ever queued for it.
                             process_payment_success(
                                 $pdo, (int)$tx['client_id'], (int)$clRow['tenant_id'],
                                 (float)($tx['amount'] ?? 0), $checkoutId, 'mpesa_stk',
-                                $clRow['package_id'] ? (int)$clRow['package_id'] : null, false
+                                $clRow['package_id'] ? (int)$clRow['package_id'] : null,
+                                !$hasTenantCreds
                             );
                         }
                     } catch (Throwable $e) {
