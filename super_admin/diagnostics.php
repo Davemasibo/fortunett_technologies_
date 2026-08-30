@@ -80,6 +80,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .chk .act i{margin-right:6px;}
 .chk code{background:rgba(255,255,255,.07);padding:2px 7px;border-radius:5px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#cbd5e1;}
 .spin{animation:sp 1s linear infinite;}@keyframes sp{to{transform:rotate(360deg);}}
+
+.btn-fix{background:linear-gradient(135deg,#0f3460,#16213e);color:#fff;border-color:rgba(255,255,255,.16);font-weight:700;}
+.btn-fix:hover{background:linear-gradient(135deg,#16213e,#0f3460);color:#fff;}
+.btn-fix[disabled]{opacity:.55;cursor:not-allowed;}
+#repair{display:none;margin-bottom:22px;}
+.rep-step{padding:11px 20px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;gap:12px;align-items:flex-start;font-size:13px;}
+.rep-step:last-child{border-bottom:none;}
+.rep-step .t{font-weight:600;color:var(--neu-text);}
+.rep-step .d{font-size:12.5px;color:var(--neu-muted);line-height:1.55;margin-top:2px;}
+.rep-step .a{font-size:12.5px;color:#93c5fd;line-height:1.5;margin-top:5px;}
+.rep-tag{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:3px 8px;border-radius:6px;flex-shrink:0;min-width:62px;text-align:center;}
+.rep-tag.fixed{background:rgba(52,211,153,.16);color:#6ee7b7;}
+.rep-tag.would{background:rgba(59,130,246,.16);color:#93c5fd;}
+.rep-tag.ok{background:rgba(255,255,255,.07);color:var(--neu-muted);}
+.rep-tag.manual{background:rgba(245,158,11,.16);color:#fcd34d;}
+.rep-tag.error{background:rgba(239,68,68,.16);color:#fca5a5;}
+.rep-note{padding:12px 20px;font-size:12.5px;color:var(--neu-muted);line-height:1.6;border-top:1px solid var(--neu-border);background:rgba(59,110,165,.06);}
+.rep-note code{background:rgba(255,255,255,.08);padding:2px 7px;border-radius:5px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#cbd5e1;}
 </style>
 </head>
 <body>
@@ -106,13 +124,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 <div class="main">
     <div class="topbar">
         <h1>Platform Diagnostics</h1>
-        <button class="btn" id="reload"><i class="fas fa-rotate"></i> Re-run</button>
+        <div style="display:flex;gap:10px;">
+            <button class="btn" id="preview"><i class="fas fa-list-check"></i> Preview repairs</button>
+            <button class="btn btn-fix" id="fixall"><i class="fas fa-wrench"></i> Fix what can be fixed</button>
+            <button class="btn" id="reload"><i class="fas fa-rotate"></i> Re-run</button>
+        </div>
     </div>
     <div class="content">
 
         <div class="verdict loading" id="verdict">
             <div class="vi"><i class="fas fa-circle-notch spin"></i></div>
             <div><h4>Checking the shared chain…</h4><p>Reading platform credentials, cron heartbeats, schema and tenant collection modes.</p></div>
+        </div>
+
+        <div class="card" id="repair">
+            <div class="card-head"><h3 id="repair-title">Repair</h3><span class="pill ok" id="repair-pill">&nbsp;</span></div>
+            <div id="repair-steps"></div>
+            <div class="rep-note" id="repair-note"></div>
         </div>
 
         <div id="groups"></div>
@@ -193,7 +221,83 @@ async function run() {
     g.innerHTML = html;
 }
 
+// ── One-click repair ────────────────────────────────────────────────────────
+// Only the mechanical half: missing migrations, the retired SMS endpoint stored
+// in a column, derivable settings, C2B registration. Credentials are reported,
+// never guessed at, and crontab lines need a shell this page does not have --
+// both come back as `manual` rows with exactly where to go.
+const REP_ORDER = { error: 0, manual: 1, fixed: 2, would: 3, ok: 4 };
+
+async function repair(apply) {
+    const panel = document.getElementById('repair');
+    const btnF  = document.getElementById('fixall');
+    const btnP  = document.getElementById('preview');
+    btnF.disabled = btnP.disabled = true;
+    const active = apply ? btnF : btnP;
+    const label  = active.innerHTML;
+    active.innerHTML = '<i class="fas fa-circle-notch spin"></i> ' + (apply ? 'Repairing…' : 'Checking…');
+
+    let d;
+    try {
+        const body = new URLSearchParams();
+        if (apply) body.set('apply', '1');
+        const r = await fetch('../api/super_admin/platform_repair.php', {
+            method: 'POST', credentials: 'same-origin', body
+        });
+        d = await r.json();
+    } catch (e) {
+        d = { success: false, error: e.message };
+    }
+
+    btnF.disabled = btnP.disabled = false;
+    active.innerHTML = label;
+    panel.style.display = 'block';
+
+    if (!d || !d.success) {
+        document.getElementById('repair-title').textContent = 'Repair failed';
+        document.getElementById('repair-pill').className = 'pill fail';
+        document.getElementById('repair-pill').textContent = 'error';
+        document.getElementById('repair-steps').innerHTML =
+            `<div class="rep-step"><span class="rep-tag error">error</span><div>${esc(d && d.error || 'Unknown error')}</div></div>`;
+        document.getElementById('repair-note').textContent = '';
+        return;
+    }
+
+    const c = d.counts;
+    const done = apply ? c.fixed : c.would;
+    document.getElementById('repair-title').textContent =
+        apply ? `Repaired ${c.fixed} item(s)` : `${c.would} item(s) can be repaired automatically`;
+    const pill = document.getElementById('repair-pill');
+    pill.className = 'pill ' + (c.error ? 'fail' : (c.manual ? 'warn' : 'ok'));
+    pill.textContent = c.manual ? `${c.manual} need you` : (c.error ? `${c.error} errored` : 'clean');
+
+    // Worst first: what still needs a human, before what is already handled.
+    const steps = d.steps.slice().sort((a, b) => REP_ORDER[a.status] - REP_ORDER[b.status]);
+    document.getElementById('repair-steps').innerHTML = steps.map(s => `
+        <div class="rep-step">
+            <span class="rep-tag ${s.status}">${s.status === 'would' ? 'can fix' : esc(s.status)}</span>
+            <div style="flex:1;min-width:0;">
+                <div class="t">${esc(s.title)}</div>
+                <div class="d">${esc(s.detail)}</div>
+                ${s.action ? `<div class="a"><i class="fas fa-arrow-right" style="margin-right:6px;"></i>${esc(s.action)}</div>` : ''}
+            </div>
+        </div>`).join('');
+
+    document.getElementById('repair-note').innerHTML =
+        (apply
+            ? 'Re-run the checks above to confirm. '
+            : 'Nothing was written. Press <strong>Fix what can be fixed</strong> to apply. ') +
+        'Two things this button deliberately cannot do: install <strong>crontab</strong> lines (they need a shell ' +
+        'this page does not have) and fill in <strong>credentials</strong> (a Daraja secret, a TalkSasa token, an ' +
+        'SMTP password are values only you hold). For the crontab half, run on the server: ' +
+        '<code>php tools/platform_repair.php --apply --install-cron</code>';
+
+    if (apply && done > 0) run();
+}
+
 document.getElementById('reload').addEventListener('click', run);
+document.getElementById('preview').addEventListener('click', () => repair(false));
+document.getElementById('fixall').addEventListener('click', () => repair(true));
 run();
 </script>
 </body>

@@ -188,6 +188,15 @@ The shared half now lives in `api/diagnostics/platform_chain.php`, rendered at `
 
 Whatever remains platform-level appears as one honest row under **Handled by FortuNett**, and the verdict splits the count into "you can fix" and "FortuNett's side".
 
+**Repairing them: `includes/platform_repair.php`.** One implementation, two front ends — the *Fix what can be fixed* button on `super_admin/diagnostics.php` (via `api/super_admin/platform_repair.php`) and `php tools/platform_repair.php` (dry run; `--apply`). A fix that behaves one way from the browser and another from the shell is worse than no fix, so neither front end decides anything.
+
+The line it draws is the whole design:
+
+- **Mechanical** — missing migrations, the retired SMS endpoint stored in a column, `public_base_url` derived from `platform_domain`, `server_external_ip` detected, platform C2B registration. Additive and idempotent; a second run reports "already correct".
+- **A decision** — a Daraja consumer secret, a TalkSasa token, an SMTP password, sandbox-vs-live. Reported as `manual` with where to enter them and **never guessed at**. `server_external_ip` is *detected, never invented*: a failed or private lookup leaves it alone, because a wrong endpoint IP disables every tunnel provisioned with it.
+
+Two repairs are CLI-only. **Crontab lines** (`--install-cron`) need a shell the web user does not have and touch the machine rather than the database; it backs up the existing crontab and verifies by reading it back, since a crontab that silently did not take is exactly the failure being fixed. `cron/disburse_payouts.php` is **never** auto-installed — it sends real money and M-Pesa has no chargeback. **Re-tagging hand-entered receipts** stays in `repair_collection_type.php --undo-manual`, which also cancels the queued payouts and refuses to touch anything already released.
+
 ### `payments.collection_type` — Whose Bank the Money Is In
 `'platform'` = FortuNett's till took it and owes the ISP a payout. `'direct'` = the ISP's own paybill/till took it; nothing to disburse. This is **not** a payment method and never a UI nicety — every float, settlement figure and payout decision reads it.
 
