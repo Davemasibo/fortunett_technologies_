@@ -184,6 +184,16 @@ class SMSHelper {
     }
 
     public function saveConfig($provider, $apiKey, $senderId, $apiUrl) {
+        // Trimmed on the way in as well as on the way out. A token pasted from
+        // a provider dashboard routinely carries a trailing newline, and a
+        // bearer header built from it is rejected as "Unauthenticated." — a
+        // message that gives the operator no clue the value merely has an
+        // invisible character on the end.
+        $provider = trim((string)$provider);
+        $apiKey   = trim((string)$apiKey);
+        $senderId = trim((string)$senderId);
+        $apiUrl   = trim((string)$apiUrl);
+
         $stmt = $this->pdo->prepare("INSERT INTO sms_configurations (tenant_id, provider, api_key, sender_id, api_url) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE provider = VALUES(provider), api_key = VALUES(api_key), sender_id = VALUES(sender_id), api_url = VALUES(api_url)");
         return $stmt->execute([$this->tenant_id, $provider, $apiKey, $senderId, $apiUrl]);
     }

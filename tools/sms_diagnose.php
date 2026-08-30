@@ -5,6 +5,7 @@
  *
  *   php tools/sms_diagnose.php --tenant=5
  *   php tools/sms_diagnose.php --tenant=5 --send=254712345678
+ *   php tools/sms_diagnose.php --fix-whitespace          # clean stored keys
  *
  * Why this exists
  * ---------------
@@ -32,6 +33,35 @@ $sendTo   = '';
 foreach ($argv as $a) {
     if (strpos($a, '--tenant=') === 0) $tenantId = (int)substr($a, 9);
     if (strpos($a, '--send=')   === 0) $sendTo   = substr($a, 7);
+}
+
+// ── Clean whitespace out of every stored credential ──────────────────────────
+// SMSHelper trims at send time and saveConfig() trims on save, so this is only
+// for rows written before those existed. Worth doing anyway: the settings form
+// shows the raw column, so an operator comparing it against the provider
+// dashboard sees a value that looks identical to the correct one.
+if (in_array('--fix-whitespace', $argv, true)) {
+    $fixed = 0;
+    foreach ([
+        ['sms_configurations',  ['api_key', 'sender_id', 'api_url', 'provider']],
+        ['platform_sms_config', ['api_key', 'sender_id', 'api_url', 'provider']],
+    ] as [$table, $cols]) {
+        foreach ($cols as $col) {
+            try {
+                $st = $pdo->prepare("UPDATE `$table` SET `$col` = TRIM(`$col`) WHERE `$col` <> TRIM(`$col`)");
+                $st->execute();
+                if ($st->rowCount()) {
+                    printf("  %-22s %-10s cleaned %d row(s)\n", $table, $col, $st->rowCount());
+                    $fixed += $st->rowCount();
+                }
+            } catch (Throwable $e) {
+                printf("  %-22s %-10s skipped: %s\n", $table, $col, $e->getMessage());
+            }
+        }
+    }
+    echo $fixed ? "\nCleaned $fixed value(s).\n" : "\nNothing needed cleaning.\n";
+    if (!$tenantId) exit;
+    echo "\n";
 }
 
 if (!$tenantId) {
@@ -108,7 +138,8 @@ $body  = curl_exec($ch);
 $code  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $final = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
 $err   = curl_error($ch);
-curl_close($ch);
+// No curl_close(): handles are objects since PHP 8.0 and the call is a
+// deprecated no-op. The handle is freed when $ch goes out of scope.
 
 if ($err) {
     echo "  network error: $err\n";
