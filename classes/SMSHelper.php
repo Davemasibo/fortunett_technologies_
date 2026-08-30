@@ -59,9 +59,12 @@ class SMSHelper {
     }
 
     private function sendViaTalkSasa($phone, $message) {
-        $url      = $this->config['api_url'] ?? 'https://api.talksasa.com/v1/sms/send';
-        $apiKey   = $this->config['api_key'];
-        $senderId = $this->config['sender_id'];
+        $url      = trim((string)($this->config['api_url'] ?? 'https://bulksms.talksasa.com/api/v3/sms/send'));
+        // Trimmed because a token pasted from a dashboard very often carries a
+        // trailing newline or space, and a bearer header with one is rejected
+        // as "Unauthenticated." — indistinguishable from a wrong key.
+        $apiKey   = trim((string)($this->config['api_key'] ?? ''));
+        $senderId = trim((string)($this->config['sender_id'] ?? ''));
 
         // Mock sending if no real key (localhost testing)
         if (empty($apiKey) || $apiKey === 'TEST_KEY') {
@@ -137,7 +140,17 @@ class SMSHelper {
             $status = strtolower((string)($json['status'] ?? 'success'));
             if (is_array($json) && in_array($status, ['error', 'failed', 'failure'], true)) {
                 $why = $json['message'] ?? $json['error'] ?? 'the provider rejected the message';
-                return ['success' => false, 'message' => 'Provider rejected it: ' . (is_string($why) ? $why : json_encode($why))];
+                $why = is_string($why) ? $why : json_encode($why);
+
+                // "Unauthenticated." arrives with an HTTP 200 from this provider,
+                // so it never reaches the 401 branch below. It is a credentials
+                // problem regardless of the status code, and saying so beats
+                // echoing one bare word to the operator.
+                if (stripos($why, 'unauthenticated') !== false || stripos($why, 'unauthorized') !== false) {
+                    return ['success' => false, 'message' => $this->authFailureHint(200)];
+                }
+
+                return ['success' => false, 'message' => 'Provider rejected it: ' . $why];
             }
 
             $via = $this->using_platform ? ' (via platform SMS)' : '';
@@ -145,7 +158,7 @@ class SMSHelper {
         }
 
         if ($httpCode === 401 || $httpCode === 403) {
-            return ['success' => false, 'message' => 'The SMS provider rejected your API key (HTTP ' . $httpCode . '). Check it under Settings.'];
+            return ['success' => false, 'message' => $this->authFailureHint($httpCode)];
         }
 
         $detail = is_array($json) ? ($json['message'] ?? json_encode($json)) : substr((string)$result, 0, 300);
@@ -173,6 +186,33 @@ class SMSHelper {
     public function saveConfig($provider, $apiKey, $senderId, $apiUrl) {
         $stmt = $this->pdo->prepare("INSERT INTO sms_configurations (tenant_id, provider, api_key, sender_id, api_url) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE provider = VALUES(provider), api_key = VALUES(api_key), sender_id = VALUES(sender_id), api_url = VALUES(api_url)");
         return $stmt->execute([$this->tenant_id, $provider, $apiKey, $senderId, $apiUrl]);
+    }
+
+    /**
+     * Say WHICH credentials failed and where to fix them.
+     *
+     * Without this the operator sees the provider's one-word "Unauthenticated."
+     * and cannot tell whether the system used their own API key or fell back to
+     * the platform's — which are edited in two different places by two
+     * different people.
+     */
+    private function authFailureHint(int $httpCode): string
+    {
+        $key    = trim((string)($this->config['api_key'] ?? ''));
+        $masked = $key === ''
+            ? '(empty)'
+            : substr($key, 0, 4) . str_repeat('*', max(0, strlen($key) - 8)) . substr($key, -4)
+              . ' — ' . strlen($key) . ' chars';
+
+        if ($this->using_platform) {
+            return 'The SMS provider rejected the PLATFORM API key (' . $masked . ', HTTP ' . $httpCode . '). '
+                 . 'Your account has no SMS credentials of its own, so it is using FortuNett\'s. '
+                 . 'Either add your own TalkSasa key under Settings on this page, or ask your FortuNett admin to renew the platform key.';
+        }
+
+        return 'The SMS provider rejected your API key (' . $masked . ', HTTP ' . $httpCode . '). '
+             . 'TalkSasa v3 wants the API TOKEN from Dashboard → Developers/API, not your password or the v1 key. '
+             . 'Update it under Settings on this page.';
     }
 
     public function sendTemplate($clientId, $templateKey) {
