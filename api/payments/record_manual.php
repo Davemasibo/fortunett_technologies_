@@ -2,6 +2,7 @@
 header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
+require_once '../../includes/payment_pipeline.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $user_id = $_SESSION['user_id'] ?? 0;
@@ -90,28 +91,87 @@ try {
     ]);
 
     // Record in payments table — try with notes column first, fall back without it
+    //
+    // collection_type is written EXPLICITLY as 'direct' rather than left to the
+    // column default. Recording a payment by hand asserts that the money is
+    // already in the ISP's own account, so it can never be platform-held — and
+    // an explicitly tagged row cannot be mistaken later for an untagged one that
+    // merely fell back to the same default. $method here is 'mpesa' for an
+    // M-Pesa entry, identical to what an STK push writes, so the tag is the
+    // only thing standing between the two.
     $payStatus = $is_verified ? 'completed' : 'pending';
     try {
         $payStmt = $pdo->prepare("INSERT INTO payments
-                (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, collection_type, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'direct', ?)");
         $payStmt->execute([$client_id, $tenant_id, $amount, $method, $txDate, $reference_code, $payStatus, $notes]);
     } catch (PDOException $colEx) {
-        // If 'notes' column doesn't exist, insert without it
-        if (strpos($colEx->getMessage(), '1054') !== false || strpos($colEx->getMessage(), 'notes') !== false) {
+        // Older schema without one of the optional columns — record it anyway.
+        try {
+            $payStmt = $pdo->prepare("INSERT INTO payments
+                    (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, collection_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'direct')");
+            $payStmt->execute([$client_id, $tenant_id, $amount, $method, $txDate, $reference_code, $payStatus]);
+        } catch (PDOException $colEx2) {
             $payStmt = $pdo->prepare("INSERT INTO payments
                     (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?)");
             $payStmt->execute([$client_id, $tenant_id, $amount, $method, $txDate, $reference_code, $payStatus]);
-        } else {
-            throw $colEx;
         }
+    }
+
+    // ── Reconnect the customer ────────────────────────────────────────────────
+    // This endpoint used to insert two rows and stop. The money was recorded and
+    // the customer stayed disconnected — the ISP had to go and extend the
+    // subscription by hand afterwards, for every single payment. An ISP taking
+    // payment into their own paybill and recording it here got no automation at
+    // all, which is the same "paid but not connected" failure the M-Pesa
+    // callbacks were fixed for.
+    //
+    // Same pipeline a live callback uses: extend, invoice, ledger, provision,
+    // SMS. Idempotent on the reference, so re-recording the same receipt is
+    // safe. platformCollected is explicitly false — see the collection_type
+    // note above.
+    $activation = ['attempted' => false];
+    if ($payStatus === 'completed') {
+        try {
+            $pkgSt = $pdo->prepare("SELECT package_id FROM clients WHERE id = ? AND tenant_id = ? LIMIT 1");
+            $pkgSt->execute([$client_id, $tenant_id]);
+            $packageId = $pkgSt->fetchColumn();
+
+            $res = process_payment_success(
+                $pdo, $client_id, (int)$tenant_id, $amount, $reference_code,
+                $method === 'mpesa' ? 'mpesa' : $method,
+                $packageId ? (int)$packageId : null,
+                false
+            );
+            $activation = [
+                'attempted'   => true,
+                'expiry_date' => $res['expiry_date'] ?? null,
+                'steps'       => $res['steps'] ?? [],
+            ];
+        } catch (Throwable $pipeErr) {
+            // Never fail the recording because provisioning failed — the money
+            // is real and must be on the books either way. A router that was
+            // unreachable is queued for cron/retry_provisions.php.
+            error_log("record_manual pipeline [$reference_code]: " . $pipeErr->getMessage());
+            $activation = ['attempted' => true, 'error' => $pipeErr->getMessage()];
+        }
+    }
+
+    $msg = 'Transaction recorded successfully';
+    if (!empty($activation['expiry_date'])) {
+        $msg = 'Payment recorded — customer reconnected until '
+             . date('d M Y H:i', strtotime($activation['expiry_date']));
+    } elseif ($payStatus !== 'completed') {
+        $msg = 'Payment recorded as unverified — the customer is NOT reconnected until you verify it';
     }
 
     echo json_encode([
         'success'        => true,
-        'message'        => 'Transaction recorded successfully',
-        'transaction_id' => $reference_code
+        'message'        => $msg,
+        'transaction_id' => $reference_code,
+        'activation'     => $activation,
     ]);
 
 } catch (Exception $e) {

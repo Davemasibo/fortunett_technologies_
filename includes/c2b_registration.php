@@ -207,7 +207,48 @@ function tenantC2BStatus(PDO $pdo, int $tenantId): array
         return $out;
     }
 
-    if (!$gw) return $out;
+    // No usable mpesa_api gateway. Before falling back to "you collect through
+    // the platform", check for a manual paybill - because if one exists the
+    // customer portal is telling customers to pay it, and NOTHING in this system
+    // captures money sent there. Saying "collecting through FortuNett" in that
+    // situation is not a harmless default, it is wrong in the direction that
+    // loses payments.
+    $apiCreds = $gw ? decrypt_gateway_credentials((string)($gw['credentials'] ?? '')) : [];
+    $apiUsable = !empty($apiCreds['shortcode']) && !empty($apiCreds['consumer_key']);
+
+    if (!$apiUsable) {
+        try {
+            $mSt = $pdo->prepare("
+                SELECT id, credentials FROM payment_gateways
+                WHERE tenant_id = ? AND gateway_type = 'paybill_no_api' AND is_active = 1
+                ORDER BY is_default DESC, id ASC LIMIT 1
+            ");
+            $mSt->execute([$tenantId]);
+            $manual = $mSt->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            $manual = null;
+        }
+
+        if ($manual) {
+            $mc = decrypt_gateway_credentials((string)($manual['credentials'] ?? ''));
+            $sc = trim((string)($mc['paybill_number'] ?? ''));
+            if ($sc !== '') {
+                $out['mode']       = 'manual_paybill';
+                $out['active']     = false;
+                $out['gateway_id'] = (int)$manual['id'];
+                $out['shortcode']  = $sc;
+                $out['reason']     = 'Your paybill ' . $sc . ' is shown to customers, but payments sent '
+                                   . 'to it are NOT captured and customers are NOT reconnected — a manual '
+                                   . 'paybill has no API behind it. To automate this, add M-Pesa API '
+                                   . 'credentials (Consumer Key, Consumer Secret, Passkey and Shortcode) '
+                                   . 'for ' . $sc . ' under Settings → Payments; C2B then registers itself '
+                                   . 'and payments reconnect customers within seconds. Until then, reconcile '
+                                   . 'with Import Statement on this page.';
+            }
+        }
+
+        if (!$gw) return $out;
+    }
 
     $creds = decrypt_gateway_credentials($gw['credentials']);
     if (empty($creds['shortcode']) || empty($creds['consumer_key'])) return $out;

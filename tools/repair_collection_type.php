@@ -56,10 +56,29 @@
  * A tenant whose credentials will not decrypt is skipped entirely and named in
  * the output — unclassifiable is not the same as empty.
  *
- * Undo, if a tenant was re-tagged wrongly:
+ * Hand-entered payments are never platform money
+ * ----------------------------------------------
+ * api/payments/record_manual.php maps the operator's "M-Pesa" choice to
+ * payment_method = 'mpesa' — the same value an STK push writes. So an ISP who
+ * takes payment into their own paybill and types the receipt into the system
+ * produces a row that looks exactly like a platform-sent STK push. That is how
+ * 97 of Ecoland's hand-entered receipts, KES 66,090 of their own money, were
+ * booked as ours to disburse. Every rule below now excludes them via
+ * manuallyRecordedSql().
  *
- *   php tools/repair_collection_type.php --mark-direct=7           # dry run
+ * Undo:
+ *
+ *   php tools/repair_collection_type.php --undo-manual             # dry run
+ *   php tools/repair_collection_type.php --undo-manual --apply
+ *
+ * finds every hand-entered payment currently tagged 'platform', across all
+ * tenants, puts it back to 'direct' and cancels the payout queued against it.
+ * Prefer this to --mark-direct: it is targeted at the actual mistake rather
+ * than assuming everything a tenant ever took was direct.
+ *
  *   php tools/repair_collection_type.php --mark-direct=7 --apply
+ *
+ * is the blunter version, for a tenant you know collects everything themselves.
  *
  * Idempotent — re-running changes nothing once the rows are correct.
  */
@@ -80,11 +99,19 @@ foreach ($argv as $a) {
     if (strpos($a, '--tenant=')      === 0) $onlyTenant = (int)substr($a, 9);
     if (strpos($a, '--mark-direct=') === 0) $markDirect = (int)substr($a, 14);
 }
+$undoManual = in_array('--undo-manual', $argv, true);
 
-// Tenants with NO collection channel of their own at all - no Daraja
-// credentials to send an STK push with, and no paybill or till a customer
-// could have paid directly. Only for these is "the platform took it" a safe
-// inference, and even then only for STK payments (see $claims below).
+// Tenants who cannot send an STK push of their own, so any STK payment of
+// theirs necessarily went out on the platform's Daraja credentials and landed
+// in the platform's till.
+//
+// The test is stk_own and ONLY stk_own. An earlier version also required
+// !paybill_own, reasoning that a tenant with a paybill might have received the
+// money - but a `paybill_no_api` paybill has no API behind it and cannot send
+// an STK push either. Excluding those tenants just left their platform-held
+// money mis-booked as their own. Ownership of a manual paybill decides nothing
+// about an STK payment; it only matters for paybill methods, which this rule
+// no longer touches.
 //
 // Tenants whose credentials will not decrypt are unclassifiable and are held
 // out of every rule; they are listed separately so the operator can re-key
@@ -94,7 +121,7 @@ $undecryptable       = [];
 foreach ($pdo->query("SELECT id FROM tenants")->fetchAll(PDO::FETCH_COLUMN) as $tid) {
     $prof = tenantCollectionProfile($pdo, (int)$tid);
     if ($prof['undecryptable']) { $undecryptable[] = (int)$tid; continue; }
-    if (!$prof['stk_own'] && !$prof['paybill_own']) $platformOnlyTenants[] = (int)$tid;
+    if (!$prof['stk_own']) $platformOnlyTenants[] = (int)$tid;
 }
 if ($onlyTenant) {
     $platformOnlyTenants = array_values(array_filter(
@@ -139,7 +166,7 @@ $claims = [
     // STK methods ONLY. The earlier `payment_method LIKE 'mpesa%'` swept in
     // paybill payments too, which is how a tenant collecting to their own
     // paybill had their own takings marked as money we owed them.
-    'STK push from a tenant with no shortcode at all' => "
+    'STK push from a tenant who cannot send one themselves' => "
         SELECT p.id, p.tenant_id, p.amount, p.transaction_id, p.payment_date, p.collection_type
         FROM payments p
         WHERE p.collection_type <> 'platform'
@@ -149,13 +176,20 @@ $claims = [
     ",
 ];
 
+// A payment somebody typed in by hand is money the ISP already had, whatever
+// its method says. Excluded from every rule, not just the STK one.
+$notManual = ' AND NOT ' . manuallyRecordedSql('p') . ' ';
+foreach ($claims as $k => $sql) {
+    $claims[$k] = $sql . $notManual;
+}
+
 if ($onlyTenant) {
     foreach ($claims as $k => $sql) {
         $claims[$k] = $sql . ' AND p.tenant_id = ' . $onlyTenant . ' ';
     }
 }
 
-echo "Tenants with no collection channel of their own (platform collects for them): "
+echo "Tenants who cannot send their own STK push (the platform's shortcode sent it): "
    . ($platformOnlyTenants ? implode(', ', $platformOnlyTenants) : 'none') . "\n";
 if ($undecryptable) {
     echo "SKIPPED - credentials will not decrypt, so their history cannot be judged: "
@@ -163,6 +197,82 @@ if ($undecryptable) {
        . "  Re-save each gateway in Settings -> Payments, then re-run.\n";
 }
 echo "\nRun tools/collection_type_audit.php for the per-tenant evidence behind this.\n\n";
+
+// ── Undo: hand-entered payments that were wrongly marked platform ────────────
+// The precise reversal of the Ecoland mistake. Targets the actual signature —
+// a payment with a manual-entry marker sitting on 'platform' — rather than
+// assuming anything about the tenant, so it repairs every affected tenant at
+// once and touches nothing that was correctly tagged.
+if ($undoManual) {
+    $sel = $pdo->prepare("
+        SELECT p.id, p.tenant_id, p.amount, p.transaction_id, p.payment_date, p.released_at,
+               t.company_name
+        FROM payments p
+        LEFT JOIN tenants t ON t.id = p.tenant_id
+        WHERE p.collection_type = 'platform'
+          AND " . manuallyRecordedSql('p') . "
+        ORDER BY p.tenant_id, p.payment_date
+    ");
+    $sel->execute();
+    $rows = $sel->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!$rows) {
+        exit("No hand-entered payments are tagged 'platform'. Nothing to undo.\n");
+    }
+
+    // A released payment means a disbursement was recorded as sent. Rewriting it
+    // would erase the record of money that moved, so it is reported, not touched.
+    $unreleased = array_values(array_filter($rows, function ($r) { return empty($r['released_at']); }));
+    $released   = array_values(array_filter($rows, function ($r) { return !empty($r['released_at']); }));
+
+    $byTenant = [];
+    foreach ($unreleased as $r) {
+        $k = (int)$r['tenant_id'];
+        $byTenant[$k]['name']   = $r['company_name'];
+        $byTenant[$k]['count']  = ($byTenant[$k]['count']  ?? 0) + 1;
+        $byTenant[$k]['amount'] = ($byTenant[$k]['amount'] ?? 0) + (float)$r['amount'];
+    }
+
+    echo count($rows) . " hand-entered payment(s) are wrongly tagged 'platform':\n\n";
+    foreach ($byTenant as $tid => $agg) {
+        printf("  tenant %-4s %-32s %4d payment(s)  KES %s\n",
+            $tid, substr((string)$agg['name'], 0, 32), $agg['count'], number_format($agg['amount'], 2));
+    }
+    if ($released) {
+        echo "\n  " . count($released) . " already have released_at set and are NOT touched\n";
+        echo "  (a disbursement was recorded against them — resolve those by hand).\n";
+    }
+
+    if (!$unreleased) exit("\nNothing to change.\n");
+    if (!$apply)      exit("\nNothing was written. Re-run with --apply to commit.\n");
+
+    $ids  = array_map(function ($r) { return (int)$r['id']; }, $unreleased);
+    $done = 0; $cancelled = 0;
+    foreach (array_chunk($ids, 500) as $chunk) {
+        $in = implode(',', array_fill(0, count($chunk), '?'));
+        $st = $pdo->prepare("UPDATE payments SET collection_type = 'direct' WHERE id IN ($in)");
+        $st->execute($chunk);
+        $done += $st->rowCount();
+
+        try {
+            $qs = $pdo->prepare("
+                UPDATE isp_payout_queue
+                SET status = 'cancelled',
+                    notes  = CONCAT(COALESCE(notes,''), ' | cancelled: hand-entered payment, the ISP already held this money')
+                WHERE payment_id IN ($in) AND status = 'pending'
+            ");
+            $qs->execute($chunk);
+            $cancelled += $qs->rowCount();
+        } catch (Throwable $e) {
+            error_log('undo-manual queue cancel: ' . $e->getMessage());
+        }
+    }
+
+    echo "\nRe-tagged $done payment(s) as 'direct' and cancelled $cancelled queued payout(s).\n";
+    echo "Those ISPs' pages read 'Paid to you directly' again, and the platform no\n";
+    echo "longer shows a liability for money that never passed through it.\n";
+    exit;
+}
 
 // ── Undo: put one tenant's money back to 'direct' ─────────────────────────────
 // For a tenant re-tagged wrongly - one who collects to their own paybill and was

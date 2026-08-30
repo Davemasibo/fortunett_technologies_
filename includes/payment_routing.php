@@ -144,6 +144,37 @@ function tenantHasOwnMpesaCredentials(PDO $pdo, int $tenantId): bool
 }
 
 /**
+ * SQL fragment matching payments that an admin RECORDED BY HAND.
+ *
+ * This is the distinction that broke Ecoland. api/payments/record_manual.php
+ * maps the operator's "M-Pesa" choice to payment_method = 'mpesa' — byte for
+ * byte the same value api/payment/stk_push.php writes. So a payment the ISP
+ * received into their own paybill and then typed into the system is
+ * indistinguishable, by method alone, from an STK push the platform sent. The
+ * repair tool read 97 of Ecoland's hand-entered receipts as platform-collected
+ * STK pushes and booked KES 66,090 of the ISP's own money as ours to disburse.
+ *
+ * The marker is on the paired mpesa_transactions row, which record_manual.php
+ * has always written: merchant_request_id 'MANUAL-xxxxxx' and result_desc
+ * 'Manual:<method>'. Either one is conclusive.
+ *
+ * A manual entry is ALWAYS 'direct'. Recording a payment by hand means the
+ * money is already in the ISP's account — that is what the act of recording it
+ * asserts. There is no configuration under which it could be platform-held.
+ *
+ * @param string $alias The `payments` table alias in the calling query.
+ */
+function manuallyRecordedSql(string $alias = 'p'): string
+{
+    return "EXISTS (
+        SELECT 1 FROM mpesa_transactions m
+        WHERE m.checkout_request_id = $alias.transaction_id
+          AND m.tenant_id = $alias.tenant_id
+          AND (m.merchant_request_id LIKE 'MANUAL-%' OR m.result_desc LIKE 'Manual:%')
+    )";
+}
+
+/**
  * Payment methods that can only have come from an STK push.
  *
  * The routing question is different for each family: an STK push goes to

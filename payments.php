@@ -494,6 +494,21 @@ include 'includes/sidebar.php';
         </div>
 
         <!-- Auto-activation status for direct-to-ISP payments -->
+        <?php if ($c2bStatus['mode'] === 'manual_paybill'): ?>
+        <div class="autoact-banner off">
+            <i class="fas fa-triangle-exclamation"></i>
+            <div style="flex:1;min-width:220px;">
+                <strong>Payments to your paybill are not being captured</strong>
+                <div style="font-size:12px;opacity:.85;margin-top:3px;line-height:1.5;">
+                    <?php echo htmlspecialchars($c2bStatus['reason']); ?>
+                </div>
+            </div>
+            <button class="filter-btn" onclick="openImportModal('payments')">
+                <i class="fas fa-file-import"></i> Import statement
+            </button>
+        </div>
+        <?php endif; ?>
+
         <?php if ($c2bStatus['mode'] === 'direct'): ?>
         <div class="autoact-banner <?php echo $c2bStatus['active'] ? 'on' : 'off'; ?>">
             <i class="fas fa-<?php echo $c2bStatus['active'] ? 'bolt' : 'triangle-exclamation'; ?>"></i>

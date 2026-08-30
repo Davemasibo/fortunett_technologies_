@@ -11,10 +11,19 @@
  *
  * What to look for
  * ----------------
- * A tenant with `paybill_own` and no `stk_own` — Ecoland's shape — collects
- * their customers' money into their own paybill with no API involved. Their
- * paybill payments are `direct` and must stay that way; only an STK push they
- * cannot send themselves is platform-collected.
+ * `own STK credentials: no` is the decisive line for STK payments. Without
+ * Daraja credentials the push physically left on the PLATFORM's shortcode, so
+ * the money landed in the platform till — whatever paybill the tenant may own
+ * separately. A `paybill_no_api` paybill cannot send an STK push either, so
+ * owning one changes nothing for those rows.
+ *
+ * `own paybill/till: YES` only decides `mpesa_paybill` rows, and even then only
+ * as AMBIGUOUS: a paybill payment goes wherever the customer typed, which no
+ * amount of configuration can tell you after the fact.
+ *
+ * An `INACTIVE gateway` line matters more than it looks. A switched-off gateway
+ * is invisible everywhere else in the app, so this is the one place a paybill
+ * the operator believes is live shows up as not routing anything.
  *
  * A tenant showing `CREDENTIALS WILL NOT DECRYPT` is unclassifiable, not empty.
  * The encryption key has been rotated since those credentials were saved, so
@@ -62,18 +71,35 @@ foreach ($tenants as $t) {
         echo "      Do not re-tag their history. Re-save the gateway in Settings -> Payments first.\n";
     }
 
+    // An INACTIVE gateway reads exactly like no gateway in every other view,
+    // which is how a tenant can insist they have a paybill while the system
+    // shows none. Name them separately rather than letting the operator and the
+    // database disagree in silence.
+    try {
+        $iSt = $pdo->prepare("SELECT gateway_type, credentials FROM payment_gateways
+                              WHERE tenant_id = ? AND is_active = 0");
+        $iSt->execute([$tid]);
+        foreach ($iSt->fetchAll(PDO::FETCH_ASSOC) as $g) {
+            $c  = decrypt_gateway_credentials((string)($g['credentials'] ?? ''));
+            $sc = $c['shortcode'] ?? ($c['paybill_number'] ?? '');
+            printf("  !! INACTIVE gateway  : %s %s - switched off, so nothing routes to it\n",
+                $g['gateway_type'], $sc !== '' ? $sc : '(no shortcode)');
+        }
+    } catch (Throwable $e) { /* advisory only */ }
+
     // What the money actually looks like today
     try {
         $pSt = $pdo->prepare("
-            SELECT payment_method,
-                   collection_type,
-                   COUNT(*)              AS n,
-                   COALESCE(SUM(amount),0) AS total,
-                   MIN(payment_date)     AS first_seen,
-                   MAX(payment_date)     AS last_seen
-            FROM payments
-            WHERE tenant_id = ? AND status = 'completed'
-            GROUP BY payment_method, collection_type
+            SELECT p.payment_method,
+                   p.collection_type,
+                   CASE WHEN " . manuallyRecordedSql('p') . " THEN 1 ELSE 0 END AS manual_entry,
+                   COUNT(*)                 AS n,
+                   COALESCE(SUM(p.amount),0) AS total,
+                   MIN(p.payment_date)      AS first_seen,
+                   MAX(p.payment_date)      AS last_seen
+            FROM payments p
+            WHERE p.tenant_id = ? AND p.status = 'completed'
+            GROUP BY p.payment_method, p.collection_type, manual_entry
             ORDER BY total DESC
         ");
         $pSt->execute([$tid]);
@@ -93,7 +119,15 @@ foreach ($tenants as $t) {
 
         // The verdict column is advisory. It states what the evidence supports,
         // and says so plainly when the evidence does not decide.
-        if ($prof['undecryptable']) {
+        //
+        // The manual check comes FIRST and overrides everything. A hand-entered
+        // receipt carries the method the operator picked - 'mpesa' for an M-Pesa
+        // payment - so by method alone it is indistinguishable from an STK push.
+        // Only the entry marker tells them apart, and a hand-entered payment is
+        // money the ISP already had by definition.
+        if ((int)($r['manual_entry'] ?? 0) === 1) {
+            $verdict = 'direct (recorded by hand - the ISP already had it)';
+        } elseif ($prof['undecryptable']) {
             $verdict = 'UNKNOWN - credentials will not decrypt';
         } elseif (in_array($method, ['cash', 'balance', 'manual', 'bank'], true)) {
             $verdict = 'direct (never touches M-Pesa)';
@@ -116,7 +150,8 @@ foreach ($tenants as $t) {
               ? ' <== MISMATCH' : '';
 
         printf("  %-22s %-10s %6d %14s  %s%s\n",
-            substr($method, 0, 22), $tag, $r['n'], number_format($r['total'], 2), $verdict, $flag);
+            substr($method, 0, 22) . ((int)($r['manual_entry'] ?? 0) === 1 ? ' (manual)' : ''),
+            $tag, $r['n'], number_format($r['total'], 2), $verdict, $flag);
     }
 
     // Money the platform is shown as holding for them
