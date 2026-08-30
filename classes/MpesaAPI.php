@@ -404,6 +404,207 @@ class MpesaAPI {
     /**
      * Format phone number to 254...
      */
+    // ─────────────────────────────────────────────────────────────────────────
+    //  B2C — paying money OUT
+    // ─────────────────────────────────────────────────────────────────────────
+    //
+    // Everything above moves money towards us. This moves it away, which makes
+    // it the only part of this class where a bug spends real money, so it is
+    // deliberately harder to fire: it refuses without an initiator identity and
+    // an explicit result URL, and it never retries on its own. The caller owns
+    // idempotency (see cron/disburse_payouts.php, which writes a batch row and
+    // marks the queue 'processing' BEFORE calling this).
+
+    private $initiator_name = '';
+    private $security_credential = '';
+    private $b2c_shortcode = '';
+
+    /**
+     * Initiator identity for B2C.
+     *
+     * $securityCredential is the value Safaricom's portal gives you when you
+     * encrypt the initiator password against their production certificate —
+     * paste it as-is. Use encryptSecurityCredential() only if you hold the
+     * plaintext password and the .cer file instead.
+     */
+    public function setInitiator(string $name, string $securityCredential, string $b2cShortcode = ''): void
+    {
+        $this->initiator_name      = trim($name);
+        $this->security_credential = trim($securityCredential);
+        $this->b2c_shortcode       = trim($b2cShortcode) ?: $this->shortcode;
+    }
+
+    /**
+     * RSA-encrypt an initiator password against Safaricom's public certificate.
+     *
+     * Only needed when you have the raw password rather than the portal's
+     * pre-encrypted string. The cert differs between sandbox and production —
+     * using the wrong one produces a credential Safaricom rejects with a
+     * message that does not mention certificates at all.
+     */
+    public static function encryptSecurityCredential(string $initiatorPassword, string $certPath): ?string
+    {
+        if (!is_readable($certPath)) {
+            error_log("MpesaAPI::encryptSecurityCredential: cannot read cert $certPath");
+            return null;
+        }
+        $cert = file_get_contents($certPath);
+        $key  = openssl_pkey_get_public($cert);
+        if (!$key) {
+            error_log('MpesaAPI::encryptSecurityCredential: cert is not a valid public key');
+            return null;
+        }
+        $encrypted = '';
+        if (!openssl_public_encrypt($initiatorPassword, $encrypted, $key, OPENSSL_PKCS1_PADDING)) {
+            error_log('MpesaAPI::encryptSecurityCredential: openssl_public_encrypt failed');
+            return null;
+        }
+        return base64_encode($encrypted);
+    }
+
+    /** Is this instance able to send money out? */
+    public function canSendB2C(): array
+    {
+        $missing = [];
+        if ($this->initiator_name === '')      $missing[] = 'initiator_name';
+        if ($this->security_credential === '') $missing[] = 'security_credential';
+        if ($this->b2c_shortcode === '')       $missing[] = 'b2c_shortcode';
+        if (empty($this->consumer_key))        $missing[] = 'consumer_key';
+        if (empty($this->consumer_secret))     $missing[] = 'consumer_secret';
+
+        return ['ok' => empty($missing), 'missing' => $missing];
+    }
+
+    /**
+     * Send money to a customer/tenant M-Pesa number.
+     *
+     * Returns immediately with Safaricom's ACCEPTANCE of the request, not its
+     * outcome — the money has NOT moved when this returns success. The real
+     * result arrives asynchronously at $resultUrl. Treating the synchronous
+     * response as proof of payment is how a payout gets marked settled and then
+     * silently fails.
+     *
+     * @param string $originatorConversationId Caller's own idempotency key.
+     * @param string $commandId  BusinessPayment (no charge prompt) |
+     *                           SalaryPayment | PromotionPayment
+     * @return array{success:bool,accepted:bool,conversation_id:?string,
+     *               originator_conversation_id:string,error:?string,raw:mixed}
+     */
+    public function b2cPayment(
+        string $phone,
+        float  $amount,
+        string $remarks,
+        string $originatorConversationId,
+        string $resultUrl,
+        string $timeoutUrl,
+        string $commandId = 'BusinessPayment'
+    ): array {
+        $fail = function (string $msg) use ($originatorConversationId) {
+            $this->last_error = $msg;
+            error_log("MpesaAPI b2cPayment [$originatorConversationId]: $msg");
+            return [
+                'success' => false, 'accepted' => false, 'conversation_id' => null,
+                'originator_conversation_id' => $originatorConversationId,
+                'error' => $msg, 'raw' => null,
+            ];
+        };
+
+        $ready = $this->canSendB2C();
+        if (!$ready['ok']) {
+            return $fail('B2C is not configured — missing: ' . implode(', ', $ready['missing']));
+        }
+
+        // Safaricom rejects fractional amounts; rounding UP would pay out money
+        // we never collected, so truncate and let the remainder ride to the
+        // next payout rather than inventing a shilling.
+        $whole = (int)floor($amount);
+        if ($whole < 1) {
+            return $fail('amount rounds to less than KES 1 — nothing to send');
+        }
+
+        $msisdn = $this->formatPhone($phone);
+        if (!preg_match('/^2547\d{8}$|^2541\d{8}$/', $msisdn)) {
+            return $fail("payout number '$phone' is not a valid Kenyan mobile number");
+        }
+
+        if ($resultUrl === '' || $timeoutUrl === '' || $this->isLocalUrl($resultUrl)) {
+            return $fail('a publicly reachable ResultURL and QueueTimeOutURL are required');
+        }
+
+        $token = $this->getAccessToken();
+        if (!$token) {
+            return $fail('could not obtain an access token: ' . $this->last_error);
+        }
+
+        $payload = [
+            'OriginatorConversationID' => $originatorConversationId,
+            'InitiatorName'            => $this->initiator_name,
+            'SecurityCredential'       => $this->security_credential,
+            'CommandID'                => $commandId,
+            'Amount'                   => $whole,
+            'PartyA'                   => $this->b2c_shortcode,
+            'PartyB'                   => $msisdn,
+            'Remarks'                  => substr($remarks, 0, 100),
+            'QueueTimeOutURL'          => $timeoutUrl,
+            'ResultURL'                => $resultUrl,
+            'Occasion'                 => '',
+        ];
+        $this->last_payload = $payload;
+
+        $curl = curl_init();
+        curl_setopt($curl, CURLOPT_URL, $this->base_url . '/mpesa/b2c/v3/paymentrequest');
+        curl_setopt($curl, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $token,
+        ]);
+        curl_setopt($curl, CURLOPT_POST, true);
+        curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, 15);
+        curl_setopt($curl, CURLOPT_TIMEOUT, 40);
+
+        $response  = curl_exec($curl);
+        $curlError = curl_error($curl);
+        $httpCode  = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        curl_close($curl);
+
+        // A timeout is NOT a failure to send. Safaricom may have accepted the
+        // request and be about to move the money, so this must never be treated
+        // as "safe to retry" — the caller leaves the batch in 'processing' for a
+        // human, which is why 'error' is set but 'accepted' is left null-ish.
+        if ($curlError) {
+            $this->last_error = $curlError;
+            error_log("MpesaAPI b2cPayment [$originatorConversationId] curl error: $curlError");
+            return [
+                'success' => false, 'accepted' => null, 'conversation_id' => null,
+                'originator_conversation_id' => $originatorConversationId,
+                'error' => 'network error, outcome UNKNOWN: ' . $curlError, 'raw' => null,
+            ];
+        }
+
+        $json = json_decode($response, true);
+        $code = $json['ResponseCode'] ?? null;
+
+        if ($code === '0' || $code === 0) {
+            return [
+                'success' => true, 'accepted' => true,
+                'conversation_id' => $json['ConversationID'] ?? null,
+                'originator_conversation_id' => $json['OriginatorConversationID'] ?? $originatorConversationId,
+                'error' => null, 'raw' => $json,
+            ];
+        }
+
+        $msg = $json['errorMessage'] ?? $json['ResponseDescription'] ?? ('HTTP ' . $httpCode . ' — ' . substr((string)$response, 0, 200));
+        $this->last_error = $msg;
+        error_log("MpesaAPI b2cPayment [$originatorConversationId] rejected: $msg");
+        return [
+            'success' => false, 'accepted' => false, 'conversation_id' => null,
+            'originator_conversation_id' => $originatorConversationId,
+            'error' => $msg, 'raw' => $json,
+        ];
+    }
+
     private function formatPhone($phone) {
         $phone = preg_replace('/[^0-9]/', '', $phone); // Remove non-numeric
         if (substr($phone, 0, 1) == '0') {

@@ -30,42 +30,130 @@
 require_once __DIR__ . '/credential_helper.php';
 
 /**
+ * Every way this tenant can take money, not just the API one.
+ *
+ * The distinction that matters, and that a single boolean got wrong:
+ *
+ *   stk_own     — complete Daraja credentials, so an STK push is sent FROM the
+ *                 tenant's own shortcode and the money lands in their account.
+ *   paybill_own — the tenant has a shortcode of their own that a customer can
+ *                 pay directly (a `paybill_no_api` paybill, a bank gateway's
+ *                 paybill, or an `mpesa_api` shortcode whose secrets are
+ *                 incomplete). No API involved: the customer just pays them.
+ *
+ * A tenant can easily have the second without the first — that is exactly what
+ * `paybill_no_api` is for — and treating "no API credentials" as "collects
+ * nothing of their own" books their paybill takings as platform money.
+ *
+ * `undecryptable` is the third state and the one that must never be guessed at.
+ * A gateway row whose credentials will not decrypt (the encryption key was
+ * rotated or regenerated) is indistinguishable from an empty one. That is fine
+ * for live traffic — stk_push.php reads the same failure and genuinely routes
+ * through the platform, so booking it as platform is correct — but it is not
+ * safe for re-tagging HISTORIC payments, which were sent when the key still
+ * worked. Callers doing history must check this flag and skip.
+ *
+ * @return array{stk_own:bool,paybill_own:bool,undecryptable:bool,shortcodes:array,detail:string}
+ */
+function tenantCollectionProfile(PDO $pdo, int $tenantId): array
+{
+    static $cache = [];
+    if (array_key_exists($tenantId, $cache)) return $cache[$tenantId];
+
+    $out = [
+        'stk_own'       => false,
+        'paybill_own'   => false,
+        'undecryptable' => false,
+        'shortcodes'    => [],
+        'detail'        => 'no active gateway',
+    ];
+
+    if ($tenantId <= 0) return $cache[$tenantId] = $out;
+
+    try {
+        $st = $pdo->prepare(
+            "SELECT id, gateway_type, credentials FROM payment_gateways
+             WHERE tenant_id = ? AND is_active = 1
+             ORDER BY is_default DESC, id ASC"
+        );
+        $st->execute([$tenantId]);
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        error_log('tenantCollectionProfile(' . $tenantId . '): ' . $e->getMessage());
+        return $cache[$tenantId] = $out;
+    }
+
+    $notes = [];
+    foreach ($rows as $row) {
+        $type = (string)$row['gateway_type'];
+        $raw  = (string)($row['credentials'] ?? '');
+
+        // decrypt_gateway_credentials() passes legacy plain JSON through, so an
+        // empty result from a non-empty blob means the key no longer matches.
+        $c = $raw === '' ? [] : decrypt_gateway_credentials($raw);
+        if ($raw !== '' && !$c) {
+            $out['undecryptable'] = true;
+            $notes[] = "$type#{$row['id']}: credentials will not decrypt";
+            continue;
+        }
+
+        if ($type === 'mpesa_api') {
+            $sc = trim((string)($c['shortcode'] ?? ''));
+            if ($sc !== '') {
+                $out['paybill_own'] = true;
+                $out['shortcodes'][] = $sc;
+            }
+            $complete = !empty($c['consumer_key']) && !empty($c['consumer_secret'])
+                     && !empty($c['passkey'])      && !empty($c['shortcode']);
+            if ($complete) {
+                $out['stk_own'] = true;
+                $notes[] = "mpesa_api $sc (complete — STK routes to them)";
+            } elseif ($sc !== '') {
+                $notes[] = "mpesa_api $sc (incomplete secrets — direct payments only)";
+            }
+        } elseif ($type === 'paybill_no_api' || $type === 'bank_account') {
+            $sc = trim((string)($c['paybill_number'] ?? ''));
+            if ($sc !== '') {
+                $out['paybill_own']  = true;
+                $out['shortcodes'][] = $sc;
+                $notes[] = "$type $sc (customers pay them directly)";
+            }
+        }
+    }
+
+    $out['shortcodes'] = array_values(array_unique($out['shortcodes']));
+    if ($notes) $out['detail'] = implode('; ', $notes);
+
+    return $cache[$tenantId] = $out;
+}
+
+/**
  * Does this tenant have their own working Daraja credentials?
  *
  * Mirrors the routing test in api/payment/stk_push.php and
  * api/payment/hotspot_stk_push.php EXACTLY — same gateway_type, same
  * is_active/is_default ordering, same four required fields. If the two ever
  * disagree, money routes one way and is booked the other.
+ *
+ * This answers only "would an STK push leave from their shortcode". For
+ * "can they receive money at all without us", use tenantCollectionProfile().
  */
 function tenantHasOwnMpesaCredentials(PDO $pdo, int $tenantId): bool
 {
-    if ($tenantId <= 0) return false;
+    return tenantCollectionProfile($pdo, $tenantId)['stk_own'];
+}
 
-    static $cache = [];
-    if (array_key_exists($tenantId, $cache)) return $cache[$tenantId];
-
-    $has = false;
-    try {
-        $st = $pdo->prepare(
-            "SELECT credentials FROM payment_gateways
-             WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1
-             ORDER BY is_default DESC LIMIT 1"
-        );
-        $st->execute([$tenantId]);
-        if ($row = $st->fetch(PDO::FETCH_ASSOC)) {
-            // Credentials are an AES blob; decrypt_gateway_credentials() also
-            // passes plain-JSON rows through, so this is safe on both formats.
-            // A raw json_decode() here reads an encrypted row as NULL and
-            // concludes the tenant has no gateway at all.
-            $c = decrypt_gateway_credentials((string)($row['credentials'] ?? ''));
-            $has = !empty($c['consumer_key']) && !empty($c['consumer_secret'])
-                && !empty($c['passkey'])      && !empty($c['shortcode']);
-        }
-    } catch (Throwable $e) {
-        error_log('tenantHasOwnMpesaCredentials(' . $tenantId . '): ' . $e->getMessage());
-    }
-
-    return $cache[$tenantId] = $has;
+/**
+ * Payment methods that can only have come from an STK push.
+ *
+ * The routing question is different for each family: an STK push goes to
+ * whichever shortcode held the credentials, while a paybill payment goes
+ * wherever the customer typed. Only the first can be decided from the tenant's
+ * API configuration.
+ */
+function isStkPaymentMethod(string $method): bool
+{
+    return in_array(strtolower(trim($method)), ['mpesa', 'mpesa_stk', 'stk'], true);
 }
 
 /**

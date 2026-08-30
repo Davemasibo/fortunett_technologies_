@@ -195,7 +195,17 @@ Only `stk_push.php` ever wrote the column. `process_payment_success()` queued an
 
 Two consequences for anything new on this path: pass `null` for `$platformCollected` unless you truly know, and **never INSERT a payments row without `collection_type`** — `callback.php` and `stk_poll.php` had untagged fallback INSERTs that have been removed so the pipeline creates the row instead.
 
-Historic rows: `php tools/repair_collection_type.php` (dry run; `--apply` to commit, `--tenant=N` to scope). It re-tags from evidence — a queued payout, a platform-handler note, a charged commission (that one scoped to tenants with no gateway, since a commission is charged on every hotspot payment), and a tenant with no M-Pesa credentials at all, which is the only signal left for rows the `stkQuery` path booked. It also **backfills the missing `isp_payout_queue` rows**: re-tagging alone leaves the ISP reading "Awaiting disbursement" with nothing queued for FortuNett to release.
+**Having no Daraja credentials is not the same as collecting nothing.** A tenant on `paybill_no_api` has no API keys and never will, yet their customers pay their own paybill directly — that money was never FortuNett's to disburse. The first version of the repair rule asked only "does this tenant have API credentials" and flipped every M-Pesa payment of everyone who didn't, which told those ISPs their own takings were "awaiting disbursement" from us.
+
+`tenantCollectionProfile()` replaces the single boolean with three states:
+
+- `stk_own` — complete Daraja credentials, so an STK push leaves from *their* shortcode.
+- `paybill_own` — they hold a shortcode a customer can pay directly (a `paybill_no_api` paybill, a bank gateway's paybill, or an `mpesa_api` shortcode with incomplete secrets). No API involved.
+- `undecryptable` — a gateway row whose credentials will not decrypt. **Never guess at this one.** It is fine for live traffic (`stk_push.php` reads the same failure and genuinely routes through the platform, so booking it platform is correct) but not for re-tagging history, which was written when the key still worked.
+
+The method matters as much as the tenant: an STK push goes to whichever shortcode held the credentials and *can* be decided from configuration; a paybill payment goes wherever the customer typed and cannot. `isStkPaymentMethod()` draws that line, and the repair tool's catch-all rule is now narrowed on both axes at once — STK methods only, tenants with neither channel only.
+
+Historic rows: `php tools/repair_collection_type.php` (dry run; `--apply` to commit, `--tenant=N` to scope, `--mark-direct=N` to undo a tenant that was re-tagged wrongly — it cancels the queued payouts rather than deleting them, and refuses to touch a payment already `released_at`). `php tools/collection_type_audit.php` is the read-only evidence view: per tenant, how they collect and what each payment method is currently tagged, with MISMATCH flagged. **Run the audit before the repair.** It re-tags from evidence — a queued payout, a platform-handler note, a charged commission (that one scoped to tenants with no gateway, since a commission is charged on every hotspot payment), and a tenant with no M-Pesa credentials at all, which is the only signal left for rows the `stkQuery` path booked. It also **backfills the missing `isp_payout_queue` rows**: re-tagging alone leaves the ISP reading "Awaiting disbursement" with nothing queued for FortuNett to release.
 
 **Never label platform money as anything resembling "direct".** It reads as "the ISP has it" and hides a liability. The vocabulary is *Paid to you directly* / *Awaiting disbursement* / *Disbursed*, used identically on `payments.php`, `billing.php` and `super_admin/tenants.php`.
 
@@ -220,6 +230,25 @@ It used to INSERT a row and stop — money in the ledger, customer still disconn
 
 ### Unmatched Paybill Payments
 Daraja has no API that lists past C2B transactions, so a poller cannot recover an unroutable paybill payment the way `stk_poll.php` recovers a missing STK callback. `includes/unmatched_payments.php` captures every one into `unmatched_payments` (self-installing table) with its full payload; `api/payment/unmatched.php` lists them with suggested customers and credits them through the same `process_payment_success()` pipeline a matched payment would use. The suggester is deliberately looser than `resolveAccountRef()` — that one must never auto-credit the wrong ISP, but here a human confirms.
+
+### Paying the ISPs Back (B2C)
+
+`isp_payout_queue` recorded what was owed and `released_at` recorded that someone had decided to settle it — but **nothing moved money**. `cron/auto_release_settlements.php` and `api/super_admin/release_payments.php` only stamp `released_at`, and the email they send says the amount "will be remitted within 1 business day", by hand. A released payout and a paid one were the same database state, so nothing could answer *what do we still owe?*
+
+`includes/payouts.php` + `cron/disburse_payouts.php` add the missing half, using `MpesaAPI::b2cPayment()` (new — the class had no B2C at all despite this file once claiming it did).
+
+The states are now distinct: `pending` → `processing` (Safaricom **accepted** the request) → `paid` (the result callback confirmed it) / `cancelled`. `released_at` is stamped by the callback, not by a cron guessing.
+
+Rules that exist because M-Pesa has no chargeback:
+
+- **The synchronous response is not proof of payment.** `b2cPayment()` returns Safaricom's acceptance; only `api/payment/b2c_result.php` can mark a payout paid.
+- **Reserve before sending.** The batch row is written and the queue marked `processing` *before* the API call. A crash mid-send leaves a stuck payout for a human — far better than a duplicate that cannot be clawed back.
+- **A network timeout is not a failure.** `accepted === null` means the outcome is unknown; the batch goes to `unknown`, the queue stays `processing`, and that tenant is skipped on every later run until a human clears it. Only a clean rejection returns money to the queue.
+- **Three independent gates:** `platform_settings.payouts_enabled` (off by default), the tenant's `auto_payout`, and a human-`verified_at` destination number. Changing `payout_phone` clears the verification — a changed number is a new number.
+- `public_base_url` must be absolute https, checked in the preflight *and* again immediately before sending: a relative path sails past the empty-string check and becomes an unreachable ResultURL, so the payout goes out and its confirmation never comes back.
+- Amounts are **truncated**, never rounded up — rounding up pays out money that was never collected.
+
+Config is a CLI, not a UI: `php tools/payout_config.php` with no arguments prints the platform readiness and a per-tenant table of destination, opt-in, verification and amount owed, each row saying exactly what is blocking it. Dry run the sender with `php cron/disburse_payouts.php`; `--live` is required to send anything.
 
 ### Schema Guards
 `includes/schema_guard.php` repairs schema drift in place when a deployment is missing a migration. Call `ensurePaymentStatusEnums($pdo)` at the top of any endpoint on the payment path. One-shot repair: `php tools/repair_status_enums.php` (or `sql/migrations/2026-07-26-payment-autoactivation.sql`).
@@ -278,6 +307,10 @@ Runs daily. Marks overdue invoices (past due_date + 7 grace days), sends 3-day w
 
 # Captive portal sweep — hourly, offset from the top of the hour to spread load
 30 * * * * php /var/www/html/cron/sync_hotspot_pages.php >> /var/log/fortunett_portal_sync.log 2>&1
+
+# ISP payouts — daily at 09:00. Add this ONLY after watching a few dry runs
+# (drop --live to dry run). Sends real money; see "Paying the ISPs Back".
+0 9 * * * php /var/www/html/cron/disburse_payouts.php --live >> /var/log/fortunett_payouts.log 2>&1
 ```
 
 Every one of these stamps a heartbeat (`includes/cron_heartbeat.php`). The Payment → Access panel on `hotspot_diagnostics.php` reports "last ran 41s ago" or "never run — add to crontab", so a missing crontab line is visible instead of silent.
