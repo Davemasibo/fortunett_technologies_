@@ -158,6 +158,52 @@ if ($err) {
     }
 }
 
+// ── Is the TOKEN wrong, or the REQUEST wrong? ────────────────────────────────
+// Sending is the worst way to test a credential: a failure could be the token,
+// the payload shape, the sender ID, or the account balance, and the provider
+// answers all of them with the same word. A plain authenticated GET isolates
+// it — if these also say "Unauthenticated." the token itself is not accepted
+// and nothing about the message matters yet.
+$effectiveKey = trim((string)($own['api_key'] ?? ($plat['api_key'] ?? '')));
+
+echo "\n  Key shape:\n";
+$hasPipe = strpos($effectiveKey, '|') !== false;
+$isHex   = (bool)preg_match('/^[0-9a-f]+$/i', $effectiveKey);
+printf("    length %d, %s\n", strlen($effectiveKey),
+    $hasPipe ? "contains '|' — looks like a Laravel Sanctum token (what v3 issues)"
+             : ($isHex ? "pure hexadecimal, no '|' — looks like an older v1-style API key"
+                       : "mixed characters, no '|'"));
+if (!$hasPipe) {
+    echo "    NOTE: TalkSasa v3 tokens are issued as <id>|<random> and contain a pipe.\n";
+    echo "          A key without one is usually from the older API and will never\n";
+    echo "          authenticate against /api/v3, however many times it is re-pasted.\n";
+}
+
+$base = preg_replace('~/sms/send/?$~', '', $url);
+foreach (['/balance', '/profile', '/sms/balance'] as $path) {
+    $probe = $base . $path;
+    $c = curl_init($probe);
+    curl_setopt($c, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($c, CURLOPT_HTTPHEADER, [
+        'Accept: application/json',
+        'Authorization: Bearer ' . $effectiveKey,
+    ]);
+    curl_setopt($c, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($c, CURLOPT_TIMEOUT, 12);
+    $b = curl_exec($c);
+    $hc = curl_getinfo($c, CURLINFO_HTTP_CODE);
+
+    $snippet = stripos(ltrim((string)$b), '<') === 0 ? '(HTML page)' : substr((string)$b, 0, 120);
+    printf("    GET %-28s HTTP %-3d %s\n", $path, $hc, $snippet);
+}
+
+echo "\n  Reading the probes above:\n";
+echo "    every one Unauthenticated  -> the TOKEN is not accepted. Generate a new\n";
+echo "                                  one in the TalkSasa dashboard under API /\n";
+echo "                                  Developers and paste it into Settings.\n";
+echo "    one returns real data      -> the token is FINE and the problem is the\n";
+echo "                                  send request itself. Send me this output.\n";
+
 if ($sendTo === '') {
     echo "\nNo message sent. Add --send=2547XXXXXXXX to try a real one (costs credit).\n";
     exit;
