@@ -34,13 +34,21 @@ try {
         `provider`  VARCHAR(50) DEFAULT 'talksasa',
         `api_key`   VARCHAR(255) DEFAULT NULL,
         `sender_id` VARCHAR(50) DEFAULT NULL,
-        `api_url`   VARCHAR(255) DEFAULT 'https://api.talksasa.com/v1/sms/send',
+        `api_url`   VARCHAR(255) DEFAULT 'https://bulksms.talksasa.com/api/v3/sms/send',
         `is_active` TINYINT(1) NOT NULL DEFAULT 1,
         `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (`id`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $pdo->exec("INSERT IGNORE INTO platform_sms_config (id) VALUES (1)");
 } catch (Exception $e) {}
+
+// One definition of a live SMS endpoint and of where credentials come from.
+// The row seeded above was created with a DEFAULT pointing at TalkSasa v1,
+// which no longer exists, so the platform row on every deployment needs
+// healing before this form can show the operator the truth.
+require_once __DIR__ . '/../includes/sms_config.php';
+require_once __DIR__ . '/../classes/SMSHelper.php';
+smsHealStoredApiUrls($pdo);
 
 // ── Helper: upsert platform_settings ─────────────────────────────────────────
 function platformSet($pdo, $key, $value) {
@@ -112,6 +120,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 3. SMS
     elseif ($action === 'save_sms') {
         $activeTab = 'sms';
+
+        // The form no longer renders the live token into the page source, so a
+        // blank field means "leave it alone", not "erase it". The old form put
+        // the real key in a password input, which both leaked it into the HTML
+        // and let the browser's autofill silently replace it with a saved
+        // password on the way back in.
+        $apiKey = trim((string)($_POST['sms_api_key'] ?? ''));
+        if ($apiKey === '' || $apiKey === SMS_KEY_MASK) {
+            $apiKey = (string)$pdo->query("SELECT api_key FROM platform_sms_config WHERE id=1")->fetchColumn();
+        }
+
         $stmt = $pdo->prepare("
             UPDATE platform_sms_config SET
                 provider  = ?,
@@ -123,12 +142,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ");
         $stmt->execute([
             trim($_POST['sms_provider'] ?? 'talksasa'),
-            trim($_POST['sms_api_key'] ?? ''),
+            trim($apiKey),
             trim($_POST['sms_sender_id'] ?? ''),
-            trim($_POST['sms_api_url'] ?? 'https://api.talksasa.com/v1/sms/send'),
+            smsNormalizeApiUrl($_POST['sms_api_url'] ?? null),
             isset($_POST['sms_active']) ? 1 : 0,
         ]);
         $flash = 'success|SMS settings saved.';
+    }
+
+    // Prove the platform credentials actually send, rather than trusting that
+    // saving them means anything. Nothing else on this page tells the operator
+    // whether the key works, and the provider answers "Unauthenticated." with
+    // an HTTP 200 -- so a silent save looked identical to a working one.
+    elseif ($action === 'test_sms') {
+        $activeTab = 'sms';
+        $to = trim($_POST['test_phone'] ?? '');
+        if ($to === '') {
+            $flash = 'error|Enter a phone number to send the test to.';
+        } else {
+            $helper = SMSHelper::platform($pdo);
+            if (!$helper->hasConfig()) {
+                $flash = 'error|No usable platform SMS credentials -- save an API key first.';
+            } else {
+                $res = $helper->send($to, 'FortuNett platform SMS test - if you received this, platform SMS is working.');
+                $flash = ($res['success'] ? 'success|Test sent: ' : 'error|')
+                       . ($res['message'] ?? ($res['success'] ? 'accepted by the provider.' : 'failed.'));
+            }
+        }
     }
 
     // 4. Registration Defaults
@@ -156,6 +196,7 @@ $identity = [
 
 $emailCfg = $pdo->query("SELECT * FROM platform_email_config WHERE id=1")->fetch(PDO::FETCH_ASSOC) ?: [];
 $smsCfg   = $pdo->query("SELECT * FROM platform_sms_config WHERE id=1")->fetch(PDO::FETCH_ASSOC) ?: [];
+$storedKey = trim((string)($smsCfg['api_key'] ?? ''));
 
 $regDefaults = [
     'default_trial_days'   => platformGet($pdo, 'default_trial_days', 30),
@@ -272,6 +313,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
         <li><a href="collections.php"><i class="fas fa-hand-holding-dollar"></i><span>Collections</span></a></li>
         <li><a href="plans.php"><i class="fas fa-layer-group"></i><span>Subscription Plans</span></a></li>
         <li><a href="mpesa.php"><i class="fas fa-mobile-alt"></i><span>Platform M-Pesa</span></a></li>
+        <li><a href="diagnostics.php"><i class="fas fa-heart-pulse"></i><span>Diagnostics</span></a></li>
         <li><a href="settings.php" class="active"><i class="fas fa-cogs"></i><span>System Settings</span></a></li>
         <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i><span>Logout</span></a></li>
     </ul>
@@ -479,12 +521,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                             </div>
                             <div class="form-group full">
                                 <label>API Key / Token</label>
-                                <input type="password" name="sms_api_key" value="<?= htmlspecialchars($smsCfg['api_key'] ?? '') ?>" autocomplete="new-password" placeholder="Your SMS provider API key">
+                                <input type="password" name="sms_api_key" value="" autocomplete="off"
+                                       placeholder="<?= $storedKey !== '' ? SMS_KEY_MASK . ' (stored, ' . strlen($storedKey) . ' chars) - leave blank to keep' : 'Your TalkSasa API token' ?>">
+                                <div class="hint">
+                                    TalkSasa v3 wants the API <strong>token</strong> from Dashboard &rarr; Developers/API &mdash; not your password and not a v1 key.
+                                    Leave this blank to keep the stored one.
+                                </div>
                             </div>
                             <div class="form-group full">
                                 <label>API Endpoint URL</label>
-                                <input type="url" name="sms_api_url" value="<?= htmlspecialchars($smsCfg['api_url'] ?? 'https://api.talksasa.com/v1/sms/send') ?>" placeholder="https://api.talksasa.com/v1/sms/send">
-                                <div class="hint">TalkSasa default: https://api.talksasa.com/v1/sms/send</div>
+                                <input type="url" name="sms_api_url" value="<?= htmlspecialchars(smsNormalizeApiUrl($smsCfg['api_url'] ?? null)) ?>" placeholder="<?= SMS_API_URL_DEFAULT ?>">
+                                <div class="hint">TalkSasa current endpoint: <?= SMS_API_URL_DEFAULT ?></div>
                             </div>
                         </div>
                         <div class="toggle-row" style="margin-top:16px;">
@@ -499,6 +546,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="btn-save"><i class="fas fa-save"></i> Save SMS Settings</button>
+                        </div>
+                    </form>
+
+                    <form method="POST" action="settings.php?tab=sms" style="margin-top:22px;padding-top:18px;border-top:1px solid rgba(148,163,184,.25);">
+                        <input type="hidden" name="action" value="test_sms">
+                        <label style="font-size:13px;font-weight:600;">Send a test SMS</label>
+                        <p style="font-size:12px;color:#64748b;margin:4px 0 10px;">
+                            Sends with the platform credentials above, ignoring any tenant's own key, and is not written to
+                            any tenant's outbox. This is the only way to tell a saved key from a working one &mdash; the
+                            provider returns &ldquo;Unauthenticated.&rdquo; with an HTTP&nbsp;200.
+                        </p>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                            <input type="text" name="test_phone" placeholder="07XXXXXXXX" style="max-width:220px;">
+                            <button type="submit" class="btn-save" style="background:#7c3aed;"><i class="fas fa-paper-plane"></i> Send Test</button>
                         </div>
                     </form>
                 </div>

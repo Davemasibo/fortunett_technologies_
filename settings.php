@@ -1,6 +1,9 @@
 <?php
 require_once 'includes/db_master.php';
 require_once 'includes/auth.php';
+// Loaded up here, not next to the banner that reads it: the save_sms_config
+// handler below runs long before that point and needs smsNormalizeApiUrl().
+require_once __DIR__ . '/includes/sms_config.php';
 redirectIfNotLoggedIn();
 
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -223,10 +226,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     elseif ($action === 'save_sms_config') {
         $active_tab = 'sms';
         $provider  = trim($_POST['sms_provider'] ?? 'talksasa');
-        $apiKey    = $_POST['sms_api_key'] ?? '';
+        $apiKey    = trim((string)($_POST['sms_api_key'] ?? ''));
         $senderId  = trim($_POST['sms_sender_id'] ?? '');
-        $apiUrl    = trim($_POST['sms_api_url'] ?? 'https://api.talksasa.com/v1/sms/send');
-        if ($apiKey === '••••••••') {
+        // Never store the dead v1 endpoint, whatever the form posts back.
+        $apiUrl    = smsNormalizeApiUrl($_POST['sms_api_url'] ?? null);
+        if ($apiKey === '' || $apiKey === SMS_KEY_MASK) {
             $sRow = $pdo->prepare("SELECT api_key FROM sms_configurations WHERE tenant_id=? LIMIT 1");
             $sRow->execute([$tenant_id]);
             $apiKey = $sRow->fetchColumn() ?: '';
@@ -331,15 +335,21 @@ try {
     $smsCfg = $sc->fetch(PDO::FETCH_ASSOC) ?: [];
 } catch (Exception $e) {}
 
-// Check platform fallback availability
+// Check platform fallback availability.
+// $hasPlatformSMS asks smsPlatformConfig() rather than re-deriving the test:
+// the old query accepted `api_key IS NOT NULL`, so an empty-string key --
+// exactly what the seeded platform row carries -- read as configured.
 $hasPlatformEmail = false;
-$hasPlatformSMS   = false;
 try {
     $r = $pdo->query("SELECT id FROM platform_email_config WHERE id=1 AND is_active=1 AND smtp_host IS NOT NULL LIMIT 1");
     $hasPlatformEmail = (bool)($r && $r->fetchColumn());
-    $r = $pdo->query("SELECT id FROM platform_sms_config WHERE id=1 AND is_active=1 AND api_key IS NOT NULL LIMIT 1");
-    $hasPlatformSMS   = (bool)($r && $r->fetchColumn());
 } catch (Exception $e) {}
+$hasPlatformSMS = smsPlatformConfig($pdo) !== null;
+
+// What this tenant will ACTUALLY send with, decided by the same function the
+// sender uses -- so the banner can never claim SMS is configured while every
+// message fails. A saved row with a blank key is not a configuration.
+[$smsEffective, $smsUsingPlatform] = smsResolveConfig($pdo, $tenant_id);
 
 // Load platform M-Pesa constants so Platform Paybill No. is visible in payments tab
 if (!defined('MPESA_SHORTCODE')) {
@@ -966,21 +976,20 @@ input:checked + .set-slider:before { transform:translateX(20px);background:#fff;
             ════════════════════════════════════════════════════ -->
             <div class="tab-pane fade" id="sms" role="tabpanel">
 
-                <?php if (empty($smsCfg)): ?>
-                <div class="set-info-banner <?php echo $hasPlatformSMS ? 'success' : 'warn'; ?>">
-                    <i class="fas fa-<?php echo $hasPlatformSMS ? 'check-circle' : 'exclamation-triangle'; ?>"></i>
-                    <div>
-                        <?php if ($hasPlatformSMS): ?>
-                            <strong>Using platform SMS</strong> — SMS messages are sent via FortuNett's shared TalkSasa account. Configure your own API key below to use your own sender ID and credit balance.
-                        <?php else: ?>
-                            <strong>No SMS configured</strong> — SMS notifications will not be delivered until you configure your TalkSasa API credentials below.
-                        <?php endif; ?>
-                    </div>
+                <?php if ($smsEffective === null): ?>
+                <div class="set-info-banner warn">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <div><strong>No SMS configured</strong> — SMS notifications will not be delivered. Either your FortuNett admin has not set up the shared SMS account, or you need your own TalkSasa API token below.</div>
+                </div>
+                <?php elseif ($smsUsingPlatform): ?>
+                <div class="set-info-banner success">
+                    <i class="fas fa-check-circle"></i>
+                    <div><strong>Using platform SMS</strong> — messages are sent via FortuNett's shared TalkSasa account with sender ID <strong><?php echo htmlspecialchars($smsEffective['sender_id'] ?: '?'); ?></strong>. You do not need to configure anything. Add your own API token below only if you want your own sender ID and credit balance.</div>
                 </div>
                 <?php else: ?>
                 <div class="set-info-banner success">
                     <i class="fas fa-check-circle"></i>
-                    <div><strong>SMS is configured</strong> — Sending via <strong><?php echo htmlspecialchars(ucfirst($smsCfg['provider'] ?? 'talksasa')); ?></strong> with sender ID <strong><?php echo htmlspecialchars($smsCfg['sender_id'] ?? '?'); ?></strong>.</div>
+                    <div><strong>Sending with your own credentials</strong> — <strong><?php echo htmlspecialchars(ucfirst($smsEffective['provider'] ?? 'talksasa')); ?></strong>, sender ID <strong><?php echo htmlspecialchars($smsEffective['sender_id'] ?: '?'); ?></strong>. Clear the API key to fall back to the platform account.</div>
                 </div>
                 <?php endif; ?>
 
@@ -1020,8 +1029,8 @@ input:checked + .set-slider:before { transform:translateX(20px);background:#fff;
                             <div class="col-md-6">
                                 <label class="set-label">API URL <span style="font-weight:400;color:#9CA3AF;">(optional override)</span></label>
                                 <input type="url" name="sms_api_url" class="set-input"
-                                       value="<?php echo htmlspecialchars($smsCfg['api_url'] ?? 'https://api.talksasa.com/v1/sms/send'); ?>"
-                                       placeholder="https://api.talksasa.com/v1/sms/send">
+                                       value="<?php echo htmlspecialchars(smsNormalizeApiUrl($smsCfg['api_url'] ?? null)); ?>"
+                                       placeholder="<?php echo SMS_API_URL_DEFAULT; ?>">
                                 <div class="set-hint">Leave as default for TalkSasa</div>
                             </div>
                         </div>

@@ -227,6 +227,7 @@ table a:hover{color:#93c5fd;}
         <li><a href="collections.php"><i class="fas fa-hand-holding-dollar"></i><span>Collections</span></a></li>
         <li><a href="plans.php"><i class="fas fa-layer-group"></i><span>Subscription Plans</span></a></li>
         <li><a href="mpesa.php"><i class="fas fa-mobile-alt"></i><span>Platform M-Pesa</span></a></li>
+        <li><a href="diagnostics.php"><i class="fas fa-heart-pulse"></i><span>Diagnostics</span></a></li>
         <li><a href="settings.php"><i class="fas fa-cogs"></i><span>System Settings</span></a></li>
         <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i><span>Logout</span></a></li>
     </ul>

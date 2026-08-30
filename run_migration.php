@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS platform_sms_config (
     provider VARCHAR(50) DEFAULT 'talksasa',
     api_key VARCHAR(255) DEFAULT NULL,
     sender_id VARCHAR(50) DEFAULT NULL,
-    api_url VARCHAR(255) DEFAULT 'https://api.talksasa.com/v1/sms/send',
+    api_url VARCHAR(255) DEFAULT 'https://bulksms.talksasa.com/api/v3/sms/send',
     is_active TINYINT(1) NOT NULL DEFAULT 1,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id)

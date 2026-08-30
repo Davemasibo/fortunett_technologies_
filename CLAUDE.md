@@ -166,9 +166,27 @@ The failures worth knowing:
 A `fortunett_wg_watchdog` scheduler pings the VPS over the tunnel every 2 min and re-arms the interface after failure; peers cache their resolved endpoint, so a WAN IP change stops the handshake with the interface still showing `running`.
 
 ### Verifying Full Automation
-`api/diagnostics/automation_chain.php` (rendered at the top of `hotspot_diagnostics.php`) checks the whole money-in→internet-on path: gateway completeness and sandbox-vs-live, callback URL sanity, C2B registration, cron liveness, the two schema faults that abort handlers mid-write, router reachability, and the last 7 days of real payments.
+Two pages, split by who can act — see **Platform Breaks Are Not Tenant Breaks** below.
+
+`api/diagnostics/automation_chain.php` (rendered at the top of `hotspot_diagnostics.php`) checks one tenant's own half of the money-in→internet-on path: how they collect (gateway completeness, sandbox-vs-live, callback URL sanity and C2B registration — only the ones their collection mode has), unmatched payments, router reachability, package speeds, the provisioning backlog, and the last 7 days of real payments.
+
+`api/diagnostics/platform_chain.php` (rendered at `super_admin/diagnostics.php`) checks the shared half once for the whole installation: the platform shortcode, the public base URL and WireGuard endpoint, the schema faults that abort handlers mid-write, every cron heartbeat, the shared SMS/SMTP accounts, payout readiness, and which tenants depend on any of it.
 
 Cron liveness comes from `includes/cron_heartbeat.php` — each scheduled script stamps `platform_settings.cron_last_run_<name>`. This exists because a cron line missing from crontab is invisible; `stk_poll.php` was absent for a long time and nothing could say so.
+
+### Platform Breaks Are Not Tenant Breaks
+
+Most of the automation chain is one installation serving everyone: the shared paybill, the callback host, the schema, the crons and the shared SMS/SMTP accounts. `automation_chain.php` checked all of it per tenant, so a single platform fault appeared as N identical tenant-level failures, each phrased as an instruction the tenant could not carry out — a crontab line handed to someone with no shell.
+
+The shared half now lives in `api/diagnostics/platform_chain.php`, rendered at `super_admin/diagnostics.php`. **Clear that page before diagnosing any individual tenant.** It also reports how many tenants depend on the shared half, so the blast radius of a platform fault is visible.
+
+`api/diagnostics/automation_chain.php` keeps only what a tenant can act on, and is now **collection-mode aware** via `tenantC2BStatus()` — the same function that drives the banner on `payments.php`, so the two pages cannot contradict each other:
+
+- `direct` (own Daraja credentials) — environment, callback URL and C2B registration are all theirs and all checked.
+- `manual_paybill` — C2B is **impossible**, not broken. Telling these tenants to register it sent operators hunting a registration a manual paybill can never have.
+- `platform` — "no M-Pesa gateway" is the correct configuration, not a failure. Whether it works is read from `platform_mpesa_config` and never phrased as the tenant's job.
+
+Whatever remains platform-level appears as one honest row under **Handled by FortuNett**, and the verdict splits the count into "you can fix" and "FortuNett's side".
 
 ### `payments.collection_type` — Whose Bank the Money Is In
 `'platform'` = FortuNett's till took it and owes the ISP a payout. `'direct'` = the ISP's own paybill/till took it; nothing to disburse. This is **not** a payment method and never a UI nicety — every float, settlement figure and payout decision reads it.
@@ -269,6 +287,19 @@ Config is a CLI, not a UI: `php tools/payout_config.php` with no arguments print
 `renderPlaceholders()` is public and used by both `sendTemplate()` and `sms.php`, so a message typed by hand or edited after picking a template gets the same substitution a stored template does — previously editing one word of a template sent the customer a literal `{name}`. The Send SMS box has a template picker that only *fills* the textarea (the message still goes through the normal send path), a GSM-7 segment counter, and a preview of the fields the page knows.
 
 `sms.php`'s send handler looked its recipient up with `SELECT phone FROM clients WHERE id = ?` — **no `tenant_id`** — so any logged-in tenant could message another tenant's customer by editing the form. It is now tenant-scoped like every other `clients` query.
+
+`includes/sms_config.php` is the single answer to "which credentials does this tenant send with" and "what is a live endpoint". Two faults made the platform fallback useless and both were invisible:
+
+- **Every writer and every table DEFAULT seeded `api_url` as `https://api.talksasa.com/v1/sms/send`, which no longer exists.** `platform_sms_config` is created with that DEFAULT and seeded with `INSERT IGNORE (id) VALUES (1)`, so the platform row was *born* pointing at the dead endpoint. `SMSHelper` knew the v3 URL but only as a `?? fallback`, which fires when the column is NULL — and it never was. The provider answered 301 to an HTML page, and the operator was shown *"the SMS API URL is wrong"* for a URL nobody had typed. `smsNormalizeApiUrl()` upgrades a known-dead endpoint **on read and on write**, so sending works with no migration; `smsHealStoredApiUrls()` fixes the stored value when either settings page is opened.
+- **The fallback only fired when the tenant had no row at all.** A tenant who opened the SMS tab and saved it — which is what happens the first time anyone looks at the form — got an active row with an empty `api_key`, and that row shadowed the platform key permanently while the UI said SMS was configured. `smsResolveConfig()` treats a row with no usable key as absent. `smsConfigIsUsable()` is the test; `api_key IS NOT NULL` is **not** — the seeded row holds an empty string.
+
+Three further rules:
+
+- **A saved key is not a working key.** TalkSasa returns `Unauthenticated.` with an HTTP **200**, so a silent save is indistinguishable from a working one. `super_admin/settings.php?tab=sms` has a **Send Test** that uses `SMSHelper::platform()` — platform credentials only, ignoring any tenant row, and written to nobody's outbox.
+- **Never render the live token into a settings form.** It leaks the secret into the page source and lets browser autofill overwrite it on the way back in. Both forms post `SMS_KEY_MASK` or an empty field to mean "keep what is stored".
+- **Simulation is opt-in via the literal `TEST_KEY` and nothing else.** `sendViaTalkSasa()` used to also simulate on an *empty* key, so a deployment with no credentials reported every message as sent and logged it `sent` — there was no way to discover SMS never left the server.
+
+`tools/sms_diagnose.php` resolves through the same functions. A diagnostic that derives the endpoint or the key separately can probe one thing while the sender uses another, which is the one thing a diagnostic must never do.
 
 ### Schema Guards
 `includes/schema_guard.php` repairs schema drift in place when a deployment is missing a migration. Call `ensurePaymentStatusEnums($pdo)` at the top of any endpoint on the payment path. One-shot repair: `php tools/repair_status_enums.php` (or `sql/migrations/2026-07-26-payment-autoactivation.sql`).

@@ -101,7 +101,13 @@ try {
     $plat = $pdo->query("SELECT * FROM platform_sms_config WHERE id = 1 AND is_active = 1 LIMIT 1")->fetch(PDO::FETCH_ASSOC) ?: null;
 } catch (Throwable $e) { /* table may not exist */ }
 
-echo "  own config     : " . ($own ? 'YES' : 'no — will fall back to the platform key') . "\n";
+// "a row exists" is not "a usable configuration", and the difference is the
+// whole reason platform SMS looked configured while nothing sent: a tenant row
+// with a blank key used to shadow the platform key permanently.
+$ownUsable = smsConfigIsUsable($own);
+echo "  own config     : " . ($own
+    ? ($ownUsable ? 'YES' : 'row exists but has NO api_key — falls back to the platform key')
+    : 'no — will fall back to the platform key') . "\n";
 if ($own) {
     printf("    provider     : %s\n", $own['provider']  ?? '');
     printf("    api_url      : %s\n", $own['api_url']   ?? '(not set)');
@@ -112,8 +118,24 @@ if ($own) {
         echo "    !! the stored key has leading/trailing whitespace — a bearer header\n";
         echo "       with a stray newline is rejected as \"Unauthenticated.\"\n";
     }
+    if (smsApiUrlIsStale($own['api_url'] ?? null)) {
+        echo "    !! stored api_url is the dead TalkSasa v1 endpoint. It is normalised\n";
+        echo "       to " . SMS_API_URL_DEFAULT . " on read, so sending still works,\n";
+        echo "       but save the SMS settings once to heal the stored value.\n";
+    }
 }
 echo "  platform config: " . ($plat ? 'present — ' . mask($plat['api_key'] ?? '') : 'none') . "\n";
+if ($plat && !smsConfigIsUsable($plat)) {
+    echo "    !! the platform row exists but its api_key is blank. Every tenant with\n";
+    echo "       no key of their own has NO working SMS. Set it under\n";
+    echo "       super_admin/settings.php?tab=sms and use Send Test to prove it.\n";
+}
+if ($plat && smsApiUrlIsStale($plat['api_url'] ?? null)) {
+    echo "    !! platform api_url is the dead TalkSasa v1 endpoint — this is the\n";
+    echo "       column DEFAULT the table was created with, so it is stale on every\n";
+    echo "       deployment that never edited it. Normalised on read; open the\n";
+    echo "       platform SMS settings page once to heal it.\n";
+}
 
 $helper = new SMSHelper($pdo, $tenantId);
 echo "  EFFECTIVE      : " . ($helper->isUsingPlatform() ? 'PLATFORM key' : ($helper->hasConfig() ? "this tenant's own key" : 'NONE — sending is disabled')) . "\n";
@@ -122,8 +144,12 @@ if (!$helper->hasConfig()) {
     exit("\nNo usable SMS configuration. Add one under Settings on sms.php.\n");
 }
 
-// Reach the endpoint without sending, to separate "wrong URL" from "wrong key"
-$url = trim((string)($own['api_url'] ?? ($plat['api_url'] ?? 'https://bulksms.talksasa.com/api/v3/sms/send')));
+// Reach the endpoint without sending, to separate "wrong URL" from "wrong key".
+// Resolved through the same function SMSHelper uses -- deriving it separately
+// meant the diagnostic could probe one endpoint while the sender used another,
+// which is the one thing a diagnostic must never do.
+[$effectiveCfg, $effectivePlatform] = smsResolveConfig($pdo, $tenantId);
+$url = smsNormalizeApiUrl($effectiveCfg['api_url'] ?? null);
 echo "\n  Contacting " . $url . " ...\n";
 
 $ch = curl_init($url);
@@ -164,7 +190,11 @@ if ($err) {
 // answers all of them with the same word. A plain authenticated GET isolates
 // it — if these also say "Unauthenticated." the token itself is not accepted
 // and nothing about the message matters yet.
-$effectiveKey = trim((string)($own['api_key'] ?? ($plat['api_key'] ?? '')));
+// Same resolver again. `$own['api_key'] ?? $plat['api_key']` looks right but
+// `??` only fires on a MISSING key, so a tenant row holding an empty string
+// resolved to '' instead of falling through to the platform key -- the probes
+// below would then all report "Unauthenticated." for a key that was never sent.
+$effectiveKey = trim((string)($effectiveCfg['api_key'] ?? ''));
 
 echo "\n  Key shape:\n";
 $hasPipe = strpos($effectiveKey, '|') !== false;
@@ -195,6 +225,31 @@ foreach (['/balance', '/profile', '/sms/balance'] as $path) {
 
     $snippet = stripos(ltrim((string)$b), '<') === 0 ? '(HTML page)' : substr((string)$b, 0, 120);
     printf("    GET %-28s HTTP %-3d %s\n", $path, $hc, $snippet);
+}
+
+// ── Was the token truncated on the way into the column? ─────────────────────
+// A Sanctum token is <id>|<random>. If the column is narrower than the token,
+// MySQL outside strict mode stores a silent prefix — which still LOOKS like a
+// valid token (right prefix, right pipe) and can never authenticate. A stored
+// length sitting exactly on the column limit is that signature.
+try {
+    $ci = $pdo->prepare("
+        SELECT TABLE_NAME, CHARACTER_MAXIMUM_LENGTH
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME IN ('sms_configurations','platform_sms_config')
+          AND COLUMN_NAME = 'api_key'
+    ");
+    $ci->execute();
+    echo "\n  Column widths:\n";
+    foreach ($ci->fetchAll(PDO::FETCH_ASSOC) as $c) {
+        $max = (int)$c['CHARACTER_MAXIMUM_LENGTH'];
+        printf("    %-22s api_key VARCHAR(%d), stored value is %d chars%s\n",
+            $c['TABLE_NAME'], $max, strlen($effectiveKey),
+            ($max > 0 && strlen($effectiveKey) >= $max) ? '   <== AT THE LIMIT, likely TRUNCATED' : '');
+    }
+} catch (Throwable $e) {
+    echo "  (could not read column widths: " . $e->getMessage() . ")\n";
 }
 
 echo "\n  Reading the probes above:\n";

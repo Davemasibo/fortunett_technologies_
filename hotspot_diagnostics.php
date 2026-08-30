@@ -165,10 +165,10 @@ require_once 'includes/sidebar.php';
   <!-- Payment → Access automation chain (tenant-wide, independent of any router) -->
   <div class="hd-auto">
     <h3><i class="fas fa-bolt me-2" style="color:var(--primary-color)"></i>Payment → Access Automation</h3>
-    <p class="sub">Every link that has to hold for a customer to pay and be connected without anyone touching anything.</p>
+    <p class="sub">Every link that has to hold for a customer to pay and be connected without anyone touching anything. Checks are scoped to how <em>you</em> collect — anything shared across all ISPs is grouped separately and reported to FortuNett, not to you.</p>
     <div class="hd-verdict loading" id="auto-verdict">
       <span class="v-icon"><span class="hd-spinner"></span></span>
-      <div><h4>Checking the chain…</h4><p>Gateway, callbacks, schema, routers and the last 7 days of live payments.</p></div>
+      <div><h4>Checking the chain…</h4><p>How you collect, your routers and packages, and the last 7 days of live payments.</p></div>
     </div>
     <div class="hd-auto-groups" id="auto-groups"></div>
   </div>

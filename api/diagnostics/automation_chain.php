@@ -1,15 +1,26 @@
 <?php
 /**
- * End-to-end automation verification: money in → internet on.
+ * End-to-end automation verification for ONE tenant: money in → internet on.
  *
- * Walks every link in the chain that has to hold for "customer pays, customer
- * gets connected, nobody touches anything" to be true, and reports which link
- * is broken. Grouped so a failure is immediately attributable:
+ * Two things had to change about this file, and they are the same thing:
  *
- *   collection  — can money reach us and be recognised?
- *   schema      — will the handlers survive writing it down?
- *   activation  — does confirmed money turn into router access?
- *   evidence    — what actually happened over the last 7 days
+ *  1. It checked every link as though every tenant collected the same way.
+ *     A tenant on the FortuNett shared paybill was told "No M-Pesa API gateway
+ *     saved for this tenant — nothing can be collected automatically" and sent
+ *     to add Daraja credentials they will never have. A tenant on a manual
+ *     paybill was told to register C2B, which cannot be done without an API.
+ *     Both are FAIL rows that describe a working system.
+ *
+ *  2. It reported PLATFORM faults as the tenant's to fix. The schema, the
+ *     crons and the shared paybill are one installation serving everyone, so a
+ *     single fault appeared identically on every tenant's page, each time
+ *     phrased as an instruction the tenant could not carry out — a crontab line
+ *     for cron/stk_poll.php, handed to someone with no shell. Those checks now
+ *     live at super_admin/diagnostics.php, checked once for the installation,
+ *     and appear here only as a single honest "FortuNett is aware" row.
+ *
+ * What remains is what the tenant can actually act on: how they collect, their
+ * routers, their packages, and what their last 7 days actually did.
  *
  * Everything is read-only. Counts come from the tenant's own rows only.
  *
@@ -32,10 +43,10 @@ $tenantId = (int)$t->fetchColumn();
 if (!$tenantId) { ob_clean(); echo json_encode(['success' => false, 'error' => 'No tenant']); exit; }
 
 $groups = [
-    'collection' => ['title' => 'Collecting the money',   'checks' => []],
-    'schema'     => ['title' => 'Recording it safely',    'checks' => []],
-    'activation' => ['title' => 'Granting access',        'checks' => []],
-    'evidence'   => ['title' => 'Last 7 days',            'checks' => []],
+    'collection' => ['title' => 'Collecting the money', 'checks' => []],
+    'activation' => ['title' => 'Granting access',      'checks' => []],
+    'evidence'   => ['title' => 'Last 7 days',          'checks' => []],
+    'platform'   => ['title' => 'Handled by FortuNett', 'checks' => []],
 ];
 
 $add = function (string $group, string $label, string $level, string $detail, ?string $action = null) use (&$groups) {
@@ -43,181 +54,129 @@ $add = function (string $group, string $label, string $level, string $detail, ?s
 };
 
 // ═══ A. Collection ════════════════════════════════════════════════════════════
+// Which links apply at all depends on HOW this tenant collects. tenantC2BStatus()
+// is the one place that decides, and it is the same function that drives the
+// banner on payments.php — so the two pages cannot contradict each other.
 
-// 1. M-Pesa gateway
-$gw = null;
-try {
-    $g = $pdo->prepare("SELECT * FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa_api' ORDER BY id DESC LIMIT 1");
-    $g->execute([$tenantId]);
-    $gw = $g->fetch(PDO::FETCH_ASSOC) ?: null;
-} catch (Throwable $_e) {}
+require_once __DIR__ . '/../../includes/c2b_registration.php';
+$c2b  = tenantC2BStatus($pdo, $tenantId);
+$mode = $c2b['mode'];   // 'direct' (own API) | 'manual_paybill' | 'platform'
 
-$creds = [];
-if ($gw) {
+if ($mode === 'direct') {
+    $env = strtolower((string)($c2b['environment'] ?? 'sandbox'));
+    if ($env !== 'live' && $env !== 'production') {
+        $add('collection', 'Your M-Pesa credentials', 'fail',
+            "Complete, but the environment is '{$env}'. Sandbox returns a success code and never pushes to a real phone, "
+            . 'so every test looks like it worked and no customer is ever charged.',
+            'Switch to live under Settings → Payments once Safaricom has approved shortcode ' . $c2b['shortcode'] . '.');
+    } else {
+        $add('collection', 'Your M-Pesa credentials', 'ok',
+            'Live on shortcode ' . $c2b['shortcode'] . '. Payments go straight into your own account.');
+    }
+
+    // The callback URL is only the tenant's to get right when the push leaves
+    // their own credentials. On the shared paybill it is a platform value, so
+    // asking them about it was noise.
     try {
         require_once __DIR__ . '/../../includes/credential_helper.php';
-        $creds = decrypt_gateway_credentials($gw['credentials']) ?: [];
-    } catch (Throwable $_e) { $creds = []; }
-}
+        $gwSt = $pdo->prepare("
+            SELECT credentials FROM payment_gateways
+            WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1
+            ORDER BY is_default DESC, id ASC LIMIT 1");
+        $gwSt->execute([$tenantId]);
+        $cb = (string)((decrypt_gateway_credentials((string)$gwSt->fetchColumn()) ?: [])['callback_url'] ?? '');
 
-if (!$gw) {
-    $add('collection', 'M-Pesa gateway', 'fail',
-        'No M-Pesa API gateway saved for this tenant. Nothing can be collected automatically.',
-        'Add your Daraja credentials under Settings → Payment Gateways.');
-} else {
-    $missing = [];
-    foreach (['consumer_key' => 'Consumer Key', 'consumer_secret' => 'Consumer Secret',
-              'passkey' => 'Passkey', 'shortcode' => 'Shortcode'] as $k => $label2) {
-        if (empty($creds[$k])) $missing[] = $label2;
+        if ($cb === '') {
+            $add('collection', 'Your STK callback URL', 'warn',
+                'Not set — it is derived from the request host at push time. That works from a browser but not from a '
+                . 'scheduled job.',
+                'Set it explicitly to https://<your subdomain>/api/payment/callback.php under Settings → Payments.');
+        } elseif (preg_match('/^(localhost|127\.|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i',
+                             (string)(parse_url($cb, PHP_URL_HOST) ?: ''))) {
+            $add('collection', 'Your STK callback URL', 'fail',
+                $cb . ' points at a private address. Safaricom cannot reach it, so no confirmation will ever arrive and '
+                . 'every payment sits pending until the reconciliation job catches it.',
+                'Use your public https subdomain under Settings → Payments.');
+        } elseif (stripos($cb, 'mpesa') !== false) {
+            $add('collection', 'Your STK callback URL', 'fail',
+                'The URL contains the word "mpesa". Safaricom rejects callback URLs containing it — that is why these '
+                . 'endpoints live under /api/payment/ rather than /api/mpesa/.',
+                'Change the path to /api/payment/callback.php under Settings → Payments.');
+        } elseif (stripos($cb, 'https://') !== 0) {
+            $add('collection', 'Your STK callback URL', 'warn', $cb . ' is not HTTPS.');
+        } else {
+            $add('collection', 'Your STK callback URL', 'ok', $cb);
+        }
+    } catch (Throwable $e) {
+        $add('collection', 'Your STK callback URL', 'warn', $e->getMessage());
     }
-    $env = strtolower((string)($creds['environment'] ?? 'sandbox'));
-    if ($missing) {
-        $add('collection', 'M-Pesa gateway', 'fail',
-            'Missing: ' . implode(', ', $missing) . '.',
-            'Complete the credentials — an incomplete set fails at token exchange, before any STK push is sent.');
-    } elseif ($env !== 'live' && $env !== 'production') {
-        $add('collection', 'M-Pesa gateway', 'warn',
-            "Credentials complete but the environment is '{$env}'. Sandbox returns a success code and never pushes to a real phone, "
-            . 'so every test looks like it worked and no customer is ever charged.',
-            'Switch to live once Safaricom has approved the shortcode.');
+
+    // C2B is what captures a customer who pays the paybill from their own
+    // M-Pesa menu instead of through your portal. Only meaningful with an API.
+    if (!empty($c2b['active'])) {
+        $add('collection', 'Direct paybill capture (C2B)', 'ok',
+            'Registered' . ($c2b['registered_at'] ? ' ' . $c2b['registered_at'] : '')
+            . '. A customer who pays ' . $c2b['shortcode'] . ' from their own M-Pesa menu is captured and reconnected '
+            . 'without any STK push.');
     } else {
-        $add('collection', 'M-Pesa gateway', 'ok', 'Live, shortcode ' . $creds['shortcode'] . '.');
+        $add('collection', 'Direct paybill capture (C2B)', 'fail',
+            'Your C2B URLs are not registered with Safaricom. Payments made straight to ' . $c2b['shortcode']
+            . ' — the ones where the customer never opens your portal — arrive nowhere. Only STK pushes started from '
+            . 'your own pages are captured.',
+            'Open Settings → Payments and re-save the gateway; registration runs automatically.');
     }
-}
-
-// 2. Callback URL
-$callbackUrl = (string)($creds['callback_url'] ?? '');
-if ($callbackUrl === '') {
-    $add('collection', 'STK callback URL', 'warn',
-        'Not set — it will be auto-derived from the request host at push time. That works from the browser but not from cron.',
-        'Set it explicitly to https://<your subdomain>/api/payment/callback.php.');
+} elseif ($mode === 'manual_paybill') {
+    // Not a fault the tenant can clear with a button, and pretending otherwise
+    // is what left operators hunting a "broken" C2B registration that a manual
+    // paybill can never have.
+    $add('collection', 'How you collect', 'warn',
+        $c2b['reason']);
 } else {
-    $host = parse_url($callbackUrl, PHP_URL_HOST) ?: '';
-    $isLocal = preg_match('/^(localhost|127\.|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i', $host);
-    if ($isLocal) {
-        $add('collection', 'STK callback URL', 'fail',
-            $callbackUrl . ' points at a private address. Safaricom cannot reach it, so no callback will ever arrive.');
-    } elseif (stripos($callbackUrl, 'mpesa') !== false) {
-        $add('collection', 'STK callback URL', 'fail',
-            'The URL contains the word "mpesa". Safaricom rejects callback URLs containing it — this is why the endpoints '
-            . 'live under /api/payment/ rather than /api/mpesa/.',
-            'Rename the path to /api/payment/callback.php.');
-    } elseif (!str_starts_with($callbackUrl, 'https://')) {
-        $add('collection', 'STK callback URL', 'warn', $callbackUrl . ' is not HTTPS.');
+    // Shared paybill. Whether this works is a PLATFORM question, so it is
+    // answered from the platform config rather than from anything the tenant
+    // owns — and it is never phrased as their job.
+    $plat = [];
+    try { $plat = $pdo->query("SELECT * FROM platform_mpesa_config WHERE id = 1 LIMIT 1")->fetch(PDO::FETCH_ASSOC) ?: []; } catch (Throwable $e) {}
+
+    $complete = $plat
+        && trim((string)($plat['consumer_key'] ?? '')) !== ''
+        && trim((string)($plat['consumer_secret'] ?? '')) !== ''
+        && trim((string)($plat['passkey'] ?? '')) !== ''
+        && trim((string)($plat['shortcode'] ?? '')) !== '';
+    $live = in_array(strtolower((string)($plat['environment'] ?? 'sandbox')), ['live', 'production'], true);
+
+    if ($complete && $live) {
+        $add('collection', 'How you collect', 'ok',
+            'Through the FortuNett shared paybill ' . $plat['shortcode'] . '. Customer payments are captured and '
+            . 'activated automatically, and settled to you on release — you do not need M-Pesa credentials of your own. '
+            . 'Add your own under Settings → Payments only if you want the money to land in your account directly.');
     } else {
-        $add('collection', 'STK callback URL', 'ok', $callbackUrl);
+        $add('collection', 'How you collect', 'fail',
+            'You collect through the FortuNett shared paybill, and it is not currently able to take payments'
+            . ($complete ? ' — it is in sandbox, which never charges a real phone.' : ' — its credentials are incomplete.')
+            . ' This is a FortuNett platform setting; nothing in your own settings affects it.',
+            'Contact FortuNett support. Adding your own Daraja credentials under Settings → Payments also removes this '
+            . 'dependency entirely.');
     }
 }
 
-// 3. C2B registration — this is what captures a direct paybill payment
-if (!empty($creds['c2b_registered'])) {
-    $add('collection', 'Direct paybill capture (C2B)', 'ok',
-        'Registered ' . ($creds['c2b_registered_at'] ?? '') . ' → ' . ($creds['c2b_confirmation_url'] ?? '?')
-        . '. A customer who pays your paybill from their own M-Pesa menu is captured without any STK push.');
-} else {
-    $add('collection', 'Direct paybill capture (C2B)', 'fail',
-        'C2B URLs are not registered with Safaricom. Payments made straight to your paybill — the ones where the customer '
-        . 'never touches the portal — arrive nowhere. Only STK pushes started from your own pages are captured.',
-        'Register C2B under Settings → Payment Gateways. This is the single change that makes direct-paybill PPPoE '
-        . 'renewals auto-activate.');
-}
-
-// 4. STK reconciliation cron
-$hb = cron_last_run($pdo, 'stk_poll');
-if (!$hb['ran']) {
-    $add('collection', 'STK reconciliation cron', 'fail',
-        'cron/stk_poll.php has never run on this deployment. Any callback Safaricom fails to deliver leaves the payment '
-        . 'stuck on pending forever and the customer never gets connected.',
-        'Add: */2 * * * * php /var/www/html/cron/stk_poll.php');
-} elseif ($hb['age'] > 900) {
-    $add('collection', 'STK reconciliation cron', 'fail',
-        'Last ran ' . cron_age_human($hb['age']) . '. It is supposed to run every 2 minutes — it has stopped.');
-} elseif ($hb['age'] > 300) {
-    $add('collection', 'STK reconciliation cron', 'warn', 'Last ran ' . cron_age_human($hb['age']) . ' (expected every 2 minutes).');
-} else {
-    $add('collection', 'STK reconciliation cron', 'ok', 'Last ran ' . cron_age_human($hb['age']) . '.');
-}
-
-// 5. Paybill payments that arrived but matched nobody
+// Paybill payments that arrived but matched nobody — the tenant's to resolve
+// whichever way they collect.
 require_once __DIR__ . '/../../includes/unmatched_payments.php';
 $orphans = count_unmatched_payments($pdo, $tenantId);
 if ($orphans > 0) {
-    $add('collection', 'Paybill references resolved', 'fail',
-        $orphans . ' payment(s) arrived on your paybill and could not be matched to a customer. The money is in your '
-        . 'account; nobody has been credited or connected.',
-        'Open Unmatched Payments and assign each one — crediting runs the same activation pipeline a matched payment would.');
+    $add('collection', 'Payments matched to a customer', 'fail',
+        $orphans . ' payment(s) arrived and could not be matched to a customer. The money is recorded; nobody has been '
+        . 'credited or connected.',
+        'Open Unclaimed Payments on the Payments page and assign each one — crediting runs the same activation '
+        . 'pipeline a matched payment would.');
 } else {
-    $add('collection', 'Paybill references resolved', 'ok',
-        'Every paybill payment resolved to a customer.');
+    $add('collection', 'Payments matched to a customer', 'ok', 'Every payment resolved to a customer.');
 }
 
-// ═══ B. Schema ════════════════════════════════════════════════════════════════
-// These two failures are why "paid but not connected" happens with no error
-// anywhere the operator can see: production runs STRICT_TRANS_TABLES, so an
-// out-of-range ENUM throws mid-handler and a missing column is a hard 1054 —
-// both land before the activation step.
+// ═══ B. Activation ════════════════════════════════════════════════════════════
+// This half is genuinely the tenant's: their routers, their packages.
 
-try {
-    $enumSt = $pdo->query("
-        SELECT COLUMN_TYPE FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clients' AND COLUMN_NAME = 'status'
-    ");
-    $colType = (string)($enumSt ? $enumSt->fetchColumn() : '');
-    $needed  = ['active', 'inactive', 'suspended', 'grace', 'pending', 'expired'];
-    $absent  = array_values(array_filter($needed, fn($v) => stripos($colType, "'" . $v . "'") === false));
-    if ($colType === '') {
-        $add('schema', 'clients.status accepts every state', 'warn', 'Could not read the column definition.');
-    } elseif ($absent) {
-        $add('schema', 'clients.status accepts every state', 'fail',
-            'Missing ENUM member(s): ' . implode(', ', $absent) . '. Writing one of these throws 1265 Data truncated under '
-            . 'strict mode, which surfaces to the customer as "Payment could not be initiated".',
-            'Run: php tools/repair_status_enums.php');
-    } else {
-        $add('schema', 'clients.status accepts every state', 'ok', 'All six states present.');
-    }
-} catch (Throwable $e) {
-    $add('schema', 'clients.status accepts every state', 'warn', $e->getMessage());
-}
-
-try {
-    $cols = $pdo->query("
-        SELECT COLUMN_NAME FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'mpesa_transactions'
-    ")->fetchAll(PDO::FETCH_COLUMN);
-    $want    = ['tenant_id', 'mpesa_receipt_number', 'raw_callback'];
-    $missing = array_values(array_diff($want, $cols));
-    if ($missing) {
-        $add('schema', 'mpesa_transactions has its callback columns', 'fail',
-            'Missing: ' . implode(', ', $missing) . '. That INSERT runs BEFORE activation in both C2B handlers, so the '
-            . 'handler aborts on a 1054 and the customer is never activated even though the money arrived.',
-            'Run: php tools/repair_status_enums.php (or the 2026-07-26 migration).');
-    } else {
-        $add('schema', 'mpesa_transactions has its callback columns', 'ok', 'tenant_id, mpesa_receipt_number, raw_callback all present.');
-    }
-} catch (Throwable $e) {
-    $add('schema', 'mpesa_transactions has its callback columns', 'warn', $e->getMessage());
-}
-
-try {
-    $pm = (string)$pdo->query("
-        SELECT COLUMN_TYPE FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'payment_method'
-    ")->fetchColumn();
-    if ($pm !== '' && stripos($pm, 'enum') === 0 && stripos($pm, "'mpesa_paybill'") === false) {
-        $add('schema', 'payments.payment_method accepts paybill', 'fail',
-            "The ENUM has no 'mpesa_paybill' member, so paybill payments are silently written with a blank method.",
-            'Run: php tools/repair_status_enums.php');
-    } else {
-        $add('schema', 'payments.payment_method accepts paybill', 'ok',
-            stripos($pm, 'enum') === 0 ? 'mpesa_paybill accepted.' : 'Free-text column — nothing to constrain.');
-    }
-} catch (Throwable $e) {
-    $add('schema', 'payments.payment_method accepts paybill', 'warn', $e->getMessage());
-}
-
-// ═══ C. Activation ════════════════════════════════════════════════════════════
-
-// Router availability — autoProvisionClient() takes the first ACTIVE router
 try {
     $rs = $pdo->prepare("SELECT id, name, status, vpn_ip, ip_address, api_port FROM mikrotik_routers WHERE tenant_id = ? ORDER BY id");
     $rs->execute([$tenantId]);
@@ -225,12 +184,13 @@ try {
     $active  = array_values(array_filter($routers, fn($r) => $r['status'] === 'active'));
 
     if (!$routers) {
-        $add('activation', 'Provisioning target', 'fail', 'No routers registered for this tenant.');
+        $add('activation', 'Provisioning target', 'fail', 'No routers registered.',
+            'Add your router on the Routers page.');
     } elseif (!$active) {
         $add('activation', 'Provisioning target', 'fail',
-            count($routers) . ' router(s) registered but none has status "active". autoProvisionClient() selects the first '
-            . 'ACTIVE router and gives up if there is none — every paid customer will queue in pending_provisions instead of '
-            . 'being connected.',
+            count($routers) . ' router(s) registered but none has status "active". Provisioning selects the first '
+            . 'ACTIVE router and gives up if there is none — every paid customer queues for retry instead of being '
+            . 'connected.',
             'Set the router status to active on the Routers page once its tunnel is up.');
     } else {
         $r    = $active[0];
@@ -254,14 +214,13 @@ try {
     $add('activation', 'Provisioning target', 'warn', $e->getMessage());
 }
 
-// Packages without a speed provision uncapped
 try {
     $ps = $pdo->prepare("SELECT COUNT(*) FROM packages WHERE tenant_id = ? AND COALESCE(download_speed,0) <= 0");
     $ps->execute([$tenantId]);
     $noSpeed = (int)$ps->fetchColumn();
     if ($noSpeed > 0) {
         $add('activation', 'Every package carries a speed', 'warn',
-            $noSpeed . ' package(s) have no download_speed. Those provision UNCAPPED — the customer gets line speed '
+            $noSpeed . ' package(s) have no download speed. Those provision UNCAPPED — the customer gets line speed '
             . 'regardless of what they paid.',
             'Set a download speed on each package.');
     } else {
@@ -271,40 +230,25 @@ try {
     $add('activation', 'Every package carries a speed', 'warn', $e->getMessage());
 }
 
-// Provisioning retry queue + its cron
+// The retry queue is the tenant's problem only in that it tells them customers
+// are waiting; whether it drains is a cron, i.e. platform. Report the backlog
+// here and leave the cron to the platform row below.
 try {
     $qs = $pdo->prepare("SELECT COUNT(*) FROM pending_provisions WHERE tenant_id = ?");
     $qs->execute([$tenantId]);
     $queued = (int)$qs->fetchColumn();
 } catch (Throwable $e) { $queued = 0; }
 
-$hbR = cron_last_run($pdo, 'retry_provisions');
-if (!$hbR['ran']) {
-    $add('activation', 'Provisioning retry cron', $queued > 0 ? 'fail' : 'warn',
-        'cron/retry_provisions.php has never run'
-        . ($queued > 0 ? " and {$queued} customer(s) are waiting in the retry queue." : '.')
-        . ' A payment that lands while the router is unreachable is queued here and never retried.',
-        'Add: */5 * * * * php /var/www/html/cron/retry_provisions.php');
+if ($queued > 0) {
+    $add('activation', 'Customers waiting to be connected', 'fail',
+        $queued . ' customer(s) paid while their router was unreachable and are queued for retry. They are retried '
+        . 'automatically every 5 minutes once the router answers.',
+        'Bring the router back online — the queue drains on its own.');
 } else {
-    $lvl = ($hbR['age'] > 1800) ? 'fail' : (($hbR['age'] > 600) ? 'warn' : 'ok');
-    $add('activation', 'Provisioning retry cron', $queued > 0 && $lvl === 'ok' ? 'warn' : $lvl,
-        'Last ran ' . cron_age_human($hbR['age'])
-        . ($queued > 0 ? " · {$queued} customer(s) currently queued for retry." : ' · queue empty.'));
+    $add('activation', 'Customers waiting to be connected', 'ok', 'Nobody is queued — every payment provisioned.');
 }
 
-// Expiry enforcement cron
-$hbE = cron_last_run($pdo, 'check_expiry');
-if (!$hbE['ran']) {
-    $add('activation', 'Expiry enforcement cron', 'fail',
-        'cron/check_expiry.php has never run. Expired customers stay online indefinitely — the enforcement sweep that cuts '
-        . 'live sessions for non-active clients lives in this script.',
-        'Add: */15 * * * * php /var/www/html/cron/check_expiry.php');
-} else {
-    $add('activation', 'Expiry enforcement cron', $hbE['age'] > 3600 ? 'fail' : ($hbE['age'] > 1800 ? 'warn' : 'ok'),
-        'Last ran ' . cron_age_human($hbE['age']) . ' (expected every 15 minutes).');
-}
-
-// ═══ D. Evidence — what the last 7 days actually did ══════════════════════════
+// ═══ C. Evidence — what the last 7 days actually did ══════════════════════════
 
 try {
     $ev = $pdo->prepare("
@@ -323,15 +267,15 @@ try {
 
     if ($tot === 0) {
         $add('evidence', 'Payments that produced access', 'warn',
-            'No completed payments in the last 7 days — nothing to verify against. Make one live payment to prove the chain '
-            . 'end to end, then re-run this check.');
+            'No completed payments in the last 7 days — nothing to verify against. Make one live payment to prove the '
+            . 'chain end to end, then re-run this check.');
     } elseif ($gap === 0) {
         $add('evidence', 'Payments that produced access', 'ok',
             "{$tot}/{$tot} completed payments left the customer active with a future expiry. Full automation is working.");
     } else {
         $add('evidence', 'Payments that produced access', 'fail',
             "{$act}/{$tot} completed payments left the customer active. {$gap} customer(s) paid and are not connected.",
-            'Run: php tools/diagnose_autoactivation.php for the per-customer breakdown.');
+            'Check the Provisioning target above first; if that is green, contact FortuNett support with this figure.');
     }
 } catch (Throwable $e) {
     $add('evidence', 'Payments that produced access', 'warn', $e->getMessage());
@@ -347,36 +291,67 @@ try {
     $st->execute([$tenantId]);
     $stuck = (int)$st->fetchColumn();
     if ($stuck > 0) {
-        $add('evidence', 'Stuck STK transactions', 'fail',
-            $stuck . ' transaction(s) older than 10 minutes still have no result code. Their callback never arrived and the '
-            . 'reconciliation poller has not resolved them either.',
-            'Confirm cron/stk_poll.php is in crontab, then check whether a CDN or WAF is intercepting the callback URL.');
+        $add('evidence', 'Stuck M-Pesa transactions', 'fail',
+            $stuck . ' transaction(s) older than 10 minutes still have no result code. Their callback never arrived and '
+            . 'the reconciliation job has not resolved them either.',
+            'This is a platform-side job. Report the figure to FortuNett support.');
     } else {
-        $add('evidence', 'Stuck STK transactions', 'ok', 'Every transaction older than 10 minutes has a final result code.');
+        $add('evidence', 'Stuck M-Pesa transactions', 'ok', 'Every transaction older than 10 minutes has a final result.');
     }
 } catch (Throwable $e) {
-    $add('evidence', 'Stuck STK transactions', 'warn', $e->getMessage());
+    $add('evidence', 'Stuck M-Pesa transactions', 'warn', $e->getMessage());
 }
 
+// ═══ D. Handled by FortuNett ══════════════════════════════════════════════════
+// The shared half, collapsed to one row per concern and never phrased as
+// something the tenant should do. Detail lives on super_admin/diagnostics.php,
+// where it is checked once for the whole installation.
+
+$schemaFaults = [];
 try {
-    $sp = $pdo->prepare("
-        SELECT AVG(TIMESTAMPDIFF(SECOND, p.payment_date, rs.deployed_at)) AS avg_secs, COUNT(*) AS n
-        FROM payments p
-        JOIN router_services rs ON rs.client_id = p.client_id AND rs.tenant_id = p.tenant_id
-        WHERE p.tenant_id = ? AND p.status = 'completed'
-          AND p.payment_date >= NOW() - INTERVAL 7 DAY
-          AND rs.deployed_at >= p.payment_date
-    ");
-    $sp->execute([$tenantId]);
-    $lat = $sp->fetch(PDO::FETCH_ASSOC) ?: [];
-    if (!empty($lat['n'])) {
-        $secs = (int)round((float)$lat['avg_secs']);
-        $add('evidence', 'Payment → router access latency', $secs > 120 ? 'warn' : 'ok',
-            'Average ' . ($secs < 60 ? $secs . 's' : intdiv($secs, 60) . 'm ' . ($secs % 60) . 's')
-            . ' across ' . (int)$lat['n'] . ' provisioning event(s).'
-            . ($secs > 120 ? ' Anything over ~2 minutes means the customer is waiting on the retry cron rather than the callback.' : ''));
+    $colType = (string)$pdo->query("
+        SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clients' AND COLUMN_NAME = 'status'")->fetchColumn();
+    foreach (['active', 'inactive', 'suspended', 'grace', 'pending', 'expired'] as $v) {
+        if ($colType !== '' && stripos($colType, "'" . $v . "'") === false) { $schemaFaults[] = 'clients.status'; break; }
     }
-} catch (Throwable $e) { /* router_services may be absent */ }
+} catch (Throwable $e) {}
+try {
+    $cols = $pdo->query("
+        SELECT COLUMN_NAME FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'mpesa_transactions'")->fetchAll(PDO::FETCH_COLUMN);
+    if (array_diff(['tenant_id', 'mpesa_receipt_number', 'raw_callback'], $cols)) $schemaFaults[] = 'mpesa_transactions';
+} catch (Throwable $e) {}
+
+if ($schemaFaults) {
+    $add('platform', 'Database is up to date', 'fail',
+        'This installation is missing a database migration (' . implode(', ', array_unique($schemaFaults)) . '). '
+        . 'Payments are recorded and then the handler stops before connecting the customer, with no error anywhere you '
+        . 'can see. Nothing in your own settings causes or fixes this.',
+        'Report it to FortuNett support — it is a one-command repair on the server.');
+} else {
+    $add('platform', 'Database is up to date', 'ok', 'No missing migrations on this installation.');
+}
+
+// The three jobs whose absence a tenant would otherwise experience as an
+// unexplained failure. Collapsed: the tenant does not need to know which.
+$jobIssues = [];
+foreach ([['stk_poll', 900, 'confirming payments'],
+          ['retry_provisions', 1800, 'retrying provisioning'],
+          ['check_expiry', 3600, 'enforcing expiry']] as [$name, $limit, $what]) {
+    $hb = cron_last_run($pdo, $name);
+    if (!$hb['ran'])            { $jobIssues[] = $what . ' (never run)'; }
+    elseif ($hb['age'] > $limit) { $jobIssues[] = $what . ' (stopped ' . cron_age_human((int)$hb['age']) . ' ago)'; }
+}
+
+if ($jobIssues) {
+    $add('platform', 'Background jobs running', 'fail',
+        'FortuNett\'s scheduled jobs are not running: ' . implode(', ', $jobIssues) . '. Until they are, a payment whose '
+        . 'confirmation is delayed may never complete, and expired customers may stay online.',
+        'Report it to FortuNett support.');
+} else {
+    $add('platform', 'Background jobs running', 'ok', 'Payment confirmation, provisioning retry and expiry enforcement are all current.');
+}
 
 // ── Roll up ───────────────────────────────────────────────────────────────────
 $counts = ['ok' => 0, 'warn' => 0, 'fail' => 0];
@@ -384,10 +359,22 @@ foreach ($groups as $g) {
     foreach ($g['checks'] as $c) { $counts[$c['level']] = ($counts[$c['level']] ?? 0) + 1; }
 }
 
+// A break the tenant cannot act on is reported differently from one they can —
+// telling someone to fix what is not theirs is the failure this page had.
+$platformFails = 0;
+foreach ($groups['platform']['checks'] as $c) if ($c['level'] === 'fail') $platformFails++;
+$ownFails = $counts['fail'] - $platformFails;
+
 if ($counts['fail'] > 0) {
     $verdict = ['level' => 'fail',
                 'title' => $counts['fail'] . ' break' . ($counts['fail'] === 1 ? '' : 's') . ' in the automation chain',
-                'message' => 'Payments will not reliably turn into internet access until these are cleared.'];
+                'message' => $ownFails === 0
+                    ? 'Everything on your side is configured correctly — the breaks below are on FortuNett\'s side and '
+                    . 'are being reported to them, not to you.'
+                    : ($platformFails > 0
+                        ? $ownFails . ' you can fix and ' . $platformFails . ' on FortuNett\'s side. Payments will not '
+                        . 'reliably turn into internet access until both are cleared.'
+                        : 'Payments will not reliably turn into internet access until these are cleared.')];
 } elseif ($counts['warn'] > 0) {
     $verdict = ['level' => 'warn',
                 'title' => 'Automation working, ' . $counts['warn'] . ' caveat' . ($counts['warn'] === 1 ? '' : 's'),
@@ -395,9 +382,15 @@ if ($counts['fail'] > 0) {
 } else {
     $verdict = ['level' => 'ok',
                 'title' => 'Full automation verified',
-                'message' => 'Money can arrive by STK push or direct paybill, is recorded without schema faults, and turns into '
-                           . 'router access without anyone intervening.'];
+                'message' => 'Money arrives, is recorded without faults, and turns into router access without anyone '
+                           . 'intervening.'];
 }
 
 ob_clean();
-echo json_encode(['success' => true, 'verdict' => $verdict, 'counts' => $counts, 'groups' => $groups]);
+echo json_encode([
+    'success'         => true,
+    'verdict'         => $verdict,
+    'counts'          => $counts,
+    'collection_mode' => $mode,
+    'groups'          => $groups,
+]);

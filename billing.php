@@ -139,19 +139,35 @@ if ($currentBill) {
 
 // --- Platform Collections (payments via FortuNett shared paybill) ---
 $platformCollections = [];
-$platformSummary = ['unreleased_amount' => 0, 'released_amount' => 0, 'unreleased_count' => 0, 'released_count' => 0];
+$platformSummary = ['unreleased_amount' => 0, 'released_amount' => 0, 'unreleased_count' => 0,
+                    'released_count' => 0, 'manual_amount' => 0, 'manual_count' => 0];
 try {
     $pdo->exec("ALTER TABLE payments ADD COLUMN released_at DATETIME DEFAULT NULL");
 } catch (Exception $e) {}
 try {
     $pdo->exec("ALTER TABLE payments ADD COLUMN release_note VARCHAR(255) DEFAULT NULL");
 } catch (Exception $e) {}
+
+// A payment an admin RECORDED BY HAND is direct by definition: typing a receipt
+// into the system asserts the money is already in the ISP's own account. There
+// is no configuration under which it could be platform-held.
+//
+// It is nevertheless indistinguishable by payment_method -- record_manual.php
+// writes 'mpesa', byte for byte what stk_push.php writes -- so a mis-tagged
+// hand-entered receipt sat in this panel claiming FortuNett owed the ISP their
+// own money. Marking them here means the wrong rows are visible on the page
+// instead of only findable with a CLI tool, and they are kept out of the
+// headline figure so the panel never overstates what is owed.
+require_once __DIR__ . '/includes/payment_routing.php';
+$manualSql = manuallyRecordedSql('p');
 try {
     $pcStmt = $pdo->prepare("
-        SELECT id, amount, transaction_id, payment_date, released_at, release_note, notes
-        FROM payments
-        WHERE tenant_id = ? AND collection_type = 'platform' AND status = 'completed'
-        ORDER BY payment_date DESC
+        SELECT p.id, p.amount, p.transaction_id, p.payment_date, p.released_at, p.release_note,
+               p.notes, p.payment_method,
+               ({$manualSql}) AS hand_entered
+        FROM payments p
+        WHERE p.tenant_id = ? AND p.collection_type = 'platform' AND p.status = 'completed'
+        ORDER BY p.payment_date DESC
         LIMIT 100
     ");
     $pcStmt->execute([$tenant_id]);
@@ -159,15 +175,17 @@ try {
 
     $pcSumStmt = $pdo->prepare("
         SELECT
-            COALESCE(SUM(CASE WHEN released_at IS NULL THEN amount END), 0) AS unreleased_amount,
-            COALESCE(SUM(CASE WHEN released_at IS NOT NULL THEN amount END), 0) AS released_amount,
-            COUNT(CASE WHEN released_at IS NULL THEN 1 END) AS unreleased_count,
-            COUNT(CASE WHEN released_at IS NOT NULL THEN 1 END) AS released_count
-        FROM payments
-        WHERE tenant_id = ? AND collection_type = 'platform' AND status = 'completed'
+            COALESCE(SUM(CASE WHEN p.released_at IS NULL     AND NOT ({$manualSql}) THEN p.amount END), 0) AS unreleased_amount,
+            COALESCE(SUM(CASE WHEN p.released_at IS NOT NULL AND NOT ({$manualSql}) THEN p.amount END), 0) AS released_amount,
+            COUNT(CASE WHEN p.released_at IS NULL     AND NOT ({$manualSql}) THEN 1 END) AS unreleased_count,
+            COUNT(CASE WHEN p.released_at IS NOT NULL AND NOT ({$manualSql}) THEN 1 END) AS released_count,
+            COALESCE(SUM(CASE WHEN ({$manualSql}) THEN p.amount END), 0) AS manual_amount,
+            COUNT(CASE WHEN ({$manualSql}) THEN 1 END) AS manual_count
+        FROM payments p
+        WHERE p.tenant_id = ? AND p.collection_type = 'platform' AND p.status = 'completed'
     ");
     $pcSumStmt->execute([$tenant_id]);
-    $platformSummary = $pcSumStmt->fetch(PDO::FETCH_ASSOC) ?: $platformSummary;
+    $platformSummary = array_merge($platformSummary, $pcSumStmt->fetch(PDO::FETCH_ASSOC) ?: []);
 } catch (Exception $e) {}
 
 require_once __DIR__ . '/includes/credential_helper.php';
@@ -666,12 +684,24 @@ include 'includes/sidebar.php';
             These are customer payments collected via the FortuNett shared M-Pesa paybill on your behalf.
             The net amount (after platform fees) is remitted to your registered M-Pesa account within 1 business day of release.
         </div>
+        <?php if ((int)$platformSummary['manual_count'] > 0): ?>
+        <div style="padding:10px 20px;background:rgba(245,158,11,.07);border-bottom:1px solid rgba(245,158,11,.18);font-size:12px;color:#fcd34d;">
+            <i class="fas fa-triangle-exclamation" style="margin-right:6px;"></i>
+            <strong><?php echo (int)$platformSummary['manual_count']; ?> payment(s) totalling KES <?php echo number_format((float)$platformSummary['manual_amount'], 2); ?></strong>
+            below were recorded by hand and are tagged as platform-collected in error &mdash; a receipt you entered
+            yourself was already in your own account. They are <strong>excluded</strong> from the figures above, so
+            nothing here overstates what is owed to you. Ask FortuNett to run
+            <code style="background:rgba(255,255,255,.08);padding:1px 6px;border-radius:4px;">tools/repair_collection_type.php --undo-manual --apply</code>
+            to clear them from this list.
+        </div>
+        <?php endif; ?>
         <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
             <table class="billing-history-table">
                 <thead>
                     <tr>
                         <th>Date</th>
                         <th>Transaction ID</th>
+                        <th>Method</th>
                         <th class="text-end">Amount</th>
                         <th class="text-center">Status</th>
                         <th>Note</th>
@@ -681,13 +711,26 @@ include 'includes/sidebar.php';
                 <tbody>
                     <?php foreach ($platformCollections as $pc):
                         $isReleased = !empty($pc['released_at']);
+                        $isManual   = !empty($pc['hand_entered']);
                     ?>
-                    <tr>
+                    <tr<?php echo $isManual ? ' style="background:rgba(245,158,11,.05);"' : ''; ?>>
                         <td style="font-size:13px;color:#9a9a95;"><?php echo date('d M Y H:i', strtotime($pc['payment_date'])); ?></td>
                         <td style="font-family:monospace;font-size:12px;color:#cbd5e1;"><?php echo htmlspecialchars($pc['transaction_id']); ?></td>
+                        <td style="font-size:12px;color:#9a9a95;">
+                            <?php echo htmlspecialchars($pc['payment_method'] ?: '—'); ?>
+                            <?php if ($isManual): ?>
+                            <div style="margin-top:3px;font-size:11px;color:#fcd34d;font-weight:600;">
+                                <i class="fas fa-pen" style="margin-right:4px;"></i>recorded by hand
+                            </div>
+                            <?php endif; ?>
+                        </td>
                         <td class="text-end" style="font-weight:600;color:#e2e2e0;">KES <?php echo number_format($pc['amount'], 2); ?></td>
                         <td class="text-center">
-                            <?php if ($isReleased): ?>
+                            <?php if ($isManual): ?>
+                            <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.25);">
+                                Tagged in error
+                            </span>
+                            <?php elseif ($isReleased): ?>
                             <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.25);">
                                 <span style="width:5px;height:5px;border-radius:50%;background:#10b981;"></span>Disbursed
                             </span>
@@ -702,7 +745,7 @@ include 'includes/sidebar.php';
                     </tr>
                     <?php endforeach; ?>
                     <?php if (empty($platformCollections)): ?>
-                    <tr><td colspan="6" style="text-align:center;color:#6B7280;padding:20px;">No platform-collected payments yet.</td></tr>
+                    <tr><td colspan="7" style="text-align:center;color:#6B7280;padding:20px;">No platform-collected payments yet.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>

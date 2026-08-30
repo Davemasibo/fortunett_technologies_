@@ -240,7 +240,7 @@ include 'includes/sidebar.php';
                 <option value="africastalking">Africa's Talking</option>
             </select>
             <label>API URL</label>
-            <input type="text" name="api_url" value="<?php echo htmlspecialchars($config['api_url'] ?? 'https://api.talksasa.com/v1/sms/send'); ?>">
+            <input type="text" name="api_url" value="<?php echo htmlspecialchars(smsNormalizeApiUrl($config['api_url'] ?? null)); ?>">
             <label>API Key</label>
             <input type="text" name="api_key" value="<?php echo htmlspecialchars($config['api_key'] ?? ''); ?>" placeholder="API Key">
             <label>Sender ID</label>

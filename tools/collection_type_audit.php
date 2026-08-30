@@ -6,6 +6,7 @@
  *
  *   php tools/collection_type_audit.php
  *   php tools/collection_type_audit.php --tenant=7
+ *   php tools/collection_type_audit.php --subdomain=ecolandattic
  *
  * Writes nothing. Run this before and after tools/repair_collection_type.php.
  *
@@ -40,13 +41,24 @@ require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/../includes/payment_routing.php';
 
 $onlyTenant = 0;
+$onlySubdomain = '';
 foreach ($argv as $a) {
-    if (strpos($a, '--tenant=') === 0) $onlyTenant = (int)substr($a, 9);
+    if (strpos($a, '--tenant=') === 0)    $onlyTenant    = (int)substr($a, 9);
+    if (strpos($a, '--subdomain=') === 0) $onlySubdomain = trim(substr($a, 12));
 }
 
+// Scoping by subdomain as well as by id: the operator knows a tenant by the
+// host in their browser, not by a row id, and looking the id up first is an
+// extra step in exactly the moment someone is chasing a money discrepancy.
 $sql = "SELECT id, company_name, subdomain FROM tenants";
 $params = [];
-if ($onlyTenant) { $sql .= " WHERE id = ?"; $params[] = $onlyTenant; }
+if ($onlyTenant) {
+    $sql .= " WHERE id = ?";
+    $params[] = $onlyTenant;
+} elseif ($onlySubdomain !== '') {
+    $sql .= " WHERE subdomain = ?";
+    $params[] = $onlySubdomain;
+}
 $sql .= " ORDER BY id";
 $st = $pdo->prepare($sql);
 $st->execute($params);

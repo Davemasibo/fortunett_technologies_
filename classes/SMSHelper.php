@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../includes/sms_config.php';
+
 class SMSHelper {
     private $pdo;
     private $tenant_id;
@@ -11,25 +13,24 @@ class SMSHelper {
         $this->loadConfig();
     }
 
-    private function loadConfig() {
-        $stmt = $this->pdo->prepare("SELECT * FROM sms_configurations WHERE tenant_id = ? AND is_active = 1 LIMIT 1");
-        $stmt->execute([$this->tenant_id]);
-        $this->config = $stmt->fetch(PDO::FETCH_ASSOC);
-        $this->using_platform = false;
+    /**
+     * A sender bound to the platform credentials and to no tenant.
+     *
+     * Used by the super-admin test send: it must prove the PLATFORM key works
+     * without a tenant's own row shadowing it, and must not write a test
+     * message into any tenant's outbox.
+     */
+    public static function platform($pdo): self
+    {
+        return new self($pdo, 0);
+    }
 
-        if (!$this->config) {
-            // Fall back to platform SMS config
-            try {
-                $pStmt = $this->pdo->query("SELECT * FROM platform_sms_config WHERE id = 1 AND is_active = 1 LIMIT 1");
-                $platConfig = $pStmt ? $pStmt->fetch(PDO::FETCH_ASSOC) : null;
-                if ($platConfig && !empty($platConfig['api_key'])) {
-                    $this->config = $platConfig;
-                    $this->using_platform = true;
-                }
-            } catch (Exception $e) {
-                // platform_sms_config table may not exist yet
-            }
-        }
+    private function loadConfig() {
+        // Which credentials a tenant sends with is decided in one place —
+        // see includes/sms_config.php. In particular a tenant row that exists
+        // but carries no API key is treated as absent, so it cannot shadow the
+        // platform key the way it used to.
+        [$this->config, $this->using_platform] = smsResolveConfig($this->pdo, $this->tenant_id);
     }
 
     public function isUsingPlatform(): bool {
@@ -59,15 +60,20 @@ class SMSHelper {
     }
 
     private function sendViaTalkSasa($phone, $message) {
-        $url      = trim((string)($this->config['api_url'] ?? 'https://bulksms.talksasa.com/api/v3/sms/send'));
+        $url      = smsNormalizeApiUrl($this->config['api_url'] ?? null);
         // Trimmed because a token pasted from a dashboard very often carries a
         // trailing newline or space, and a bearer header with one is rejected
         // as "Unauthenticated." — indistinguishable from a wrong key.
         $apiKey   = trim((string)($this->config['api_key'] ?? ''));
         $senderId = trim((string)($this->config['sender_id'] ?? ''));
 
-        // Mock sending if no real key (localhost testing)
-        if (empty($apiKey) || $apiKey === 'TEST_KEY') {
+        // Simulation is opt-in via an explicit sentinel key and nothing else.
+        // This used to also trigger on an EMPTY key, so a deployment with no
+        // credentials at all reported every message as sent and logged it as
+        // 'sent' — the operator had no way to discover SMS was never leaving
+        // the server. An empty key now falls through to send() returning the
+        // honest "not configured" error.
+        if ($apiKey === 'TEST_KEY') {
             $via = $this->using_platform ? ' (platform)' : '';
             return ['success' => true, 'message' => 'Simulated sent to ' . $phone . $via];
         }
@@ -166,6 +172,11 @@ class SMSHelper {
     }
 
     private function logMessage($clientId, $phone, $message, $response) {
+        // SMSHelper::platform() has no tenant to file the message under, and
+        // sms_outbox.tenant_id is not nullable — a super-admin test send must
+        // not land in some tenant's message history either way.
+        if (!$this->tenant_id) return;
+
         $status           = $response['success'] ? 'sent' : 'failed';
         $providerResponse = is_array($response) ? json_encode($response) : $response;
         $stmt = $this->pdo->prepare("INSERT INTO sms_outbox (tenant_id, client_id, recipient_phone, message, status, provider_response) VALUES (?, ?, ?, ?, ?, ?)");
@@ -192,7 +203,7 @@ class SMSHelper {
         $provider = trim((string)$provider);
         $apiKey   = trim((string)$apiKey);
         $senderId = trim((string)$senderId);
-        $apiUrl   = trim((string)$apiUrl);
+        $apiUrl   = smsNormalizeApiUrl($apiUrl);
 
         $stmt = $this->pdo->prepare("INSERT INTO sms_configurations (tenant_id, provider, api_key, sender_id, api_url) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE provider = VALUES(provider), api_key = VALUES(api_key), sender_id = VALUES(sender_id), api_url = VALUES(api_url)");
         return $stmt->execute([$this->tenant_id, $provider, $apiKey, $senderId, $apiUrl]);
