@@ -260,6 +260,16 @@ Rules that exist because M-Pesa has no chargeback:
 
 Config is a CLI, not a UI: `php tools/payout_config.php` with no arguments prints the platform readiness and a per-tenant table of destination, opt-in, verification and amount owed, each row saying exactly what is blocking it. Dry run the sender with `php cron/disburse_payouts.php`; `--live` is required to send anything.
 
+### SMS Delivery
+`SMSHelper::sendViaTalkSasa()` had two failures that both showed up as "sent" or as raw provider HTML in the admin UI:
+
+- **cURL does not follow redirects by default.** When the stored `sms_configurations.api_url` went stale, TalkSasa answered `301` and the operator was shown an Apache *"Moved Permanently"* page as if it were an SMS error. `CURLOPT_FOLLOWLOCATION` alone is not enough — without `CURLOPT_POSTREDIR = CURL_REDIR_POST_ALL` cURL silently downgrades the retry to GET and drops the message body. An HTML response body is now reported as "your API URL is wrong", naming the effective URL, instead of being pasted into the page.
+- **HTTP 200 is not delivery.** These APIs return an error status inside a 200 body, so a rejected message was logged as `sent`. The body's `status` field is checked, and 401/403 is named as a bad API key rather than a generic provider error.
+
+`renderPlaceholders()` is public and used by both `sendTemplate()` and `sms.php`, so a message typed by hand or edited after picking a template gets the same substitution a stored template does — previously editing one word of a template sent the customer a literal `{name}`. The Send SMS box has a template picker that only *fills* the textarea (the message still goes through the normal send path), a GSM-7 segment counter, and a preview of the fields the page knows.
+
+`sms.php`'s send handler looked its recipient up with `SELECT phone FROM clients WHERE id = ?` — **no `tenant_id`** — so any logged-in tenant could message another tenant's customer by editing the form. It is now tenant-scoped like every other `clients` query.
+
 ### Schema Guards
 `includes/schema_guard.php` repairs schema drift in place when a deployment is missing a migration. Call `ensurePaymentStatusEnums($pdo)` at the top of any endpoint on the payment path. One-shot repair: `php tools/repair_status_enums.php` (or `sql/migrations/2026-07-26-payment-autoactivation.sql`).
 

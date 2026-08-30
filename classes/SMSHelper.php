@@ -69,10 +69,16 @@ class SMSHelper {
             return ['success' => true, 'message' => 'Simulated sent to ' . $phone . $via];
         }
 
+        // Both field spellings are sent because TalkSasa renamed 'phone' to
+        // 'recipient' between API versions and ignores whichever it does not
+        // use. Sending both means one stored api_url change does not also need
+        // a code change.
         $data = [
             'api_key'   => $apiKey,
             'sender_id' => $senderId,
             'phone'     => $phone,
+            'recipient' => $phone,
+            'type'      => 'plain',
             'message'   => $message,
         ];
 
@@ -80,19 +86,70 @@ class SMSHelper {
         curl_setopt($ch, CURLOPT_POST, 1);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Accept: application/json']);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Accept: application/json',
+            // v3 authenticates by bearer token; v1 reads api_key from the body.
+            // An endpoint that wants neither ignores the header.
+            'Authorization: Bearer ' . $apiKey,
+        ]);
         curl_setopt($ch, CURLOPT_TIMEOUT, 15);
 
-        $result   = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        // The provider answers a bare 301 when the stored api_url is out of
+        // date, and cURL does NOT follow redirects by default — so the send
+        // failed with an Apache "Moved Permanently" page shown to the operator
+        // as if it were an SMS error. POSTREDIR_ALL is what makes the retry a
+        // POST as well; without it cURL silently downgrades to GET and the
+        // message body is dropped.
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_POSTREDIR, CURL_REDIR_POST_ALL);
+        curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
+
+        $result    = curl_exec($ch);
+        $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $finalUrl  = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+        $curlError = curl_error($ch);
         curl_close($ch);
 
+        if ($curlError) {
+            return ['success' => false, 'message' => 'Could not reach the SMS provider: ' . $curlError];
+        }
+
+        // An HTML body means we reached a web page, not an API — almost always a
+        // wrong api_url. Say that instead of pasting an Apache error page into
+        // the UI, which is what the operator actually saw.
+        $looksHtml = stripos(ltrim((string)$result), '<') === 0;
+        if ($looksHtml) {
+            return [
+                'success' => false,
+                'message' => 'The SMS API URL is wrong — ' . $finalUrl . ' returned a web page, not an API response. '
+                           . 'Fix it under Settings on this page (TalkSasa\'s current endpoint is '
+                           . 'https://bulksms.talksasa.com/api/v3/sms/send).',
+            ];
+        }
+
+        $json = json_decode((string)$result, true);
+
         if ($httpCode >= 200 && $httpCode < 300) {
+            // A 200 is not proof of delivery. These APIs return an error status
+            // in the body with an HTTP 200, so treating the code alone as
+            // success logged failed messages as 'sent'.
+            $status = strtolower((string)($json['status'] ?? 'success'));
+            if (is_array($json) && in_array($status, ['error', 'failed', 'failure'], true)) {
+                $why = $json['message'] ?? $json['error'] ?? 'the provider rejected the message';
+                return ['success' => false, 'message' => 'Provider rejected it: ' . (is_string($why) ? $why : json_encode($why))];
+            }
+
             $via = $this->using_platform ? ' (via platform SMS)' : '';
             return ['success' => true, 'response' => $result, 'message' => 'Sent' . $via];
         }
 
-        return ['success' => false, 'message' => 'Provider error (HTTP ' . $httpCode . '): ' . $result];
+        if ($httpCode === 401 || $httpCode === 403) {
+            return ['success' => false, 'message' => 'The SMS provider rejected your API key (HTTP ' . $httpCode . '). Check it under Settings.'];
+        }
+
+        $detail = is_array($json) ? ($json['message'] ?? json_encode($json)) : substr((string)$result, 0, 300);
+        return ['success' => false, 'message' => 'Provider error (HTTP ' . $httpCode . ') from ' . $finalUrl . ': ' . $detail];
     }
 
     private function logMessage($clientId, $phone, $message, $response) {
@@ -129,16 +186,33 @@ class SMSHelper {
         $template = $tStmt->fetch(PDO::FETCH_ASSOC);
         if (!$template) return ['success' => false, 'message' => 'Template not found'];
 
-        $message = $template['template_content'];
-        $message = str_replace('{name}',           $client['full_name'],              $message);
-        $message = str_replace('{username}',       $client['mikrotik_username'] ?? '', $message);
-        $message = str_replace('{password}',       $client['mikrotik_password'] ?? '', $message);
-        $message = str_replace('{phone}',          $client['phone'] ?? '',             $message);
-        $message = str_replace('{account_number}', $client['account_number'] ?? '',    $message);
-        $message = str_replace('{expiry_date}',    $client['expiry_date'] ?? '',       $message);
-        $message = str_replace('{amount}',         number_format($client['package_price'] ?? 0), $message);
+        $message = $this->renderPlaceholders($template['template_content'], $client);
 
         return $this->send($client['phone'], $message, $clientId);
+    }
+
+    /**
+     * Fill {placeholders} from a client row.
+     *
+     * Public and used by sms.php as well, so a message typed by hand gets the
+     * same substitution a stored template does. Previously this lived inline in
+     * sendTemplate(), so picking a template in the Send SMS box and editing one
+     * word sent the customer a literal "{name}".
+     */
+    public function renderPlaceholders(string $message, array $client): string
+    {
+        $map = [
+            '{name}'           => $client['full_name']         ?? ($client['name'] ?? ''),
+            '{username}'       => $client['mikrotik_username'] ?? '',
+            '{password}'       => $client['mikrotik_password'] ?? '',
+            '{phone}'          => $client['phone']             ?? '',
+            '{account_number}' => $client['account_number']    ?? '',
+            '{expiry_date}'    => !empty($client['expiry_date'])
+                                  ? date('d M Y', strtotime($client['expiry_date'])) : '',
+            '{amount}'         => number_format((float)($client['package_price'] ?? 0)),
+        ];
+
+        return str_replace(array_keys($map), array_values($map), $message);
     }
 }
 ?>

@@ -31,20 +31,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     if (isset($_POST['send_sms'])) {
-        $recipientId = $_POST['recipient_id'];
-        $message = $_POST['message'];
-        
-        // Lookup phone
-        $cStmt = $pdo->prepare("SELECT phone FROM clients WHERE id = ?");
-        $cStmt->execute([$recipientId]);
-        $phone = $cStmt->fetchColumn();
-        
-        if ($phone) {
-            $res = $smsHelper->send($phone, $message, $recipientId);
-            if ($res['success']) $success_message = "Message queued for delivery.";
-            else $error_message = "Failed to send: " . ($res['message'] ?? 'Unknown error');
+        $recipientId = (int)($_POST['recipient_id'] ?? 0);
+        $message     = trim($_POST['message'] ?? '');
+
+        // Tenant-scoped, and the whole row rather than just the phone: the
+        // placeholders below need it. The old query looked the client up by id
+        // ALONE, so any logged-in tenant could message another tenant's
+        // customer by changing the id in the form.
+        $cStmt = $pdo->prepare("SELECT * FROM clients WHERE id = ? AND tenant_id = ? LIMIT 1");
+        $cStmt->execute([$recipientId, $tenant_id]);
+        $client = $cStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$client || empty($client['phone'])) {
+            $error_message = "Customer not found in your account, or they have no phone number.";
+        } elseif ($message === '') {
+            $error_message = "Message cannot be empty.";
         } else {
-            $error_message = "Client phone number not found.";
+            // Substitute whether the text came from a template or was typed, so
+            // {name} always resolves and a customer never receives raw braces.
+            $message = $smsHelper->renderPlaceholders($message, $client);
+
+            $res = $smsHelper->send($client['phone'], $message, $recipientId);
+            if ($res['success']) {
+                $success_message = "Message sent to " . htmlspecialchars($client['full_name'] ?? $client['phone']) . ".";
+            } else {
+                $error_message = "Failed to send: " . ($res['message'] ?? 'Unknown error');
+            }
         }
     }
 }
@@ -248,14 +260,41 @@ include 'includes/sidebar.php';
         <form method="POST">
             <input type="hidden" name="send_sms" value="1">
             <label>Recipient</label>
-            <select name="recipient_id" required>
+            <select name="recipient_id" id="sendRecipient" required onchange="updateSmsMeta()">
                 <option value="">Select Client...</option>
                 <?php foreach ($clients as $c): ?>
-                    <option value="<?php echo $c['id']; ?>"><?php echo htmlspecialchars($c['full_name']); ?> (<?php echo htmlspecialchars($c['phone']); ?>)</option>
+                    <option value="<?php echo $c['id']; ?>"
+                            data-name="<?php echo htmlspecialchars($c['full_name'] ?? '', ENT_QUOTES); ?>"
+                            data-phone="<?php echo htmlspecialchars($c['phone'] ?? '', ENT_QUOTES); ?>">
+                        <?php echo htmlspecialchars($c['full_name']); ?> (<?php echo htmlspecialchars($c['phone']); ?>)
+                    </option>
                 <?php endforeach; ?>
             </select>
+            <label>Template <span style="font-weight:400;color:rgba(255,255,255,.35);font-size:12px;">(optional — fills the message below, which you can still edit)</span></label>
+            <select id="sendTemplatePicker" onchange="applySmsTemplate(this)">
+                <option value="">Write my own message...</option>
+                <?php foreach ($all_templates as $tpl): ?>
+                    <option value="<?php echo htmlspecialchars($tpl['template_content'], ENT_QUOTES); ?>">
+                        <?php echo htmlspecialchars($tpl['template_name']); ?><?php echo !empty($tpl['is_global']) ? ' (global)' : ''; ?>
+                    </option>
+                <?php endforeach; ?>
+                <?php if (empty($all_templates)): ?>
+                    <option value="" disabled>No templates yet — create one under Templates</option>
+                <?php endif; ?>
+            </select>
+
             <label>Message</label>
-            <textarea name="message" rows="4" required></textarea>
+            <textarea name="message" id="sendMessageBox" rows="4" required oninput="updateSmsMeta()"></textarea>
+
+            <div style="display:flex;justify-content:space-between;gap:10px;font-size:11px;color:rgba(255,255,255,.4);margin-top:-2px;">
+                <span>Placeholders: <code>{name}</code> <code>{account_number}</code> <code>{expiry_date}</code> <code>{username}</code> <code>{password}</code> <code>{amount}</code></span>
+                <span id="smsCounter" style="white-space:nowrap;">0 chars · 0 SMS</span>
+            </div>
+
+            <div id="smsPreview" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;
+                 background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+                 font-size:12px;color:#a5f3fc;line-height:1.5;word-break:break-word;"></div>
+
             <div style="text-align:right;margin-top:4px;">
                 <button type="button" onclick="document.getElementById('sendModal').style.display='none'" class="sms-modal-cancel">Cancel</button>
                 <button type="submit" style="padding:8px 16px;background:linear-gradient(135deg,var(--primary-dark) 0%,var(--primary-color) 100%);color:white;border:none;border-radius:6px;cursor:pointer;">Send</button>
@@ -301,6 +340,54 @@ function openTemplateModal(data) {
         document.getElementById('tplKey').value = '';
         document.getElementById('tplName').value = '';
         document.getElementById('tplContent').value = '';
+    }
+}
+</script>
+
+<script>
+/* ── Send SMS box: template picker, segment counter, live preview ─────────────
+   The template dropdown only FILLS the textarea — the message still goes through
+   the normal send path, so an operator can pick a template and then edit it. The
+   server substitutes {placeholders} against the chosen customer either way, so
+   editing a template can no longer send a customer a literal "{name}". */
+function applySmsTemplate(sel) {
+    if (!sel.value) return;
+    const box = document.getElementById('sendMessageBox');
+    box.value = sel.value;
+    updateSmsMeta();
+    box.focus();
+}
+
+function updateSmsMeta() {
+    const box  = document.getElementById('sendMessageBox');
+    const rcpt = document.getElementById('sendRecipient');
+    if (!box) return;
+
+    const opt  = rcpt && rcpt.selectedIndex > 0 ? rcpt.options[rcpt.selectedIndex] : null;
+    const name  = opt ? (opt.dataset.name  || '') : '';
+    const phone = opt ? (opt.dataset.phone || '') : '';
+
+    // Only the two fields this page actually knows are previewed. The rest are
+    // filled server-side from the customer's row; showing them as still-unfilled
+    // is more honest than guessing a value that may differ at send time.
+    let preview = box.value
+        .replace(/\{name\}/g,  name  || '{name}')
+        .replace(/\{phone\}/g, phone || '{phone}');
+
+    // GSM-7 segments: 160 chars, or 153 each once it is multipart.
+    const len  = box.value.length;
+    const segs = len === 0 ? 0 : (len <= 160 ? 1 : Math.ceil(len / 153));
+    const counter = document.getElementById('smsCounter');
+    if (counter) {
+        counter.textContent = len + ' chars · ' + segs + ' SMS';
+        counter.style.color = segs > 1 ? '#fcd34d' : 'rgba(255,255,255,.4)';
+    }
+
+    const box2 = document.getElementById('smsPreview');
+    if (box2) {
+        const changed = preview !== box.value;
+        box2.style.display = (changed && len) ? 'block' : 'none';
+        box2.textContent = 'Preview: ' + preview;
     }
 }
 </script>
