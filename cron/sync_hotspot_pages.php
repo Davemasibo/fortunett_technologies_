@@ -14,6 +14,9 @@
  *   --tenant=12   only this tenant
  *   --router=7    only this router
  *   --force       re-upload even when the router already reports the current build
+ *   --check       report only: what build each router holds vs what is published.
+ *                 Installs nothing and triggers nothing, so it is safe to run
+ *                 against a live fleet just to answer "did they pull it yet?".
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -28,12 +31,18 @@ require_once __DIR__ . '/../hotspot/render_login.php';
 require_once __DIR__ . '/../classes/MikrotikAPI.php';
 require_once __DIR__ . '/../includes/cron_heartbeat.php';
 
-cron_heartbeat($pdo, 'sync_hotspot_pages');
+// Not stamped on --check: the heartbeat is how super_admin/diagnostics.php
+// knows the SCHEDULED sweep is alive, and a hand-run report must not make a
+// missing crontab line look healthy.
+if (!isset(getopt('', ['check'])['check'])) {
+    cron_heartbeat($pdo, 'sync_hotspot_pages');
+}
 
-$opts       = getopt('', ['tenant::', 'router::', 'force']);
+$opts       = getopt('', ['tenant::', 'router::', 'force', 'check']);
 $onlyTenant = isset($opts['tenant']) ? (int)$opts['tenant'] : 0;
 $onlyRouter = isset($opts['router']) ? (int)$opts['router'] : 0;
 $force      = isset($opts['force']);
+$checkOnly  = isset($opts['check']);
 
 function out(string $msg): void
 {
@@ -52,7 +61,8 @@ $st = $pdo->prepare($sql);
 $st->execute($params);
 $routers = $st->fetchAll(PDO::FETCH_ASSOC);
 
-out('Sweeping ' . count($routers) . ' router(s)');
+out(($checkOnly ? 'Checking ' : 'Sweeping ') . count($routers) . ' router(s)'
+    . ($checkOnly ? ' — report only, nothing will be changed' : ''));
 
 // One fingerprint per tenant — rendering the page is the expensive part
 $versionCache = [];
@@ -102,8 +112,11 @@ foreach ($routers as $router) {
         $api->connect();
 
         // Always (re)install the scheduler — cheap, and it upgrades routers that
-        // hold an older version of the script body.
-        $sched = installHotspotSyncScheduler($api, $urls['page'], $urls['version']);
+        // hold an older version of the script body. Skipped on --check, which
+        // must not change a single thing on the router.
+        $sched = $checkOnly
+            ? ['installed' => true, 'message' => '']
+            : installHotspotSyncScheduler($api, $urls['page'], $urls['version']);
 
         // Does the router already hold this build?
         $onRouter = null;
@@ -112,6 +125,34 @@ foreach ($routers as $router) {
                 if (isset($f['contents'])) { $onRouter = trim($f['contents']); break; }
             }
         } catch (Throwable $_e) {}
+
+        if ($checkOnly) {
+            // A router with no sync script will NEVER catch up on its own. That
+            // is the failure worth naming: it looks identical to "up to date"
+            // in every other view, and it is what happens to routers
+            // provisioned before the self-update scheduler existed.
+            $hasScript = false;
+            try {
+                foreach ($api->comm('/system/script/print') as $sc) {
+                    if (($sc['name'] ?? '') === HOTSPOT_SYNC_NAME) { $hasScript = true; break; }
+                }
+            } catch (Throwable $_e) {}
+            try { $api->disconnect(); } catch (Throwable $_e) {}
+
+            if ($currentVersion !== null && $onRouter === $currentVersion) {
+                out("  CURRENT  $label — holds $onRouter");
+                $stats['ok']++;
+            } else {
+                out("  STALE    $label — holds " . ($onRouter ?: 'no build marker')
+                    . ', published is ' . ($currentVersion ?: '?'));
+                $stats['failed']++;
+            }
+            if (!$hasScript) {
+                out("           no {" . HOTSPOT_SYNC_NAME . "} script on this router — it will never "
+                    . 'self-update. Run this sweep without --check, or use Sync Portal on mikrotik.php.');
+            }
+            continue;
+        }
 
         if (!$force && $currentVersion !== null && $onRouter === $currentVersion) {
             out("  OK    $label — already on $currentVersion" . ($sched['installed'] ? '' : ' (scheduler: ' . $sched['message'] . ')'));
@@ -139,6 +180,12 @@ foreach ($routers as $router) {
         out("  FAIL  $label — " . $e->getMessage());
         $stats['failed']++;
 
+        // --check promises to change nothing, and that promise has to hold on
+        // the error path too: the recovery below UPLOADS a page.
+        if ($checkOnly) {
+            continue;
+        }
+
         // Fall back to the direct upload path, which also re-fixes profiles and
         // the walled garden if the router drifted.
         try {
@@ -152,7 +199,9 @@ foreach ($routers as $router) {
     }
 }
 
-out(sprintf(
-    'Done — %d synced, %d unreachable (self-updating), %d skipped, %d failed',
-    $stats['ok'], $stats['unreachable'], $stats['skipped'], $stats['failed']
-));
+out($checkOnly
+    ? sprintf('Done — %d current, %d stale, %d unreachable, %d skipped',
+        $stats['ok'], $stats['failed'], $stats['unreachable'], $stats['skipped'])
+    : sprintf('Done — %d synced, %d unreachable (self-updating), %d skipped, %d failed',
+        $stats['ok'], $stats['unreachable'], $stats['skipped'], $stats['failed'])
+);
