@@ -33,20 +33,29 @@ function renderHotspotLoginPage(PDO $pdo, array $tenant): string
     // ?? not ?: — brand_color and company_name are optional columns that some
     // deployments simply don't have, and the caller passes SELECT * straight in.
     $tenantId    = (int)$tenant['id'];
-    $brandColor  = ($tenant['brand_color']  ?? '') ?: '#0f3460';
+    // The old fallback was a near-black navy, which is why the portal read as
+    // "boring" on every tenant that never set a colour: the whole page resolved
+    // to dark blue on dark grey. A bright amber reads at arm's length on a
+    // phone held in daylight, which is the actual viewing condition.
+    $brandColor  = ($tenant['brand_color']  ?? '') ?: '#ff9500';
     $companyName = ($tenant['company_name'] ?? '') ?: 'FortuNett Technologies';
 
-    // Derive a darker and a lighter stop from the brand colour for gradients
-    $hex = ltrim($brandColor, '#');
-    if (strlen($hex) === 3) {
-        $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
-    }
-    $r = hexdec(substr($hex, 0, 2));
-    $g = hexdec(substr($hex, 2, 2));
-    $b = hexdec(substr($hex, 4, 2));
-    $brandDark  = sprintf('#%02x%02x%02x', max(0, $r - 40), max(0, $g - 40), max(0, $b - 40));
-    $brandLight = sprintf('#%02x%02x%02x', min(255, $r + 55), min(255, $g + 55), min(255, $b + 55));
-    $brandRgb   = "$r,$g,$b";
+    [$brandDark, $brandLight, $brandRgb] = _hsShades($brandColor);
+
+    // The ACCENT is deliberately independent of the tenant's brand colour.
+    // Everything on the path to a sale -- the plan cards, the price, the pay
+    // button, the tab indicator -- is painted with it, so a tenant whose brand
+    // is a dark blue still gets a portal a customer's eye lands on. Tunable
+    // per installation without a code change.
+    $accentColor = '#ff9500';
+    try {
+        $acSt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='hotspot_accent_color' LIMIT 1");
+        $ac = $acSt ? $acSt->fetchColumn() : null;
+        if ($ac && preg_match('/^#?[0-9a-f]{3,6}$/i', trim($ac))) {
+            $accentColor = '#' . ltrim(trim($ac), '#');
+        }
+    } catch (Throwable $_e) {}
+    [$accentDark, $accentLight, $accentRgb] = _hsShades($accentColor);
 
     [$packagesHtml, $filtersHtml] = _renderHotspotPackages($pdo, $tenantId);
 
@@ -89,14 +98,42 @@ function renderHotspotLoginPage(PDO $pdo, array $tenant): string
             '{{COMPANY_NAME}}', '{{BRAND_COLOR}}', '{{BRAND_DARK}}', '{{BRAND_LIGHT}}',
             '{{BRAND_RGB}}', '{{PORTAL_URL}}', '{{SIGNUP_URL}}', '{{PACKAGES_SECTION}}',
             '{{PACKAGE_FILTERS}}', '{{PAYBILL}}', '{{TENANT_ID}}', '{{SUPPORT_PHONE}}',
+            '{{ACCENT_COLOR}}', '{{ACCENT_DARK}}', '{{ACCENT_LIGHT}}', '{{ACCENT_RGB}}',
         ],
         [
             htmlspecialchars($companyName, ENT_QUOTES), $brandColor, $brandDark, $brandLight,
             $brandRgb, $portalBase, $signupUrl, $packagesHtml,
             $filtersHtml, htmlspecialchars($paybill), (string)$tenantId, htmlspecialchars($supportPhone, ENT_QUOTES),
+            $accentColor, $accentDark, $accentLight, $accentRgb,
         ],
         $template
     );
+}
+
+/**
+ * A hex colour to [darker, lighter, "r,g,b"].
+ *
+ * Shared by the brand and the accent so the two can never drift apart in how
+ * their gradients are built.
+ */
+function _hsShades(string $hex): array
+{
+    $hex = ltrim(trim($hex), '#');
+    if (strlen($hex) === 3) {
+        $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+    }
+    if (strlen($hex) !== 6 || !ctype_xdigit($hex)) {
+        $hex = 'ff9500';
+    }
+    $r = hexdec(substr($hex, 0, 2));
+    $g = hexdec(substr($hex, 2, 2));
+    $b = hexdec(substr($hex, 4, 2));
+
+    return [
+        sprintf('#%02x%02x%02x', max(0, $r - 45), max(0, $g - 45), max(0, $b - 45)),
+        sprintf('#%02x%02x%02x', min(255, $r + 55), min(255, $g + 55), min(255, $b + 55)),
+        "$r,$g,$b",
+    ];
 }
 
 /**
@@ -177,12 +214,14 @@ function _renderHotspotPackages(PDO $pdo, int $tenantId): array
         $group   = $p['_group'];
         $groupsInUse[$group] = $groupLabels[$group];
 
-        // Feature chips
+        // Feature chips. The duration is promoted out of the chip row and given
+        // its own line -- in a side-by-side card it is the second thing a
+        // customer compares after the price, and it was competing with the
+        // speed and data pills for the same eye.
         $chips = '';
         if (!empty($p['download_speed'])) {
             $chips .= _hsChip('bolt', (int)$p['download_speed'] . ' Mbps');
         }
-        $chips .= _hsChip('clock', $p['_dur']);
         $limit = (float)($p['data_limit'] ?? 0);
         $chips .= _hsChip('data', $limit > 0 ? _hsFormatBytes($limit) : 'Unlimited');
         $devices = (int)($p['device_limit'] ?? 0);
@@ -190,10 +229,10 @@ function _renderHotspotPackages(PDO $pdo, int $tenantId): array
             $chips .= _hsChip('device', $devices . ' devices');
         }
 
-        // At most one tag per row — free beats best-value
+        // At most one tag per card — free beats best-value
         $tag = '';
         if ($isFree) {
-            $tag = '<em class="pkg-tag pkg-tag-free">Free trial</em>';
+            $tag = '<em class="pkg-tag pkg-tag-free">Free</em>';
         } elseif ($idx === $bestIdx && count($pkgs) > 1) {
             $tag = '<em class="pkg-tag">Best value</em>';
         }
@@ -206,7 +245,10 @@ function _renderHotspotPackages(PDO $pdo, int $tenantId): array
             ? '<span class="pkg-price pkg-price-free">FREE</span>'
             : '<span class="pkg-price"><small>KES</small>' . number_format($price, 0) . '</span>';
 
-        // <label> wrapping the radio gives native click + keyboard + a11y for free
+        // <label> wrapping the radio gives native click + keyboard + a11y for
+        // free. The class stays `pkg-row` -- every filter, selection and pay
+        // handler in login.html keys off it, so the layout change is entirely
+        // in CSS and markup order, not in the page's behaviour.
         $rows .= '<label class="pkg-row' . $selCls . '"'
             . ' data-price="' . number_format($price, 0, '.', '') . '"'
             . ' data-group="' . $group . '"'
@@ -216,11 +258,11 @@ function _renderHotspotPackages(PDO $pdo, int $tenantId): array
             . ' style="--i:' . $idx . '">'
             . '<input type="radio" name="buy_package" value="' . (int)$p['id'] . '"' . $checked . '>'
             . '<span class="pkg-check"></span>'
-            . '<span class="pkg-body">'
-            .   '<span class="pkg-name">' . htmlspecialchars($p['name']) . $tag . '</span>'
-            .   '<span class="pkg-chips">' . $chips . '</span>'
-            . '</span>'
+            . '<span class="pkg-name">' . htmlspecialchars($p['name']) . '</span>'
             . $priceHtml
+            . '<span class="pkg-dur">' . htmlspecialchars($p['_dur']) . '</span>'
+            . '<span class="pkg-chips">' . $chips . '</span>'
+            . $tag
             . '</label>';
     }
 

@@ -259,6 +259,99 @@ echo "                                  Developers and paste it into Settings.\n
 echo "    one returns real data      -> the token is FINE and the problem is the\n";
 echo "                                  send request itself. Send me this output.\n";
 
+// ── Did the CUSTOMER path ever run? ─────────────────────────────────────────
+// Everything above tests the credentials. It is entirely possible for the
+// credentials to be perfect and for no customer to ever be texted, because the
+// send sits at step 10 of process_payment_success() behind a phone number, a
+// dedupe check and two tables that some deployments do not have. This section
+// answers the question the credential probes cannot: was a message even tried.
+echo "\n" . str_repeat('-', 72) . "\n";
+echo "Customer delivery path\n";
+echo str_repeat('-', 72) . "\n";
+
+$tables = [];
+foreach (['sms_outbox', 'sms_logs'] as $t) {
+    try {
+        $pdo->query("SELECT 1 FROM `$t` LIMIT 1");
+        $tables[$t] = true;
+    } catch (Throwable $e) {
+        $tables[$t] = false;
+    }
+}
+foreach ($tables as $t => $ok) {
+    printf("  %-12s %s\n", $t, $ok ? 'present' : 'MISSING — run the platform repair, or open any page that sends SMS');
+}
+if (!$tables['sms_logs']) {
+    echo "    sms_logs is written by process_payment_success() and read by the admin\n";
+    echo "    dashboard. Without it there is no record that any payment SMS was ever\n";
+    echo "    attempted, and Safaricom's callback retries can text a customer twice.\n";
+}
+
+if ($tables['sms_outbox']) {
+    try {
+        $st = $pdo->prepare("SELECT sent_at, recipient_phone, status, provider_response
+                             FROM sms_outbox WHERE tenant_id = ? ORDER BY sent_at DESC LIMIT 8");
+        $st->execute([$tenantId]);
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+        if (!$rows) {
+            echo "\n  sms_outbox is EMPTY for this tenant — nothing has been handed to the\n";
+            echo "  provider at all. The problem is upstream of the credentials: no send is\n";
+            echo "  being reached. Check that payments are completing and that the clients\n";
+            echo "  being credited have a phone number on file.\n";
+        } else {
+            echo "\n  Last " . count($rows) . " message(s):\n";
+            foreach ($rows as $r) {
+                printf("    %-19s %-14s %-7s %s\n",
+                    $r['sent_at'], $r['recipient_phone'], $r['status'],
+                    substr(preg_replace('/\s+/', ' ', (string)$r['provider_response']), 0, 90));
+            }
+        }
+    } catch (Throwable $e) {
+        echo "  (could not read sms_outbox: " . $e->getMessage() . ")\n";
+    }
+}
+
+// Paid customers who were never texted. This is the number that matters: it is
+// the customers who gave money and heard nothing back.
+try {
+    $st = $pdo->prepare("
+        SELECT COUNT(*) FROM payments p
+        JOIN clients c ON c.id = p.client_id AND c.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ? AND p.status = 'completed'
+          AND p.payment_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+    ");
+    $st->execute([$tenantId]);
+    $paid = (int)$st->fetchColumn();
+
+    $texted = 0;
+    if ($tables['sms_outbox']) {
+        $st2 = $pdo->prepare("SELECT COUNT(*) FROM sms_outbox
+                              WHERE tenant_id = ? AND status = 'sent'
+                                AND sent_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
+        $st2->execute([$tenantId]);
+        $texted = (int)$st2->fetchColumn();
+    }
+    printf("\n  Last 7 days: %d completed payment(s), %d SMS recorded as sent.\n", $paid, $texted);
+    if ($paid > 0 && $texted === 0) {
+        echo "  Every payment went untold. If sms_outbox has failed rows above, the\n";
+        echo "  provider is refusing them — read the response. If it is empty, the send\n";
+        echo "  is never being reached.\n";
+    }
+} catch (Throwable $e) {
+    echo "  (could not compare payments to messages: " . $e->getMessage() . ")\n";
+}
+
+// A client with no phone number is skipped in silence at step 10.
+try {
+    $st = $pdo->prepare("SELECT COUNT(*) FROM clients
+                         WHERE tenant_id = ? AND (phone IS NULL OR TRIM(phone) = '')");
+    $st->execute([$tenantId]);
+    $noPhone = (int)$st->fetchColumn();
+    if ($noPhone) {
+        printf("  %d client(s) have no phone number and can never be texted.\n", $noPhone);
+    }
+} catch (Throwable $e) { /* optional */ }
+
 if ($sendTo === '') {
     echo "\nNo message sent. Add --send=2547XXXXXXXX to try a real one (costs credit).\n";
     exit;

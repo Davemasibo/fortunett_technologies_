@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/sms_config.php';
+require_once __DIR__ . '/../includes/schema_guard.php';
 
 class SMSHelper {
     private $pdo;
@@ -48,14 +49,67 @@ class SMSHelper {
 
         $phone    = $this->formatPhone($phone);
         $response = $this->sendViaTalkSasa($phone, $message);
+
+        // A tenant whose own TalkSasa token is wrong, expired or revoked used
+        // to lose EVERY customer notification, permanently and silently: their
+        // row is "usable" (it has a key) so it shadows the platform key, and
+        // nothing in the admin UI reports a send failure. The platform key is
+        // the whole point of a platform fallback -- use it rather than let the
+        // customer go untold that their payment landed.
+        if (empty($response['success']) && !empty($response['auth_failure']) && !$this->using_platform) {
+            $platform = smsPlatformConfig($this->pdo);
+            if ($platform) {
+                $ownCfg = $this->config;
+                $this->config         = $platform;
+                $this->using_platform = true;
+
+                $retry = $this->sendViaTalkSasa($phone, $message);
+                if (!empty($retry['success'])) {
+                    error_log('[sms] tenant ' . $this->tenant_id . ' key rejected; sent on the platform key instead');
+                    $retry['fell_back'] = true;
+                    $response = $retry;
+                } else {
+                    // Both keys failed. Report the tenant's own failure -- that
+                    // is the one they can act on -- but say the fallback was
+                    // tried so nobody hunts for a platform outage that is not
+                    // the cause.
+                    $this->config         = $ownCfg;
+                    $this->using_platform = false;
+                    $response['message']  = ($response['message'] ?? 'SMS failed.')
+                        . ' The platform key was tried as a fallback and was also rejected.';
+                }
+            }
+        }
+
         $this->logMessage($clientId, $phone, $message, $response);
 
         return $response;
     }
 
+    /**
+     * Normalise anything a human or a captive portal typed into 2547XXXXXXXX.
+     *
+     * The old version only handled a leading 0. A customer who typed
+     * `712345678` -- which the hotspot portal accepts, and which is how many
+     * people write their own number -- was handed to the provider as nine
+     * digits and rejected; `+254 712 345 678` survived only by accident of the
+     * digit strip. Every SMS to those customers failed at the provider with a
+     * message nobody read.
+     */
     private function formatPhone($phone) {
-        $phone = preg_replace('/[^0-9]/', '', $phone);
-        if (substr($phone, 0, 1) === '0') return '254' . substr($phone, 1);
+        $phone = preg_replace('/[^0-9]/', '', (string)$phone);
+
+        // +254 0712... -- both the country code and the trunk 0. Seen whenever
+        // a stored 07 number is prefixed with the country code by a form.
+        if (strpos($phone, '2540') === 0) {
+            $phone = '254' . substr($phone, 4);
+        } elseif (strpos($phone, '0') === 0) {
+            $phone = '254' . substr($phone, 1);
+        } elseif (strlen($phone) === 9 && (strpos($phone, '7') === 0 || strpos($phone, '1') === 0)) {
+            // Bare subscriber number: 7XXXXXXXX (Safaricom/Airtel) or 1XXXXXXXX
+            $phone = '254' . $phone;
+        }
+
         return $phone;
     }
 
@@ -153,7 +207,7 @@ class SMSHelper {
                 // problem regardless of the status code, and saying so beats
                 // echoing one bare word to the operator.
                 if (stripos($why, 'unauthenticated') !== false || stripos($why, 'unauthorized') !== false) {
-                    return ['success' => false, 'message' => $this->authFailureHint(200)];
+                    return ['success' => false, 'auth_failure' => true, 'message' => $this->authFailureHint(200)];
                 }
 
                 return ['success' => false, 'message' => 'Provider rejected it: ' . $why];
@@ -164,7 +218,7 @@ class SMSHelper {
         }
 
         if ($httpCode === 401 || $httpCode === 403) {
-            return ['success' => false, 'message' => $this->authFailureHint($httpCode)];
+            return ['success' => false, 'auth_failure' => true, 'message' => $this->authFailureHint($httpCode)];
         }
 
         $detail = is_array($json) ? ($json['message'] ?? json_encode($json)) : substr((string)$result, 0, 300);
@@ -177,10 +231,23 @@ class SMSHelper {
         // not land in some tenant's message history either way.
         if (!$this->tenant_id) return;
 
-        $status           = $response['success'] ? 'sent' : 'failed';
-        $providerResponse = is_array($response) ? json_encode($response) : $response;
-        $stmt = $this->pdo->prepare("INSERT INTO sms_outbox (tenant_id, client_id, recipient_phone, message, status, provider_response) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$this->tenant_id, $clientId, $phone, $message, $status, $providerResponse]);
+        // This runs AFTER the message has already left the server, so an
+        // unwritable outbox must not be allowed to turn a delivered SMS into a
+        // thrown exception at the call site. On a deployment missing the
+        // sms_outbox migration that is exactly what happened: every send in
+        // the payment pipeline was recorded as a failure and every send from
+        // sms.php showed the operator an error, for messages the customer
+        // actually received.
+        try {
+            ensureSmsTables($this->pdo);
+
+            $status           = !empty($response['success']) ? 'sent' : 'failed';
+            $providerResponse = is_array($response) ? json_encode($response) : $response;
+            $stmt = $this->pdo->prepare("INSERT INTO sms_outbox (tenant_id, client_id, recipient_phone, message, status, provider_response) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$this->tenant_id, $clientId, $phone, $message, $status, $providerResponse]);
+        } catch (Throwable $e) {
+            error_log('[sms] could not write sms_outbox for tenant ' . $this->tenant_id . ': ' . $e->getMessage());
+        }
     }
 
     public function getTemplates() {

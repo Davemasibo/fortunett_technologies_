@@ -91,11 +91,22 @@ function platformRepairRun(PDO $pdo, array $opts = []): array
         } catch (Throwable $e) {
             $add('billing_schema', 'Platform billing columns', 'error', $e->getMessage());
         }
+        try {
+            ensureSmsTables($pdo);
+            $add('sms_schema', 'SMS log tables', 'fixed',
+                'sms_outbox and sms_logs exist. sms_logs is defined in no schema file, so the payment SMS had no dedupe '
+                . 'key and left no record anywhere the operator could see it — the reason "is SMS sending?" could not be '
+                . 'answered from the admin UI.');
+        } catch (Throwable $e) {
+            $add('sms_schema', 'SMS log tables', 'error', $e->getMessage());
+        }
     } else {
         $add('enums', 'Status and method enums', 'would',
             'Add any missing enum member on clients.status, payments.payment_method and payments.status.');
         $add('billing_schema', 'Platform billing columns', 'would',
             'Add platform_invoices.amount_paid and the rest of the 2026-07-26 migration.');
+        $add('sms_schema', 'SMS log tables', 'would',
+            'Create sms_outbox and sms_logs so customer SMS is deduped and recorded.');
     }
 
     // Columns those two do not cover. The mpesa_transactions ones sit BEFORE

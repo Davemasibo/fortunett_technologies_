@@ -379,3 +379,72 @@ function ensurePlatformBillingSchema(PDO $pdo): void
         error_log('[schema_guard] platform_payments tables: ' . $e->getMessage());
     }
 }
+
+/**
+ * Create the two tables the SMS path writes to, if a deployment is missing them.
+ *
+ * `sms_logs` is the worse of the two omissions: it is written by
+ * process_payment_success() and read by api/dashboard/stats.php, and it is
+ * defined in NO schema file in this repository. Both call sites wrap their
+ * query in a try/catch, so on every deployment the effect was silent — the
+ * payment-confirmation SMS had no dedupe key (Safaricom retries a callback, so
+ * a customer could be texted twice for one payment), and the admin dashboard
+ * counted zero messages sent no matter how many went out. An operator looking
+ * for evidence that SMS was working found none, which reads exactly like
+ * "the system is not sending SMS".
+ *
+ * `sms_outbox` exists in the master schema and in a migration, so it is only
+ * missing where that migration never ran — but SMSHelper::logMessage() writes
+ * to it AFTER the message has already left, so an absent table turned a
+ * successful send into an exception at every call site.
+ */
+function ensureSmsTables(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS sms_outbox (
+                id                INT AUTO_INCREMENT PRIMARY KEY,
+                tenant_id         INT NOT NULL,
+                client_id         INT DEFAULT NULL,
+                recipient_phone   VARCHAR(20) NOT NULL,
+                message           TEXT NOT NULL,
+                status            VARCHAR(20) DEFAULT 'sent',
+                provider_response TEXT DEFAULT NULL,
+                sent_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_sms_outbox_tenant (tenant_id, sent_at),
+                INDEX idx_sms_outbox_client (client_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+    } catch (Throwable $e) {
+        error_log('[schema_guard] sms_outbox: ' . $e->getMessage());
+    }
+
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS sms_logs (
+                id         INT AUTO_INCREMENT PRIMARY KEY,
+                tenant_id  INT NOT NULL,
+                client_id  INT DEFAULT NULL,
+                phone      VARCHAR(20) NOT NULL,
+                message    TEXT NOT NULL,
+                status     VARCHAR(20) NOT NULL DEFAULT 'sent',
+                reference  VARCHAR(64) DEFAULT NULL,
+                sent_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_sms_logs_tenant (tenant_id, sent_at),
+                INDEX idx_sms_logs_ref (tenant_id, client_id, reference)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+    } catch (Throwable $e) {
+        error_log('[schema_guard] sms_logs: ' . $e->getMessage());
+    }
+
+    // Older deployments have sms_outbox without provider_response, and the
+    // INSERT names that column explicitly — a missing one is a hard 1054 on
+    // every send.
+    ensureColumn($pdo, 'sms_outbox', 'provider_response', 'TEXT DEFAULT NULL');
+    ensureColumn($pdo, 'sms_logs',   'reference',         'VARCHAR(64) DEFAULT NULL');
+}

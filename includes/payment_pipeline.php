@@ -426,6 +426,14 @@ function process_payment_success(
     // ── 10a. SMS ───────────────────────────────────────────────────────────────
     try {
         if (!empty($client['phone'])) {
+            // sms_logs is defined in no schema file, so on every deployment both
+            // queries below were silently swallowed: no dedupe (a retried
+            // callback texted the customer twice) and no record that anything
+            // was ever sent, which is what made "SMS is not working" impossible
+            // to confirm or deny from the admin UI.
+            require_once __DIR__ . '/schema_guard.php';
+            ensureSmsTables($pdo);
+
             // sms_logs.reference makes this idempotent across Safaricom's retries
             $alreadySent = false;
             try {
