@@ -1,0 +1,9 @@
+# Uploaded assets are served, never executed. The upload path re-encodes every
+# image through GD and generates its own filename, so a .php can't land here —
+# this is the second lock on that door, for the case where it can.
+<FilesMatch "\.(php|phar|phtml|php[0-9]|pl|py|cgi|sh|htaccess)$">
+    Require all denied
+</FilesMatch>
+php_flag engine off
+Options -ExecCGI -Indexes
+AddType text/plain .php .phtml .phar

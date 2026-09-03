@@ -4,6 +4,9 @@ require_once 'includes/auth.php';
 // Loaded up here, not next to the banner that reads it: the save_sms_config
 // handler below runs long before that point and needs smsNormalizeApiUrl().
 require_once __DIR__ . '/includes/sms_config.php';
+// One definition of what a tenant's captive portal looks like, shared by this
+// form, hotspot/render_login.php and the fingerprint the routers compare.
+require_once __DIR__ . '/includes/hotspot_theme.php';
 redirectIfNotLoggedIn();
 
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -279,6 +282,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // --- 6b. Hotspot Captive Portal Appearance ---
+    elseif ($action === 'update_hotspot_theme') {
+        $active_tab = 'hotspot';
+        try {
+            $current = hotspotThemeLoad($pdo, (int)$tenant_id);
+
+            // Start from what is stored, not from the defaults: an unchecked
+            // checkbox is simply absent from the POST, and so is any field the
+            // form does not render, so merging over the defaults would quietly
+            // reset settings the operator never touched.
+            $incoming = $current;
+
+            foreach (['bg_style','bg_color','bg_color2','bg_dim','accent','card_mode','radius',
+                      'headline','subtitle','footer_note','paybill','pay_type','account_label',
+                      'pay_note','support_phone'] as $k) {
+                if (array_key_exists($k, $_POST)) $incoming[$k] = trim((string)$_POST[$k]);
+            }
+            // Checkboxes: absent means off, and only for the ones this form shows.
+            foreach (['aurora','show_login','show_voucher','show_paid','show_manual'] as $k) {
+                $incoming[$k] = isset($_POST[$k]) ? '1' : '0';
+            }
+
+            // ── Assets ────────────────────────────────────────────────────
+            // Removal is handled before upload so "remove and replace in one
+            // save" ends with the new file rather than with nothing.
+            if (!empty($_POST['drop_bg'])) {
+                hotspotThemeDeleteAsset($current['bg_image']);
+                $incoming['bg_image'] = '';
+            }
+            if (!empty($_POST['drop_logo'])) {
+                hotspotThemeDeleteAsset($current['logo']);
+                $incoming['logo'] = '';
+            }
+
+            $newBg = hotspotThemeStoreUpload($_FILES['bg_upload'] ?? [], (int)$tenant_id,
+                                             'bg', 1400, HS_WALLPAPER_MAX);
+            if ($newBg !== '') {
+                hotspotThemeDeleteAsset($current['bg_image']);   // don't leak the old one
+                $incoming['bg_image'] = $newBg;
+                $incoming['bg_style'] = 'image';
+            }
+            $newLogo = hotspotThemeStoreUpload($_FILES['logo_upload'] ?? [], (int)$tenant_id,
+                                               'logo', 420, HS_LOGO_MAX);
+            if ($newLogo !== '') {
+                hotspotThemeDeleteAsset($current['logo']);
+                $incoming['logo'] = $newLogo;
+            }
+
+            hotspotThemeSave($pdo, (int)$tenant_id, $incoming);
+
+            // Saving is enough on its own: login_version.php hashes the rendered
+            // page, so the fingerprint has already changed and every router
+            // picks it up on its next hourly check. The push is only about
+            // making that immediate.
+            $msg = 'Portal appearance saved. Your routers will pick it up within the hour.';
+            if (!empty($_POST['push_now'])) {
+                [$pushed, $failed] = hsPushPortalToRouters($pdo, (int)$tenant_id);
+                $msg = $failed
+                    ? 'Saved. Pushed to ' . $pushed . ' router(s); ' . $failed
+                      . ' could not be reached and will pull it themselves on their next check.'
+                    : 'Saved and pushed to ' . $pushed . ' router(s).';
+            }
+            $action_result = 'success|' . $msg;
+
+        } catch (Throwable $e) {
+            $action_result = 'error|' . $e->getMessage();
+        }
+    }
+
     // --- 7. Notification Settings ---
     elseif ($action === 'update_notifications') {
         $active_tab = 'notifications';
@@ -301,10 +373,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+/**
+ * Trigger an immediate portal pull on every router this tenant owns that the
+ * server can actually reach.
+ *
+ * Returns [pushed, failed]. A router behind CGNAT is counted as failed here and
+ * that is correct — it was not pushed to — but it is not a problem: its own
+ * FortuNett-Portal-Sync scheduler fetches the new fingerprint within the hour.
+ * The message the caller builds says exactly that, so an operator does not read
+ * "3 failed" as "3 routers are stuck on the old page".
+ */
+function hsPushPortalToRouters(PDO $pdo, int $tenantId): array
+{
+    require_once __DIR__ . '/includes/hotspot_sync.php';
+    require_once __DIR__ . '/classes/MikrotikAPI.php';
+
+    $urls = hotspotPortalUrls($pdo, $tenantId);
+    if (!$urls) return [0, 0];
+
+    $rq = $pdo->prepare("SELECT * FROM mikrotik_routers
+                         WHERE tenant_id = ? AND status IN ('active','online')");
+    $rq->execute([$tenantId]);
+
+    $pushed = 0;
+    $failed = 0;
+    foreach ($rq->fetchAll(PDO::FETCH_ASSOC) as $router) {
+        $ip   = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
+        $port = (int)($router['api_port'] ?? 8728);
+
+        // Probe first with a short timeout. Without it an unreachable router
+        // blocks the settings POST for the full API timeout, and a tenant with
+        // several offline routers would watch the page hang after clicking Save.
+        $sock = @fsockopen($ip, $port, $errno, $errstr, 3);
+        if (!$sock) { $failed++; continue; }
+        fclose($sock);
+
+        try {
+            $api = new MikrotikAPI($ip, $router['username'], $router['password'], $port);
+            $api->connect();
+            installHotspotSyncScheduler($api, $urls['page'], $urls['version']);
+
+            $scriptId = null;
+            foreach ($api->comm('/system/script/print') as $sc) {
+                if (($sc['name'] ?? '') === HOTSPOT_SYNC_NAME) { $scriptId = $sc['.id'] ?? null; break; }
+            }
+            if ($scriptId) {
+                $api->comm('/system/script/run', ['=.id=' . $scriptId]);
+                $pushed++;
+            } else {
+                $failed++;
+            }
+            try { $api->disconnect(); } catch (Throwable $_e) {}
+        } catch (Throwable $e) {
+            error_log('[hotspot_theme] push to router ' . $router['id'] . ': ' . $e->getMessage());
+            $failed++;
+        }
+    }
+    return [$pushed, $failed];
+}
+
 // --- Fetch all data for display ---
 $settingsStmt = $pdo->prepare("SELECT setting_key, setting_value FROM tenant_settings WHERE tenant_id = ?");
 $settingsStmt->execute([$tenant_id]);
 $tSettings = $settingsStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+// Re-read after any save above, so the form and the preview show what was just
+// written rather than what was on screen when the page was submitted.
+$hsTheme = hotspotThemeLoad($pdo, (int)$tenant_id);
 
 $gatewaysStmt = $pdo->prepare("SELECT * FROM payment_gateways WHERE tenant_id = ? ORDER BY is_default DESC, created_at ASC");
 $gatewaysStmt->execute([$tenant_id]);
@@ -811,6 +946,8 @@ input:checked + .set-slider:before { transform:translateX(20px);background:#fff;
                  HOTSPOT
             ════════════════════════════════════════════════════ -->
             <div class="tab-pane fade" id="hotspot" role="tabpanel">
+                <?php include 'settings_hotspot_partial.php'; ?>
+
                 <div class="set-info-banner">
                     <i class="fas fa-info-circle"></i>
                     <div>

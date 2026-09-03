@@ -10,35 +10,21 @@
      exactly the "everything is tiny, I have to pinch to zoom" complaint. -->
 <meta name="HandheldFriendly" content="true">
 <meta name="MobileOptimized" content="320">
-<meta name="theme-color" content="#ff9500">
+<meta name="theme-color" content="{{THEME_COLOR}}">
 <title>{{COMPANY_NAME}} — Get Online</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
-  --brand:{{BRAND_COLOR}};
-  --brand-dark:{{BRAND_DARK}};
-  --brand-light:{{BRAND_LIGHT}};
-  --brand-rgb:{{BRAND_RGB}};
-  /* Independent of the tenant's brand. Everything on the path to a sale is
-     painted with this so the portal is loud regardless of what colour the ISP
-     picked for their admin panel. */
-  --accent:{{ACCENT_COLOR}};
-  --accent-dark:{{ACCENT_DARK}};
-  --accent-light:{{ACCENT_LIGHT}};
-  --accent-rgb:{{ACCENT_RGB}};
-  --ink:#e8e8e6;
-  --ink-dim:rgba(255,255,255,.45);
-  --ink-faint:rgba(255,255,255,.28);
-  --surface:rgb(34,34,33);
-  --sunken:rgb(27,27,26);
-  --ok:#34d399;
-  --warn:#fbbf24;
-  --bad:#f87171;
+/* Every value here is derived from the tenant's saved appearance settings by
+   includes/hotspot_theme.php — including whether the card is light or dark,
+   which is decided from the background's relative luminance so a bright
+   backdrop can never end up with pale text on it. */
+{{THEME_VARS}}
 }
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{
   font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-  background:#0e0e0d;color:var(--ink);
+  background:{{BODY_BG}};color:var(--ink);
   min-height:100vh;min-height:100dvh;
   display:flex;align-items:flex-start;justify-content:center;
   padding:14px 14px calc(14px + env(safe-area-inset-bottom));
@@ -53,7 +39,7 @@ body{
 /* ── Aurora backdrop — two slow-drifting brand orbs ───────────────────────── */
 .aurora{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
 .aurora::before,.aurora::after{
-  content:'';position:absolute;border-radius:50%;filter:blur(70px);opacity:.5;
+  content:'';position:absolute;border-radius:50%;filter:blur(70px);opacity:var(--aurora-op);
 }
 .aurora::before{
   width:70vw;height:70vw;max-width:520px;max-height:520px;
@@ -64,7 +50,7 @@ body{
 .aurora::after{
   width:60vw;height:60vw;max-width:440px;max-height:440px;
   bottom:-20%;right:-16%;
-  background:radial-gradient(circle,rgba(var(--brand-rgb),.5) 0%,transparent 70%);
+  background:radial-gradient(circle,rgba(var(--tint),.35) 0%,transparent 70%);
   animation:drift2 27s ease-in-out infinite;
 }
 @keyframes drift1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(9%,7%) scale(1.12)}}
@@ -74,9 +60,9 @@ body{
 .card{
   position:relative;z-index:1;
   background:var(--surface);
-  border-radius:24px;
-  box-shadow:14px 14px 30px rgba(6,6,5,.85),-7px -7px 20px rgba(48,48,46,.5),
-             0 0 0 1px rgba(255,255,255,.05);
+  border-radius:var(--radius);
+  box-shadow:14px 14px 30px var(--sh-out-d),-7px -7px 20px var(--sh-out-l),
+             0 0 0 1px rgba(var(--tint),.05);
   width:100%;max-width:440px;margin:0;
   /* NOT overflow:hidden. A clipping ancestor disables position:sticky, and the
      pay dock at the bottom of the Get Online tab depends on it. Nothing
@@ -93,7 +79,11 @@ body{
   display:flex;align-items:center;justify-content:center;
   box-shadow:0 8px 26px -8px rgba(var(--accent-rgb),.9),inset 0 1px 0 rgba(255,255,255,.22);
 }
-.logo svg{width:27px;height:27px;fill:none;stroke:#fff;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;position:relative;z-index:1}
+.logo-img{
+  display:block;max-width:180px;max-height:64px;width:auto;height:auto;
+  margin:0 auto 13px;object-fit:contain;
+}
+.logo svg{width:27px;height:27px;fill:none;color:var(--on-accent);stroke:currentColor;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;position:relative;z-index:1}
 /* Signal ping — a quiet sign the page is alive */
 .logo::after{
   content:'';position:absolute;inset:0;border-radius:17px;
@@ -104,16 +94,19 @@ body{
 
 h1{
   font-size:19px;font-weight:800;letter-spacing:-.015em;margin-bottom:4px;
-  background:linear-gradient(100deg,var(--ink) 10%,var(--accent-light) 90%);
+  background:linear-gradient(100deg,var(--ink) 10%,var(--accent-ink) 90%);
   -webkit-background-clip:text;background-clip:text;
-  -webkit-text-fill-color:transparent;color:var(--accent-light);
+  -webkit-text-fill-color:transparent;color:var(--accent-ink);
 }
 .subtitle{color:var(--ink-faint);font-size:12px;font-weight:500;margin-bottom:18px}
 
 /* ── Tabs with a sliding indicator ────────────────────────────────────────── */
+/* A lone tab is not a choice — the bar and its sliding indicator read as a
+   broken control rather than navigation, so it is dropped entirely. */
+.tab-bar.single{display:none}
 .tab-bar{
   display:flex;position:relative;padding:0 12px;
-  border-bottom:1px solid rgba(255,255,255,.07);
+  border-bottom:1px solid rgba(var(--tint),.07);
 }
 .tab-btn{
   flex:1;padding:11px 4px;background:none;border:none;cursor:pointer;
@@ -121,8 +114,8 @@ h1{
   text-transform:uppercase;color:var(--ink-faint);
   transition:color .2s;white-space:nowrap;
 }
-.tab-btn.active{color:var(--accent-light)}
-.tab-btn:hover:not(.active){color:rgba(255,255,255,.6)}
+.tab-btn.active{color:var(--accent-ink)}
+.tab-btn:hover:not(.active){color:rgba(var(--tint),.6)}
 .tab-ink{
   position:absolute;bottom:-1px;height:2px;border-radius:2px;
   background:linear-gradient(90deg,var(--accent),var(--accent-light));
@@ -136,21 +129,21 @@ h1{
 
 /* ── Notices ──────────────────────────────────────────────────────────────── */
 .error-box{
-  background:rgba(248,113,113,.11);border:1px solid rgba(248,113,113,.28);color:#fca5a5;
+  background:rgba(var(--bad-rgb),.11);border:1px solid rgba(var(--bad-rgb),.28);color:var(--bad);
   border-radius:11px;padding:11px 13px;font-size:12.5px;line-height:1.45;
   margin-bottom:14px;display:flex;align-items:flex-start;gap:9px;
   animation:shake .4s ease both;
 }
-.error-box svg{width:16px;height:16px;flex-shrink:0;margin-top:1px;fill:none;stroke:#fca5a5;stroke-width:2}
+.error-box svg{width:16px;height:16px;flex-shrink:0;margin-top:1px;fill:none;stroke:var(--bad);stroke-width:2}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
 .info-box{
   background:rgba(var(--accent-rgb),.13);border:1px solid rgba(var(--accent-rgb),.3);
-  color:#fcd9a8;border-radius:11px;padding:11px 13px;font-size:12px;line-height:1.5;margin-bottom:14px;
+  color:var(--ink);border-radius:11px;padding:11px 13px;font-size:12px;line-height:1.5;margin-bottom:14px;
 }
 .notice{border-radius:11px;padding:11px 13px;font-size:12.5px;line-height:1.5;margin-bottom:12px;display:none}
 .notice.show{display:block;animation:panelIn .25s ease both}
-.notice.err{background:rgba(248,113,113,.11);border:1px solid rgba(248,113,113,.28);color:#fca5a5}
-.notice.warn{background:rgba(251,191,36,.11);border:1px solid rgba(251,191,36,.28);color:#fcd34d}
+.notice.err{background:rgba(var(--bad-rgb),.11);border:1px solid rgba(var(--bad-rgb),.28);color:var(--bad)}
+.notice.warn{background:rgba(var(--warn-rgb),.11);border:1px solid rgba(var(--warn-rgb),.28);color:var(--warn)}
 
 /* ── Fields ───────────────────────────────────────────────────────────────── */
 .form-group{margin-bottom:13px}
@@ -161,31 +154,31 @@ h1{
 .input-wrap{position:relative;display:flex;align-items:center}
 .input-wrap>svg{
   position:absolute;left:13px;width:16px;height:16px;pointer-events:none;
-  fill:none;stroke:rgba(255,255,255,.3);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;
+  fill:none;stroke:rgba(var(--tint),.3);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;
   transition:stroke .2s;
 }
-.input-wrap:focus-within>svg{stroke:var(--accent-light)}
+.input-wrap:focus-within>svg{stroke:var(--accent-ink)}
 input[type=text],input[type=tel],input[type=password]{
   /* 16px minimum: anything smaller makes iOS Safari zoom the page in on focus
      and never zoom back out, which is how the phone field ended up half off
      the screen after the customer tapped it. */
   width:100%;padding:13px 13px 13px 40px;font-family:inherit;font-size:16px;
   background:var(--sunken);color:var(--ink);
-  box-shadow:inset 4px 4px 9px rgb(10,10,9),inset -2px -2px 6px rgb(43,43,41);
-  border:1px solid rgba(255,255,255,.06);border-radius:12px;outline:none;
+  box-shadow:inset 4px 4px 9px var(--sh-in-d),inset -2px -2px 6px var(--sh-in-l);
+  border:1px solid rgba(var(--tint),.06);border-radius:12px;outline:none;
   transition:border-color .2s,box-shadow .2s;
 }
 input:focus{
   border-color:var(--accent);
-  box-shadow:inset 4px 4px 9px rgb(10,10,9),inset -2px -2px 6px rgb(43,43,41),0 0 0 3px rgba(var(--accent-rgb),.22);
+  box-shadow:inset 4px 4px 9px var(--sh-in-d),inset -2px -2px 6px var(--sh-in-l),0 0 0 3px rgba(var(--accent-rgb),.22);
 }
-input::placeholder{color:rgba(255,255,255,.2)}
+input::placeholder{color:rgba(var(--tint),.2)}
 .field-hint{font-size:11px;color:var(--ink-faint);margin-top:6px;line-height:1.45}
 
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
 .btn-main{
   width:100%;padding:14px;border:none;border-radius:13px;cursor:pointer;
-  font-family:inherit;font-size:14.5px;font-weight:800;color:#fff;
+  font-family:inherit;font-size:14.5px;font-weight:800;color:var(--on-accent);
   background:linear-gradient(135deg,var(--accent-dark) 0%,var(--accent) 50%,var(--accent-light) 100%);
   background-size:200% 100%;
   box-shadow:0 8px 24px -8px rgba(var(--accent-rgb),.95),inset 0 1px 0 rgba(255,255,255,.2);
@@ -195,19 +188,19 @@ input::placeholder{color:rgba(255,255,255,.2)}
 .btn-main:hover{background-position:100% 0;transform:translateY(-1px);box-shadow:0 11px 28px -8px rgba(var(--accent-rgb),1)}
 .btn-main:active{transform:translateY(0) scale(.99)}
 .btn-main:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
-.btn-main svg{width:17px;height:17px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.btn-main svg{width:17px;height:17px;fill:none;color:var(--on-accent);stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .btn-ghost{
   width:100%;padding:11px;border-radius:12px;cursor:pointer;font-family:inherit;
-  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+  background:rgba(var(--tint),.05);border:1px solid rgba(var(--tint),.1);
   color:var(--ink-dim);font-size:13px;font-weight:700;transition:all .18s;margin-top:9px;
 }
-.btn-ghost:hover{background:rgba(255,255,255,.09);color:var(--ink)}
+.btn-ghost:hover{background:rgba(var(--tint),.09);color:var(--ink)}
 
-.divider{height:1px;background:rgba(255,255,255,.07);margin:17px 0}
+.divider{height:1px;background:rgba(var(--tint),.07);margin:17px 0}
 .signup-row{text-align:center;font-size:12px;color:var(--ink-faint)}
-.signup-row a{color:var(--accent-light);text-decoration:none;font-weight:700}
+.signup-row a{color:var(--accent-ink);text-decoration:none;font-weight:700}
 .signup-row a:hover{text-decoration:underline}
-.link-btn{background:none;border:none;padding:0;font:inherit;font-weight:700;color:var(--accent-light);cursor:pointer}
+.link-btn{background:none;border:none;padding:0;font:inherit;font-weight:700;color:var(--accent-ink);cursor:pointer}
 .link-btn:hover{text-decoration:underline}
 
 /* ── Plan filters ─────────────────────────────────────────────────────────── */
@@ -219,13 +212,13 @@ input::placeholder{color:rgba(255,255,255,.2)}
 .filter-chip{
   flex:0 0 auto;padding:6px 13px;border-radius:20px;cursor:pointer;font-family:inherit;
   font-size:11.5px;font-weight:700;white-space:nowrap;
-  background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);
+  background:rgba(var(--tint),.045);border:1px solid rgba(var(--tint),.09);
   color:var(--ink-dim);transition:all .2s;
 }
-.filter-chip:hover{color:var(--ink);border-color:rgba(255,255,255,.2)}
+.filter-chip:hover{color:var(--ink);border-color:rgba(var(--tint),.2)}
 .filter-chip.active{
   background:linear-gradient(135deg,var(--accent-dark),var(--accent));
-  border-color:var(--accent);color:#160f06;
+  border-color:var(--accent);color:var(--on-accent);
   box-shadow:0 4px 14px -5px rgba(var(--accent-rgb),1);
 }
 
@@ -246,9 +239,9 @@ input::placeholder{color:rgba(255,255,255,.2)}
 .pkg-row{
   display:flex;flex-direction:column;align-items:flex-start;gap:3px;
   padding:12px 12px 11px;border-radius:16px;min-width:0;
-  background:rgb(30,30,29);
-  box-shadow:inset 3px 3px 8px rgb(12,12,11),inset -2px -2px 6px rgb(45,45,43);
-  border:1.5px solid rgba(255,255,255,.06);
+  background:var(--raised);
+  box-shadow:inset 3px 3px 8px var(--sh-in-d),inset -2px -2px 6px var(--sh-in-l);
+  border:1.5px solid rgba(var(--tint),.06);
   cursor:pointer;position:relative;overflow:hidden;
   transition:box-shadow .24s,border-color .24s,transform .16s,background .24s;
   animation:rowIn .38s cubic-bezier(.16,1,.3,1) both;
@@ -260,8 +253,8 @@ input::placeholder{color:rgba(255,255,255,.2)}
 .pkg-row input[type=radio]{position:absolute;opacity:0;width:0;height:0}
 .pkg-row.selected{
   border-color:var(--accent);
-  background:rgb(37,31,23);
-  box-shadow:inset 2px 2px 6px rgb(14,12,10),0 0 0 1px var(--accent),
+  background:var(--raised-sel);
+  box-shadow:inset 2px 2px 6px var(--sh-in-d),0 0 0 1px var(--accent),
              0 10px 26px -12px rgba(var(--accent-rgb),1);
 }
 /* Accent wash across the chosen card */
@@ -275,7 +268,7 @@ input::placeholder{color:rgba(255,255,255,.2)}
 .pkg-check{
   position:absolute;top:9px;right:9px;
   width:17px;height:17px;border-radius:50%;
-  border:2px solid rgba(255,255,255,.18);transition:all .22s;
+  border:2px solid rgba(var(--tint),.18);transition:all .22s;
 }
 .pkg-row.selected .pkg-check{
   border-color:var(--accent-light);background:var(--accent);
@@ -283,7 +276,7 @@ input::placeholder{color:rgba(255,255,255,.2)}
 }
 .pkg-row.selected .pkg-check::after{
   content:'';position:absolute;left:4.5px;top:1px;width:4px;height:8px;
-  border:solid #1a1206;border-width:0 2.2px 2.2px 0;transform:rotate(43deg);
+  border:solid var(--on-accent);border-width:0 2.2px 2.2px 0;transform:rotate(43deg);
   animation:tick .2s ease both;
 }
 @keyframes tick{from{opacity:0;transform:rotate(43deg) scale(.5)}to{opacity:1;transform:rotate(43deg) scale(1)}}
@@ -295,7 +288,7 @@ input::placeholder{color:rgba(255,255,255,.2)}
   overflow:hidden;word-break:break-word;
 }
 .pkg-price{
-  position:relative;font-size:21px;font-weight:800;color:var(--accent-light);
+  position:relative;font-size:21px;font-weight:800;color:var(--accent-ink);
   line-height:1.15;display:flex;align-items:baseline;gap:3px;white-space:nowrap;
 }
 .pkg-price small{font-size:9.5px;font-weight:700;color:var(--ink-faint);letter-spacing:.04em}
@@ -305,7 +298,7 @@ input::placeholder{color:rgba(255,255,255,.2)}
 .chip{
   display:inline-flex;align-items:center;gap:3px;
   font-size:10px;font-weight:600;color:var(--ink-dim);
-  background:rgba(255,255,255,.055);border-radius:6px;padding:2.5px 5px;
+  background:rgba(var(--tint),.055);border-radius:6px;padding:2.5px 5px;
 }
 .chip svg{width:10px;height:10px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
@@ -314,14 +307,14 @@ input::placeholder{color:rgba(255,255,255,.2)}
   position:relative;align-self:stretch;margin:7px -12px -11px;margin-top:auto;
   font-style:normal;font-size:9px;font-weight:800;letter-spacing:.07em;
   text-transform:uppercase;text-align:center;padding:4px 6px;
-  background:linear-gradient(135deg,var(--accent-dark),var(--accent-light));color:#1a1206;
+  background:linear-gradient(135deg,var(--accent-dark),var(--accent-light));color:var(--on-accent);
 }
 .pkg-tag-free{background:linear-gradient(135deg,#059669,#34d399);color:#04231a}
 
 .pkg-empty{
   grid-column:1/-1;
-  background:rgb(30,30,29);border:1px solid rgba(255,255,255,.055);border-radius:15px;
-  box-shadow:inset 3px 3px 8px rgb(12,12,11),inset -2px -2px 6px rgb(45,45,43);
+  background:var(--raised);border:1px solid rgba(var(--tint),.055);border-radius:15px;
+  box-shadow:inset 3px 3px 8px var(--sh-in-d),inset -2px -2px 6px var(--sh-in-l);
   padding:22px 16px;text-align:center;margin-bottom:16px;
 }
 .pkg-empty-title{font-size:13.5px;font-weight:700;color:var(--ink);margin-bottom:5px}
@@ -338,8 +331,8 @@ input::placeholder{color:rgba(255,255,255,.2)}
   position:sticky;bottom:0;z-index:3;
   margin:0 -26px -24px;
   padding:12px 26px calc(14px + env(safe-area-inset-bottom));
-  background:linear-gradient(180deg,rgba(34,34,33,0) 0%,rgb(34,34,33) 14%);
-  border-radius:0 0 24px 24px;
+  background:linear-gradient(180deg,rgba(var(--surface-rgb),0) 0%,var(--surface) 14%);
+  border-radius:0 0 var(--radius) var(--radius);
 }
 .pay-summary{
   display:flex;align-items:center;justify-content:space-between;gap:12px;
@@ -350,7 +343,7 @@ input::placeholder{color:rgba(255,255,255,.2)}
 .pay-summary-l{display:flex;flex-direction:column;gap:2px;min-width:0}
 .pay-summary-cap{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint)}
 .pay-summary-name{font-size:13.5px;font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pay-summary-r{font-size:17px;font-weight:800;color:var(--accent-light);white-space:nowrap}
+.pay-summary-r{font-size:17px;font-weight:800;color:var(--accent-ink);white-space:nowrap}
 .pay-hint{font-size:11px;color:var(--ink-faint);line-height:1.45;text-align:center;margin-top:9px}
 
 /* ── STK progress stepper ─────────────────────────────────────────────────── */
@@ -361,12 +354,12 @@ input::placeholder{color:rgba(255,255,255,.2)}
 .step-dot{
   width:24px;height:24px;border-radius:50%;flex-shrink:0;position:relative;
   display:flex;align-items:center;justify-content:center;
-  background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.14);
+  background:rgba(var(--tint),.07);border:1.5px solid rgba(var(--tint),.14);
   transition:all .35s;
 }
 .step.done .step-dot{background:var(--ok);border-color:var(--ok)}
 .step.done .step-dot::after{
-  content:'';width:5px;height:9px;border:solid #0e0e0d;border-width:0 2px 2px 0;
+  content:'';width:5px;height:9px;border:solid var(--surface);border-width:0 2px 2px 0;
   transform:rotate(43deg) translate(-1px,-1px);
 }
 .step.active .step-dot{border-color:var(--accent);background:rgba(var(--accent-rgb),.2)}
@@ -378,7 +371,7 @@ input::placeholder{color:rgba(255,255,255,.2)}
 /* Connector line between dots */
 .step:not(:last-child) .step-dot::before{
   content:'';position:absolute;top:24px;left:50%;transform:translateX(-50%);
-  width:1.5px;height:17px;background:rgba(255,255,255,.11);
+  width:1.5px;height:17px;background:rgba(var(--tint),.11);
 }
 .step.done:not(:last-child) .step-dot::before{background:var(--ok)}
 .step-txt{display:flex;flex-direction:column;gap:2px;padding-top:2px}
@@ -390,21 +383,21 @@ input::placeholder{color:rgba(255,255,255,.2)}
 
 /* ── Results ──────────────────────────────────────────────────────────────── */
 .result-ok,.result-fail{border-radius:13px;padding:15px;margin-bottom:12px}
-.result-ok{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.26)}
-.result-fail{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.26)}
+.result-ok{background:rgba(var(--ok-rgb),.1);border:1px solid rgba(var(--ok-rgb),.26)}
+.result-fail{background:rgba(var(--bad-rgb),.1);border:1px solid rgba(var(--bad-rgb),.26)}
 .result-title{font-size:14px;font-weight:800;margin-bottom:5px;display:flex;align-items:center;gap:8px}
-.result-ok .result-title{color:#6ee7b7}
-.result-fail .result-title{color:#fca5a5}
+.result-ok .result-title{color:var(--ok)}
+.result-fail .result-title{color:var(--bad)}
 .result-sub{font-size:12.5px;color:var(--ink-dim);line-height:1.55}
 .creds{
-  margin-top:11px;padding:11px 12px;border-radius:10px;background:rgba(0,0,0,.28);
+  margin-top:11px;padding:11px 12px;border-radius:10px;background:var(--well);
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--ink);
   display:flex;flex-direction:column;gap:5px;word-break:break-all;
 }
 .creds span{color:var(--ink-faint);font-family:inherit}
 
 /* ── Manual paybill (demoted) ─────────────────────────────────────────────── */
-.how-to{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-radius:13px;margin-top:16px;overflow:hidden}
+.how-to{background:rgba(var(--tint),.025);border:1px solid rgba(var(--tint),.06);border-radius:13px;margin-top:16px;overflow:hidden}
 .how-to>summary{
   list-style:none;cursor:pointer;padding:12px 14px;font-size:12px;font-weight:700;
   color:var(--ink-dim);display:flex;align-items:center;gap:8px;transition:color .18s;
@@ -418,14 +411,19 @@ input::placeholder{color:rgba(255,255,255,.2)}
 .how-step:last-child{margin-bottom:0}
 .step-num{
   width:20px;height:20px;border-radius:50%;flex-shrink:0;margin-top:1px;
-  background:var(--accent);color:#1a1206;font-size:10px;font-weight:800;
+  background:var(--accent);color:var(--on-accent);font-size:10px;font-weight:800;
   display:flex;align-items:center;justify-content:center;
 }
 .step-text{font-size:12px;color:var(--ink-dim);line-height:1.55}
 .step-text strong{color:var(--ink)}
 
+.footer-note{
+  text-align:center;font-size:11.5px;line-height:1.5;color:var(--ink-faint);
+  padding:14px 26px 0;
+}
+.support-line{color:var(--accent-ink);font-weight:700;text-decoration:none}
 .footer-links{display:flex;justify-content:center;gap:16px;padding:13px 26px 18px;flex-wrap:wrap}
-.footer-links a{color:rgba(255,255,255,.2);font-size:11px;text-decoration:none;transition:color .18s}
+.footer-links a{color:rgba(var(--tint),.2);font-size:11px;text-decoration:none;transition:color .18s}
 .footer-links a:hover{color:var(--ink-dim)}
 
 /* Respect the OS setting — captive portals are often used in a hurry */
@@ -449,18 +447,13 @@ input::placeholder{color:rgba(255,255,255,.2)}
 
 <div class="card">
   <div class="card-top">
-    <div class="logo">
-      <svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="#fff" stroke="none"/></svg>
-    </div>
-    <h1>{{COMPANY_NAME}}</h1>
-    <p class="subtitle">Fast, reliable internet — connect in seconds</p>
+    {{LOGO_BLOCK}}
+    <h1>{{HEADLINE}}</h1>
+    <p class="subtitle">{{SUBTITLE}}</p>
   </div>
 
-  <div class="tab-bar">
-    <button class="tab-btn active" id="tb-buy"       type="button" onclick="switchTab('buy')">Get Online</button>
-    <button class="tab-btn"        id="tb-login"     type="button" onclick="switchTab('login')">Sign In</button>
-    <button class="tab-btn"        id="tb-voucher"   type="button" onclick="switchTab('voucher')">Voucher</button>
-    <button class="tab-btn"        id="tb-reconnect" type="button" onclick="switchTab('reconnect')">Paid?</button>
+  <div class="tab-bar{{TAB_BAR_CLASS}}">
+{{TAB_BUTTONS}}
     <span class="tab-ink" id="tab-ink"></span>
   </div>
 
@@ -532,18 +525,10 @@ input::placeholder{color:rgba(255,255,255,.2)}
 
     <div id="buy-result" style="display:none"></div>
 
-    <details class="how-to">
-      <summary>Pay manually with Paybill instead</summary>
-      <div class="how-to-inner">
-        <div class="how-step"><div class="step-num">1</div><div class="step-text">Open <strong>M-Pesa</strong> &rarr; <strong>Lipa na M-Pesa</strong> &rarr; <strong>Pay Bill</strong></div></div>
-        <div class="how-step"><div class="step-num">2</div><div class="step-text">Business No: <strong>{{PAYBILL}}</strong></div></div>
-        <div class="how-step"><div class="step-num">3</div><div class="step-text">Account No: <strong>your phone number</strong> (e.g. 0712345678)</div></div>
-        <div class="how-step"><div class="step-num">4</div><div class="step-text">Enter the plan amount and confirm with your PIN</div></div>
-        <div class="how-step"><div class="step-num">5</div><div class="step-text">Got the M-Pesa code? Open the <strong>Paid?</strong> tab and enter it</div></div>
-      </div>
-    </details>
+{{MANUAL_PAYBILL}}
   </div>
 
+  <!--{{IF:LOGIN}}-->
   <!-- ══ TAB 2: SIGN IN ══════════════════════════════════════════ -->
   <div class="tab-panel" id="tab-login">
     $(if error)
@@ -578,7 +563,7 @@ input::placeholder{color:rgba(255,255,255,.2)}
         </div>
       </div>
       <button type="submit" class="btn-main" id="hs-login-btn">
-        <svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="#fff" stroke="none"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/></svg>
         <span>Connect to Internet</span>
       </button>
     </form>
@@ -589,7 +574,9 @@ input::placeholder{color:rgba(255,255,255,.2)}
       &middot; <a href="{{SIGNUP_URL}}">Register</a>
     </div>
   </div>
+  <!--{{ENDIF:LOGIN}}-->
 
+  <!--{{IF:VOUCHER}}-->
   <!-- ══ TAB 3: VOUCHER ══════════════════════════════════════════ -->
   <div class="tab-panel" id="tab-voucher">
     <div class="info-box">
@@ -618,7 +605,9 @@ input::placeholder{color:rgba(255,255,255,.2)}
       No voucher? <button class="link-btn" type="button" onclick="switchTab('buy')">Buy a plan</button>
     </div>
   </div>
+  <!--{{ENDIF:VOUCHER}}-->
 
+  <!--{{IF:PAID}}-->
   <!-- ══ TAB 4: ALREADY PAID ═════════════════════════════════════ -->
   <div class="tab-panel" id="tab-reconnect">
     <div class="info-box">
@@ -668,7 +657,9 @@ input::placeholder{color:rgba(255,255,255,.2)}
              value="{{PORTAL_URL}}/customer/hotspot_landing.php?mac=$(mac-esc)&reconnected=1">
     </form>
   </div>
+  <!--{{ENDIF:PAID}}-->
 
+  {{FOOTER_NOTE}}
   <div class="footer-links">
     <a href="$(link-logout)">Logout</a>
     <a href="status">My Status</a>
@@ -693,9 +684,14 @@ input::placeholder{color:rgba(255,255,255,.2)}
 })();
 
 var PORTAL  = '{{PORTAL_URL}}';
+var HAS_PAID_TAB = {{HAS_PAID_TAB}};
 var TID     = '{{TENANT_ID}}';
 var MAC     = '$(mac-esc)';
-var TABS    = ['buy','login','voucher','reconnect'];
+/* Only the tabs this tenant enabled. Everything below indexes into it rather
+   than assuming all four exist — a getElementById on a switched-off tab used
+   to throw and take the rest of the script, including the pay button, with
+   it. */
+var TABS    = {{TABS_JSON}};
 
 /* ── Tabs ──────────────────────────────────────────────────────── */
 function moveTabInk(name) {
@@ -707,9 +703,12 @@ function moveTabInk(name) {
 }
 
 function switchTab(name) {
+  if (TABS.indexOf(name) < 0) name = TABS[0];
   TABS.forEach(function (t) {
-    document.getElementById('tb-' + t).classList.toggle('active', t === name);
-    document.getElementById('tab-' + t).classList.toggle('active', t === name);
+    var btn = document.getElementById('tb-' + t);
+    var pan = document.getElementById('tab-' + t);
+    if (btn) btn.classList.toggle('active', t === name);
+    if (pan) pan.classList.toggle('active', t === name);
   });
   moveTabInk(name);
 }
@@ -822,7 +821,8 @@ function setLoginError(msg) {
   if (span) span.textContent = msg;
 }
 
-document.getElementById('hs-login-form').addEventListener('submit', function (e) {
+var _loginForm = document.getElementById('hs-login-form');
+if (_loginForm) _loginForm.addEventListener('submit', function (e) {
   e.preventDefault();
   var form  = this;
   var u     = (document.getElementById('hs-user').value || '').trim();
@@ -871,7 +871,8 @@ document.getElementById('hs-login-form').addEventListener('submit', function (e)
 });
 
 /* ── Voucher ───────────────────────────────────────────────────── */
-document.getElementById('hs-voucher-form').addEventListener('submit', function () {
+var _voucherForm = document.getElementById('hs-voucher-form');
+if (_voucherForm) _voucherForm.addEventListener('submit', function () {
   var c = (document.getElementById('vchr-code').value || '').trim().toUpperCase();
   document.getElementById('vchr-code').value = c;
   document.getElementById('vchr-pass').value = c;
@@ -881,6 +882,7 @@ document.getElementById('hs-voucher-form').addEventListener('submit', function (
 
 /* ── Already paid: verify an M-Pesa code ───────────────────────── */
 function doReconnect() {
+  if (!HAS_PAID_TAB) return;
   var code = (document.getElementById('rc-code').value || '').trim().toUpperCase();
   var note = document.getElementById('rc-notice');
   if (!code) {
@@ -1030,8 +1032,12 @@ function pollBuyStatus() {
     clearInterval(_buyTimer);
     cancelBuy();
     showResult('buy-result', false, 'Payment timed out',
-      'No confirmation after 5 minutes. If the money left your account, open the <strong>Paid?</strong> tab and enter the M-Pesa code from your SMS.',
-      '<button class="btn-ghost" type="button" onclick="switchTab(\'reconnect\')">Enter M-Pesa code</button>');
+      HAS_PAID_TAB
+        ? 'No confirmation after 5 minutes. If the money left your account, open the <strong>Paid?</strong> tab and enter the M-Pesa code from your SMS.'
+        : 'No confirmation after 5 minutes. If the money left your account, contact support with your M-Pesa code.',
+      HAS_PAID_TAB
+        ? '<button class="btn-ghost" type="button" onclick="switchTab(\'reconnect\')">Enter M-Pesa code</button>'
+        : '');
     return;
   }
 
@@ -1064,8 +1070,12 @@ function pollBuyStatus() {
           /* Paid, but provisioning hasn't caught up — offer the code route */
           document.getElementById('buy-status').style.display = 'none';
           showResult('buy-result', true, 'Payment received',
-            'Open the <strong>Paid?</strong> tab and enter the M-Pesa code from your SMS to finish connecting.',
-            '<button class="btn-ghost" type="button" onclick="switchTab(\'reconnect\')">Enter M-Pesa code</button>');
+            HAS_PAID_TAB
+              ? 'Open the <strong>Paid?</strong> tab and enter the M-Pesa code from your SMS to finish connecting.'
+              : 'Your connection is being set up. If it does not come on shortly, contact support with your M-Pesa code.',
+            HAS_PAID_TAB
+              ? '<button class="btn-ghost" type="button" onclick="switchTab(\'reconnect\')">Enter M-Pesa code</button>'
+              : '');
         }
       } else if (d.status === 'failed') {
         /* Terminal — usually the customer cancelled or let the PIN prompt time

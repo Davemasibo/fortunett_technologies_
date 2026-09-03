@@ -80,6 +80,18 @@ Routers are provisioned via the RouterOS API. Package changes (upgrade/downgrade
 - `cron/sync_hotspot_pages.php` — hourly server-side sweep over reachable routers; CGNAT routers are skipped and rely on their own scheduler.
 - Admin UI: **Sync Portal** button on `mikrotik.php` (`router_id=all`), plus per-router deploy.
 
+### Tenant-Themed Captive Portal
+`includes/hotspot_theme.php` is the only place that decides what a tenant's portal looks like. Choices live in `tenant_settings` under an `hs_` prefix, edited on the **Hotspot** tab of `settings.php` (`settings_hotspot_partial.php`), and are read by `render_login.php`. Because `login_version.php` hashes the *rendered* page, **saving is the whole deployment** — the fingerprint changes and every router pulls within the hour. *Save & push now* only makes that immediate for routers the server can reach.
+
+- **The palette is derived, never stored.** A tenant picks a background, an accent and (optionally) a wallpaper; the ~28 CSS variables the stylesheet needs are computed. Storing them would let the settings preview and the served page drift apart with no way to tell which was lying.
+- **Light-vs-dark card is decided by luminance, not by the tenant.** `hsLuminance()` on the effective backdrop against a **0.28** threshold — a saturated orange sits near 0.35 and wants a light card. Only genuinely dark pages fall below. `card_mode` overrides it.
+- **Two different accent jobs, two different colours.** `--accent` is the fill (buttons, badges, the selected plan) and keeps the tenant's exact hex. `--accent-ink` is the same colour pushed until it clears 4.5:1 against the card, and is what every *text* use reads — the price, the active tab, links, the headline. Without the split a yellow accent produced a yellow price on a white card.
+- **`--on-accent` compares contrast ratios, it does not threshold luminance.** A mid-yellow like `#eab308` sits at 0.49; a "> 0.55 means dark text" rule paints white on it at 2.0:1. `hsBestInk()` tries both candidates.
+- **`--tint` is the whole light/dark switch for veils.** Every `rgba(255,255,255,.x)` in the template is `rgba(var(--tint),.x)`; the theme sets `--tint` to `255,255,255` or `0,0,0`. Two highlights stay literally white because they sit *on* the accent, not on the card.
+- **Images are embedded as data URIs, never linked.** A linked asset has to be allowed through the router's walled garden and a blocked request gives the customer a broken page with no explanation. The cost is router flash, so `HS_WALLPAPER_MAX` (260 KB) is a real ceiling, enforced on upload **and** on read.
+- **Optional tabs are removed from the DOM, not hidden.** `<!--{{IF:NAME}}-->…<!--{{ENDIF:NAME}}-->` markers in `login.html`, stripped by `_hsApplyConditionals()`. `TABS` is emitted to match and every listener is guarded — a `getElementById` on a switched-off tab used to throw and take the pay button down with it. `buy` can never be switched off.
+- The save handler merges over **what is stored**, not over the defaults: an unchecked checkbox is simply absent from the POST, so merging over defaults would silently reset settings nobody touched.
+
 ### Never Trust the Callback Alone
 M-Pesa callbacks are not guaranteed to arrive — a CDN/WAF in front of the callback URL, a Safaricom hiccup, or a customer who cancels all leave `mpesa_transactions` stuck on `pending`. Every payment path therefore needs a pull-based resolution:
 

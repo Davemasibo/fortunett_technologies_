@@ -25,8 +25,14 @@ temp/
 *.tmp
 
 # Upload Directories (if any)
+# Tenant-uploaded files are per-install data. The .htaccess is NOT — it is what
+# stops anything in here being executed, so it has to ship with the code.
 uploads/*
 !uploads/.gitkeep
+!uploads/.htaccess
+!uploads/hotspot/
+uploads/hotspot/*
+!uploads/hotspot/.gitkeep
 
 # Database Backups
 *.sql.backup

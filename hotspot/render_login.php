@@ -8,7 +8,13 @@
  *
  * MikroTik template variables ($(link-login-only), $(mac-esc), $(error), …) are
  * left intact — RouterOS substitutes them when it serves the page to a client.
+ *
+ * Appearance comes entirely from includes/hotspot_theme.php, which reads what
+ * the tenant saved on settings.php. Nothing here decides a colour: if the two
+ * ever disagreed, the settings preview and the page the router serves would
+ * drift apart with no way to tell which one was lying.
  */
+require_once __DIR__ . '/../includes/hotspot_theme.php';
 
 /**
  * Look up a tenant by its provisioning token. Returns null when unknown.
@@ -33,44 +39,45 @@ function renderHotspotLoginPage(PDO $pdo, array $tenant): string
     // ?? not ?: — brand_color and company_name are optional columns that some
     // deployments simply don't have, and the caller passes SELECT * straight in.
     $tenantId    = (int)$tenant['id'];
-    // The old fallback was a near-black navy, which is why the portal read as
-    // "boring" on every tenant that never set a colour: the whole page resolved
-    // to dark blue on dark grey. A bright amber reads at arm's length on a
-    // phone held in daylight, which is the actual viewing condition.
-    $brandColor  = ($tenant['brand_color']  ?? '') ?: '#ff9500';
     $companyName = ($tenant['company_name'] ?? '') ?: 'FortuNett Technologies';
 
-    [$brandDark, $brandLight, $brandRgb] = _hsShades($brandColor);
+    $theme   = hotspotThemeLoad($pdo, $tenantId);
+    $palette = hotspotThemePalette($theme);
 
-    // The ACCENT is deliberately independent of the tenant's brand colour.
-    // Everything on the path to a sale -- the plan cards, the price, the pay
-    // button, the tab indicator -- is painted with it, so a tenant whose brand
-    // is a dark blue still gets a portal a customer's eye lands on. Tunable
-    // per installation without a code change.
-    $accentColor = '#ff9500';
-    try {
-        $acSt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='hotspot_accent_color' LIMIT 1");
-        $ac = $acSt ? $acSt->fetchColumn() : null;
-        if ($ac && preg_match('/^#?[0-9a-f]{3,6}$/i', trim($ac))) {
-            $accentColor = '#' . ltrim(trim($ac), '#');
-        }
-    } catch (Throwable $_e) {}
-    [$accentDark, $accentLight, $accentRgb] = _hsShades($accentColor);
+    // Images are embedded, not linked. A linked asset has to be allowed through
+    // the router's walled garden, and a customer whose request is blocked gets
+    // a portal with a broken background and no clue why.
+    $bgData   = $theme['bg_style'] === 'image'
+        ? hotspotThemeAssetDataUri($theme['bg_image'], HS_WALLPAPER_MAX) : '';
+    $logoData = hotspotThemeAssetDataUri($theme['logo'], HS_LOGO_MAX);
+
+    $bodyBg = hotspotThemeBodyBackground($theme, $bgData);
+
+    // A wallpaper that will not load falls back to the tenant's colours rather
+    // than to a blank page.
+    if ($theme['bg_style'] === 'image' && $bgData === '') {
+        $bodyBg = hotspotThemeBodyBackground(
+            ['bg_style' => 'gradient'] + $theme, ''
+        );
+    }
 
     [$packagesHtml, $filtersHtml] = _renderHotspotPackages($pdo, $tenantId);
 
-    // M-Pesa paybill for the manual fallback instructions
-    $paybill = 'N/A';
-    try {
+    // M-Pesa paybill for the manual fallback instructions. A tenant override
+    // wins: the number a customer should pay is not always the one attached to
+    // the API gateway row, and a Buy Goods till is not a paybill at all.
+    $paybill = trim($theme['paybill']);
+    if ($paybill === '') try {
         require_once __DIR__ . '/../includes/credential_helper.php';
         $gwSt = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1 LIMIT 1");
         $gwSt->execute([$tenantId]);
         $gwRow = $gwSt->fetch(PDO::FETCH_ASSOC);
         if ($gwRow) {
             $gwCreds = decrypt_gateway_credentials($gwRow['credentials']);
-            $paybill = $gwCreds['shortcode'] ?? $gwCreds['paybill'] ?? 'N/A';
+            $paybill = $gwCreds['shortcode'] ?? $gwCreds['paybill'] ?? '';
         }
     } catch (Throwable $_e) {}
+    if ($paybill === '') $paybill = 'N/A';
 
     // Portal base URL — the router's walled garden must allow this host
     $platformDomain = 'fortunetttech.site';
@@ -90,50 +97,151 @@ function renderHotspotLoginPage(PDO $pdo, array $tenant): string
         throw new \RuntimeException('Hotspot login template not found: ' . $templatePath);
     }
 
-    // Support line — shown in the footer when the tenant has one on file
-    $supportPhone = trim((string)($tenant['support_phone'] ?? $tenant['phone'] ?? ''));
+    // Support line — the tenant's portal setting wins over the account record
+    $supportPhone = trim($theme['support_phone'])
+        ?: trim((string)($tenant['support_phone'] ?? $tenant['phone'] ?? ''));
+
+    // ── Tabs the tenant chose to show ────────────────────────────────────────
+    // 'buy' is not optional: with every tab switched off there would be nothing
+    // on the page at all, and a customer with no way to get online.
+    $tabDefs = [
+        ['buy',       'Get Online', true],
+        ['login',     'Sign In',    $theme['show_login']   === '1'],
+        ['voucher',   'Voucher',    $theme['show_voucher'] === '1'],
+        ['reconnect', 'Paid?',      $theme['show_paid']    === '1'],
+    ];
+    $tabButtons = '';
+    $tabNames   = [];
+    foreach ($tabDefs as [$id, $label, $on]) {
+        if (!$on) continue;
+        $tabNames[] = $id;
+        $tabButtons .= '    <button class="tab-btn' . ($tabNames === [$id] ? ' active' : '')
+            . '" id="tb-' . $id . '" type="button" onclick="switchTab(\'' . $id . '\')">'
+            . $label . "</button>\n";
+    }
+
+    $template = _hsApplyConditionals($template, [
+        'LOGIN'   => $theme['show_login']   === '1',
+        'VOUCHER' => $theme['show_voucher'] === '1',
+        'PAID'    => $theme['show_paid']    === '1',
+    ]);
+
+    // ── Logo ─────────────────────────────────────────────────────────────────
+    $logoBlock = $logoData !== ''
+        ? '<img class="logo-img" src="' . $logoData . '" alt="'
+          . htmlspecialchars($companyName, ENT_QUOTES) . '">'
+        : '<div class="logo">'
+          . '<svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/>'
+          . '<path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>'
+          . '<circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/></svg></div>';
+
+    // ── Manual payment instructions ──────────────────────────────────────────
+    $manual = '';
+    if ($theme['show_manual'] === '1') {
+        $isTill  = $theme['pay_type'] === 'till';
+        $acctLbl = trim($theme['account_label']) ?: 'your phone number';
+        $note    = trim($theme['pay_note']);
+
+        $steps = [
+            'Open <strong>M-Pesa</strong> &rarr; <strong>Lipa na M-Pesa</strong> &rarr; <strong>'
+                . ($isTill ? 'Buy Goods and Services' : 'Pay Bill') . '</strong>',
+            ($isTill ? 'Till No: <strong>' : 'Business No: <strong>')
+                . htmlspecialchars($paybill) . '</strong>',
+        ];
+        // A Buy Goods till has no account field, so asking for one sends the
+        // customer looking for a screen that does not exist.
+        if (!$isTill) {
+            $steps[] = 'Account No: <strong>' . htmlspecialchars($acctLbl) . '</strong>';
+        }
+        $steps[] = 'Enter the plan amount and confirm with your PIN';
+        if ($theme['show_paid'] === '1') {
+            $steps[] = 'Got the M-Pesa code? Open the <strong>Paid?</strong> tab and enter it';
+        }
+
+        $manual = '    <details class="how-to"><summary>Pay manually with '
+            . ($isTill ? 'Buy Goods' : 'Paybill') . ' instead</summary><div class="how-to-inner">';
+        foreach ($steps as $i => $stepHtml) {
+            $manual .= '<div class="how-step"><div class="step-num">' . ($i + 1) . '</div>'
+                . '<div class="step-text">' . $stepHtml . '</div></div>';
+        }
+        if ($note !== '') {
+            $manual .= '<div class="step-text" style="margin-top:10px">'
+                . nl2br(htmlspecialchars($note)) . '</div>';
+        }
+        $manual .= '</div></details>';
+    }
+
+    // ── Footer note + support line ───────────────────────────────────────────
+    $footerBits = [];
+    if (trim($theme['footer_note']) !== '') {
+        $footerBits[] = nl2br(htmlspecialchars(trim($theme['footer_note'])));
+    }
+    if ($supportPhone !== '') {
+        $footerBits[] = 'Need help? <a class="support-line" href="tel:'
+            . htmlspecialchars(preg_replace('/[^0-9+]/', '', $supportPhone), ENT_QUOTES) . '">'
+            . htmlspecialchars($supportPhone) . '</a>';
+    }
+    $footerNote = $footerBits
+        ? '<div class="footer-note">' . implode('<br>', $footerBits) . '</div>'
+        : '';
+
+    $headline = trim($theme['headline']) ?: $companyName;
 
     return str_replace(
         [
-            '{{COMPANY_NAME}}', '{{BRAND_COLOR}}', '{{BRAND_DARK}}', '{{BRAND_LIGHT}}',
-            '{{BRAND_RGB}}', '{{PORTAL_URL}}', '{{SIGNUP_URL}}', '{{PACKAGES_SECTION}}',
-            '{{PACKAGE_FILTERS}}', '{{PAYBILL}}', '{{TENANT_ID}}', '{{SUPPORT_PHONE}}',
-            '{{ACCENT_COLOR}}', '{{ACCENT_DARK}}', '{{ACCENT_LIGHT}}', '{{ACCENT_RGB}}',
+            '{{COMPANY_NAME}}', '{{HEADLINE}}', '{{SUBTITLE}}', '{{LOGO_BLOCK}}',
+            '{{THEME_VARS}}', '{{BODY_BG}}', '{{THEME_COLOR}}',
+            '{{PORTAL_URL}}', '{{SIGNUP_URL}}', '{{PACKAGES_SECTION}}', '{{PACKAGE_FILTERS}}',
+            '{{PAYBILL}}', '{{TENANT_ID}}', '{{SUPPORT_PHONE}}',
+            '{{TAB_BUTTONS}}', '{{TAB_BAR_CLASS}}', '{{TABS_JSON}}', '{{HAS_PAID_TAB}}',
+            '{{MANUAL_PAYBILL}}', '{{FOOTER_NOTE}}',
         ],
         [
-            htmlspecialchars($companyName, ENT_QUOTES), $brandColor, $brandDark, $brandLight,
-            $brandRgb, $portalBase, $signupUrl, $packagesHtml,
-            $filtersHtml, htmlspecialchars($paybill), (string)$tenantId, htmlspecialchars($supportPhone, ENT_QUOTES),
-            $accentColor, $accentDark, $accentLight, $accentRgb,
+            htmlspecialchars($companyName, ENT_QUOTES),
+            htmlspecialchars($headline, ENT_QUOTES),
+            htmlspecialchars($theme['subtitle'], ENT_QUOTES),
+            $logoBlock,
+            $palette['vars'], $bodyBg, $palette['backdrop'],
+            $portalBase, $signupUrl, $packagesHtml, $filtersHtml,
+            htmlspecialchars($paybill), (string)$tenantId, htmlspecialchars($supportPhone, ENT_QUOTES),
+            rtrim($tabButtons, "\n"),
+            count($tabNames) < 2 ? ' single' : '',
+            json_encode(array_values($tabNames)),
+            $theme['show_paid'] === '1' ? 'true' : 'false',
+            $manual, $footerNote,
         ],
         $template
     );
 }
 
 /**
- * A hex colour to [darker, lighter, "r,g,b"].
+ * Strip the sections a tenant has switched off.
  *
- * Shared by the brand and the accent so the two can never drift apart in how
- * their gradients are built.
+ * The optional tab panels are wrapped in <!--{{IF:NAME}}--> … <!--{{ENDIF:NAME}}-->
+ * markers rather than being pulled out into placeholders, so login.html stays a
+ * file you can open and read as a page. A marker pair whose flag is true simply
+ * has the markers removed.
  */
-function _hsShades(string $hex): array
+function _hsApplyConditionals(string $html, array $flags): string
 {
-    $hex = ltrim(trim($hex), '#');
-    if (strlen($hex) === 3) {
-        $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+    foreach ($flags as $name => $on) {
+        $open  = '<!--{{IF:' . $name . '}}-->';
+        $close = '<!--{{ENDIF:' . $name . '}}-->';
+        if ($on) {
+            $html = str_replace([$open, $close], '', $html);
+            continue;
+        }
+        $start = strpos($html, $open);
+        $end   = strpos($html, $close);
+        if ($start === false || $end === false || $end < $start) {
+            // Markers missing or crossed — leave the section in place. Showing a
+            // tab the tenant switched off is a cosmetic fault; deleting an
+            // arbitrary span of the page is not.
+            continue;
+        }
+        $html = substr($html, 0, $start) . substr($html, $end + strlen($close));
     }
-    if (strlen($hex) !== 6 || !ctype_xdigit($hex)) {
-        $hex = 'ff9500';
-    }
-    $r = hexdec(substr($hex, 0, 2));
-    $g = hexdec(substr($hex, 2, 2));
-    $b = hexdec(substr($hex, 4, 2));
-
-    return [
-        sprintf('#%02x%02x%02x', max(0, $r - 45), max(0, $g - 45), max(0, $b - 45)),
-        sprintf('#%02x%02x%02x', min(255, $r + 55), min(255, $g + 55), min(255, $b + 55)),
-        "$r,$g,$b",
-    ];
+    return $html;
 }
 
 /**
