@@ -234,6 +234,31 @@ The line it draws is the whole design:
 
 Two repairs are CLI-only. **Crontab lines** (`--install-cron`) need a shell the web user does not have and touch the machine rather than the database; it backs up the existing crontab and verifies by reading it back, since a crontab that silently did not take is exactly the failure being fixed. `cron/disburse_payouts.php` is **never** auto-installed — it sends real money and M-Pesa has no chargeback. **Re-tagging hand-entered receipts** stays in `repair_collection_type.php --undo-manual`, which also cancels the queued payouts and refuses to touch anything already released.
 
+### Correcting and Deleting a Payment — `includes/payment_admin.php`
+
+A payment is not one row. `process_payment_success()` writes a `payments` row, a `client_invoices` row, two-to-six `ledger_entries`, a `platform_commissions` row for hotspot, an `isp_payout_queue` row when the platform collected, and it extends the customer's expiry. Editing the amount in `payments` alone leaves the invoice, the ledger and the commission stating a different number, and every settlement figure is then whichever one the query happened to read. So the money trail is corrected or removed **as a unit**, in one file, used by both endpoints (`api/payments/update_manual.php`, `api/payments/delete_manual.php`) and by `payments.php`.
+
+Three rules that must not be relaxed:
+
+- **Only a hand-entered payment may be edited or deleted.** A row that came from Safaricom is evidence of money that actually moved; if it is wrong, the fix is a correcting entry, not a delete. `manuallyRecordedSql()` is the one definition of "hand-entered" and it gates every operation — including the row menu in `payments.php`, which is built from the same test the API enforces so the UI never offers a button that is certain to fail.
+- **Never touch a payout that has left or is leaving.** `processing` means Safaricom accepted the B2C request and the result callback has not landed; `paid` means it has; `payments.released_at` means it was released for settlement. M-Pesa B2C has no chargeback, so the record of why the money left has to stay.
+- **Revoking access is opt-in, and refused when it cannot be exact.** Deleting rolls the expiry back by subtracting the same period that granted it — correct only while no *later* completed payment has extended the customer. When one has, the expiry is left alone and the dialog says why. Nothing here re-implements the grace-period logic: an expiry pushed into the past is left for `cron/check_expiry.php`, which owns that transition.
+
+`sms_logs` is deliberately **not** cleaned up by a delete. It records that a customer was actually texted, which stays true whatever happens to the payment.
+
+Editing propagates on two axes. A **reference** change renames the paired `mpesa_transactions.checkout_request_id` (miss this and the row stops matching `manuallyRecordedSql()` and can never be edited again), the invoice number, `ledger_entries.reference`, `platform_commissions.receipt` and the queued payout. An **amount** change recomputes the commission at the tenant's current rate and rewrites the ledger legs — keyed on `(entry_type, account)`, because the pipeline writes `revenue` twice, credited for the sale and debited for the commission, and a blanket update on `payment_id` would set both to the same figure.
+
+### A Reference Code Must Be Unique Per Tenant
+
+The receipt is the idempotency key for the entire pipeline: the SMS dedupe, the ledger guard, the invoice number and the payout row are all derived from it. Two payments sharing one code make every one of those checks match the wrong row — the second payment silently writes no ledger entries and its invoice number collides with the first. **Nothing stopped it**, so the same M-Pesa code could be banked twice by hand.
+
+`paymentReferenceConflict()` is the one check, enforced at every hand-entry point (`record_manual.php`, `update_manual.php`) and surfaced live as the operator types by `api/payments/check_reference.php`. Two details matter:
+
+- It looks in **both** places a reference lives — `payments.transaction_id` and the paired `mpesa_transactions.checkout_request_id` — because a half-written record (the pipeline threw between the two inserts) still burns the code.
+- References are upper-cased on the way in. The form upper-cases as you type, but a value posted any other way must not slip past on case alone: `qjk3x7a1p2` and `QJK3X7A1P2` are the same receipt.
+
+The live check is **advisory only**. A slow or failed lookup stops warning; it can never let a duplicate through, because the write paths check independently.
+
 ### `payments.collection_type` — Whose Bank the Money Is In
 `'platform'` = FortuNett's till took it and owes the ISP a payout. `'direct'` = the ISP's own paybill/till took it; nothing to disburse. This is **not** a payment method and never a UI nicety — every float, settlement figure and payout decision reads it.
 
@@ -353,6 +378,8 @@ The activation SMS is written in **one place**, step 10a of `payment_pipeline.ph
 
 ### Schema Guards
 `includes/schema_guard.php` repairs schema drift in place when a deployment is missing a migration. Call `ensurePaymentStatusEnums($pdo)` at the top of any endpoint on the payment path. One-shot repair: `php tools/repair_status_enums.php` (or `sql/migrations/2026-07-26-payment-autoactivation.sql`).
+
+A third omission is worth naming because it is not drift at all: **`payments.updated_at` is written by the pipeline and created by no schema file or migration.** Step 3's `UPDATE payments SET … updated_at = NOW()` throws 1054 into its own catch, so `steps['payment']` reports false and the `collection_type` the step just resolved is never written. The INSERT branch does not name the column, which is why it stayed invisible — the UPDATE only fires when a payments row already carries the final receipt. `_pipeline_ensure_tables()` now adds it.
 
 It covers two distinct failure modes:
 - **Out-of-range ENUM value** — production runs `STRICT_TRANS_TABLES`, so this throws `SQLSTATE[01000] 1265 Data truncated`. Surfaced to customers as "Payment could not be initiated" (`clients.status='pending'`) and silently blanked `payments.payment_method='mpesa_paybill'`.

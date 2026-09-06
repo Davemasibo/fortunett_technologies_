@@ -85,3 +85,19 @@ function packageExtendExpiry($currentExpiry, $value, $unit): string
 
     return packageExpiryFrom($value, $unit, $base);
 }
+
+/**
+ * The inverse of packageExpiryFrom(), for undoing a payment that should never
+ * have been recorded.
+ *
+ * Exact only while nothing else has touched the expiry since — the caller is
+ * responsible for checking that, because subtracting a period from an expiry a
+ * *later* payment extended would silently take time the customer did pay for.
+ */
+function packageShortenExpiry($currentExpiry, $value, $unit): ?string
+{
+    $cur = $currentExpiry ? strtotime((string)$currentExpiry) : 0;
+    if (!$cur) return null;
+
+    return date('Y-m-d H:i:s', strtotime('-' . packageValidityValue($value) . ' ' . packageValidityUnit($unit), $cur));
+}

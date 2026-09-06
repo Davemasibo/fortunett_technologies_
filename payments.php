@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/payment_admin.php';
 redirectIfNotLoggedIn();
 
 // Get current user's tenant_id
@@ -155,10 +156,17 @@ $date_to = $_GET['date_to'] ?? date('Y-m-d');
 $filter_method = $_GET['method'] ?? '';
 
 // Build Query - Fetch all payments including failed/cancelled (join mpesa_transactions for actual result)
+//
+// is_manual drives the Edit and Delete items in the row menu. Only a
+// hand-entered payment may be changed -- a row that came from Safaricom is the
+// record of money that actually moved -- and the menu is built from the same
+// test the API enforces, so the UI never offers a button that is certain to
+// fail. manuallyRecordedSql() is the single definition of "hand-entered".
 $query = "
     SELECT p.*, c.full_name, c.phone,
            mt.result_code AS mpesa_result_code,
-           mt.result_desc AS mpesa_result_desc
+           mt.result_desc AS mpesa_result_desc,
+           " . manuallyRecordedSql('p') . " AS is_manual
     FROM payments p
     LEFT JOIN clients c ON p.client_id = c.id
     LEFT JOIN mpesa_transactions mt ON mt.checkout_request_id = p.transaction_id
@@ -277,6 +285,20 @@ include 'includes/sidebar.php';
     .dot-menu-item i { width: 16px; text-align: center; color: rgba(255,255,255,.45); flex-shrink: 0; }
     .dot-menu-item:hover i { color: var(--primary-light, #93c5fd); }
     .dot-menu-item.sep { border-top: 1px solid rgba(255,255,255,.07); }
+    .dot-menu-item.danger { color: #fca5a5; }
+    .dot-menu-item.danger:hover { background: rgba(239,68,68,.12); color: #fecaca; }
+    .dot-menu-item.danger i { color: rgba(252,165,165,.6); }
+    .dot-menu-item.danger:hover i { color: #fca5a5; }
+
+    /* Live duplicate-reference feedback. The write path enforces the rule
+       regardless; this only saves the operator from filling in the rest of the
+       form before being told the code is taken. */
+    .ref-hint { font-size: 12px; margin-top: 6px; line-height: 1.45; display: none; }
+    .ref-hint.show { display: block; }
+    .ref-hint.bad { color: #fca5a5; }
+    .ref-hint.good { color: #6ee7b7; }
+    .ref-hint.checking { color: rgba(255,255,255,.35); }
+    .pay-input.ref-bad { border-color: rgba(239,68,68,.5) !important; }
 
     /* Transaction filter tabs */
     .tx-tabs { display: flex; gap: 6px; padding: 14px 24px 0; flex-wrap: wrap; }
@@ -700,6 +722,14 @@ include 'includes/sidebar.php';
                                     <button class="dot-menu-item sep" onclick="openPaymentStatus(<?php echo $txJson; ?>);closeDotMenus()">
                                         <i class="fas fa-satellite-dish"></i> Payment Status
                                     </button>
+                                    <?php if (!empty($tx['is_manual'])): ?>
+                                    <button class="dot-menu-item sep" onclick="openEditPayment(<?php echo $txJson; ?>);closeDotMenus()">
+                                        <i class="fas fa-pen"></i> Edit Entry
+                                    </button>
+                                    <button class="dot-menu-item danger" onclick="confirmDeletePayment(<?php echo $txJson; ?>);closeDotMenus()">
+                                        <i class="fas fa-trash"></i> Delete Entry
+                                    </button>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </td>
@@ -826,10 +856,11 @@ include 'includes/sidebar.php';
 
                         <div>
                             <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Reference / Confirmation Code <span style="color:#f87171;">*</span></label>
-                            <input type="text" name="reference_code" required
+                            <input type="text" name="reference_code" id="recordRef" required
                                 placeholder="e.g. QJK3X7A1P2 — M-Pesa code, bank ref, receipt #"
                                 class="pay-input" style="font-family:monospace;letter-spacing:.04em;"
-                                oninput="this.value=this.value.toUpperCase()">
+                                oninput="this.value=this.value.toUpperCase();queueRefCheck(this,'recordRefHint',null)">
+                            <div class="ref-hint" id="recordRefHint"></div>
                         </div>
                     </div>
 
@@ -864,6 +895,109 @@ include 'includes/sidebar.php';
             </div>
 
         </div><!-- end scrollable body -->
+    </div>
+</div>
+
+<!-- Edit Entry Modal — hand-entered payments only -->
+<div id="editPaymentModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:1000;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+    <div style="background:#1e1e1d;border:1px solid rgba(255,255,255,.08);width:100%;max-width:520px;border-radius:16px;box-shadow:0 32px 80px rgba(0,0,0,.8);display:flex;flex-direction:column;max-height:92vh;">
+        <div style="padding:20px 24px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <div>
+                <h2 style="font-size:18px;font-weight:700;color:#e2e2e0;margin:0 0 2px 0;">Edit Recorded Entry</h2>
+                <p style="font-size:13px;color:rgba(255,255,255,.4);margin:0;" id="editPayWho">&nbsp;</p>
+            </div>
+            <button onclick="closeEditPayment()" style="width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&times;</button>
+        </div>
+
+        <form id="editPaymentForm" onsubmit="submitEditPayment(event)" style="overflow-y:auto;padding:24px;">
+            <input type="hidden" name="payment_id" id="editPayId">
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Amount (KES)</label>
+                    <input type="number" name="amount" id="editPayAmount" required min="1" step="0.01" class="pay-input">
+                </div>
+                <div>
+                    <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Method</label>
+                    <select name="method" id="editPayMethod" class="pay-input">
+                        <option value="mpesa">M-Pesa</option>
+                        <option value="cash">Cash</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="card">Card</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Reference / Confirmation Code</label>
+                <input type="text" name="reference" id="editPayRef" required class="pay-input"
+                       style="font-family:monospace;letter-spacing:.04em;"
+                       oninput="this.value=this.value.toUpperCase();queueRefCheck(this,'editPayRefHint',document.getElementById('editPayId').value)">
+                <div class="ref-hint" id="editPayRefHint"></div>
+                <div style="font-size:12px;color:rgba(255,255,255,.35);margin-top:6px;line-height:1.45;">
+                    Changing this renames the invoice, the ledger entries and any queued settlement so they keep pointing at this payment.
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Date &amp; Time</label>
+                    <input type="datetime-local" name="payment_date" id="editPayDate" class="pay-input">
+                </div>
+                <div>
+                    <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Status</label>
+                    <select name="status" id="editPayStatus" class="pay-input">
+                        <option value="completed">Confirmed</option>
+                        <option value="pending">Unverified</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="margin-bottom:18px;">
+                <label style="display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.6);margin-bottom:6px;">Notes</label>
+                <input type="text" name="notes" id="editPayNotes" class="pay-input" placeholder="Optional">
+            </div>
+
+            <div id="editPayConfirmNote" style="display:none;font-size:12.5px;color:#fcd34d;background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.28);border-radius:8px;padding:12px 14px;margin-bottom:16px;line-height:1.5;">
+                Moving this to <strong>Confirmed</strong> also reconnects the customer, extends their expiry and texts them their login — the same thing recording a verified payment does.
+            </div>
+
+            <button type="submit" id="editPayBtn" class="pay-submit-btn">
+                <i class="fas fa-save" style="margin-right:8px;"></i>Save Changes
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Entry Modal -->
+<div id="deletePaymentModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:1001;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+    <div style="background:#1e1e1d;border:1px solid rgba(239,68,68,.25);width:100%;max-width:480px;border-radius:16px;box-shadow:0 32px 80px rgba(0,0,0,.8);padding:26px;">
+        <h2 style="font-size:17px;font-weight:700;color:#fca5a5;margin:0 0 6px 0;display:flex;align-items:center;gap:10px;">
+            <i class="fas fa-triangle-exclamation"></i> Delete this entry?
+        </h2>
+        <p style="font-size:13px;color:rgba(255,255,255,.45);margin:0 0 18px 0;line-height:1.5;">
+            This removes the payment and everything it produced — the invoice, the ledger entries, any commission and any queued settlement. It cannot be undone.
+        </p>
+
+        <div id="deletePaySummary" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px 16px;font-size:13px;color:#d4d4d2;line-height:1.7;margin-bottom:16px;"></div>
+
+        <label id="deletePayRevokeWrap" style="display:none;align-items:flex-start;gap:10px;cursor:pointer;padding:13px 15px;background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.25);border-radius:8px;margin-bottom:18px;">
+            <input type="checkbox" id="deletePayRevoke" style="width:16px;height:16px;accent-color:#fbbf24;flex-shrink:0;margin-top:1px;">
+            <div>
+                <div style="font-size:13px;font-weight:600;color:#fcd34d;">Also take back the access it granted</div>
+                <div style="font-size:12px;color:rgba(255,255,255,.4);margin-top:2px;" id="deletePayRevokeNote"></div>
+            </div>
+        </label>
+
+        <div id="deletePayRevokeBlocked" style="display:none;font-size:12.5px;color:rgba(255,255,255,.45);background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:12px 14px;margin-bottom:18px;line-height:1.5;"></div>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button type="button" onclick="closeDeletePayment()" class="filter-btn">Cancel</button>
+            <button type="button" id="deletePayBtn" onclick="doDeletePayment()"
+                style="padding:10px 20px;background:linear-gradient(135deg,#b91c1c,#ef4444);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">
+                <i class="fas fa-trash" style="margin-right:7px;"></i>Delete permanently
+            </button>
+        </div>
     </div>
 </div>
 
@@ -1033,6 +1167,209 @@ function showFnToast(message, type) {
     toast.innerHTML = `<i class="fas ${icon}" style="flex-shrink:0;margin-top:1px;"></i><span>${message}</span>`;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), type === 'warning' ? 8000 : 4000);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Editing and deleting a HAND-ENTERED payment.
+
+   Both menu items are rendered only for rows the server flagged is_manual, and
+   both endpoints re-check that themselves -- the UI decides what to offer, it
+   never decides what is allowed.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Live duplicate check. Debounced because it fires on every keystroke, and
+   deliberately advisory: record_manual.php and update_manual.php enforce the
+   rule whatever this says, so a slow or failed lookup can never let a duplicate
+   through -- it just stops warning. */
+let _refCheckTimer = null;
+
+function queueRefCheck(input, hintId, excludePaymentId) {
+  const hint = document.getElementById(hintId);
+  const ref  = (input.value || '').trim();
+
+  clearTimeout(_refCheckTimer);
+  input.classList.remove('ref-bad');
+
+  if (ref.length < 3) {
+    hint.className = 'ref-hint';
+    hint.textContent = '';
+    return;
+  }
+
+  hint.className = 'ref-hint show checking';
+  hint.textContent = 'Checking this code…';
+
+  _refCheckTimer = setTimeout(() => {
+    const qs = new URLSearchParams({ reference: ref });
+    if (excludePaymentId) qs.set('payment_id', excludePaymentId);
+
+    fetch('api/payments/check_reference.php?' + qs.toString())
+      .then(r => r.json())
+      .then(d => {
+        if ((input.value || '').trim() !== ref) return;   /* they kept typing */
+        if (!d.success) { hint.className = 'ref-hint'; return; }
+        if (d.available) {
+          hint.className = 'ref-hint show good';
+          hint.textContent = 'This code is not yet used.';
+        } else {
+          hint.className = 'ref-hint show bad';
+          hint.textContent = d.message;
+          input.classList.add('ref-bad');
+        }
+      })
+      .catch(() => { hint.className = 'ref-hint'; hint.textContent = ''; });
+  }, 350);
+}
+
+/* ── Edit ─────────────────────────────────────────────────────────────────── */
+function openEditPayment(tx) {
+  document.getElementById('editPayId').value     = tx.id;
+  document.getElementById('editPayAmount').value = parseFloat(tx.amount || 0).toFixed(2);
+  document.getElementById('editPayRef').value    = tx.transaction_id || '';
+  document.getElementById('editPayMethod').value = tx.payment_method || 'cash';
+  document.getElementById('editPayStatus').value = (tx.status === 'completed') ? 'completed' : 'pending';
+  document.getElementById('editPayNotes').value  = tx.notes || '';
+  document.getElementById('editPayWho').textContent =
+    (tx.full_name || 'Unknown customer') + ' · ' + (tx.phone || '');
+
+  /* payment_date is 'YYYY-MM-DD HH:MM:SS'; datetime-local wants the T form and
+     no seconds. A deployment that never ran the payment-date-to-DATETIME
+     migration stores a bare 'YYYY-MM-DD', which is midnight -- fill that in
+     rather than showing an empty field the operator has to retype. Anything
+     else is left blank on purpose: posting an empty date leaves the stored one
+     untouched, which is safer than guessing at it. */
+  let d = String(tx.payment_date || '').replace(' ', 'T').slice(0, 16);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) d += 'T00:00';
+  document.getElementById('editPayDate').value = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(d) ? d : '';
+
+  document.getElementById('editPayRefHint').className = 'ref-hint';
+  document.getElementById('editPayRefHint').textContent = '';
+  document.getElementById('editPayRef').classList.remove('ref-bad');
+
+  /* Warn only when this edit is what confirms the payment. */
+  const wasPending = tx.status !== 'completed';
+  const note = document.getElementById('editPayConfirmNote');
+  document.getElementById('editPayStatus').onchange = function () {
+    note.style.display = (wasPending && this.value === 'completed') ? 'block' : 'none';
+  };
+  note.style.display = 'none';
+
+  document.getElementById('editPaymentModal').style.display = 'flex';
+}
+
+function closeEditPayment() {
+  document.getElementById('editPaymentModal').style.display = 'none';
+}
+
+function submitEditPayment(e) {
+  e.preventDefault();
+  const form = e.target;
+  const btn  = document.getElementById('editPayBtn');
+  const original = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Saving…';
+  btn.disabled = true;
+
+  fetch('api/payments/update_manual.php', { method: 'POST', body: new FormData(form) })
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) {
+        showFnToast('✅ ' + d.message, 'success');
+        closeEditPayment();
+        setTimeout(() => location.reload(), 1400);
+      } else {
+        showFnToast(d.message || 'Could not save the change.', 'error');
+      }
+    })
+    .catch(() => showFnToast('Connection error. Please try again.', 'error'))
+    .finally(() => { btn.innerHTML = original; btn.disabled = false; });
+}
+
+/* ── Delete ───────────────────────────────────────────────────────────────── */
+let _deletePayId = null;
+
+function confirmDeletePayment(tx) {
+  _deletePayId = tx.id;
+
+  const box = document.getElementById('deletePaySummary');
+  box.innerHTML =
+      '<div><span style="color:rgba(255,255,255,.4);">Customer</span> &nbsp;' + escapeHtmlPay(tx.full_name || '—') + '</div>'
+    + '<div><span style="color:rgba(255,255,255,.4);">Amount</span> &nbsp;<strong>KES '
+    + Number(tx.amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</strong></div>'
+    + '<div><span style="color:rgba(255,255,255,.4);">Reference</span> &nbsp;<span style="font-family:monospace;">'
+    + escapeHtmlPay(tx.transaction_id || '—') + '</span></div>';
+
+  /* Ask the server what it would do before offering the choice: whether the
+     expiry can be rolled back exactly is a question about this customer's later
+     payments, which the browser cannot answer. */
+  const wrap    = document.getElementById('deletePayRevokeWrap');
+  const blocked = document.getElementById('deletePayRevokeBlocked');
+  wrap.style.display = 'none';
+  blocked.style.display = 'none';
+  document.getElementById('deletePayRevoke').checked = false;
+
+  const fd = new FormData();
+  fd.append('payment_id', tx.id);
+  fd.append('preview', '1');
+
+  fetch('api/payments/delete_manual.php', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      if (!d.success) {
+        closeDeletePayment();
+        showFnToast(d.message || 'This entry cannot be deleted.', 'error');
+        return;
+      }
+      const rev = d.revocation || {};
+      if (rev.applied) {
+        document.getElementById('deletePayRevokeNote').textContent =
+          'Rolls the expiry back by ' + rev.period + ' (the ' + rev.package + ' period this entry paid for), to '
+          + new Date(rev.new_expiry.replace(' ', 'T')).toLocaleString() + '.';
+        wrap.style.display = 'flex';
+      } else if (rev.reason && rev.reason !== 'not requested') {
+        blocked.textContent = 'The customer\u2019s expiry will be left as it is — ' + rev.reason;
+        blocked.style.display = 'block';
+      }
+    })
+    .catch(() => { /* the delete itself still guards; just offer no rollback */ });
+
+  document.getElementById('deletePaymentModal').style.display = 'flex';
+}
+
+function closeDeletePayment() {
+  document.getElementById('deletePaymentModal').style.display = 'none';
+  _deletePayId = null;
+}
+
+function doDeletePayment() {
+  if (!_deletePayId) return;
+  const btn = document.getElementById('deletePayBtn');
+  const original = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:7px;"></i>Deleting…';
+  btn.disabled = true;
+
+  const fd = new FormData();
+  fd.append('payment_id', _deletePayId);
+  if (document.getElementById('deletePayRevoke').checked) fd.append('revoke_access', '1');
+
+  fetch('api/payments/delete_manual.php', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) {
+        showFnToast('🗑 ' + d.message, 'success');
+        closeDeletePayment();
+        setTimeout(() => location.reload(), 1600);
+      } else {
+        showFnToast(d.message || 'Could not delete the entry.', 'error');
+      }
+    })
+    .catch(() => showFnToast('Connection error. Please try again.', 'error'))
+    .finally(() => { btn.innerHTML = original; btn.disabled = false; });
+}
+
+function escapeHtmlPay(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
 }
 
 let currentViewTx = null;

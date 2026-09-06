@@ -579,6 +579,15 @@ function _pipeline_ensure_tables(PDO $pdo): void {
     if ($done) return;
     $done = true;
 
+    // Step 3 writes payments.updated_at, and NO schema file or migration ever
+    // creates that column. On a deployment without it the UPDATE throws 1054
+    // into its own catch, so steps['payment'] reports false and, worse, the
+    // collection_type the step just resolved is never written. The INSERT
+    // branch does not name the column, which is why this stayed invisible:
+    // it only fires when a payments row already carries the final receipt.
+    require_once __DIR__ . '/schema_guard.php';
+    ensureColumn($pdo, 'payments', 'updated_at', 'TIMESTAMP NULL DEFAULT NULL');
+
     // Ensure expiry-reminder flag columns exist (added by the expiry-reminders feature;
     // if the migration was never run these will be missing and break step 2).
     try {

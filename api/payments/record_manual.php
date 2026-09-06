@@ -3,6 +3,7 @@ header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
 require_once '../../includes/payment_pipeline.php';
+require_once '../../includes/payment_admin.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $user_id = $_SESSION['user_id'] ?? 0;
@@ -22,18 +23,15 @@ if (!$tenant_id) {
 }
 
 $client_id        = (int)($_POST['client_id'] ?? 0);
-$reference_code   = trim($_POST['reference_code'] ?? '');
+// Upper-cased on the way in: the form already upper-cases as you type, but a
+// value posted any other way must not be able to slip past the duplicate check
+// on case alone -- "qjk3x7a1p2" and "QJK3X7A1P2" are the same receipt.
+$reference_code   = strtoupper(trim($_POST['reference_code'] ?? ''));
 $amount           = (float)($_POST['amount'] ?? 0);
-$rawMethod        = strtolower(trim($_POST['method'] ?? 'cash'));
-// Normalize to DB-safe values (avoids ENUM truncation errors)
-$methodMap = [
-    'm-pesa' => 'mpesa', 'mpesa' => 'mpesa', 'safaricom' => 'mpesa',
-    'cash' => 'cash',
-    'bank_transfer' => 'bank_transfer', 'bank transfer' => 'bank_transfer', 'bank' => 'bank_transfer',
-    'card' => 'card', 'credit card' => 'card', 'debit card' => 'card',
-    'cheque' => 'bank_transfer', 'check' => 'bank_transfer',
-];
-$method           = $methodMap[$rawMethod] ?? 'cash';
+// Normalised to DB-safe values (avoids ENUM truncation errors) by the same
+// function the edit endpoint uses, so a payment cannot change method family
+// merely by being corrected.
+$method           = paymentNormalizeMethod($_POST['method'] ?? 'cash');
 $transaction_date = trim($_POST['transaction_date'] ?? date('Y-m-d H:i:s'));
 $is_verified      = (int)($_POST['is_verified'] ?? 1);
 $notes            = trim($_POST['notes'] ?? '');
@@ -51,6 +49,18 @@ try {
 
     if (!$client) {
         throw new Exception("Invalid customer or not in your account");
+    }
+
+    // ── The reference code must be unique within the tenant ───────────────────
+    // A receipt number is the idempotency key for this whole pipeline: the SMS
+    // dedupe, the ledger guard, the invoice number and the payout row are all
+    // derived from it. Two payments sharing one code make every one of those
+    // checks match the wrong row -- the second payment silently writes no
+    // ledger entries, and its invoice number collides with the first. Nothing
+    // stopped it, so the same M-Pesa code could be banked twice.
+    $conflict = paymentReferenceConflict($pdo, (int)$tenant_id, $reference_code);
+    if ($conflict) {
+        throw new Exception('Reference ' . $reference_code . ' is ' . paymentConflictSummary($conflict));
     }
 
     // Parse the provided date — handle both datetime-local (YYYY-MM-DDTHH:MM:SS)
