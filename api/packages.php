@@ -7,6 +7,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
 require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/../includes/tenant.php';
+require_once __DIR__ . '/../includes/validity.php';
 
 // ── Auth: require logged-in user ─────────────────────────────────────────────
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -84,7 +85,7 @@ try {
                 (int)($data->upload_speed ?? 0),
                 (int)($data->data_limit ?? 0),
                 (int)($data->validity_value ?? 30),
-                $data->validity_unit ?? 'days',
+                packageValidityUnit($data->validity_unit ?? 'days'),
             ]);
             $response = ['success' => true, 'message' => 'Package created', 'id' => (int)$pdo->lastInsertId()];
             break;
@@ -122,7 +123,7 @@ try {
                 (int)($data->upload_speed ?? 0),
                 (int)($data->data_limit ?? 0),
                 (int)($data->validity_value ?? 30),
-                $data->validity_unit ?? 'days',
+                packageValidityUnit($data->validity_unit ?? 'days'),
                 $data->status ?? 'active',
                 (int)$data->id,
                 $tenantId,

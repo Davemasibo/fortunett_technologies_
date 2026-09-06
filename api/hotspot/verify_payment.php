@@ -19,6 +19,7 @@ error_reporting(0);
 
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../classes/MikrotikAPI.php';
+require_once __DIR__ . '/../../includes/validity.php';
 
 function fail(string $msg, string $hint = ''): void {
     echo json_encode(['success' => false, 'message' => $msg, 'hint' => $hint]);
@@ -104,18 +105,11 @@ if (empty($client['mikrotik_username']) || empty($client['mikrotik_password'])) 
 }
 
 // ── Extend expiry if account is inactive/expired ──────────────────────────────
-$validityVal  = (int)($client['validity_value']  ?? 30);
-$validityUnit = strtolower($client['validity_unit'] ?? 'days');
-
-$unitMap = ['minutes' => 'minute', 'hours' => 'hour', 'days' => 'day', 'months' => 'month', 'weeks' => 'week'];
-$phpUnit = $unitMap[$validityUnit] ?? 'day';
-
-$currentExpiry = $client['expiry_date'] ? new DateTime($client['expiry_date']) : new DateTime();
-$now = new DateTime();
-// If already expired, start from now; otherwise extend from current expiry
-$base = ($currentExpiry < $now) ? $now : $currentExpiry;
-$base->modify('+' . $validityVal . ' ' . $phpUnit);
-$newExpiry = $base->format('Y-m-d H:i:s');
+$newExpiry = packageExtendExpiry(
+    $client['expiry_date'] ?? null,
+    $client['validity_value'] ?? 30,
+    $client['validity_unit']  ?? 'days'
+);
 
 try {
     $upd = $pdo->prepare("

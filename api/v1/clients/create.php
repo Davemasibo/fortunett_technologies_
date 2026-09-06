@@ -10,6 +10,7 @@ require_once __DIR__ . '/../../../includes/db_master.php';
 require_once __DIR__ . '/../../../includes/api_auth.php';
 require_once __DIR__ . '/../../../includes/account_number_generator.php';
 require_once __DIR__ . '/../../../includes/auto_provision.php';
+require_once __DIR__ . '/../../../includes/validity.php';
 
 api_cors_headers();
 $auth = require_api_auth($pdo);
@@ -87,9 +88,7 @@ if ($dupU->fetch()) { http_response_code(409); echo json_encode(['error' => "Use
 if ($expiryDate !== '') {
     $expiry = date('Y-m-d H:i:s', strtotime($expiryDate));
 } elseif (!empty($package['validity_value'])) {
-    $val    = (int)$package['validity_value'];
-    $unit   = $package['validity_unit'] ?? 'days';
-    $expiry = date('Y-m-d H:i:s', strtotime("+$val $unit"));
+    $expiry = packageExpiryFrom($package['validity_value'], $package['validity_unit'] ?? 'days');
 } else {
     $expiry = date('Y-m-d H:i:s', strtotime('+1 month'));
 }

@@ -27,6 +27,7 @@
 require_once __DIR__ . '/auto_provision.php';
 require_once __DIR__ . '/radius_client.php';
 require_once __DIR__ . '/payment_routing.php';
+require_once __DIR__ . '/validity.php';
 
 /**
  * @param PDO    $pdo
@@ -107,13 +108,12 @@ function process_payment_success(
     // ── 2. Extend subscription ─────────────────────────────────────────────────
     $expiryDate = null;
     if ($package) {
-        $valVal   = max(1, (int)($package['validity_value'] ?? 30));
-        $valUnit  = in_array($package['validity_unit'] ?? '', ['hours','days','weeks','months'], true)
-                  ? $package['validity_unit'] : 'days';
         // Extend from now if expired; extend from current expiry if still active
-        $base = $client['expiry_date'] && strtotime($client['expiry_date']) > time()
-              ? $client['expiry_date'] : 'now';
-        $expiryDate = date('Y-m-d H:i:s', strtotime('+' . $valVal . ' ' . $valUnit, strtotime($base)));
+        $expiryDate = packageExtendExpiry(
+            $client['expiry_date'] ?? null,
+            $package['validity_value'] ?? 30,
+            $package['validity_unit'] ?? 'days'
+        );
 
         try {
             $pdo->prepare("
@@ -423,6 +423,28 @@ function process_payment_success(
     $firstName   = explode(' ', trim($results['client_name']))[0] ?: 'there';
     $hasCreds    = $creds['username'] !== '' && $creds['password'] !== '';
 
+    // Who the message is from. The TalkSasa sender ID is often a short code
+    // like "FORTUNETT" that says nothing to the customer of a reseller, so the
+    // ISP is named in the body too.
+    $companyName = '';
+    try {
+        $cn = $pdo->prepare("SELECT company_name FROM tenants WHERE id = ? LIMIT 1");
+        $cn->execute([$tenantId]);
+        $companyName = trim((string)$cn->fetchColumn());
+    } catch (Throwable $_e) {}
+
+    // "10Mbps, 1 Day" — what the customer actually bought, not just its name.
+    // A hotspot buyer picks by speed and duration and forgets the plan name
+    // before the SMS arrives.
+    $pkgDetail = [];
+    if (!empty($package['download_speed'])) {
+        $pkgDetail[] = (int)$package['download_speed'] . 'Mbps';
+    }
+    if (!empty($package['validity_value'])) {
+        $pkgDetail[] = packageValidityLabel($package['validity_value'], $package['validity_unit'] ?? 'days');
+    }
+    $pkgDetailStr = $pkgDetail ? ' (' . implode(', ', $pkgDetail) . ')' : '';
+
     // ── 10a. SMS ───────────────────────────────────────────────────────────────
     try {
         if (!empty($client['phone'])) {
@@ -443,12 +465,23 @@ function process_payment_success(
             } catch (Throwable $_e) { /* table may not exist */ }
 
             if (!$alreadySent) {
-                $msg = "Hi {$firstName}, KSH " . number_format($amount, 2)
-                     . " received. {$pkgName} active until {$expiryHuman}.";
+                // Four things, in the order the customer needs them: that the
+                // money arrived, what it bought, when it runs out, and how to
+                // get on. The receipt goes last -- it matters only if
+                // something is disputed. Amount is printed without decimals
+                // when it has none: "KSH 50" reads as money, "KSH 50.00" reads
+                // as a system.
+                $amountStr = (floor($amount) == $amount)
+                           ? number_format($amount, 0)
+                           : number_format($amount, 2);
+
+                $msg = "Hi {$firstName}, KSH {$amountStr} received."
+                     . " {$pkgName}{$pkgDetailStr} valid to {$expiryHuman}.";
                 if ($hasCreds) {
-                    $msg .= " Login: {$creds['username']} / {$creds['password']}";
+                    $msg .= " Login: {$creds['username']}/{$creds['password']}.";
                 }
-                $msg .= " Ref: {$receipt}. Thank you!";
+                $msg .= " Ref {$receipt}.";
+                $msg .= $companyName !== '' ? " -{$companyName}" : ' Thank you!';
 
                 require_once __DIR__ . '/../classes/SMSHelper.php';
                 $sms       = new SMSHelper($pdo, $tenantId);
@@ -561,6 +594,54 @@ function _pipeline_ensure_tables(PDO $pdo): void {
             $pdo->exec("ALTER TABLE clients ADD COLUMN expiry_reminder_1d_sent TINYINT(1) NOT NULL DEFAULT 0");
         }
     } catch (Throwable $_) {}
+
+    // Step 9 queues a customer whose router was unreachable so
+    // cron/retry_provisions.php can finish the job. On a deployment missing
+    // 2026-06-07-pending-provisions.sql that INSERT throws 1146 and is
+    // swallowed: the customer has paid, is not on the router, and nothing
+    // anywhere remembers to try again.
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS pending_provisions (
+                id            INT           AUTO_INCREMENT PRIMARY KEY,
+                tenant_id     INT           NOT NULL,
+                client_id     INT           NOT NULL,
+                package_id    INT           DEFAULT NULL,
+                receipt       VARCHAR(50)   DEFAULT NULL,
+                attempts      INT           NOT NULL DEFAULT 1,
+                fail_reason   VARCHAR(500)  DEFAULT NULL,
+                next_retry_at DATETIME      NOT NULL DEFAULT (NOW() + INTERVAL 5 MINUTE),
+                created_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_client_tenant (client_id, tenant_id),
+                INDEX idx_retry (next_retry_at, attempts)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+    } catch (Throwable $_e) {
+        // MySQL before 8.0.13 rejects an expression DEFAULT. Retrying five
+        // minutes sooner than intended costs nothing; not queueing at all
+        // costs the customer their connection.
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS pending_provisions (
+                    id            INT           AUTO_INCREMENT PRIMARY KEY,
+                    tenant_id     INT           NOT NULL,
+                    client_id     INT           NOT NULL,
+                    package_id    INT           DEFAULT NULL,
+                    receipt       VARCHAR(50)   DEFAULT NULL,
+                    attempts      INT           NOT NULL DEFAULT 1,
+                    fail_reason   VARCHAR(500)  DEFAULT NULL,
+                    next_retry_at DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    created_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_client_tenant (client_id, tenant_id),
+                    INDEX idx_retry (next_retry_at, attempts)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            ");
+        } catch (Throwable $_e2) {
+            error_log('[pipeline] pending_provisions: ' . $_e2->getMessage());
+        }
+    }
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS client_invoices (

@@ -312,9 +312,14 @@ function _renderHotspotPackages(PDO $pdo, int $tenantId): array
     }
 
     // ── Pass 2: markup ────────────────────────────────────────────────────────
-    $rows         = '';
-    $groupsInUse  = [];
-    $firstEnabled = true;
+    $rows        = '';
+    $groupsInUse = [];
+
+    // Nothing is pre-selected: the pay dock in login.html only appears once a
+    // plan is tapped, and a plan the customer never chose would open it for
+    // them. The one exception is a tenant selling a single plan -- there is no
+    // choice to make, so making them tap it is friction for its own sake.
+    $autoSelect  = count($pkgs) === 1;
 
     foreach ($pkgs as $idx => $p) {
         $price   = (float)$p['price'];
@@ -345,9 +350,8 @@ function _renderHotspotPackages(PDO $pdo, int $tenantId): array
             $tag = '<em class="pkg-tag">Best value</em>';
         }
 
-        $checked = $firstEnabled ? ' checked' : '';
-        $selCls  = $firstEnabled ? ' selected' : '';
-        $firstEnabled = false;
+        $checked = $autoSelect ? ' checked' : '';
+        $selCls  = $autoSelect ? ' selected' : '';
 
         $priceHtml = $isFree
             ? '<span class="pkg-price pkg-price-free">FREE</span>'

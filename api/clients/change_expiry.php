@@ -8,6 +8,7 @@ header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
 require_once '../../classes/MikrotikAPI.php';
+require_once __DIR__ . '/../../includes/validity.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user_id'])) { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
@@ -60,11 +61,7 @@ try {
 
         $newPackage = $pkg_id;
         // Calculate new expiry from now based on package validity
-        $validValue = (int)($pkg['validity_value'] ?? 30);
-        $validUnit  = strtolower($pkg['validity_unit'] ?? 'days');
-        $unitMap = ['minutes'=>60,'hours'=>3600,'days'=>86400,'weeks'=>604800,'months'=>2592000];
-        $seconds = ($unitMap[$validUnit] ?? 86400) * $validValue;
-        $newExpiry = date('Y-m-d H:i:s', time() + $seconds);
+        $newExpiry = packageExpiryFrom($pkg['validity_value'] ?? 30, $pkg['validity_unit'] ?? 'days');
 
     } else {
         throw new Exception('Unknown action');

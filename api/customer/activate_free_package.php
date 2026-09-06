@@ -6,6 +6,7 @@
 header('Content-Type: application/json');
 require_once '../../includes/config.php';
 require_once '../../classes/CustomerAuth.php';
+require_once __DIR__ . '/../../includes/validity.php';
 
 session_start();
 
@@ -52,10 +53,7 @@ try {
     }
     
     // Calculate expiry date based on package duration
-    $validityValue = $package['validity_value'] ?? 30;
-    $validityUnit = $package['validity_unit'] ?? 'days';
-    
-    $expiryDate = date('Y-m-d H:i:s', strtotime('+' . $validityValue . ' ' . $validityUnit));
+    $expiryDate = packageExpiryFrom($package['validity_value'] ?? 30, $package['validity_unit'] ?? 'days');
     
     // Update client with package details
     $stmt = $pdo->prepare("

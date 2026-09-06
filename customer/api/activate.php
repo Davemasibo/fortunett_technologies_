@@ -13,6 +13,7 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../../includes/auto_provision.php';
+require_once __DIR__ . '/../../includes/validity.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'POST required']);
@@ -75,10 +76,7 @@ try {
     $pdo->beginTransaction();
 
     $newBalance    = $accountBalance - $packagePrice;
-    $validityValue = max(1, (int)($package['validity_value'] ?? 30));
-    $validityUnit  = in_array($package['validity_unit'], ['days','weeks','months'])
-                     ? $package['validity_unit'] : 'days';
-    $expiryDate    = date('Y-m-d H:i:s', strtotime('+' . $validityValue . ' ' . $validityUnit));
+    $expiryDate    = packageExpiryFrom($package['validity_value'] ?? 30, $package['validity_unit'] ?? 'days');
 
     // Activate client and deduct balance atomically
     $pdo->prepare(

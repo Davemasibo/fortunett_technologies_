@@ -12,6 +12,7 @@ header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../../includes/db_master.php';
 require_once __DIR__ . '/../../../includes/api_auth.php';
+require_once __DIR__ . '/../../../includes/validity.php';
 
 api_cors_headers();
 $auth = require_api_auth($pdo);
@@ -46,9 +47,7 @@ try {
         if ($extendDays > 0) {
             $newExpiry = date('Y-m-d H:i:s', strtotime(($client['expiry_date'] ?? 'now') . " +$extendDays days"));
         } elseif (!empty($client['validity_value'])) {
-            $val = (int)$client['validity_value'];
-            $unit = $client['validity_unit'] ?? 'days';
-            $newExpiry = date('Y-m-d H:i:s', strtotime("+$val $unit"));
+            $newExpiry = packageExpiryFrom($client['validity_value'], $client['validity_unit'] ?? 'days');
         } else {
             $newExpiry = date('Y-m-d H:i:s', strtotime('+1 month'));
         }

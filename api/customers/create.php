@@ -10,6 +10,7 @@ header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../includes/account_number_generator.php';
 require_once '../../includes/auto_provision.php';
+require_once __DIR__ . '/../../includes/validity.php';
 
 // Auth check first
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -125,9 +126,7 @@ try {
     if (!empty($_POST['expiry_date'])) {
         $expiry_date = date('Y-m-d H:i:s', strtotime($_POST['expiry_date']));
     } elseif (!empty($package['validity_value']) && !empty($package['validity_unit'])) {
-        $val  = (int)$package['validity_value'];
-        $unit = $package['validity_unit'];
-        $expiry_date = date('Y-m-d H:i:s', strtotime("+$val $unit"));
+        $expiry_date = packageExpiryFrom($package['validity_value'], $package['validity_unit']);
     } else {
         $expiry_date = date('Y-m-d H:i:s', strtotime('+1 month'));
     }

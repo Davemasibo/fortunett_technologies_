@@ -16,6 +16,7 @@ header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
 require_once '../../includes/package_profile.php';
+require_once __DIR__ . '/../../includes/validity.php';
 
 // Validate Inputs
 $id = (int)($_POST['id'] ?? 0);
@@ -86,7 +87,7 @@ try {
     if (isset($colCache['connection_type']))   { $setCols[] = 'connection_type=?';   $setVals[] = $connection_type; }
     if (isset($colCache['mikrotik_profile']))  { $setCols[] = 'mikrotik_profile=?';  $setVals[] = $mikrotik_profile; }
     if (isset($colCache['validity_value']))    { $setCols[] = 'validity_value=?';    $setVals[] = isset($_POST['validity_value']) && $_POST['validity_value'] !== '' ? (int)$_POST['validity_value'] : 30; }
-    if (isset($colCache['validity_unit']))     { $setCols[] = 'validity_unit=?';     $setVals[] = $_POST['validity_unit'] ?? 'days'; }
+    if (isset($colCache['validity_unit']))     { $setCols[] = 'validity_unit=?';     $setVals[] = packageValidityUnit($_POST['validity_unit'] ?? 'days'); }
     if (isset($colCache['device_limit']))      { $setCols[] = 'device_limit=?';      $setVals[] = isset($_POST['device_limit']) && $_POST['device_limit'] !== '' ? (int)$_POST['device_limit'] : 1; }
     if (isset($colCache['hotspot_server']))   { $setCols[] = 'hotspot_server=?';   $setVals[] = $hotspot_server ?: null; }
 

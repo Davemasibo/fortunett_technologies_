@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/../includes/validity.php';
 $customer = requireCustomerLogin();
 
 $tenantId = $customer['tenant_id'] ?? null;
@@ -478,7 +479,7 @@ include 'includes/header.php';
                     <div class="pkg-icon"><i class="fas fa-<?= ($package['connection_type'] ?? 'pppoe') === 'hotspot' ? 'wifi' : 'network-wired' ?>"></i></div>
                     <div>
                         <div class="pkg-name"><?= htmlspecialchars($package['name']) ?></div>
-                        <div class="pkg-speed"><?= (int)$package['download_speed'] ?>/<?= (int)$package['upload_speed'] ?> Mbps &middot; <?= ($package['validity_value'] ?? 30) . ' ' . ($package['validity_unit'] ?? 'days') ?></div>
+                        <div class="pkg-speed"><?= (int)$package['download_speed'] ?>/<?= (int)$package['upload_speed'] ?> Mbps &middot; <?= htmlspecialchars(packageValidityLabel($package['validity_value'] ?? 30, $package['validity_unit'] ?? 'days')) ?></div>
                     </div>
                     <div class="pkg-price">KES <?= number_format($packagePrice, 0) ?></div>
                 </div>

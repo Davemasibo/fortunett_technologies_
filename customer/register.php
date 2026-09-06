@@ -15,6 +15,7 @@ if (!empty($_SESSION['customer_token'])) {
 
 require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/../classes/CustomerAuth.php';
+require_once __DIR__ . '/../includes/validity.php';
 require_once __DIR__ . '/../includes/account_number_generator.php';
 
 // ── Resolve tenant from subdomain ─────────────────────────────────────────────
@@ -243,7 +244,7 @@ $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr
                 <div class="pkg-grid">
                     <?php foreach ($packages as $pkg):
                         $isFree = (float)$pkg['price'] == 0;
-                        $dur    = ($pkg['validity_value'] ?? 1) . ' ' . ucfirst($pkg['validity_unit'] ?? 'days');
+                        $dur    = packageValidityLabel($pkg['validity_value'] ?? 1, $pkg['validity_unit'] ?? 'days');
                         $speed  = !empty($pkg['download_speed']) ? $pkg['download_speed'] . ' Mbps' : '';
                         $posted = isset($_POST['package_id']) ? (int)$_POST['package_id'] : 0;
                         $sel    = ($posted === (int)$pkg['id']);

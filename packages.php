@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/package_profile.php';
+require_once __DIR__ . '/includes/validity.php';
 redirectIfNotLoggedIn();
 
 $database = new Database();
@@ -99,7 +100,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             $p['download_speed'] ?? 0,
             $p['upload_speed']   ?? 0,
             (($p['data_limit'] ?? 0) > 0) ? round(($p['data_limit'] / 1073741824), 2) : 'Unlimited',
-            ($p['validity_value'] ?? 30) . ' ' . ($p['validity_unit'] ?? 'days'),
+            packageValidityLabel($p['validity_value'] ?? 30, $p['validity_unit'] ?? 'days'),
             $p['device_limit'] ?? 1,
             $p['price'],
             ucfirst($p['status'] ?? 'active'),
@@ -311,21 +312,10 @@ include 'includes/sidebar.php';
                         $download = (int)($pkg['download_speed'] ?? 0);
                         $upload = (int)($pkg['upload_speed'] ?? 0);
                         $data_cap = (int)($pkg['data_limit'] ?? 0);
-                        $validityValue = $pkg['validity_value'] ?? 30;
-                        $validityUnit = $pkg['validity_unit'] ?? 'days';
-                        // Respect user's choice (Singular/Plural)
-                        $validityText = $validityValue . ' ' . ucfirst($validityUnit);
-                        
-                        // Optional: Smart fix ONLY if they mismatch (e.g. "1 Hours" -> "1 Hour", "2 Hour" -> "2 Hours")
-                        // But user asked to "create both", so we trust their input. 
-                        // However, standard grammar is better. Let's auto-fix grammar but allow the singular options to be selected in UI.
-                        if ($validityValue == 1 && substr($validityUnit, -1) === 's') {
-                             $validityText = $validityValue . ' ' . ucfirst(substr($validityUnit, 0, -1));
-                        } elseif ($validityValue > 1 && substr($validityUnit, -1) !== 's') {
-                             $validityText = $validityValue . ' ' . ucfirst($validityUnit) . 's';
-                        }
-
-                        $validity = $validityText;
+                        // packageValidityLabel() normalises the stored unit as well as
+                        // pluralising it, so a legacy row holding "Day" or "mins" still
+                        // reads the way the package will actually behave.
+                        $validity = packageValidityLabel($pkg['validity_value'] ?? 30, $pkg['validity_unit'] ?? 'days');
                         $devices = $pkg['device_limit'] ?? 1;
                     ?>
                     <tr>
@@ -628,6 +618,7 @@ include 'includes/sidebar.php';
                     <div class="validity-pair">
                         <input type="number" name="validity_value" id="pkgValidityValue" class="pkg-input" value="1" min="1" required placeholder="1">
                         <select name="validity_unit" id="pkgValidityUnit" class="pkg-select">
+                            <option value="minutes">Minutes</option>
                             <option value="hours">Hours</option>
                             <option value="days">Days</option>
                             <option value="weeks">Weeks</option>
@@ -747,8 +738,14 @@ function openEditPackageModal(pkg) {
     document.getElementById('pkgDesc').value = pkg.description || '';
     document.getElementById('pkgDeviceLimit').value = pkg.device_limit || '1';
     document.getElementById('pkgValidityValue').value = pkg.validity_value || '1';
-    const unit = (pkg.validity_unit || 'months').replace(/s$/, '') + 's';
-    document.getElementById('pkgValidityUnit').value = ['hours','days','weeks','months'].includes(unit) ? unit : (pkg.validity_unit || 'months');
+    /* Mirror packageValidityUnit() in includes/validity.php: the column is a
+       VARCHAR, so legacy rows hold singulars and abbreviations. Anything the
+       dropdown cannot represent falls back to days, which is what the server
+       will store for it too. */
+    const unit = (pkg.validity_unit || 'months').toLowerCase().trim().replace(/s$/, '') + 's';
+    const known = {minutes:'minutes', mins:'minutes', hours:'hours', hrs:'hours',
+                   days:'days', weeks:'weeks', wks:'weeks', months:'months', mos:'months'};
+    document.getElementById('pkgValidityUnit').value = known[unit] || 'days';
     document.getElementById('pkgMikrotikProfile').value = pkg.mikrotik_profile || '';
     document.getElementById('profilesDropdownWrap').style.display = 'none';
     document.getElementById('pkgHotspotServer').value = pkg.hotspot_server || '';

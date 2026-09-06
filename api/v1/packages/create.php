@@ -10,6 +10,7 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../../../includes/db_master.php';
 require_once __DIR__ . '/../../../includes/api_auth.php';
 require_once __DIR__ . '/../../../classes/MikrotikAPI.php';
+require_once __DIR__ . '/../../../includes/validity.php';
 
 api_cors_headers();
 $auth = require_api_auth($pdo);
@@ -29,7 +30,7 @@ $connType       = in_array($body['connection_type'] ?? '', ['pppoe', 'hotspot'])
 $downloadSpeed  = (int)($body['download_speed'] ?? 0);
 $uploadSpeed    = (int)($body['upload_speed'] ?? 0);
 $validityValue  = (int)($body['validity_value'] ?? 30);
-$validityUnit   = in_array($body['validity_unit'] ?? '', ['days', 'months', 'hours']) ? $body['validity_unit'] : 'days';
+$validityUnit   = packageValidityUnit($body['validity_unit'] ?? 'days');
 $description    = trim($body['description'] ?? '');
 $mikrotikProfile = trim($body['mikrotik_profile'] ?? '') ?: preg_replace('/[^a-zA-Z0-9-]/', '', strtolower($name));
 $dataLimit      = (int)($body['data_limit'] ?? 0);

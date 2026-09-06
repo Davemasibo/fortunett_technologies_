@@ -10,6 +10,7 @@
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/validity.php';
 
 redirectIfNotLoggedIn();
 
@@ -51,7 +52,7 @@ while (($row = fgetcsv($fh)) !== false) {
     $dlSpeed       = (int)($data['download_speed'] ?? 10);
     $ulSpeed       = (int)($data['upload_speed'] ?? 5);
     $validVal      = (int)($data['validity_value'] ?? 30);
-    $validUnit     = trim($data['validity_unit'] ?? 'days');
+    $validUnit     = packageValidityUnit($data['validity_unit'] ?? 'days');
     $dataLimit     = (int)($data['data_limit'] ?? 0);
     $deviceLimit   = max(1, (int)($data['device_limit'] ?? 1));
     $description   = trim($data['description'] ?? '');

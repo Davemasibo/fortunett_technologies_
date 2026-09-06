@@ -17,6 +17,7 @@ require_once __DIR__ . '/../../includes/account_number_generator.php';
 require_once __DIR__ . '/../../includes/auto_provision.php';
 require_once __DIR__ . '/../../includes/credential_helper.php';
 require_once __DIR__ . '/../../includes/schema_guard.php';
+require_once __DIR__ . '/../../includes/validity.php';
 
 // This endpoint writes clients.status='pending' and payments/mpesa_transactions
 // status='pending'. On a strict-mode server missing the enum migration those
@@ -128,10 +129,7 @@ try {
         $username      = $mikUsername;
 
         // Calculate expiry
-        $val    = (int)($package['validity_value'] ?? 1);
-        $unit   = $package['validity_unit'] ?? 'days';
-        $unitMap = ['hours' => 'hour', 'days' => 'day', 'weeks' => 'week', 'months' => 'month'];
-        $expiry = date('Y-m-d H:i:s', strtotime('+' . $val . ' ' . ($unitMap[$unit] ?? 'day')));
+        $expiry = packageExpiryFrom($package['validity_value'] ?? 1, $package['validity_unit'] ?? 'days');
 
         if ($existClient) {
             // Reuse existing client record

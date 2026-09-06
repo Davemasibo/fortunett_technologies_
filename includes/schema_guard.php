@@ -446,5 +446,39 @@ function ensureSmsTables(PDO $pdo): void
     // INSERT names that column explicitly — a missing one is a hard 1054 on
     // every send.
     ensureColumn($pdo, 'sms_outbox', 'provider_response', 'TEXT DEFAULT NULL');
+
+    // CREATE TABLE IF NOT EXISTS does nothing when a DIFFERENTLY SHAPED
+    // sms_logs already exists, and on any deployment that ran the old
+    // sms_schema.sql one does: it has `recipient_phone` and no `tenant_id`.
+    // process_payment_success() writes (client_id, tenant_id, phone, message,
+    // status, reference) and its dedupe SELECT reads tenant_id + reference, so
+    // both statements threw 1054 and both are wrapped in try/catch — the
+    // customer was texted again on every Safaricom callback retry and nothing
+    // was recorded to prove it. api/dashboard/stats.php counts today's SMS off
+    // tenant_id and was equally blind.
+    //
+    // Widened, never renamed: sms.php and the old writers still read
+    // recipient_phone, so the legacy column stays and `phone` is added
+    // alongside it.
+    ensureColumn($pdo, 'sms_logs',   'tenant_id',         'INT NOT NULL DEFAULT 0');
+    ensureColumn($pdo, 'sms_logs',   'phone',             "VARCHAR(20) NOT NULL DEFAULT ''");
+    ensureColumn($pdo, 'sms_logs',   'status',            "VARCHAR(20) NOT NULL DEFAULT 'sent'");
+    ensureColumn($pdo, 'sms_logs',   'message',           'TEXT DEFAULT NULL');
+    ensureColumn($pdo, 'sms_logs',   'sent_at',           'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
     ensureColumn($pdo, 'sms_logs',   'reference',         'VARCHAR(64) DEFAULT NULL');
+
+    // Carry the legacy column across so history added before the widening is
+    // not left with a blank number.
+    try {
+        $st = $pdo->prepare("SELECT 1 FROM information_schema.COLUMNS
+                              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sms_logs'
+                                AND COLUMN_NAME = 'recipient_phone' LIMIT 1");
+        $st->execute();
+        if ($st->fetchColumn()) {
+            $pdo->exec("UPDATE sms_logs SET phone = recipient_phone
+                         WHERE (phone IS NULL OR phone = '') AND recipient_phone <> ''");
+        }
+    } catch (Throwable $e) {
+        error_log('[schema_guard] sms_logs phone backfill: ' . $e->getMessage());
+    }
 }

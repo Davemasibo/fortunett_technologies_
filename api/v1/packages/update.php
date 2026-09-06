@@ -8,6 +8,7 @@ header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../../includes/db_master.php';
 require_once __DIR__ . '/../../../includes/api_auth.php';
+require_once __DIR__ . '/../../../includes/validity.php';
 
 api_cors_headers();
 $auth = require_api_auth($pdo);
@@ -33,7 +34,7 @@ $connType       = isset($body['connection_type']) && in_array($body['connection_
 $downloadSpeed  = isset($body['download_speed'])  ? (int)$body['download_speed']  : (int)$pkg['download_speed'];
 $uploadSpeed    = isset($body['upload_speed'])     ? (int)$body['upload_speed']    : (int)$pkg['upload_speed'];
 $validityValue  = isset($body['validity_value'])  ? (int)$body['validity_value']  : (int)($pkg['validity_value'] ?? 30);
-$validityUnit   = isset($body['validity_unit'])   ? $body['validity_unit']         : ($pkg['validity_unit'] ?? 'days');
+$validityUnit   = packageValidityUnit($body['validity_unit'] ?? $pkg['validity_unit'] ?? 'days');
 $description    = isset($body['description'])     ? trim($body['description'])     : ($pkg['description'] ?? '');
 $status         = isset($body['status']) && in_array($body['status'], ['active','inactive']) ? $body['status'] : $pkg['status'];
 $mikrotikProfile = trim($body['mikrotik_profile'] ?? $pkg['mikrotik_profile'] ?? '');

@@ -12,6 +12,7 @@ require_once __DIR__ . '/../../classes/MpesaAPI.php';
 require_once __DIR__ . '/../../classes/CustomerAuth.php';
 require_once __DIR__ . '/../../includes/account_number_generator.php';
 require_once __DIR__ . '/../../includes/auto_provision.php';
+require_once __DIR__ . '/../../includes/validity.php';
 
 try {
     // ── Resolve tenant from subdomain ─────────────────────────────────────────
@@ -66,7 +67,7 @@ try {
     $hashedPassword = password_hash($randomPassword, PASSWORD_DEFAULT);
 
     // Expiry starts after payment; set a provisional date
-    $expiryDate = date('Y-m-d H:i:s', strtotime('+' . ($package['validity_value'] ?? 30) . ' ' . ($package['validity_unit'] ?? 'days')));
+    $expiryDate = packageExpiryFrom($package['validity_value'] ?? 30, $package['validity_unit'] ?? 'days');
     $connType   = $package['type'] === 'pppoe' ? 'pppoe' : 'hotspot';
 
     // ── Insert client with tenant_id ──────────────────────────────────────────

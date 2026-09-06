@@ -322,18 +322,59 @@ input::placeholder{color:rgba(var(--tint),.2)}
 .pkg-none{display:none;text-align:center;padding:22px 10px;font-size:12.5px;color:var(--ink-dim)}
 
 /* ── Pay dock — the summary, the phone field and the button ───────────────── */
-/* Sticky to the bottom of the viewport so the M-Pesa number entry and the pay
-   button are reachable without scrolling past the plans. This is why .card
-   must not clip its overflow: a clipping ancestor silently disables sticky.
-   Where sticky is unsupported it sits in normal flow, which is the behaviour
-   it replaces — so this can only ever be an improvement. */
+/* Two rules, and both were broken in ways that put the M-Pesa field out of
+   reach on any tenant with more than a handful of plans:
+
+   1. The dock is hidden until a plan is chosen. Asking for a phone number
+      before the customer has picked anything is asking for a detail they have
+      no reason to give yet, and on a twelve-plan tenant that dead form was the
+      only thing between the plan grid and the fold.
+
+   2. It is sticky, and the sticky element is `#buy-form` itself — a direct
+      child of the tall `#tab-buy` panel. It used to be an inner `.pay-dock`
+      wrapped in a `#buy-form` div of exactly its own height: a sticky box can
+      only ever be offset *within its containing block*, so a containing block
+      no taller than the box meant the sticky never moved a pixel. It looked
+      correct in the stylesheet and did nothing on the page.
+
+   This is also why .card and <body> must not clip their overflow — a clipping
+   ancestor silently disables sticky. Where sticky is unsupported the dock sits
+   in normal flow, which is the behaviour it replaces. */
 .pay-dock{
   position:sticky;bottom:0;z-index:3;
-  margin:0 -26px -24px;
-  padding:12px 26px calc(14px + env(safe-area-inset-bottom));
-  background:linear-gradient(180deg,rgba(var(--surface-rgb),0) 0%,var(--surface) 14%);
+  margin:0 -26px 2px;
+  padding:18px 26px calc(14px + env(safe-area-inset-bottom));
+  /* Fade over a fixed 14px, not a percentage. A percentage stop scales with
+     the dock, so the summary row sat inside the still-transparent part and the
+     plan card behind it read straight through the text. */
+  background:linear-gradient(180deg,rgba(var(--surface-rgb),0) 0,var(--surface) 14px);
   border-radius:0 0 var(--radius) var(--radius);
 }
+/* Only while it is genuinely floating over the plans — once the page is
+   scrolled to the bottom the dock is in its natural place and a hard edge
+   there would read as a seam. Toggled by the sentinel observer below. */
+.pay-dock.floating{
+  box-shadow:0 -14px 28px -18px var(--sh-out-d);
+  border-top:1px solid rgba(var(--tint),.07);
+}
+.pay-dock.dock-in{animation:dockIn .34s cubic-bezier(.16,1,.3,1) both}
+@keyframes dockIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+/* Zero-height marker directly above the dock. While it is off-screen the dock
+   is pinned; when it scrolls into view the dock has reached its resting place.
+   Cheaper and steadier than measuring positions on every scroll event. */
+.dock-sentinel{height:1px;margin-bottom:-1px}
+
+/* A plan has to be tapped before anything below it appears, so the empty
+   state needs to say so rather than leaving a blank half-screen. */
+.pick-prompt{
+  text-align:center;font-size:12px;font-weight:600;color:var(--ink-faint);
+  padding:14px 10px 4px;display:flex;align-items:center;justify-content:center;gap:7px;
+}
+.pick-prompt svg{
+  width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round;animation:nudge 1.9s ease-in-out infinite;
+}
+@keyframes nudge{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 .pay-summary{
   display:flex;align-items:center;justify-content:space-between;gap:12px;
   padding:11px 13px;border-radius:13px;margin-bottom:11px;
@@ -467,34 +508,41 @@ input::placeholder{color:rgba(var(--tint),.2)}
 
     <div id="buy-notice" class="notice err"></div>
 
-    <div id="buy-form">
-      <!-- Everything below is one sticky dock so the number entry and the pay
-           button stay on screen instead of sitting under the plan list. -->
-      <div class="pay-dock">
-        <div class="pay-summary" id="pay-summary" style="display:none">
-          <div class="pay-summary-l">
-            <div class="pay-summary-cap">Selected plan</div>
-            <div class="pay-summary-name" id="sum-name">—</div>
-          </div>
-          <div class="pay-summary-r" id="sum-price">—</div>
-        </div>
+    <!-- Shown only until the first plan is tapped: without it the panel simply
+         ends after the plans with no indication that anything follows. -->
+    <div class="pick-prompt" id="pick-prompt">
+      <svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+      Tap a plan to continue
+    </div>
 
-        <div class="form-group">
-          <label for="buy-phone">M-Pesa Phone Number</label>
-          <div class="input-wrap">
-            <svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
-            <input type="tel" id="buy-phone" placeholder="0712 345 678"
-                   autocomplete="tel" inputmode="numeric" maxlength="15">
-          </div>
-        </div>
+    <div class="dock-sentinel" id="dock-sentinel"></div>
 
-        <button class="btn-main" id="buy-btn" type="button" onclick="doBuyPlan()">
-          <svg viewBox="0 0 24 24"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z"/></svg>
-          <span id="buy-btn-label">Choose a plan</span>
-        </button>
-        <div class="pay-hint" id="buy-hint">
-          You'll get an M-Pesa prompt on this phone. Your internet switches on automatically once payment is confirmed.
+    <!-- #buy-form IS the sticky dock. Do not wrap it in another element and do
+         not give that wrapper a height — see the .pay-dock comment above. -->
+    <div id="buy-form" class="pay-dock" style="display:none">
+      <div class="pay-summary" id="pay-summary">
+        <div class="pay-summary-l">
+          <div class="pay-summary-cap">Selected plan</div>
+          <div class="pay-summary-name" id="sum-name">—</div>
         </div>
+        <div class="pay-summary-r" id="sum-price">—</div>
+      </div>
+
+      <div class="form-group">
+        <label for="buy-phone">M-Pesa Phone Number</label>
+        <div class="input-wrap">
+          <svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
+          <input type="tel" id="buy-phone" placeholder="0712 345 678"
+                 autocomplete="tel" inputmode="numeric" maxlength="15">
+        </div>
+      </div>
+
+      <button class="btn-main" id="buy-btn" type="button" onclick="doBuyPlan()">
+        <svg viewBox="0 0 24 24"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z"/></svg>
+        <span id="buy-btn-label">Choose a plan</span>
+      </button>
+      <div class="pay-hint" id="buy-hint">
+        You'll get an M-Pesa prompt on this phone. Your internet switches on automatically once payment is confirmed.
       </div>
     </div>
 
@@ -737,11 +785,14 @@ document.querySelectorAll('.filter-chip').forEach(function (chip) {
     document.getElementById('pkg-none').style.display = visible ? 'none' : 'block';
 
     /* If the filter hid the chosen plan, adopt the first one still on screen so
-       the pay button never refers to something the user can't see. */
+       the pay button never refers to something the user can't see. Only when a
+       plan was already chosen — auto-selecting on a bare filter tap would pop
+       the phone field open for a plan nobody picked. */
     var sel = document.querySelector('.pkg-row.selected');
-    if (!sel || sel.classList.contains('hidden')) {
+    if (sel && sel.classList.contains('hidden')) {
       var first = document.querySelector('.pkg-row:not(.hidden) input[type=radio]');
       if (first) { first.checked = true; markSelected(first); }
+      else       { sel.classList.remove('selected'); }
     }
     syncPlan();
   });
@@ -762,21 +813,38 @@ document.querySelectorAll('.pkg-row input[type=radio]').forEach(function (inp) {
   });
 });
 
-/* Keeps the summary card, button label and hint in step with the choice. */
+/* Keeps the dock, the summary card, the button label and the hint in step with
+   the choice. The dock itself only exists once a plan has been tapped. */
 function syncPlan() {
-  var row   = document.querySelector('.pkg-row.selected');
-  var btn   = document.getElementById('buy-btn');
-  var label = document.getElementById('buy-btn-label');
-  var sum   = document.getElementById('pay-summary');
-  var hint  = document.getElementById('buy-hint');
+  var row    = document.querySelector('.pkg-row.selected');
+  var btn    = document.getElementById('buy-btn');
+  var label  = document.getElementById('buy-btn-label');
+  var sum    = document.getElementById('pay-summary');
+  var hint   = document.getElementById('buy-hint');
+  var dock   = document.getElementById('buy-form');
+  var prompt = document.getElementById('pick-prompt');
   if (!btn || !label) return;
 
   if (!row) {
-    sum.style.display = 'none';
+    if (dock) dock.style.display = 'none';
+    /* Only prompt for a tap when there is something tappable. A tenant with no
+       plans, or a filter that matched none, gets the empty state instead --
+       "Tap a plan to continue" under an empty grid reads as a broken page. */
+    if (prompt) {
+      var tappable = document.querySelector('.pkg-row:not(.hidden)');
+      prompt.style.display = tappable ? 'flex' : 'none';
+    }
     label.textContent = 'Choose a plan';
     btn.disabled = true;
     return;
   }
+
+  /* Was the dock closed a moment ago? Then this tap is what opened it, and the
+     customer's eye is still on the card they pressed — bring the dock to them. */
+  var opening = !!dock && dock.style.display === 'none';
+
+  if (prompt) prompt.style.display = 'none';
+  if (dock)   dock.style.display   = 'block';
 
   btn.disabled = false;
   var isFree = row.getAttribute('data-free') === '1';
@@ -792,7 +860,37 @@ function syncPlan() {
   hint.textContent  = isFree
     ? 'One free session per device. Your internet switches on right away.'
     : "You'll get an M-Pesa prompt on this phone. Your internet switches on automatically once payment is confirmed.";
+
+  if (opening) revealDock(dock);
 }
+
+/* Replays the slide-up and makes sure the dock is on screen. Sticky already
+   pins it to the bottom of the viewport, so the scroll only matters on the
+   browsers that don't support sticky — and costs nothing on the ones that do.
+   Deliberately no .focus() on the number field: the on-screen keyboard it
+   summons covers the pay button on a short phone, which is the very thing
+   this dock exists to keep visible. */
+function revealDock(dock) {
+  if (!dock) return;
+  dock.classList.remove('dock-in');
+  void dock.offsetWidth;             /* force a reflow so the animation restarts */
+  dock.classList.add('dock-in');
+
+  if (!dock.scrollIntoView) return;
+  try { dock.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  catch (e) { dock.scrollIntoView(false); }
+}
+
+/* Give the dock an edge only while it is actually floating over the plans. */
+(function () {
+  var sentinel = document.getElementById('dock-sentinel');
+  var dock     = document.getElementById('buy-form');
+  if (!sentinel || !dock || !window.IntersectionObserver) return;
+  new IntersectionObserver(function (entries) {
+    dock.classList.toggle('floating', !entries[0].isIntersecting);
+  }, { threshold: 0 }).observe(sentinel);
+})();
+
 syncPlan();
 
 function setBuyNotice(msg, kind) {

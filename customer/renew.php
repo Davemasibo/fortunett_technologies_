@@ -17,6 +17,7 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 
 require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/../classes/CustomerAuth.php';
+require_once __DIR__ . '/../includes/validity.php';
 
 // ── MikroTik hotspot params (if reached via captive portal redirect) ───────────
 $linkLogin  = $_GET['link-login']  ?? '';
@@ -364,7 +365,7 @@ body.auth-page{padding:16px 12px;}
     <?php if (!empty($packages)): ?>
     <div class="pkg-grid">
         <?php foreach ($packages as $pkg):
-            $dur   = ($pkg['validity_value'] ?? 1) . ' ' . ucfirst($pkg['validity_unit'] ?? 'days');
+            $dur   = packageValidityLabel($pkg['validity_value'] ?? 1, $pkg['validity_unit'] ?? 'days');
             $speed = !empty($pkg['download_speed']) ? $pkg['download_speed'] . '/' . ($pkg['upload_speed'] ?? '?') . ' Mbps · ' : '';
             $isCurrent = ((int)($pkg['id'] ?? 0)) === ((int)($client['package_id'] ?? 0));
         ?>
@@ -522,7 +523,7 @@ var SEL_PKG     = <?php
         'id' => (int)$defaultPkg['id'],
         'name' => $defaultPkg['name'],
         'price' => (float)$defaultPkg['price'],
-        'dur' => ($defaultPkg['validity_value'] ?? 1) . ' ' . ucfirst($defaultPkg['validity_unit'] ?? 'days'),
+        'dur' => packageValidityLabel($defaultPkg['validity_value'] ?? 1, $defaultPkg['validity_unit'] ?? 'days'),
     ] : null);
 ?>;
 var pollTimer = null;

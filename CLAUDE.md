@@ -92,6 +92,12 @@ Routers are provisioned via the RouterOS API. Package changes (upgrade/downgrade
 - **Optional tabs are removed from the DOM, not hidden.** `<!--{{IF:NAME}}-->…<!--{{ENDIF:NAME}}-->` markers in `login.html`, stripped by `_hsApplyConditionals()`. `TABS` is emitted to match and every listener is guarded — a `getElementById` on a switched-off tab used to throw and take the pay button down with it. `buy` can never be switched off.
 - The save handler merges over **what is stored**, not over the defaults: an unchecked checkbox is simply absent from the POST, so merging over defaults would silently reset settings nobody touched.
 
+**The pay dock, and why a plan is not pre-selected.** The M-Pesa number field and the pay button live in `#buy-form`, which *is* the sticky dock — do not wrap it in another element.
+
+- `position:sticky` used to sit on an inner `.pay-dock` inside a `#buy-form` div of exactly its own height. A sticky box can only be offset **within its containing block**, so a containing block no taller than the box meant the dock never moved a pixel: it looked correct in the stylesheet and did nothing on the page, and on a twelve-plan tenant the phone field sat below every card. This is also why `.card` and `<body>` must not clip overflow — a clipping ancestor disables sticky, and `overflow-x:hidden` in one axis makes the other `auto`, which is enough.
+- The dock is **hidden until a plan is tapped**, and `render_login.php` pre-checks nothing (the exception is a tenant selling exactly one plan — there is no choice to make). Asking for a phone number before the customer has chosen is asking for a detail they have no reason to give, and that dead form was the only thing between the plan grid and the fold.
+- Consequences worth remembering: the filter chips must only re-adopt a plan that was **already** selected and got hidden — auto-selecting on a bare filter tap pops the dock open for a plan nobody picked. The "Tap a plan to continue" prompt is hidden when no `.pkg-row` is visible, or it reads as a broken page under an empty grid. And the dock's fade-to-surface gradient uses a **px** stop, not a percentage: a percentage scales with the dock, which put the summary row inside the still-transparent part and let the plan card behind it read straight through the text.
+
 ### Never Trust the Callback Alone
 M-Pesa callbacks are not guaranteed to arrive — a CDN/WAF in front of the callback URL, a Safaricom hiccup, or a customer who cancels all leave `mpesa_transactions` stuck on `pending`. Every payment path therefore needs a pull-based resolution:
 
@@ -150,6 +156,25 @@ $mikrotik_profile = $_POST['mikrotik_profile'] ?? '';                 // update.
 - `api/packages/update.php` wrote the new speed to the database and touched no router at all, so editing a package's speed changed nothing about what the customer received. It now pushes the profile's rate-limit to every reachable router and says which ones it could not reach.
 
 Backfill: `php tools/backfill_package_profiles.php` (dry run; `--apply` writes the column, `--apply --push` also creates/repairs the profiles on the routers). Packages with no `download_speed` are listed and **skipped** rather than given an invented cap.
+
+### Package Validity Units — `includes/validity.php`
+
+`packages.validity_unit` is a **VARCHAR(20), not an ENUM**, so the stored value is whatever some writer put there: singulars, plurals, `mins`, stray casing. The units sold are `minutes`, `hours`, `days`, `weeks`, `months`.
+
+Deciding what a unit means was re-derived in a dozen endpoints, each with its own whitelist, and **every one of them fell back to `days`**. `payment_pipeline.php` allowed hours/days/weeks/months; `customer/api/activate.php` allowed only days/weeks/months (so an *hourly* plan already granted hours-worth of days); `hotspot_stk_push.php` carried its own singular map. Adding `minutes` to the package form without touching all of them would have sold a 30-minute hotspot voucher and granted **30 days** of internet.
+
+There is now one implementation and every caller uses it:
+
+- `packageValidityUnit($u)` — normalise anything stored or posted to one of the five. `days` stays the fallback for a genuinely unrecognised value because that is what every previous caller did; changing it would silently re-price old packages.
+- `packageValidityLabel($v, $u)` — `"30 Minutes"`, `"1 Hour"`. Display only. **Never feed it back into `strtotime()`.**
+- `packageExpiryFrom($v, $u, $base = 'now')` — a fresh purchase.
+- `packageExtendExpiry($currentExpiry, $v, $u)` — a renewal: stack onto unused time when the account is still live, start from now when it has expired. An expired account must not be credited for the gap.
+
+Two rules for anything new on this path:
+
+- **Never write a raw `in_array($unit, [...])` or a `$unitMap` again.** A local whitelist is how the last unit took a year to work everywhere.
+- Normalise on **write** as well as read (`api/packages/create.php`, `update.php`, `api/packages.php`, `api/import/packages.php`, both `api/v1/packages/*`) so the column stops accumulating new spellings.
+- `hotspot/render_login.php` groups plans by unit for the portal's filter chips and already understood `minute`; its `$groupLabels` is the one other place a new unit has to be added.
 
 ### Expiry Enforcement
 `cron/check_expiry.php` runs every 15 min: `active` → `grace` (throttled) after expiry, → `inactive` (disabled + kicked) after `$graceDays`.
@@ -319,6 +344,10 @@ Three further rules:
 - **A saved key is not a working key.** TalkSasa returns `Unauthenticated.` with an HTTP **200**, so a silent save is indistinguishable from a working one. `super_admin/settings.php?tab=sms` has a **Send Test** that uses `SMSHelper::platform()` — platform credentials only, ignoring any tenant row, and written to nobody's outbox.
 - **Never render the live token into a settings form.** It leaks the secret into the page source and lets browser autofill overwrite it on the way back in. Both forms post `SMS_KEY_MASK` or an empty field to mean "keep what is stored".
 - **Simulation is opt-in via the literal `TEST_KEY` and nothing else.** `sendViaTalkSasa()` used to also simulate on an *empty* key, so a deployment with no credentials reported every message as sent and logged it `sent` — there was no way to discover SMS never left the server.
+
+**`CREATE TABLE IF NOT EXISTS` does not reshape a table that already exists**, and `sms_logs` is where that bit. Any deployment that ran the old `sms_schema.sql` has one with `recipient_phone` and **no `tenant_id`** — so `ensureSmsTables()` created nothing, `process_payment_success()`'s dedupe `SELECT ... WHERE tenant_id = ? AND reference = ?` and its `INSERT (client_id, tenant_id, phone, ...)` both threw 1054, and both are wrapped in try/catch. The customer was texted again on **every Safaricom callback retry** and nothing was recorded to prove any of it; `api/dashboard/stats.php` counts today's SMS off `tenant_id` and was equally blind. The guard now *widens* the legacy table — `tenant_id`, `phone`, `status`, `reference` added alongside `recipient_phone`, never renamed, because `sms.php` and the old writers still read it — and backfills `phone` from `recipient_phone`.
+
+The activation SMS is written in **one place**, step 10a of `payment_pipeline.php`, and carries the four things a customer needs in the order they need them: that the money arrived, what it bought (plan name, speed and duration — a hotspot buyer picks by speed and forgets the plan name before the SMS lands), when it runs out, and how to log in. The receipt goes last; it matters only in a dispute. The ISP is named in the body because the TalkSasa sender ID is often a platform-level short code that means nothing to a reseller's customer.
 
 `tools/sms_diagnose.php` resolves through the same functions. A diagnostic that derives the endpoint or the key separately can probe one thing while the sender uses another, which is the one thing a diagnostic must never do.
 
