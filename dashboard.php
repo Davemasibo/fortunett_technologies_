@@ -1,6 +1,7 @@
 <?php
 require_once 'includes/db_master.php';
 require_once 'includes/auth.php';
+require_once __DIR__ . '/includes/analytics_range.php';
 redirectIfNotLoggedIn();
 
 $db = $pdo; // Alias used throughout this file
@@ -252,6 +253,19 @@ include 'includes/sidebar.php';
         outline:none;cursor:pointer;
     }
     .dash-period-select:focus { border-color:rgba(255,255,255,.25); }
+    .analytics-head {
+        display:flex; align-items:center; justify-content:space-between;
+        gap:16px; flex-wrap:wrap; margin-bottom:20px;
+    }
+    .analytics-range { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+    .analytics-range label {
+        font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+        color:rgba(255,255,255,.35);
+    }
+    .analytics-range-note { font-size:12px; color:rgba(255,255,255,.35); }
+    @media (max-width: 640px) {
+        .analytics-head { flex-direction:column; align-items:flex-start; gap:10px; }
+    }
     .dash-inner-table { width:100%;border-collapse:collapse; }
     .dash-inner-table thead { border-bottom:1px solid rgba(255,255,255,.08); }
     .dash-inner-table th {
@@ -636,7 +650,27 @@ include 'includes/sidebar.php';
 
         <!-- Analytics Charts Section -->
         <div style="margin-top: 32px;">
-            <h2 class="section-title" style="font-size: 20px; font-weight: 600; margin-bottom: 20px;">Analytics & Insights</h2>
+            <!-- One period control for every chart below it.
+                 There used to be five dropdowns, one per card, none of which had
+                 a name, an id or a listener -- they were decoration, and the API
+                 had no period parameter to send them to either. Five independent
+                 pickers would also be worse than one even if they worked: the
+                 question an operator asks is "how did we do over X", not "how did
+                 we do over X on this card and Y on that one". -->
+            <div class="analytics-head">
+                <h2 class="section-title" style="font-size: 20px; font-weight: 600; margin: 0;">Analytics &amp; Insights</h2>
+                <div class="analytics-range">
+                    <label for="analyticsRange">Period</label>
+                    <select id="analyticsRange" class="dash-period-select" onchange="onAnalyticsRangeChange(this.value)">
+                        <?php foreach (analyticsRanges() as $rKey => $rLabel): ?>
+                        <option value="<?php echo htmlspecialchars($rKey); ?>"<?php echo $rKey === '7d' ? ' selected' : ''; ?>>
+                            <?php echo htmlspecialchars($rLabel); ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <span class="analytics-range-note" id="analyticsRangeNote"></span>
+                </div>
+            </div>
             
             <!-- Row 1: Payments & Active Users -->
             <div class="dashboard-chart-row">
@@ -645,13 +679,8 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">Payments</h3>
-                            <p class="card-subtitle">Payments and expenses trend</p>
+                            <p class="card-subtitle" id="sub-payments">Collections over the selected period</p>
                         </div>
-                        <select class="dash-period-select">
-                            <option>This year</option>
-                            <option>This month</option>
-                            <option>This week</option>
-                        </select>
                     </div>
                     <div style="padding: 20px; height: 250px; display: flex; align-items: center; justify-content: center;">
                         <canvas id="paymentsChart"></canvas>
@@ -663,12 +692,8 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">Monthly Revenue</h3>
-                            <p class="card-subtitle" id="activeUsersSubtitle">Last 6 months revenue trend</p>
+                            <p class="card-subtitle" id="activeUsersSubtitle">Revenue trend</p>
                         </div>
-                        <select class="dash-period-select">
-                            <option>This week</option>
-                            <option>This month</option>
-                        </select>
                     </div>
                     <div style="padding: 20px; height: 250px;">
                         <canvas id="activeUsersChart"></canvas>
@@ -682,7 +707,7 @@ include 'includes/sidebar.php';
                 <div class="status-card">
                     <div class="card-header">
                         <div>
-                            <h3 class="card-title">Customer retention rate (6 months)</h3>
+                            <h3 class="card-title" id="sub-retentionTitle">Customer retention rate</h3>
                             <p class="card-subtitle">How many customers are returning and how many are churning?</p>
                         </div>
                     </div>
@@ -696,7 +721,7 @@ include 'includes/sidebar.php';
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">Active Users — PPPoE vs Hotspot</h3>
-                            <p class="card-subtitle">Active subscriber counts by connection type (last 7 days)</p>
+                            <p class="card-subtitle" id="sub-dataUsage">Active subscriber counts by connection type</p>
                         </div>
                     </div>
                     <div style="padding: 20px; height: 250px;">
@@ -743,10 +768,6 @@ include 'includes/sidebar.php';
                             <h3 class="card-title">Sent SMS</h3>
                             <p class="card-subtitle">SMS sent from the system</p>
                         </div>
-                        <select class="dash-period-select">
-                            <option>This week</option>
-                            <option>This month</option>
-                        </select>
                     </div>
                     <div style="padding: 20px; height: 250px;">
                         <canvas id="smsChart"></canvas>
@@ -760,10 +781,6 @@ include 'includes/sidebar.php';
                             <h3 class="card-title">Network Data Usage</h3>
                             <p class="card-subtitle">Download &amp; Upload (GB) from live PPPoE sessions</p>
                         </div>
-                        <select class="dash-period-select">
-                            <option>This week</option>
-                            <option>This month</option>
-                        </select>
                     </div>
                     <div style="padding: 20px; height: 250px;">
                         <canvas id="networkDataChart"></canvas>
@@ -780,10 +797,6 @@ include 'includes/sidebar.php';
                             <h3 class="card-title">User Registrations</h3>
                             <p class="card-subtitle">User registrations trend</p>
                         </div>
-                        <select class="dash-period-select">
-                            <option>This week</option>
-                            <option>This month</option>
-                        </select>
                     </div>
                     <div style="padding: 20px; height: 250px;">
                         <canvas id="registrationsChart"></canvas>
@@ -1125,16 +1138,31 @@ function updateRouterStatus(routers) {
 }
 
 // ── Fetch chart/metric stats (fast DB queries only) ───────────────────────────
+/* The period every chart is drawn over. Read from the picker rather than held
+   in a variable so a reload, a manual refresh and the 60s auto-refresh all
+   agree on it without anything having to keep them in step. */
+function currentAnalyticsRange() {
+    const sel = document.getElementById('analyticsRange');
+    return (sel && sel.value) ? sel.value : '7d';
+}
+
+function onAnalyticsRangeChange() {
+    const note = document.getElementById('analyticsRangeNote');
+    if (note) note.textContent = 'Updating…';
+    refreshDashboard();
+}
+
 function refreshDashboard() {
     const refreshIcon = document.getElementById('dash-refresh-icon');
     if (refreshIcon) refreshIcon.classList.add('fa-spin');
 
-    fetch('api/dashboard/stats.php')
+    fetch('api/dashboard/stats.php?range=' + encodeURIComponent(currentAnalyticsRange()))
         .then(r => r.json())
         .then(s => {
             if (!s.success) { console.warn('Dashboard stats:', s.message); return; }
             updateStatCards(s);
             buildCharts(s);
+            applyRangeLabels(s);
             if (typeof window.__patchChartsDark === 'function') window.__patchChartsDark();
             // Also apply any router_status the stats API returned (may be stale/offline stubs)
             if (s.router_status && s.router_status.length) updateRouterStatus(s.router_status);
@@ -1143,6 +1171,28 @@ function refreshDashboard() {
         .finally(() => {
             if (refreshIcon) refreshIcon.classList.remove('fa-spin');
         });
+}
+
+/* The server decides what the range resolved to -- an unrecognised value falls
+   back to 7d there -- so the labels come from the response, never from what the
+   picker happens to be showing. */
+function applyRangeLabels(s) {
+    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    const label = s.range_label || '';
+
+    set('analyticsRangeNote', label ? 'Showing ' + label.toLowerCase() : '');
+    set('sub-payments',   'Collections · ' + label.toLowerCase());
+    set('sub-dataUsage',  'Active subscriber counts by connection type · ' + label.toLowerCase());
+    set('activeUsersSubtitle', (s.monthly_label || 'Revenue trend') + ' revenue trend');
+    /* Retention and the revenue trend are always monthly, so they follow
+       monthly_label rather than the page range -- saying "(6 months)" while the
+       page is showing twelve was the sort of thing that makes a dashboard
+       untrustworthy. */
+    set('sub-retentionTitle', 'Customer retention rate — ' + (s.monthly_label || '').toLowerCase());
+
+    /* Keep the picker in step when the server rejected the value we sent. */
+    const sel = document.getElementById('analyticsRange');
+    if (sel && s.range && sel.value !== s.range) sel.value = s.range;
 }
 
 // ── Fetch live router status independently (MikroTik may be slow) ─────────────

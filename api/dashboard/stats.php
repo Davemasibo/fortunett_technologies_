@@ -7,6 +7,7 @@ ob_start();
 ini_set('display_errors', 0);
 require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
+require_once '../../includes/analytics_range.php';
 ob_clean();
 header('Content-Type: application/json');
 
@@ -20,6 +21,16 @@ $tenant_id = $st->fetchColumn();
 if (!$tenant_id) { echo json_encode(['success'=>false,'message'=>'No tenant']); exit; }
 
 $data = [];
+
+// The period every chart on the page is drawn over. Previously there was none:
+// each series was hard-coded to "last 7 days" or "last 6 months", and the five
+// dropdowns above the charts had no name, no id and no listener, so changing
+// one did nothing. An unrecognised value falls back to 7d rather than erroring
+// -- a stale bookmark should show the default, not a broken dashboard.
+$range = analyticsRange($_GET['range'] ?? '7d');
+$data['range']       = $range['key'];
+$data['range_label'] = $range['label'];
+$data['range_bucket']= $range['bucket'];
 
 try {
     // ── Revenue metrics ───────────────────────────────────────────
@@ -49,42 +60,37 @@ try {
     $st->execute([$tenant_id]);
     $data['new_registrations'] = (int)$st->fetchColumn();
 
-    // ── Payments chart: last 7 days daily totals ──────────────────
-    $pLabels = []; $pData = [];
-    for ($i = 6; $i >= 0; $i--) {
-        $d = date('Y-m-d', strtotime("-$i days"));
-        $pLabels[] = date('D d', strtotime($d));
-        $st = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE DATE(payment_date)=? AND status='completed' AND tenant_id=?");
-        $st->execute([$d, $tenant_id]);
-        $pData[] = (float)$st->fetchColumn();
-    }
-    $data['payments_labels'] = $pLabels;
-    $data['payments_data']   = $pData;
+    // ── Collections over the chosen period ────────────────────────
+    // One grouped query per series instead of one query per bucket: the old
+    // loops were seven round trips each, which over twelve months of five
+    // charts would have been sixty.
+    $pay = analyticsQuerySeries(
+        $pdo, $range, 'payments', 'payment_date', 'COALESCE(SUM(amount),0)',
+        (int)$tenant_id, "AND status = 'completed'"
+    );
+    $data['payments_labels'] = $pay['labels'];
+    $data['payments_data']   = $pay['data'];
 
-    // ── Monthly revenue: last 6 months ────────────────────────────
-    $mLabels = []; $mData = [];
-    for ($i = 5; $i >= 0; $i--) {
-        $y = date('Y', strtotime("-$i months"));
-        $m = date('m', strtotime("-$i months"));
-        $mLabels[] = date('M Y', strtotime("-$i months"));
-        $st = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE YEAR(payment_date)=? AND MONTH(payment_date)=? AND status='completed' AND tenant_id=?");
-        $st->execute([$y, $m, $tenant_id]);
-        $mData[] = (float)$st->fetchColumn();
-    }
-    $data['monthly_labels'] = $mLabels;
-    $data['monthly_data']   = $mData;
+    // The revenue-trend chart is the same money, always bucketed by MONTH so it
+    // stays a trend line rather than turning into a copy of the bar chart above
+    // it. A day-granularity range still gets the surrounding six months of
+    // context, which is the question this chart is actually asked.
+    $monthSpec = in_array($range['key'], ['6m', '12m', 'ytd'], true) ? $range : analyticsRange('6m');
+    $mon = analyticsQuerySeries(
+        $pdo, $monthSpec, 'payments', 'payment_date', 'COALESCE(SUM(amount),0)',
+        (int)$tenant_id, "AND status = 'completed'"
+    );
+    $data['monthly_labels'] = $mon['labels'];
+    $data['monthly_data']   = $mon['data'];
+    $data['monthly_label']  = $monthSpec['label'];
 
-    // ── Registrations: last 7 days ────────────────────────────────
-    $rLabels = []; $rData = [];
-    for ($i = 6; $i >= 0; $i--) {
-        $d = date('Y-m-d', strtotime("-$i days"));
-        $rLabels[] = date('D', strtotime($d));
-        $st = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE DATE(created_at)=? AND tenant_id=?");
-        $st->execute([$d, $tenant_id]);
-        $rData[] = (int)$st->fetchColumn();
-    }
-    $data['reg_labels'] = $rLabels;
-    $data['reg_data']   = $rData;
+    // ── Registrations over the chosen period ──────────────────────
+    $reg = analyticsQuerySeries(
+        $pdo, $range, 'clients', 'created_at', 'COUNT(*)',
+        (int)$tenant_id, '', [], true
+    );
+    $data['reg_labels'] = $reg['labels'];
+    $data['reg_data']   = $reg['data'];
 
     // ── Package utilization ───────────────────────────────────────
     $st = $pdo->prepare("SELECT p.name, COUNT(c.id) as cnt
@@ -202,25 +208,22 @@ try {
     $data['routers_total']   = count($routerStatus);
     $data['router_status']   = $routerStatus;
 
-    // ── SMS stats (last 7 days) ───────────────────────────────────
-    $smsLabels = []; $smsData = [];
-    for ($i = 6; $i >= 0; $i--) {
-        $d = date('Y-m-d', strtotime("-$i days"));
-        $smsLabels[] = date('D', strtotime($d));
-        $st = $pdo->prepare("SELECT COUNT(*) FROM sms_logs WHERE DATE(sent_at) = ? AND tenant_id = ?");
-        try { $st->execute([$d, $tenant_id]); $smsData[] = (int)$st->fetchColumn(); }
-        catch (Exception $e) { $smsData[] = 0; }
-    }
-    $data['sms_labels'] = $smsLabels;
-    $data['sms_data']   = $smsData;
+    // ── SMS over the chosen period ────────────────────────────────
+    $sms = analyticsQuerySeries(
+        $pdo, $range, 'sms_logs', 'sent_at', 'COUNT(*)', (int)$tenant_id, '', [], true
+    );
+    $data['sms_labels'] = $sms['labels'];
+    $data['sms_data']   = $sms['data'];
 
     // ── Customer Retention (last 6 months) ──────────────────────────────────
+    // Retention is a monthly question whatever the page range is, so it follows
+    // $monthSpec -- the same months the revenue trend above is drawn over.
     $retLabels = []; $retActive = []; $retNew = []; $retChurned = [];
-    for ($i = 5; $i >= 0; $i--) {
-        $ts = strtotime("-$i months");
+    foreach ($monthSpec['buckets'] as $b) {
+        $ts = strtotime($b['key'] . '-01');
         $y  = (int)date('Y', $ts);  $m = (int)date('m', $ts);
         $mEnd = date('Y-m-t 23:59:59', $ts); $mStart = date('Y-m-01', $ts);
-        $retLabels[] = date('M Y', $ts);
+        $retLabels[] = $b['label'];
         $st = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE YEAR(created_at)=? AND MONTH(created_at)=? AND tenant_id=?");
         $st->execute([$y,$m,$tenant_id]); $retNew[] = (int)$st->fetchColumn();
         $st = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE created_at<=? AND (expiry_date IS NULL OR expiry_date>=?) AND tenant_id=?");
@@ -233,52 +236,73 @@ try {
     $data['retention_new']     = $retNew;
     $data['retention_churned'] = $retChurned;
 
-    // ── Revenue Forecast (6 historical + 3 projected via linear regression) ──
-    $fcLabels = []; $fcHistorical = []; $histRevs = [];
-    for ($i = 5; $i >= 0; $i--) {
-        $ts = strtotime("-$i months");
-        $fcLabels[] = date('M Y', $ts);
-        $st = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE YEAR(payment_date)=? AND MONTH(payment_date)=? AND status='completed' AND tenant_id=?");
-        $st->execute([(int)date('Y',$ts),(int)date('m',$ts),$tenant_id]);
-        $rev = (float)$st->fetchColumn();
-        $fcHistorical[] = $rev;  $histRevs[] = $rev;
-    }
+    // ── Revenue Forecast (the trend's months + 3 projected, linear regression) ──
+    // Reuses the monthly series already fetched above rather than re-querying
+    // it a month at a time.
+    $fcLabels = $mon['labels'];
+    $fcHistorical = $mon['data'];
+    $histRevs = $mon['data'];
     $n = count($histRevs); $sumX = 0; $sumY = array_sum($histRevs); $sumXY = 0; $sumX2 = 0;
     for ($j = 0; $j < $n; $j++) { $sumX += $j; $sumXY += $j*$histRevs[$j]; $sumX2 += $j*$j; }
     $regD = $n*$sumX2 - $sumX*$sumX;
     $slope = $regD != 0 ? ($n*$sumXY - $sumX*$sumY)/$regD : 0;
     $intercept = $n > 0 ? ($sumY - $slope*$sumX)/$n : 0;
-    $fcProjected = array_fill(0, 5, null);
-    $fcProjected[] = end($histRevs); // connect at last historical point
+    // One null per historical month except the last, which carries the value so
+    // the projected line starts joined to the history instead of floating.
+    $fcProjected = $n > 0 ? array_fill(0, $n - 1, null) : [];
+    $fcProjected[] = $n > 0 ? end($histRevs) : 0;
     for ($j = 1; $j <= 3; $j++) {
         $fcLabels[]     = date('M Y', strtotime("+$j months"));
         $fcHistorical[] = null;
         $fcProjected[]  = max(0, round($intercept + $slope*($n - 1 + $j)));
     }
-    $data['forecast_labels']     = $fcLabels;      // 9 labels
-    $data['forecast_historical'] = $fcHistorical;  // 6 values + 3 nulls
-    $data['forecast_projected']  = $fcProjected;   // 5 nulls + 4 values
+    $data['forecast_labels']     = $fcLabels;      // history + 3 projected
+    $data['forecast_historical'] = $fcHistorical;  // values, then 3 nulls
+    $data['forecast_projected']  = $fcProjected;   // nulls, then 4 values
 
-    // ── Active Users by Type per day (last 7 days) ──────────────────────────
+    // ── Active subscribers by type, at the end of each bucket ───────────────
+    // A point-in-time count, so it cannot be a GROUP BY -- it stays one query
+    // per bucket, which the range caps at 30 for a month view and 90 for the
+    // longest daily one. The 90-day case is the reason the two counts are asked
+    // in a single grouped query per bucket rather than one each.
     $duLabels = []; $duPPPoE = []; $duHotspot = [];
-    for ($i = 6; $i >= 0; $i--) {
-        $d = date('Y-m-d', strtotime("-$i days"));
-        $duLabels[] = date('D', strtotime($d));
-        $st = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE connection_type='pppoe' AND status='active' AND created_at<=? AND (expiry_date IS NULL OR expiry_date>=?) AND tenant_id=?");
-        $st->execute([$d.' 23:59:59',$d,$tenant_id]); $duPPPoE[] = (int)$st->fetchColumn();
-        $st = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE connection_type='hotspot' AND status='active' AND created_at<=? AND (expiry_date IS NULL OR expiry_date>=?) AND tenant_id=?");
-        $st->execute([$d.' 23:59:59',$d,$tenant_id]); $duHotspot[] = (int)$st->fetchColumn();
+    $duSt = $pdo->prepare("
+        SELECT COALESCE(NULLIF(connection_type,''),'hotspot') AS ct, COUNT(*) AS n
+        FROM clients
+        WHERE status='active' AND created_at <= ? AND (expiry_date IS NULL OR expiry_date >= ?)
+          AND tenant_id = ?
+        GROUP BY ct
+    ");
+    foreach ($range['buckets'] as $b) {
+        $duLabels[] = $b['label'];
+        $asOf = $range['bucket'] === 'day'
+              ? $b['key'] . ' 23:59:59'
+              : date('Y-m-t 23:59:59', strtotime($b['key'] . '-01'));
+        $from = $range['bucket'] === 'day' ? $b['key'] : $b['key'] . '-01';
+
+        $pp = 0; $hs = 0;
+        try {
+            $duSt->execute([$asOf, $from, $tenant_id]);
+            foreach ($duSt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                if (strtolower($r['ct']) === 'pppoe') $pp = (int)$r['n']; else $hs = (int)$r['n'];
+            }
+        } catch (Throwable $e) { /* leave the bucket at zero */ }
+        $duPPPoE[] = $pp; $duHotspot[] = $hs;
     }
     $data['du_labels']  = $duLabels;
     $data['du_pppoe']   = $duPPPoE;
     $data['du_hotspot'] = $duHotspot;
 
     // ── Network Data (live session bytes, today's bar) ───────────────────────
+    // Only the live session counters exist, so every bucket but the last is
+    // genuinely unknown rather than zero. Labelled across the chosen range so
+    // the axis matches its neighbours; the honest value lands on the last one.
     $netLabels = []; $netDownload = []; $netUpload = [];
-    for ($i = 6; $i >= 0; $i--) { $netLabels[] = date('D', strtotime("-$i days")); $netDownload[] = 0; $netUpload[] = 0; }
-    if ($totalBytesIn > 0 || $totalBytesOut > 0) {
-        $netDownload[6] = round($totalBytesIn  / 1073741824, 2);
-        $netUpload[6]   = round($totalBytesOut / 1073741824, 2);
+    foreach ($range['buckets'] as $b) { $netLabels[] = $b['label']; $netDownload[] = 0; $netUpload[] = 0; }
+    $lastIdx = count($netLabels) - 1;
+    if ($lastIdx >= 0 && ($totalBytesIn > 0 || $totalBytesOut > 0)) {
+        $netDownload[$lastIdx] = round($totalBytesIn  / 1073741824, 2);
+        $netUpload[$lastIdx]   = round($totalBytesOut / 1073741824, 2);
     }
     $data['net_labels']   = $netLabels;
     $data['net_download'] = $netDownload;

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/analytics_range.php';
 redirectIfNotLoggedIn();
 
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -102,6 +103,24 @@ include 'includes/sidebar.php';
         background: var(--neu-surf) !important; border-color: var(--neu-border) !important; color: rgba(255,255,255,.7) !important;
     }
 
+    /* Business report */
+    .biz-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
+    .biz-kpi { background:rgba(255,255,255,.03); border:1px solid var(--neu-border,rgba(255,255,255,.08)); border-radius:10px; padding:14px 16px; }
+    .biz-kpi-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:rgba(255,255,255,.35); }
+    .biz-kpi-value { font-size:21px; font-weight:700; color:#e2e2e0; margin-top:5px; line-height:1.2; }
+    .biz-kpi-sub { font-size:12px; color:rgba(255,255,255,.35); margin-top:3px; }
+    .biz-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:18px; }
+    .biz-panel-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:rgba(255,255,255,.4); margin:0 0 9px; }
+    table.biz-table { width:100%; border-collapse:collapse; font-size:13px; }
+    table.biz-table th { text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+        color:rgba(255,255,255,.35); padding:7px 10px; border-bottom:1px solid var(--neu-border,rgba(255,255,255,.08)); }
+    table.biz-table td { padding:8px 10px; color:#d4d4d2; border-bottom:1px solid rgba(255,255,255,.05); }
+    table.biz-table td.num, table.biz-table th.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    table.biz-table tr:last-child td { border-bottom:none; }
+    table.biz-table tfoot td { font-weight:700; color:#e2e2e0; border-top:1px solid var(--neu-border,rgba(255,255,255,.12)); }
+    .biz-bar { height:5px; border-radius:3px; background:var(--primary-color,#3B6EA5); min-width:2px; }
+    .biz-empty { text-align:center; padding:26px 0; color:rgba(255,255,255,.3); font-size:13px; }
+
     @media (max-width: 640px) { .main-content-wrapper > div.reports-container { padding: 16px 16px 40px !important; } }
 
     @media print {
@@ -116,7 +135,50 @@ include 'includes/sidebar.php';
     <!-- Header -->
     <div style="margin-bottom:24px;">
         <h1 style="font-size:28px;font-weight:600;color:#111827;margin:0 0 4px;">Reports & Analytics</h1>
-        <p style="font-size:14px;color:#6B7280;margin:0;">Generate detailed customer reports, preview them, then share via email or SMS.</p>
+        <p style="font-size:14px;color:#6B7280;margin:0;">Business performance over any period, and per-customer reports you can preview and share.</p>
+    </div>
+
+    <!-- Business report.
+         The page could only ever report on ONE customer, so the ordinary
+         question -- "what did we collect last month, and the month before?" --
+         had nowhere to go. Periods come from includes/analytics_range.php, the
+         same vocabulary the dashboard charts use, so a figure here and a bar
+         there cannot disagree about what "last 6 months" covers. -->
+    <div style="background:white;border-radius:10px;border:1px solid #E5E7EB;padding:24px;margin-bottom:24px;">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;">
+            <div>
+                <div style="font-size:15px;font-weight:700;color:#111827;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-chart-column" style="color:var(--primary-color,#3B6EA5);"></i> Business Report
+                </div>
+                <div style="font-size:13px;color:#6B7280;margin-top:4px;">Collections, breakdowns and top customers for a period.</div>
+            </div>
+            <div style="display:flex;align-items:end;gap:10px;flex-wrap:wrap;">
+                <div>
+                    <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Period</label>
+                    <select id="bizPeriod" onchange="loadBusinessReport()"
+                            style="padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;background:white;">
+                        <?php foreach (analyticsRanges() as $rKey => $rLabel): ?>
+                        <option value="<?php echo htmlspecialchars($rKey); ?>"<?php echo $rKey === '6m' ? ' selected' : ''; ?>>
+                            <?php echo htmlspecialchars($rLabel); ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <button onclick="printBusinessReport()" id="bizPrintBtn" disabled
+                        style="padding:9px 16px;background:var(--neu-surf,#fff);border:1px solid #D1D5DB;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                    <i class="fas fa-print"></i> Print
+                </button>
+                <button onclick="exportBusinessCSV()" id="bizCsvBtn" disabled
+                        style="padding:9px 16px;background:linear-gradient(135deg,var(--primary-dark,#2C5282) 0%,var(--primary-color,#3B6EA5) 100%);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                    <i class="fas fa-file-csv"></i> CSV
+                </button>
+            </div>
+        </div>
+        <div id="bizReportBody">
+            <div style="text-align:center;padding:40px 0;color:#9CA3AF;font-size:14px;">
+                <i class="fas fa-spinner fa-spin"></i> Loading…
+            </div>
+        </div>
     </div>
 
     <!-- Quick generate panel -->
@@ -246,11 +308,258 @@ include 'includes/sidebar.php';
 <iframe id="printFrame" style="display:none;width:0;height:0;border:0;"></iframe>
 
 <script>
+const BIZ_BRAND = <?php echo json_encode($brandName); ?>;
 /* ─────────────────────────────────────────────────
    BRAND / CONFIG injected from PHP
    ───────────────────────────────────────────────── */
 const BRAND_NAME  = <?php echo json_encode($brandName); ?>;
 const BRAND_COLOR = <?php echo json_encode($brandColor); ?>;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Business report — the whole tenant over a period, not one customer.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let bizReport = null;
+
+const bizMoney = v => 'KES ' + Number(v || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const bizEsc   = v => String(v == null ? '' : v).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const BIZ_ROUTE_LABELS = {
+    paid_to_you:           'Paid to you directly',
+    awaiting_disbursement: 'Awaiting disbursement',
+    disbursed:             'Disbursed to you'
+};
+const BIZ_METHOD_LABELS = {
+    mpesa: 'M-Pesa', mpesa_paybill: 'M-Pesa Paybill', mpesa_stk: 'M-Pesa STK',
+    mpesa_c2b: 'M-Pesa C2B', cash: 'Cash', bank_transfer: 'Bank Transfer',
+    card: 'Card', voucher: 'Voucher', manual: 'Manual', '': 'Unspecified'
+};
+
+function loadBusinessReport() {
+    const range = document.getElementById('bizPeriod').value;
+    const body  = document.getElementById('bizReportBody');
+    document.getElementById('bizPrintBtn').disabled = true;
+    document.getElementById('bizCsvBtn').disabled   = true;
+    body.innerHTML = '<div style="text-align:center;padding:40px 0;color:#9CA3AF;font-size:14px;">'
+                   + '<i class="fas fa-spinner fa-spin"></i> Loading…</div>';
+
+    fetch('api/reports/summary.php?range=' + encodeURIComponent(range))
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) throw new Error(d.message || 'Could not load the report');
+            bizReport = d;
+            body.innerHTML = renderBusinessReport(d);
+            document.getElementById('bizPrintBtn').disabled = false;
+            document.getElementById('bizCsvBtn').disabled   = false;
+        })
+        .catch(err => {
+            body.innerHTML = '<div class="biz-empty">' + bizEsc(err.message) + '</div>';
+        });
+}
+
+function renderBusinessReport(d) {
+    const t = d.totals || {};
+    const periodWord = d.range.bucket === 'month' ? 'Month' : 'Day';
+
+    /* ── Headline ─────────────────────────────────────────────────────────── */
+    let html = '<div class="biz-kpis">'
+      + bizKpi('Collected', bizMoney(t.collected), d.range.label.toLowerCase())
+      + bizKpi('Payments', (t.payments || 0).toLocaleString(), 'completed')
+      + bizKpi('Average payment', bizMoney(t.average), 'per transaction')
+      + bizKpi('New customers', (d.new_customers || 0).toLocaleString(), 'signed up in period')
+      + bizKpi('Active customers', d.active_customers == null ? '—' : d.active_customers.toLocaleString(), 'right now')
+      + '</div>';
+
+    /* Money that did not land is stated, never folded into the total. */
+    const missed = (d.not_collected || []).filter(r => Number(r.total) > 0);
+    if (missed.length) {
+        html += '<div style="font-size:12.5px;color:#fcd34d;background:rgba(217,119,6,.09);border:1px solid rgba(217,119,6,.25);'
+              + 'border-radius:8px;padding:11px 14px;margin-bottom:20px;line-height:1.5;">'
+              + missed.map(r => bizEsc(r.n) + ' ' + bizEsc(r.status) + ' payment(s) worth ' + bizMoney(r.total)).join(' · ')
+              + ' — not included in the total above.</div>';
+    }
+
+    /* ── Collections per bucket ───────────────────────────────────────────── */
+    const buckets = d.buckets || [];
+    const peak    = Math.max(1, ...buckets.map(b => Number(b.amount) || 0));
+    const grand   = buckets.reduce((a, b) => a + Number(b.amount || 0), 0);
+    const grandN  = buckets.reduce((a, b) => a + Number(b.payments || 0), 0);
+
+    html += '<div style="margin-bottom:22px;">'
+          + '<p class="biz-panel-title">Collections by ' + periodWord.toLowerCase() + '</p>'
+          + '<div style="overflow-x:auto;"><table class="biz-table"><thead><tr>'
+          + '<th>' + periodWord + '</th><th class="num">Payments</th><th class="num">Collected</th><th style="width:34%;"></th>'
+          + '</tr></thead><tbody>';
+
+    if (!buckets.length) {
+        html += '<tr><td colspan="4" class="biz-empty">Nothing in this period.</td></tr>';
+    } else {
+        buckets.forEach(b => {
+            const pct = (Number(b.amount) || 0) / peak * 100;
+            html += '<tr><td>' + bizEsc(b.label) + '</td>'
+                  + '<td class="num">' + (b.payments || 0) + '</td>'
+                  + '<td class="num">' + bizMoney(b.amount) + '</td>'
+                  + '<td><div class="biz-bar" style="width:' + pct.toFixed(1) + '%;"></div></td></tr>';
+        });
+    }
+    html += '</tbody><tfoot><tr><td>Total</td><td class="num">' + grandN + '</td>'
+          + '<td class="num">' + bizMoney(grand) + '</td><td></td></tr></tfoot></table></div></div>';
+
+    /* ── Breakdowns ───────────────────────────────────────────────────────── */
+    html += '<div class="biz-grid">'
+          + bizBreakdown('Where the money is', d.by_route, n => BIZ_ROUTE_LABELS[n] || n)
+          + bizBreakdown('By payment method', d.by_method, n => BIZ_METHOD_LABELS[n] || n || 'Unspecified')
+          + bizBreakdown('By package', d.by_package, n => n)
+          + '</div>';
+
+    /* ── Top customers ────────────────────────────────────────────────────── */
+    const top = d.top_customers || [];
+    html += '<div style="margin-top:22px;"><p class="biz-panel-title">Top customers in this period</p>'
+          + '<div style="overflow-x:auto;"><table class="biz-table"><thead><tr>'
+          + '<th>Customer</th><th>Phone</th><th class="num">Payments</th><th class="num">Total</th>'
+          + '</tr></thead><tbody>';
+    if (!top.length) {
+        html += '<tr><td colspan="4" class="biz-empty">No payments in this period.</td></tr>';
+    } else {
+        top.forEach(c => {
+            html += '<tr><td>' + bizEsc(c.name) + (c.account_number
+                        ? ' <span style="color:rgba(255,255,255,.3);font-size:11.5px;">' + bizEsc(c.account_number) + '</span>' : '')
+                  + '</td><td>' + bizEsc(c.phone || '—') + '</td>'
+                  + '<td class="num">' + (c.n || 0) + '</td>'
+                  + '<td class="num">' + bizMoney(c.total) + '</td></tr>';
+        });
+    }
+    html += '</tbody></table></div></div>';
+
+    return html;
+}
+
+function bizKpi(label, value, sub) {
+    return '<div class="biz-kpi"><div class="biz-kpi-label">' + bizEsc(label) + '</div>'
+         + '<div class="biz-kpi-value">' + bizEsc(value) + '</div>'
+         + '<div class="biz-kpi-sub">' + bizEsc(sub) + '</div></div>';
+}
+
+function bizBreakdown(title, rows, labelFn) {
+    rows = rows || [];
+    const total = rows.reduce((a, r) => a + Number(r.total || 0), 0);
+    let html = '<div><p class="biz-panel-title">' + bizEsc(title) + '</p><table class="biz-table"><tbody>';
+    if (!rows.length) {
+        html += '<tr><td class="biz-empty">Nothing in this period.</td></tr>';
+    } else {
+        rows.forEach(r => {
+            const share = total > 0 ? (Number(r.total) / total * 100) : 0;
+            html += '<tr><td>' + bizEsc(labelFn(r.name))
+                  + '<div style="font-size:11.5px;color:rgba(255,255,255,.3);">' + (r.n || 0) + ' payment(s) · '
+                  + share.toFixed(1) + '%</div></td>'
+                  + '<td class="num">' + bizMoney(r.total) + '</td></tr>';
+        });
+    }
+    return html + '</tbody></table></div>';
+}
+
+/* ── Export ───────────────────────────────────────────────────────────────── */
+function exportBusinessCSV() {
+    if (!bizReport) return;
+    const d = bizReport;
+    const rows = [];
+    const push = (...cells) => rows.push(cells.map(c => {
+        const v = String(c == null ? '' : c);
+        return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+    }).join(','));
+
+    push(BIZ_BRAND + ' — Business report');
+    push('Period', d.range.label, d.range.start + ' to ' + d.range.end);
+    push('Generated', new Date().toLocaleString());
+    push('');
+    push('Collected', d.totals.collected);
+    push('Payments', d.totals.payments);
+    push('Average payment', d.totals.average);
+    push('New customers', d.new_customers);
+    push('Active customers', d.active_customers);
+    push('');
+    push(d.range.bucket === 'month' ? 'Month' : 'Day', 'Payments', 'Collected');
+    (d.buckets || []).forEach(b => push(b.label, b.payments, b.amount));
+    push('');
+    push('Where the money is', 'Payments', 'Total');
+    (d.by_route || []).forEach(r => push(BIZ_ROUTE_LABELS[r.name] || r.name, r.n, r.total));
+    push('');
+    push('Payment method', 'Payments', 'Total');
+    (d.by_method || []).forEach(r => push(BIZ_METHOD_LABELS[r.name] || r.name || 'Unspecified', r.n, r.total));
+    push('');
+    push('Package', 'Payments', 'Total');
+    (d.by_package || []).forEach(r => push(r.name, r.n, r.total));
+    push('');
+    push('Customer', 'Phone', 'Account', 'Payments', 'Total');
+    (d.top_customers || []).forEach(c => push(c.name, c.phone, c.account_number, c.n, c.total));
+
+    /* \ufeff so Excel opens it as UTF-8 rather than mangling any non-ASCII name. */
+    const blob = new Blob(['\ufeff' + rows.join('\r\n')], {type: 'text/csv;charset=utf-8;'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'business-report-' + d.range.key + '-' + d.range.end + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+}
+
+function printBusinessReport() {
+    if (!bizReport) return;
+    const d = bizReport;
+    /* Printed light-on-white regardless of the admin theme -- this goes on
+       paper or into a PDF that gets emailed, and a dark background there wastes
+       toner and reads badly. */
+    const doc = `<!doctype html><html><head><meta charset="utf-8">
+<title>${bizEsc(BIZ_BRAND)} — Business report</title>
+<style>
+  body{font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111827;padding:28px;max-width:900px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 4px;} .sub{color:#6B7280;font-size:13px;margin:0 0 22px;}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:#6B7280;margin:22px 0 8px;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:6px;}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6B7280;padding:6px 8px;border-bottom:1px solid #E5E7EB;}
+  td{padding:6px 8px;border-bottom:1px solid #F3F4F6;}
+  .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  tfoot td{font-weight:700;border-top:1px solid #D1D5DB;}
+  .kpis{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:8px;}
+  .kpi{border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;min-width:140px;}
+  .kpi b{display:block;font-size:17px;margin-top:2px;}
+  .kpi span{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#6B7280;}
+</style></head><body>
+<h1>${bizEsc(BIZ_BRAND)} — Business report</h1>
+<p class="sub">${bizEsc(d.range.label)} · ${bizEsc(d.range.start)} to ${bizEsc(d.range.end)} · generated ${bizEsc(new Date().toLocaleString())}</p>
+<div class="kpis">
+  <div class="kpi"><span>Collected</span><b>${bizMoney(d.totals.collected)}</b></div>
+  <div class="kpi"><span>Payments</span><b>${d.totals.payments || 0}</b></div>
+  <div class="kpi"><span>Average</span><b>${bizMoney(d.totals.average)}</b></div>
+  <div class="kpi"><span>New customers</span><b>${d.new_customers || 0}</b></div>
+</div>
+<h2>Collections by ${d.range.bucket === 'month' ? 'month' : 'day'}</h2>
+<table><thead><tr><th>${d.range.bucket === 'month' ? 'Month' : 'Day'}</th><th class="num">Payments</th><th class="num">Collected</th></tr></thead>
+<tbody>${(d.buckets || []).map(b => `<tr><td>${bizEsc(b.label)}</td><td class="num">${b.payments || 0}</td><td class="num">${bizMoney(b.amount)}</td></tr>`).join('')}</tbody>
+<tfoot><tr><td>Total</td><td class="num">${(d.buckets || []).reduce((a, b) => a + Number(b.payments || 0), 0)}</td><td class="num">${bizMoney((d.buckets || []).reduce((a, b) => a + Number(b.amount || 0), 0))}</td></tr></tfoot></table>
+${bizPrintTable('Where the money is', d.by_route, n => BIZ_ROUTE_LABELS[n] || n)}
+${bizPrintTable('By payment method', d.by_method, n => BIZ_METHOD_LABELS[n] || n || 'Unspecified')}
+${bizPrintTable('By package', d.by_package, n => n)}
+<h2>Top customers</h2>
+<table><thead><tr><th>Customer</th><th>Phone</th><th class="num">Payments</th><th class="num">Total</th></tr></thead>
+<tbody>${(d.top_customers || []).map(c => `<tr><td>${bizEsc(c.name)}</td><td>${bizEsc(c.phone || '—')}</td><td class="num">${c.n || 0}</td><td class="num">${bizMoney(c.total)}</td></tr>`).join('')}</tbody></table>
+</body></html>`;
+
+    const frame = document.getElementById('printFrame');
+    frame.srcdoc = doc;
+    frame.onload = () => { frame.contentWindow.focus(); frame.contentWindow.print(); };
+}
+
+function bizPrintTable(title, rows, labelFn) {
+    rows = rows || [];
+    if (!rows.length) return '';
+    return '<h2>' + bizEsc(title) + '</h2><table><thead><tr><th>Name</th><th class="num">Payments</th><th class="num">Total</th></tr></thead><tbody>'
+         + rows.map(r => '<tr><td>' + bizEsc(labelFn(r.name)) + '</td><td class="num">' + (r.n || 0)
+                       + '</td><td class="num">' + bizMoney(r.total) + '</td></tr>').join('')
+         + '</tbody></table>';
+}
+
+document.addEventListener('DOMContentLoaded', loadBusinessReport);
 
 let currentRptClientId   = null;
 let currentRptClientData = null; // { client, analytics, payments }
