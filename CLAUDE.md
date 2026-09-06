@@ -376,6 +376,21 @@ The activation SMS is written in **one place**, step 10a of `payment_pipeline.ph
 
 `tools/sms_diagnose.php` resolves through the same functions. A diagnostic that derives the endpoint or the key separately can probe one thing while the sender uses another, which is the one thing a diagnostic must never do.
 
+### Verifying SMS Across the Fleet — `includes/sms_verify.php`
+
+"Is SMS working for this tenant?" had three answers depending on where you asked: the settings form (shows what is stored), the outbox (shows what happened days ago), and `tools/sms_diagnose.php` (one tenant at a time, over SSH). None could answer it for the whole installation — which is how a platform spent days failing every send while every settings page looked correct.
+
+`smsVerifyTenant()` resolves credentials through `smsResolveConfig()` and `smsNormalizeApiUrl()`, **the same functions `SMSHelper` sends with**. A verifier that derives the endpoint or the key separately can probe one thing while the sender uses another.
+
+- The proof is a **GET against the provider's balance route** with the effective bearer token. It tests the credential end to end without sending a message or spending a credit — and it is the only way to tell a saved key from a working one, because TalkSasa answers `Unauthenticated.` with an **HTTP 200** that no status-code check would catch.
+- Probes are memoised on (url, key): most tenants fall back to the one platform key, so a fleet sweep is one round trip, not one per tenant.
+- `TEST_KEY` gets its own verdict. It is not working (nothing leaves the server) and not rejected (the provider was never contacted); calling it either would be a lie.
+- A stale stored `api_url` is a **warning, not a failure** — read-time normalisation means it still sends. What it breaks is the operator's trust in the settings page.
+
+Two front ends, one implementation: the **SMS per tenant** card on `super_admin/diagnostics.php` (via `api/super_admin/sms_fleet.php`) and `php tools/sms_fleet.php` (`--no-probe` for configuration only).
+
+**N tenants on one dead platform key is one fault, not N.** The card says so above the table and points at the single fix, for the same reason `platform_chain.php` exists at all: a shared break phrased per tenant sends operators hunting N problems and hands tenants instructions they cannot carry out.
+
 ### Schema Guards
 `includes/schema_guard.php` repairs schema drift in place when a deployment is missing a migration. Call `ensurePaymentStatusEnums($pdo)` at the top of any endpoint on the payment path. One-shot repair: `php tools/repair_status_enums.php` (or `sql/migrations/2026-07-26-payment-autoactivation.sql`).
 

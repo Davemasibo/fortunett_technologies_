@@ -71,6 +71,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .pill.ok{background:rgba(52,211,153,.15);color:#6ee7b7;}
 .pill.warn{background:rgba(245,158,11,.15);color:#fcd34d;}
 .pill.fail{background:rgba(239,68,68,.15);color:#fca5a5;}
+.pill.info{background:rgba(147,197,253,.15);color:#93c5fd;}
+table.sms-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+table.sms-table th{text-align:left;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--neu-muted);padding:8px 10px;border-bottom:1px solid var(--neu-border);}
+table.sms-table td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.05);color:var(--neu-text);vertical-align:top;}
+table.sms-table tr:last-child td{border-bottom:none;}
+.sms-why{font-size:11.5px;color:var(--neu-muted);line-height:1.5;margin-top:3px;}
+.sms-do{font-size:11.5px;color:#fcd34d;line-height:1.5;margin-top:3px;}
+.sms-src{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:12px;background:rgba(255,255,255,.06);color:var(--neu-muted);}
 
 .chk{padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;gap:14px;align-items:flex-start;}
 .chk:last-child{border-bottom:none;}
@@ -144,6 +152,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
         </div>
 
         <div id="groups"></div>
+
+        <!-- Per-tenant SMS. Deliberately on this page rather than a tenant's:
+             most tenants send on the shared platform key, so one dead token is
+             one platform fault, not N tenant faults -- and no tenant can see
+             it, or fix it. -->
+        <div class="card" id="smsFleet">
+            <div class="card-head">
+                <h3>SMS per tenant</h3>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span class="pill ok" id="sms-pill">&nbsp;</span>
+                    <button class="btn" id="sms-recheck" style="padding:5px 12px;font-size:12px;">
+                        <i class="fas fa-rotate"></i> Re-check
+                    </button>
+                </div>
+            </div>
+            <div id="sms-body" style="padding:16px 20px;color:var(--neu-muted);font-size:13px;">
+                <i class="fas fa-circle-notch spin"></i> Verifying every tenant's credentials against the provider…
+            </div>
+        </div>
 
         <p style="font-size:12.5px;color:var(--neu-muted);line-height:1.6;margin-top:6px;">
             Everything here is read-only and belongs to FortuNett, not to any tenant. A tenant's own
@@ -228,6 +255,82 @@ async function run() {
 // both come back as `manual` rows with exactly where to go.
 const REP_ORDER = { error: 0, manual: 1, fixed: 2, would: 3, ok: 4 };
 
+/* ── SMS per tenant ─────────────────────────────────────────────────────── */
+const SMS_LEVEL = {
+    ok: 'ok', stale_url: 'warn', simulation: 'warn', untested: 'warn',
+    no_credentials: 'fail', unreachable: 'fail', rejected: 'fail'
+};
+
+async function loadSmsFleet() {
+    const body = document.getElementById('sms-body');
+    const pill = document.getElementById('sms-pill');
+    body.innerHTML = '<i class="fas fa-circle-notch spin"></i> Verifying every tenant\u2019s credentials against the provider…';
+    pill.className = 'pill info'; pill.textContent = 'checking';
+
+    try {
+        const r = await fetch('../api/super_admin/sms_fleet.php', { credentials: 'same-origin' });
+        const d = await r.json();
+        if (!d.success) throw new Error(d.message || 'Could not verify SMS');
+
+        const rows = d.tenants || [];
+        const broken = rows.filter(t => SMS_LEVEL[t.verdict] === 'fail').length;
+        const warn   = rows.filter(t => SMS_LEVEL[t.verdict] === 'warn').length;
+
+        pill.className = 'pill ' + (broken ? 'fail' : warn ? 'warn' : 'ok');
+        pill.textContent = broken ? broken + ' broken' : warn ? warn + ' to check' : 'all ok';
+
+        if (!rows.length) { body.innerHTML = '<p style="padding:4px 0;">No tenants.</p>'; return; }
+
+        /* Tenants sharing one dead platform key are one fault, not N -- say so
+           once above the table rather than repeating it on every row. */
+        const platformBroken = rows.filter(t => t.source === 'platform' && SMS_LEVEL[t.verdict] === 'fail');
+        let head = '';
+        if (platformBroken.length > 1) {
+            head = '<div style="margin:0 0 14px;padding:11px 14px;border-radius:9px;background:rgba(239,68,68,.09);'
+                 + 'border:1px solid rgba(239,68,68,.25);font-size:12.5px;color:#fca5a5;line-height:1.55;">'
+                 + '<strong>' + platformBroken.length + ' tenants share the platform key and it is not working.</strong> '
+                 + 'This is one fault on FortuNett\u2019s side, not ' + platformBroken.length
+                 + ' tenant problems \u2014 fixing the platform token under System Settings \u2192 SMS clears every row below at once.</div>';
+        }
+
+        let html = head + '<div style="overflow-x:auto;"><table class="sms-table"><thead><tr>'
+                 + '<th>Tenant</th><th>Sends&nbsp;as</th><th>Sender&nbsp;ID</th>'
+                 + '<th>Verdict</th><th>Last 30 days</th></tr></thead><tbody>';
+
+        rows.forEach(t => {
+            const lvl = SMS_LEVEL[t.verdict] || 'warn';
+            const attempted = (t.sent_30d || 0) + (t.failed_30d || 0);
+            html += '<tr>'
+                 + '<td><div style="color:#fff;font-weight:600;">' + esc(t.company_name || ('Tenant ' + t.tenant_id)) + '</div>'
+                 + '<div class="sms-why">' + esc(t.subdomain || '') + '</div></td>'
+                 + '<td><span class="sms-src">' + esc(t.source) + '</span></td>'
+                 + '<td>' + esc(t.sender_id || '\u2014') + '</td>'
+                 + '<td><span class="pill ' + lvl + '">' + esc(t.verdict_label) + '</span>'
+                 + (t.detail ? '<div class="sms-why">' + esc(t.detail) + '</div>' : '')
+                 + (t.action ? '<div class="sms-do">' + esc(t.action) + '</div>' : '')
+                 + '</td>'
+                 + '<td>' + (attempted
+                        ? (t.sent_30d || 0) + ' of ' + attempted + ' delivered'
+                          + (t.failed_30d ? '<div class="sms-why">' + esc((t.last_error || '').slice(0, 90)) + '</div>' : '')
+                        : '<span style="color:var(--neu-muted);">nothing sent</span>')
+                 + '</td></tr>';
+        });
+
+        html += '</tbody></table></div>'
+             + '<p style="font-size:11.5px;color:var(--neu-muted);margin-top:12px;line-height:1.6;">'
+             + 'Each tenant\u2019s credentials are resolved exactly as the sender resolves them, then proved against the '
+             + 'provider with a balance lookup \u2014 no message is sent and no credit is spent. Checked '
+             + esc(d.checked_at) + '.</p>';
+
+        body.innerHTML = html;
+    } catch (e) {
+        pill.className = 'pill fail'; pill.textContent = 'error';
+        body.innerHTML = '<p style="color:#fca5a5;">' + esc(e.message) + '</p>';
+    }
+}
+
+document.getElementById('sms-recheck').addEventListener('click', loadSmsFleet);
+
 async function repair(apply) {
     const panel = document.getElementById('repair');
     const btnF  = document.getElementById('fixall');
@@ -295,10 +398,13 @@ async function repair(apply) {
     if (apply && done > 0) run();
 }
 
-document.getElementById('reload').addEventListener('click', run);
+document.getElementById('reload').addEventListener('click', () => { run(); loadSmsFleet(); });
 document.getElementById('preview').addEventListener('click', () => repair(false));
 document.getElementById('fixall').addEventListener('click', () => repair(true));
 run();
+/* Started separately from run(): the SMS sweep makes a network call per
+   distinct credential, so it must not hold up the rest of the page. */
+loadSmsFleet();
 </script>
 </body>
 </html>
