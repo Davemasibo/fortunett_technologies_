@@ -292,15 +292,29 @@ class SMSHelper {
             : substr($key, 0, 4) . str_repeat('*', max(0, strlen($key) - 8)) . substr($key, -4)
               . ' — ' . strlen($key) . ' chars';
 
+        // The one fact that settles "is the key wrong, or is something else
+        // wrong?" without another round trip. tools/sms_diagnose.php has
+        // printed it for a while; the UI, where the Send Test actually lives,
+        // did not -- so an operator staring at a rejected key had no way to
+        // tell a revoked token from a v1 key that was never going to work, and
+        // re-pasting the same v1 key is exactly what they try next.
+        $shape = ($key !== '' && strpos($key, '|') === false)
+            ? ' The stored value contains no "|": a TalkSasa v3 token is issued as <id>|<random>, so this is'
+              . ' almost certainly an older v1 key and will never authenticate against /api/v3, however many'
+              . ' times it is re-pasted. Generate a new one under Dashboard > Developers/API.'
+            : '';
+
         if ($this->using_platform) {
             return 'The SMS provider rejected the PLATFORM API key (' . $masked . ', HTTP ' . $httpCode . '). '
                  . 'Your account has no SMS credentials of its own, so it is using FortuNett\'s. '
-                 . 'Either add your own TalkSasa key under Settings on this page, or ask your FortuNett admin to renew the platform key.';
+                 . 'Either add your own TalkSasa key under Settings on this page, or ask your FortuNett admin to renew the platform key.'
+                 . $shape;
         }
 
         return 'The SMS provider rejected your API key (' . $masked . ', HTTP ' . $httpCode . '). '
              . 'TalkSasa v3 wants the API TOKEN from Dashboard → Developers/API, not your password or the v1 key. '
-             . 'Update it under Settings on this page.';
+             . 'Update it under Settings on this page.'
+             . $shape;
     }
 
     public function sendTemplate($clientId, $templateKey) {
