@@ -76,7 +76,7 @@ include 'includes/header.php';
 .sb { padding: 3px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
 .sb.active    { background: rgba(16,185,129,.15);  color: #6ee7b7; border: 1px solid rgba(16,185,129,.3); }
 .sb.inactive  { background: rgba(107,114,128,.12); color: rgba(255,255,255,.45); border: 1px solid rgba(107,114,128,.25); }
-.sb.suspended { background: rgba(251,191,36,.12);  color: #fcd34d; border: 1px solid rgba(251,191,36,.25); }
+.sb.suspended { background: var(--warn-bg);  color: #fcd34d; border: 1px solid rgba(251,191,36,.25); }
 .sb.expired   { background: rgba(239,68,68,.12);   color: #fca5a5; border: 1px solid rgba(239,68,68,.25); }
 .text-ok  { color: #6ee7b7; }
 .text-bad { color: #fca5a5; }

@@ -30,7 +30,10 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Customer Portal - <?php echo htmlspecialchars($tenant_branding['company_name']); ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/customer/css/customer.css?v=<?php echo filemtime(__DIR__.'/../css/customer.css'); ?>">
+    <!-- Relative, not root-absolute: every page that includes this header lives
+         in /customer/, and an absolute /customer/... 404s on any install served
+         from a subdirectory, leaving the whole portal unstyled with no error. -->
+    <link rel="stylesheet" href="css/customer.css?v=<?php echo filemtime(__DIR__.'/../css/customer.css'); ?>">
     <style>
         :root {
             --primary:       <?php echo $tenant_branding['brand_color']; ?>;

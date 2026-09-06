@@ -159,7 +159,11 @@ $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<link rel="stylesheet" href="../css/auth.css?v=3">
+    <!-- The shared customer design system. Loaded before auth.css so the
+         auth card styling still wins where the two overlap, and so these
+         pages stop re-declaring components that already exist. -->
+    <link rel="stylesheet" href="css/customer.css?v=<?php echo @filemtime(__DIR__ . '/css/customer.css') ?: 1; ?>">
+    <link rel="stylesheet" href="../css/auth.css?v=3">
 <style>
 :root{
   --brand:<?php echo $branding['color'];?>;

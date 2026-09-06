@@ -151,8 +151,18 @@ $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<link rel="stylesheet" href="../css/auth.css?v=4">
+    <!-- The shared customer design system. Loaded before auth.css so the
+         auth card styling still wins where the two overlap, and so these
+         pages stop re-declaring components that already exist. -->
+    <link rel="stylesheet" href="css/customer.css?v=<?php echo @filemtime(__DIR__ . '/css/customer.css') ?: 1; ?>">
+    <link rel="stylesheet" href="../css/auth.css?v=4">
 <style>
+/* These three names also exist in css/customer.css, which this page now
+   loads. They are kept and scoped rather than deleted: customer.css styles
+   them for the sidebar portal, and this page is an auth-card layout where
+   that sizing is wrong. Scoping says so, instead of leaving a silent
+   redefinition that only wins by source order. */
+
 :root{
     --brand:<?php echo $branding['color'];?>;
     --brand-glow:rgba(<?php echo "$r,$g,$b";?>,0.38);
@@ -161,9 +171,9 @@ $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr
 body.auth-page{padding:16px 12px;}
 .renew-wrap{
     position:relative;z-index:1;
-    background:rgb(34,34,33);
+    background:var(--neu-raised);
     border-radius:22px;
-    box-shadow:14px 14px 28px rgb(10,10,9),-7px -7px 18px rgb(44,44,42),0 0 0 1px rgba(255,255,255,.043);
+    box-shadow:14px 14px 28px var(--neu-sh-d),-7px -7px 18px var(--neu-sh-l),0 0 0 1px var(--neu-hair);
     width:100%;max-width:680px;
     animation:authSlideUp .42s cubic-bezier(.22,1,.36,1) both;
 }
@@ -172,44 +182,44 @@ body.auth-page{padding:16px 12px;}
 /* Account info cards */
 .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;}
 @media(max-width:400px){.info-grid{grid-template-columns:1fr;}}
-.info-card{background:rgb(27,27,26);border-radius:12px;padding:14px 16px;
-    box-shadow:inset 2px 2px 5px rgb(10,10,9),inset -1px -1px 4px rgb(42,42,40);}
+.info-card{background:var(--neu-well);border-radius:12px;padding:14px 16px;
+    box-shadow:inset 2px 2px 5px var(--neu-sh-d),inset -1px -1px 4px var(--neu-sh-l2);}
 .info-label{font-size:11px;font-weight:600;color:rgba(255,255,255,.38);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
-.info-value{font-size:15px;font-weight:700;color:#e8e8e6;}
-.info-value.danger{color:#f87171;}
-.info-value.ok{color:#34d399;}
-.info-value.warn{color:#fbbf24;}
+.info-value{font-size:15px;font-weight:700;color:var(--neu-ink);}
+.info-value.danger{color:var(--bad);}
+.info-value.ok{color:var(--ok);}
+.info-value.warn{color:var(--warn-c);}
 
 /* Package cards for renewal */
 .pkg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:16px;}
-.pkg-card{
+.renew-page .pkg-card{
     position:relative;border:1.5px solid rgba(255,255,255,.08);border-radius:12px;
-    padding:14px 12px;cursor:pointer;transition:all .18s;background:rgb(27,27,26);
+    padding:14px 12px;cursor:pointer;transition:all .18s;background:var(--neu-well);
 }
-.pkg-card:hover{border-color:rgba(255,255,255,.2);}
-.pkg-card.selected{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand);}
-.pkg-card input[type=radio]{position:absolute;opacity:0;pointer-events:none;}
+.renew-page .pkg-card:hover{border-color:rgba(255,255,255,.2);}
+.renew-page .pkg-card.selected{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand);}
+.renew-page .pkg-card input[type=radio]{position:absolute;opacity:0;pointer-events:none;}
 .pkg-name{font-weight:700;font-size:12px;color:#e2e2e0;margin-bottom:4px;}
 .pkg-meta{font-size:11px;color:rgba(255,255,255,.38);}
 .pkg-price{font-size:15px;font-weight:800;color:var(--brand);margin-top:6px;}
 .pkg-check{position:absolute;top:8px;right:8px;width:16px;height:16px;border-radius:50%;
     border:2px solid rgba(255,255,255,.2);background:transparent;transition:all .14s;}
-.pkg-card.selected .pkg-check{border-color:var(--brand);background:var(--brand);}
-.pkg-card.selected .pkg-check::after{content:'✓';color:#fff;font-size:8px;font-weight:700;
+.renew-page .pkg-card.selected .pkg-check{border-color:var(--brand);background:var(--brand);}
+.renew-page .pkg-card.selected .pkg-check::after{content:'✓';color:#fff;font-size:8px;font-weight:700;
     display:flex;align-items:center;justify-content:center;line-height:13px;}
 
 /* Modal overlay */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9999;
+.renew-page .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9999;
     align-items:center;justify-content:center;padding:16px;}
-.modal-overlay.show{display:flex;}
-.modal-card{background:rgb(34,34,33);border-radius:22px;padding:36px 28px;width:100%;max-width:400px;
+.renew-page .modal-overlay.show{display:flex;}
+.modal-card{background:var(--neu-raised);border-radius:22px;padding:36px 28px;width:100%;max-width:400px;
     box-shadow:0 24px 64px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.05);}
-.modal-title{font-size:17px;font-weight:700;color:#e8e8e6;margin-bottom:16px;display:flex;align-items:center;gap:10px;}
-.modal-detail{background:rgb(27,27,26);border-radius:10px;padding:14px 16px;margin-bottom:20px;}
+.renew-page .modal-title{font-size:17px;font-weight:700;color:var(--neu-ink);margin-bottom:16px;display:flex;align-items:center;gap:10px;}
+.modal-detail{background:var(--neu-well);border-radius:10px;padding:14px 16px;margin-bottom:20px;}
 .modal-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px;}
 .modal-row:last-child{margin-bottom:0;}
 .modal-row-label{color:rgba(255,255,255,.45);}
-.modal-row-val{font-weight:700;color:#e8e8e6;}
+.modal-row-val{font-weight:700;color:var(--neu-ink);}
 .modal-total{font-size:20px;font-weight:800;color:var(--brand);}
 
 /* Spinner + icons */
@@ -218,28 +228,28 @@ body.auth-page{padding:16px 12px;}
 @keyframes spin{to{transform:rotate(360deg);}}
 .pay-icon{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;
     justify-content:center;margin:0 auto 16px;font-size:24px;}
-.pay-icon.ok{background:rgba(52,211,153,.15);color:#34d399;}
-.pay-icon.fail{background:rgba(248,113,113,.15);color:#f87171;}
+.pay-icon.ok{background:var(--ok-bg);color:var(--ok);}
+.pay-icon.fail{background:var(--bad-bg);color:var(--bad);}
 
 /* Alerts */
 .p-alert{display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border-radius:9px;
     font-size:13px;line-height:1.5;margin-bottom:16px;}
 .p-alert-err{background:rgba(239,68,68,.12);border-left:4px solid #ef4444;color:#fca5a5;}
 .p-alert-ok{background:rgba(34,197,94,.12);border-left:4px solid #22c55e;color:#86efac;}
-.p-alert-warn{background:rgba(251,191,36,.1);border-left:4px solid #fbbf24;color:#fde68a;}
+.p-alert-warn{background:rgba(251,191,36,.1);border-left:4px solid var(--warn-c);color:#fde68a;}
 .p-alert i{flex-shrink:0;margin-top:2px;}
 
 /* Status badge */
 .status-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
-.badge-active{background:rgba(52,211,153,.15);color:#34d399;}
-.badge-expired{background:rgba(248,113,113,.15);color:#f87171;}
-.badge-suspended{background:rgba(251,191,36,.12);color:#fbbf24;}
+.badge-active{background:var(--ok-bg);color:var(--ok);}
+.badge-expired{background:var(--bad-bg);color:var(--bad);}
+.badge-suspended{background:var(--warn-bg);color:var(--warn-c);}
 
 .sec-divider{height:1px;background:rgba(255,255,255,.07);margin:22px 0;}
 .lnk{background:none;border:none;color:var(--brand);filter:brightness(1.5);font-size:13px;font-weight:600;cursor:pointer;padding:0;font-family:inherit;text-decoration:underline;}
 </style>
 </head>
-<body class="auth-page">
+<body class="renew-page auth-page">
 <div class="renew-wrap">
 
     <!-- Header -->

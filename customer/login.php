@@ -136,7 +136,11 @@ $__origin = $__proto . '://' . ($_SERVER['HTTP_HOST'] ?? '');
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<link rel="stylesheet" href="../css/auth.css?v=5">
+    <!-- The shared customer design system. Loaded before auth.css so the
+         auth card styling still wins where the two overlap, and so these
+         pages stop re-declaring components that already exist. -->
+    <link rel="stylesheet" href="css/customer.css?v=<?php echo @filemtime(__DIR__ . '/css/customer.css') ?: 1; ?>">
+    <link rel="stylesheet" href="../css/auth.css?v=5">
 <style>
 :root{
     --brand:<?php echo $branding['color'];?>;
@@ -148,14 +152,14 @@ body.auth-page { padding: 16px; }
 /* Connected banner */
 .connected-banner{text-align:center;padding:24px;background:rgba(52,211,153,.08);
     border:1px solid rgba(52,211,153,.2);border-radius:14px;margin-bottom:20px;}
-.connected-banner i{font-size:32px;color:#34d399;margin-bottom:10px;display:block;}
-.connected-banner h3{font-size:18px;font-weight:700;color:#e8e8e6;margin-bottom:6px;}
+.connected-banner i{font-size:32px;color:var(--ok);margin-bottom:10px;display:block;}
+.connected-banner h3{font-size:18px;font-weight:700;color:var(--neu-ink);margin-bottom:6px;}
 .connected-banner p{font-size:13px;color:rgba(255,255,255,.5);}
 
 /* Expired banner */
 .expired-banner{text-align:center;padding:22px;background:rgba(248,113,113,.08);
     border:1px solid rgba(248,113,113,.25);border-radius:14px;margin-bottom:20px;}
-.expired-banner i{font-size:30px;color:#f87171;margin-bottom:10px;display:block;}
+.expired-banner i{font-size:30px;color:var(--bad);margin-bottom:10px;display:block;}
 .expired-banner h3{font-size:16px;font-weight:700;color:#fca5a5;margin-bottom:6px;}
 .expired-banner p{font-size:13px;color:rgba(255,255,255,.45);margin-bottom:14px;}
 
@@ -170,7 +174,7 @@ body.auth-page { padding: 16px; }
 .lnk{background:none;border:none;color:var(--brand);filter:brightness(1.5);font-size:13px;
     font-weight:600;cursor:pointer;padding:0;text-decoration:underline;font-family:inherit;}
 
-.sec-title{font-size:16px;font-weight:700;color:#e8e8e6;margin-bottom:4px;}
+.sec-title{font-size:16px;font-weight:700;color:var(--neu-ink);margin-bottom:4px;}
 .sec-sub{font-size:12px;color:rgba(255,255,255,.4);margin-bottom:20px;}
 </style>
 </head>

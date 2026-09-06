@@ -175,7 +175,11 @@ $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<link rel="stylesheet" href="../css/auth.css?v=3">
+    <!-- The shared customer design system. Loaded before auth.css so the
+         auth card styling still wins where the two overlap, and so these
+         pages stop re-declaring components that already exist. -->
+    <link rel="stylesheet" href="css/customer.css?v=<?php echo @filemtime(__DIR__ . '/css/customer.css') ?: 1; ?>">
+    <link rel="stylesheet" href="../css/auth.css?v=3">
 <style>
 :root{
     --brand:<?php echo $branding['color'];?>;
@@ -186,16 +190,16 @@ $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr
 @media(max-width:400px){.pkg-grid{grid-template-columns:1fr;}}
 .pkg-card{
     position:relative;border:1px solid rgba(255,255,255,.08);border-radius:12px;
-    padding:12px;cursor:pointer;transition:all .18s;background:rgb(27,27,26);
-    box-shadow:inset 2px 2px 5px rgb(10,10,9),inset -1px -1px 4px rgb(42,42,40);
+    padding:12px;cursor:pointer;transition:all .18s;background:var(--neu-well);
+    box-shadow:inset 2px 2px 5px var(--neu-sh-d),inset -1px -1px 4px var(--neu-sh-l2);
 }
 .pkg-card:hover{border-color:rgba(255,255,255,.18);}
-.pkg-card.selected{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand),inset 2px 2px 5px rgb(10,10,9);}
+.pkg-card.selected{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand),inset 2px 2px 5px var(--neu-sh-d);}
 .pkg-card input[type=radio]{position:absolute;opacity:0;width:0;height:0;}
 .pkg-card-name{font-weight:700;font-size:13px;color:#e2e2e0;margin-bottom:3px;}
 .pkg-card-meta{font-size:11px;color:rgba(255,255,255,.4);}
 .pkg-card-price{font-size:15px;font-weight:800;color:var(--brand);margin-top:6px;}
-.pkg-card-free{font-size:11px;color:#34d399;font-weight:700;margin-top:4px;}
+.pkg-card-free{font-size:11px;color:var(--ok);font-weight:700;margin-top:4px;}
 .pkg-card-check{
     position:absolute;top:8px;right:8px;
     width:18px;height:18px;border-radius:50%;

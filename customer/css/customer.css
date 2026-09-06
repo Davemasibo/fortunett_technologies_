@@ -993,6 +993,26 @@ tbody tr:hover td { background: rgba(44,82,130,.03); }
     --neu-text:    #e2e2e0;
     --neu-muted:   #9a9a95;
     --neu-input:   #1a1a19;
+
+    /* The auth-card palette. Previously these exact values were hard-coded, as
+       raw rgb() literals, in css/auth.css and in the <style> block of every
+       standalone customer page -- which is how the same "card" ended up one
+       shade apart between the login page and the renewal page. They live here
+       because customer.css is the one stylesheet all nine pages load. */
+    --neu-raised:  rgb(34,34,33);      /* card surface           */
+    --neu-well:    rgb(27,27,26);      /* inset field / sub-card */
+    --neu-sh-d:    rgb(10,10,9);       /* outer shadow, dark     */
+    --neu-sh-l:    rgb(44,44,42);      /* outer shadow, light    */
+    --neu-sh-l2:   rgb(42,42,40);      /* inset highlight        */
+    --neu-hair:    rgba(255,255,255,.043);
+    --neu-ink:     #e8e8e6;
+    --neu-card-lg: 14px 14px 28px var(--neu-sh-d), -7px -7px 18px var(--neu-sh-l), 0 0 0 1px var(--neu-hair);
+    --neu-well-in: inset 2px 2px 5px var(--neu-sh-d), inset -1px -1px 4px var(--neu-sh-l);
+
+    /* Status colours, so a badge means the same thing on every page. */
+    --ok:      #34d399;  --ok-bg:   rgba(52,211,153,.15);
+    --bad:     #f87171;  --bad-bg:  rgba(248,113,113,.15);
+    --warn-c:  #fbbf24;  --warn-bg: rgba(251,191,36,.12);
 }
 
 /* Status cards */

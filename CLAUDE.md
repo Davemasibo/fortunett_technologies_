@@ -500,6 +500,15 @@ body.auth-page { background: #0e0e0d; }
 ```
 Font: `Plus Jakarta Sans` (loaded from Google Fonts in auth.css). Brand variables (`--brand`, `--brand-glow`, `--brand-gradient`) are set inline per-page from tenant branding.
 
+### Customer Portal Styling — One Stylesheet, Nine Pages
+
+`customer/css/customer.css` is the design system for **every** page under `/customer/`, and its `:root` is the only place the neumorphic palette is defined.
+
+- **Two shells, one palette.** The five sidebar pages (`dashboard`, `packages`, `payment`, `account`, `devices`) come through `customer/includes/header.php`; `login`, `register`, `renew` and `hotspot_landing` are standalone auth-card pages on `css/auth.css`. All nine now load `customer.css`, and the standalone four load it **before** `auth.css` so `body.auth-page` (a class selector) still wins over `customer.css`'s bare `body`.
+- **`auth.css` keeps its literals on purpose.** It is also loaded by the admin, super-admin and signup pages, which do not load `customer.css` — tokenising it there would leave those pages with undefined variables and no colour. Its values are mirrored exactly by `--neu-raised` / `--neu-well` / `--neu-sh-d` / `--neu-sh-l`, so the two agree by construction.
+- **Page `<style>` blocks load last and therefore win.** That makes adding the shared sheet safe — nothing already styled changes — but it also means a page can silently redefine a component. `packages.php` had its own flatter, shadowless `.btn-primary`, so the same action looked like a different control there than anywhere else in the portal; it now inherits. Where a page genuinely needs a different treatment (`renew.php`'s `.pkg-card`, `.modal-overlay`, `.modal-title` are sized for an auth card, not a sidebar layout) the rule is **scoped** — `.renew-page .pkg-card` — so it reads as a deliberate override rather than an accidental collision.
+- **The stylesheet link is relative, never root-absolute.** `/customer/css/customer.css` resolves only when the docroot is the project root; on any install served from a subdirectory it 404s and the entire portal renders unstyled with no error anywhere.
+
 ### Customer Login
 `customer/login.php` is a full PHP login page using `CustomerAuth->login()`. Accepts username / phone / email + password (or MikroTik password fallback). Sets `$_SESSION['customer_token']` on success and redirects to `customer/dashboard.php`.
 

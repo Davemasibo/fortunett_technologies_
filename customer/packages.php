@@ -271,20 +271,10 @@ include 'includes/header.php';
     font-family: inherit;
 }
 .btn-secondary:hover { background: rgba(255,255,255,.12); color: #fff; }
-.btn-primary {
-    padding: 9px 20px;
-    background: linear-gradient(135deg, var(--primary-dark,#1e3a5f) 0%, var(--primary,#2C5282) 100%);
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    display: inline-flex; align-items: center; gap: 6px;
-    transition: opacity .2s;
-}
-.btn-primary:hover { opacity: .85; }
+/* .btn-primary comes from css/customer.css. It was redefined here as a
+   flatter, smaller button with a different gradient and no lift on hover,
+   so the same action looked like a different control on this page than on
+   every other page in the portal. */
 
 /* Mobile */
 @media (max-width: 720px) {
