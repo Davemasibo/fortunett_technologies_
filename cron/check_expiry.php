@@ -52,6 +52,19 @@ try {
     if (!in_array('expiry_reminder_1d_sent', $cols)) { $pdo->exec("ALTER TABLE clients ADD COLUMN expiry_reminder_1d_sent TINYINT(1) NOT NULL DEFAULT 0"); }
 } catch (Throwable $_) {}
 
+// Resolved BEFORE the reminder block, not after it. This lookup used to sit
+// below, next to the expiry sweep that also needs it — so the 3-day and 1-day
+// reminders interpolated an undefined $platformDomain and texted every
+// expiring customer a renewal link of the form https://demo./customer/renew.php.
+// A dead link in the one message whose whole purpose is to get them to pay.
+$platformDomain = 'fortunetttech.site';
+try {
+    $pdStmt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key = 'platform_domain' LIMIT 1");
+    $pd = $pdStmt ? trim((string)$pdStmt->fetchColumn()) : '';
+    // A blank setting is not an override. It is how the link lost its host.
+    if ($pd !== '') $platformDomain = $pd;
+} catch (Throwable $_e) {}
+
 // ── 0. Pre-expiry SMS reminders (3-day and 1-day warnings) ───────────────────
 try {
     $reminders = [
@@ -169,14 +182,6 @@ $stmtBlock->execute([$graceDays]);
 $toBlock = $stmtBlock->fetchAll(PDO::FETCH_ASSOC);
 
 $expired = array_merge($newlyExpired, $toBlock); // used for router-grouping below
-
-// Fetch platform domain once
-$platformDomain = 'fortunetttech.site';
-try {
-    $pdStmt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key = 'platform_domain' LIMIT 1");
-    $pd = $pdStmt ? $pdStmt->fetchColumn() : null;
-    if ($pd) $platformDomain = $pd;
-} catch (Throwable $_e) {}
 
 // Index by ID for quick lookup
 $toBlockIds     = array_column($toBlock, 'id');
