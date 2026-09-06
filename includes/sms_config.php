@@ -48,8 +48,29 @@ const SMS_API_URL_DEAD = [
     'api.talksasa.com/api/v1',
 ];
 
+/** Hosts we know the correct send route for, and may therefore repair. */
+const SMS_TALKSASA_HOSTS = ['bulksms.talksasa.com', 'api.talksasa.com'];
+
 /**
- * Trim a stored api_url and replace a known-dead endpoint with the live one.
+ * Trim a stored api_url and repair it to an endpoint that actually answers.
+ *
+ * Three separate things go wrong with this column, and only one of them used
+ * to be caught:
+ *
+ *  1. The retired v1 endpoint — the table DEFAULT, see the header comment.
+ *  2. **The API root instead of the send route.** TalkSasa's docs lead with
+ *     `https://bulksms.talksasa.com/api/v3/`, so that is what gets pasted. It
+ *     is a live host on a live API version and looks completely correct in the
+ *     settings form; the provider answers every send with
+ *     `{"status":"error","message":"The route api/v3 could not be found."}`
+ *     and HTTP 200. This is what had every SMS on a production deployment —
+ *     payment confirmations and expiry reminders alike — failing for days,
+ *     with a token that was never the problem.
+ *  3. A doubled slash (`.com//api/v3/`) from concatenating a base and a path.
+ *
+ * So for a host whose send route we know, the path is *replaced* rather than
+ * trusted. A URL for any other provider is left alone beyond collapsing the
+ * slashes — we have no idea what its routes look like.
  *
  * A blank value resolves to the default too — a NULL column and an empty
  * string mean the same thing to an operator and used to behave differently.
@@ -59,11 +80,22 @@ function smsNormalizeApiUrl(?string $url): string
     $url = trim((string)$url);
     if ($url === '') return SMS_API_URL_DEFAULT;
 
-    $probe = preg_replace('#^https?://#i', '', $url);
-    $probe = rtrim((string)$probe, '/');
+    // Collapse doubled slashes in the path without touching the scheme's "//".
+    $url = preg_replace('#(?<!:)//+#', '/', $url);
+
+    $probe = rtrim(preg_replace('#^https?://#i', '', $url), '/');
+
     foreach (SMS_API_URL_DEAD as $dead) {
         if (stripos($probe, $dead) === 0) return SMS_API_URL_DEFAULT;
     }
+
+    $host = strtolower(explode('/', $probe)[0]);
+    if (in_array($host, SMS_TALKSASA_HOSTS, true)) {
+        // Anything that is not the send route — the API root, a trailing
+        // slash, /sms, /send — is not something to POST a message to.
+        if (!preg_match('#/sms/send$#i', $probe)) return SMS_API_URL_DEFAULT;
+    }
+
     return $url;
 }
 
