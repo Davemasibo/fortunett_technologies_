@@ -26,7 +26,7 @@ $log = function(string $msg) {
     echo '[' . date('Y-m-d H:i:s') . '] ' . $msg . PHP_EOL;
 };
 
-$graceDays = 3; // Days between expiry and full block (walled garden window)
+$graceDays = 0; // Paid access ends at expiry for every connection type.
 
 $log("=== Expiry Check: " . date('Y-m-d H:i:s') . " | grace={$graceDays}d ===");
 
@@ -148,22 +148,8 @@ try {
 }
 
 // ── 1. Clients newly expired (active → grace) ─────────────────────────────────
-// Expiry just passed — throttle but don't kick yet
-$stmt = $pdo->prepare("
-    SELECT c.id, c.full_name, c.mikrotik_username, c.connection_type, c.tenant_id,
-           c.expiry_date, c.phone, c.account_number,
-           p.name AS pkg_name, p.price AS pkg_price,
-           t.company_name AS tenant_name, t.subdomain
-    FROM clients c
-    LEFT JOIN packages p ON p.id = c.package_id
-    LEFT JOIN tenants t ON t.id = c.tenant_id
-    WHERE c.status = 'active'
-      AND c.expiry_date IS NOT NULL
-      AND c.expiry_date < NOW()
-      AND c.expiry_date >= NOW() - INTERVAL ? DAY
-");
-$stmt->execute([$graceDays]);
-$newlyExpired = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// Purchased access has no grace transition.
+$newlyExpired = [];
 
 // ── 2. Clients in grace whose grace period has elapsed (grace → fully blocked) ─
 $stmtBlock = $pdo->prepare("
@@ -176,7 +162,9 @@ $stmtBlock = $pdo->prepare("
     LEFT JOIN tenants t ON t.id = c.tenant_id
     WHERE c.status IN ('active', 'grace')
       AND c.expiry_date IS NOT NULL
-      AND c.expiry_date < NOW() - INTERVAL ? DAY
+      AND c.expiry_date <= NOW()
+      AND (LOWER(COALESCE(c.connection_type, 'hotspot')) <> 'pppoe'
+           OR c.expiry_date <= NOW() - INTERVAL ? DAY)
 ");
 $stmtBlock->execute([$graceDays]);
 $toBlock = $stmtBlock->fetchAll(PDO::FETCH_ASSOC);
@@ -191,8 +179,7 @@ $log("Found " . count($newlyExpired) . " newly expired client(s) → grace perio
 $log("Found " . count($toBlock)      . " client(s) past grace period → full block.");
 
 if (empty($expired)) {
-    $log("Nothing to do.");
-    exit(0);
+    $log("No status transitions; checking live sessions.");
 }
 
 // ── Group by tenant so we only open one router connection per tenant ──────────
@@ -249,8 +236,9 @@ foreach ($byTenant as $tenantId => $clients) {
             // ── Full block: disable on router + kick + RADIUS reject ──────────
             $pdo->prepare("UPDATE clients SET status = 'inactive', updated_at = NOW() WHERE id = ? AND tenant_id = ?")
                 ->execute([$clientId, $tenantId]);
-            $log("  [{$tenantId}] #{$clientId} {$name} — FULL BLOCK (grace expired)");
+            $log("  [{$tenantId}] #{$clientId} {$name} — FULL BLOCK (paid access expired)");
 
+            if (!empty($uname)) radius_disable_client($pdo, $uname);
             if ($api && !empty($uname)) {
                 try {
                     if ($connType === 'pppoe') {
@@ -259,6 +247,7 @@ foreach ($byTenant as $tenantId => $clients) {
                         radius_disable_client($pdo, $uname);
                     } else {
                         $api->disableHotspotUser($uname);
+                        $api->kickHotspotSession($uname);
                     }
                     $log("  [{$tenantId}] #{$clientId} {$name} — router disabled+kicked ({$connType})");
                 } catch (Throwable $e) {
@@ -367,101 +356,7 @@ foreach ($byTenant as $tenantId => $clients) {
 //
 // This pass works from the ROUTER's point of view instead: list who is actually
 // connected right now, and cut anyone whose account is not currently active.
-$log("--- Enforcement sweep: live sessions vs account status ---");
-
-$routers = $pdo->query("
-    SELECT id, tenant_id, name, ip_address, vpn_ip, username, password, api_port
-    FROM mikrotik_routers
-    WHERE status IN ('active','online')
-    ORDER BY tenant_id, id
-")->fetchAll(PDO::FETCH_ASSOC);
-
-$sweptOff = 0;
-
-foreach ($routers as $r) {
-    $tid       = (int)$r['tenant_id'];
-    $connectIp = !empty($r['vpn_ip']) ? $r['vpn_ip'] : $r['ip_address'];
-    $rName     = $r['name'] ?: $connectIp;
-
-    // Everyone under this tenant who is entitled to be online right now.
-    // Compared case-insensitively — RouterOS treats usernames that way.
-    $okSt = $pdo->prepare("
-        SELECT LOWER(mikrotik_username) AS u
-        FROM clients
-        WHERE tenant_id = ?
-          AND status = 'active'
-          AND (expiry_date IS NULL OR expiry_date > NOW())
-          AND mikrotik_username IS NOT NULL AND mikrotik_username <> ''
-    ");
-    $okSt->execute([$tid]);
-    $entitled = array_flip($okSt->fetchAll(PDO::FETCH_COLUMN));
-
-    $sweepApi = null;
-    try {
-        $sweepApi = new MikrotikAPI($connectIp, $r['username'], $r['password'], (int)($r['api_port'] ?? 8728));
-        if (!$sweepApi->isReachable(4)) {
-            $log("  [{$tid}] {$rName} — unreachable, skipped");
-            continue;
-        }
-        $sweepApi->connect();
-    } catch (Throwable $e) {
-        $log("  [{$tid}] {$rName} — connect failed: " . $e->getMessage());
-        continue;
-    }
-
-    foreach (['pppoe', 'hotspot'] as $svc) {
-        try {
-            $live = ($svc === 'pppoe')
-                ? $sweepApi->getActiveSessionsMap()
-                : $sweepApi->getActiveHotspotSessionsMap();
-        } catch (Throwable $e) {
-            continue;   // service not configured on this router
-        }
-
-        foreach (array_keys($live) as $sessionUser) {
-            if ($sessionUser === '' || isset($entitled[$sessionUser])) {
-                continue;
-            }
-
-            // Only act on sessions we can tie to a client of THIS tenant. Anything
-            // else — the ISP's own admin PPPoE link, a MAC-auth hotspot session, a
-            // manually created account — is left alone. Cutting an unknown session
-            // risks knocking the operator off their own network.
-            $whoSt = $pdo->prepare("
-                SELECT id, full_name, status, expiry_date
-                FROM clients
-                WHERE tenant_id = ? AND LOWER(mikrotik_username) = ? LIMIT 1
-            ");
-            $whoSt->execute([$tid, $sessionUser]);
-            $who = $whoSt->fetch(PDO::FETCH_ASSOC);
-            if (!$who) {
-                continue;
-            }
-
-            $why = $who['status'] !== 'active'
-                ? "status={$who['status']}"
-                : 'expired ' . ($who['expiry_date'] ?? '?');
-
-            try {
-                if ($svc === 'pppoe') {
-                    $sweepApi->disablePPPoEUser($sessionUser);
-                    $sweepApi->kickPPPoESession($sessionUser);
-                    radius_disable_client($pdo, $sessionUser);
-                } else {
-                    $sweepApi->disableHotspotUser($sessionUser);
-                    $sweepApi->kickHotspotSession($sessionUser);
-                }
-                $sweptOff++;
-                $log("  [{$tid}] {$rName} — CUT {$svc} '{$sessionUser}' (#{$who['id']} {$who['full_name']}, {$why})");
-            } catch (Throwable $e) {
-                $log("  [{$tid}] {$rName} — could not cut '{$sessionUser}': " . $e->getMessage());
-            }
-        }
-    }
-
-    try { $sweepApi->disconnect(); } catch (Throwable $e) {}
-}
-
-$log("Enforcement sweep: {$sweptOff} session(s) cut.");
+require_once __DIR__ . '/../includes/session_enforcement.php';
+enforceCustomerSessions($pdo, $log);
 
 $log("=== Done ===");

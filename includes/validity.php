@@ -15,9 +15,8 @@
  *  - The stored column is VARCHAR(20), not an ENUM, so historic rows hold
  *    singulars, plurals and typos. Normalisation is on *read*, never a
  *    migration.
- *  - `days` remains the fallback for a genuinely unrecognised value: it is what
- *    every previous caller did, and changing it would silently re-price old
- *    packages.
+ *  - Display retains a legacy days fallback; granting access rejects unknown
+ *    units and non-positive durations instead of accidentally selling days.
  */
 
 /** Units a package may be sold in, longest first — order drives the form. */
@@ -27,10 +26,10 @@ const PACKAGE_VALIDITY_UNITS = ['minutes', 'hours', 'days', 'weeks', 'months'];
  * Normalise any stored/posted unit to one of PACKAGE_VALIDITY_UNITS.
  * Accepts singulars ("day"), abbreviations ("min", "hrs") and stray casing.
  */
-function packageValidityUnit($unit): string
+function packageValidityUnit($unit, bool $strict = false): string
 {
     $u = strtolower(trim((string)$unit));
-    if ($u === '') return 'days';
+    if ($u === '' && !$strict) return 'days';
 
     static $alias = [
         'min' => 'minutes', 'mins' => 'minutes', 'minute' => 'minutes', 'minutes' => 'minutes',
@@ -40,6 +39,7 @@ function packageValidityUnit($unit): string
         'mo'  => 'months',  'mon'  => 'months',  'month'  => 'months',  'months'  => 'months',
     ];
 
+    if ($strict && !isset($alias[$u])) throw new InvalidArgumentException('Package duration unit is invalid');
     return $alias[$u] ?? 'days';
 }
 
@@ -68,8 +68,11 @@ function packageValidityLabel($value, $unit): string
 function packageExpiryFrom($value, $unit, $base = 'now'): string
 {
     $baseTs = is_int($base) ? $base : (strtotime((string)$base) ?: time());
-    $val    = packageValidityValue($value);
-    $u      = packageValidityUnit($unit);
+    if (filter_var($value, FILTER_VALIDATE_INT) === false || (int)$value < 1) {
+        throw new InvalidArgumentException('Package duration must be a positive whole number');
+    }
+    $val    = (int)$value;
+    $u      = packageValidityUnit($unit, true);
 
     return date('Y-m-d H:i:s', strtotime('+' . $val . ' ' . $u, $baseTs));
 }

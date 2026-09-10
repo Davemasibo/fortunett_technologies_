@@ -79,6 +79,8 @@ try {
         exit;
     }
 
+    require_once __DIR__ . '/../../includes/payment_terms.php';
+    $purchaseTerms = preparePaymentTerms($pdo, $packageId, $tenantId);
     $isFree = (float)$package['price'] == 0;
 
     // The price on the package row decides whether this is free — never the
@@ -281,6 +283,7 @@ try {
 
         // Log the transaction linked to this client
         $checkoutId = $response->CheckoutRequestID ?? ('STK-' . time());
+        recordPaymentTerms($pdo, $checkoutId, $clientId, $tenantId, $purchaseTerms);
         try {
             $pdo->prepare("INSERT INTO mpesa_transactions
                 (client_id, tenant_id, phone_number, amount, merchant_request_id, checkout_request_id, status, result_code, result_desc, created_at, updated_at)
@@ -375,6 +378,7 @@ try {
             exit;
         }
         $checkoutId = $response->CheckoutRequestID ?? ('STK-' . time());
+        recordPaymentTerms($pdo, $checkoutId, $clientId, $tenantId, $purchaseTerms);
         try {
             $pdo->prepare("INSERT INTO mpesa_transactions (client_id, tenant_id, phone_number, amount, merchant_request_id, checkout_request_id, status, result_code, result_desc, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, 'Renewal STK Push', NOW(), NOW())")
                 ->execute([$clientId, $tenantId, $renewPhone, $amount, $response->MerchantRequestID ?? 'N/A', $checkoutId]);

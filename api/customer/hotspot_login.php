@@ -102,9 +102,8 @@ try {
 
     // 'grace' clients have expired but are in the grace window — treat as expired so they renew.
     // 'inactive' = fully expired. Either way, redirect to buy.
-    $isExpired = in_array($client['status'], ['inactive', 'grace'])
-              || (!empty($client['expiry_date']) && strtotime($client['expiry_date']) < time()
-                  && !in_array($client['status'], ['active']));
+    $isExpired = in_array($client['status'], ['inactive', 'grace', 'expired'])
+              || (!empty($client['expiry_date']) && strtotime($client['expiry_date']) <= time());
 
     if ($isExpired) {
         echo json_encode([
@@ -127,63 +126,13 @@ try {
     }
 
     // ── Resolve MikroTik credentials — provision if missing ──────────────────
-    $mkUsername = $client['mikrotik_username'] ?? '';
-    $mkPassword = $client['mikrotik_password'] ?? '';
-
-    // If credentials were never written (e.g. provisioning failed at payment time),
-    // run provision now so the router has a user record to authenticate against.
-    if (empty($mkUsername)) {
-        try {
-            autoProvisionClient($pdo, (int)$client['id'], $tenantId);
-            $reSt = $pdo->prepare("SELECT mikrotik_username, mikrotik_password FROM clients WHERE id = ? LIMIT 1");
-            $reSt->execute([$client['id']]);
-            $re = $reSt->fetch(PDO::FETCH_ASSOC);
-            $mkUsername = $re['mikrotik_username'] ?? '';
-            $mkPassword = $re['mikrotik_password'] ?? '';
-        } catch (Throwable $_provEx) {
-            error_log('[hotspot_login] initial provision: ' . $_provEx->getMessage());
-        }
+    $provision = autoProvisionClient($pdo, (int)$client['id'], $tenantId);
+    if (!($provision['success'] ?? false)) {
+        echo json_encode(['success' => false, 'message' => 'Your connection is not ready. Please try again shortly.']);
+        exit;
     }
-
-    // ── Ensure user is enabled on MikroTik (re-enable if disabled by check_expiry) ─
-    if (!empty($mkUsername)) {
-        try {
-            $rSt = $pdo->prepare("
-                SELECT id, ip_address, vpn_ip, username, password, api_port
-                FROM mikrotik_routers
-                WHERE tenant_id = ? AND status IN ('active','online')
-                ORDER BY id ASC LIMIT 1
-            ");
-            $rSt->execute([$tenantId]);
-            $router = $rSt->fetch(PDO::FETCH_ASSOC);
-
-            if ($router) {
-                $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
-                $port      = (int)($router['api_port'] ?: 8728);
-                $sock      = @fsockopen($connectIp, $port, $errno, $errstr, 3);
-                if ($sock) {
-                    fclose($sock);
-                    require_once __DIR__ . '/../../classes/MikrotikAPI.php';
-                    $mk = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
-                    $mk->connect();
-                    $enabled = $mk->enableHotspotUser($mkUsername);
-                    $mk->disconnect();
-
-                    if (!$enabled) {
-                        // User not found on router — provision, then re-read credentials
-                        autoProvisionClient($pdo, (int)$client['id'], $tenantId);
-                        $reSt2 = $pdo->prepare("SELECT mikrotik_username, mikrotik_password FROM clients WHERE id = ? LIMIT 1");
-                        $reSt2->execute([$client['id']]);
-                        $re2 = $reSt2->fetch(PDO::FETCH_ASSOC);
-                        $mkUsername = $re2['mikrotik_username'] ?? $mkUsername;
-                        $mkPassword = $re2['mikrotik_password'] ?? $mkPassword;
-                    }
-                }
-            }
-        } catch (Throwable $_mkEx) {
-            error_log('[hotspot_login] re-enable error: ' . $_mkEx->getMessage());
-        }
-    }
+    $mkUsername = $provision['username'] ?? '';
+    $mkPassword = $provision['password'] ?? '';
 
     // If still no credentials (router unreachable and never provisioned), block login
     if (empty($mkUsername)) {

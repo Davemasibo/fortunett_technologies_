@@ -39,7 +39,7 @@ if (!$clientId || $amount <= 0) {
 }
 
 // Resolve client
-$clientStmt = $pdo->prepare("SELECT id, full_name, phone FROM clients WHERE id = ? AND tenant_id = ? LIMIT 1");
+$clientStmt = $pdo->prepare("SELECT id, full_name, phone, package_id FROM clients WHERE id = ? AND tenant_id = ? LIMIT 1");
 $clientStmt->execute([$clientId, $tenantId]);
 $client = $clientStmt->fetch(PDO::FETCH_ASSOC);
 if (!$client) { http_response_code(404); echo json_encode(['error' => 'Client not found']); exit; }
@@ -59,29 +59,31 @@ if ($method === 'mpesa_stk') {
 
     require_once __DIR__ . '/../../../classes/MpesaAPI.php';
 
-    // Load tenant gateway credentials
-    $gwStmt = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa' AND is_active = 1 LIMIT 1");
-    $gwStmt->execute([$tenantId]);
-    $gw   = $gwStmt->fetch(PDO::FETCH_ASSOC);
-    $creds = $gw ? json_decode($gw['credentials'], true) : [];
-
-    $mpesa = new MpesaAPI($creds);
+    require_once __DIR__ . '/../../../includes/payment_terms.php';
+    $purchaseTerms = preparePaymentTerms($pdo, (int)$client['package_id'], (int)$tenantId);
+    $mpesa = new MpesaAPI($pdo, $tenantId);
     // Use client account number as reference; fall back to client ID
     $acctStmt = $pdo->prepare("SELECT account_number FROM clients WHERE id = ? LIMIT 1");
     $acctStmt->execute([$clientId]);
     $acct = $acctStmt->fetchColumn() ?: ('ACC' . $clientId);
 
     $result = $mpesa->stkPush($phone, $amount, $acct, 'Internet Bill');
-    if ($result['success'] ?? false) {
+    if (isset($result->ResponseCode) && (string)$result->ResponseCode === '0') {
+        $checkoutId = (string)$result->CheckoutRequestID;
+        recordPaymentTerms($pdo, $checkoutId, $clientId, (int)$tenantId, $purchaseTerms);
+        $pdo->prepare("INSERT INTO payments (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status) VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending')")
+            ->execute([$clientId, $tenantId, $amount, $checkoutId]);
+        $pdo->prepare("INSERT INTO mpesa_transactions (client_id, tenant_id, phone_number, amount, merchant_request_id, checkout_request_id, status, result_desc, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'App STK Push', NOW(), NOW())")
+            ->execute([$clientId, $tenantId, $phone, $amount, $result->MerchantRequestID ?? '', $checkoutId]);
         echo json_encode([
             'success'              => true,
             'method'               => 'mpesa_stk',
-            'checkout_request_id'  => $result['CheckoutRequestID'] ?? null,
+            'checkout_request_id'  => $checkoutId,
             'message'              => 'STK push sent to ' . $phone,
         ]);
     } else {
         http_response_code(502);
-        echo json_encode(['error' => $result['errorMessage'] ?? 'STK push failed']);
+        echo json_encode(['error' => $result->errorMessage ?? 'STK push failed']);
     }
     exit;
 }
@@ -96,28 +98,13 @@ if (!$parsedTs) $parsedTs = time();
 $txDateFmt = date('Y-m-d H:i:s', $parsedTs);
 
 try {
-    $resultDesc = 'Manual:' . $dbMethod . ($notes ? ' | ' . substr($notes, 0, 200) : '');
+    require_once __DIR__ . '/../../../includes/payment_pipeline.php';
+    $activation = process_payment_success($pdo, $clientId, (int)$tenantId, $amount,
+        $refCode, $dbMethod, $client['package_id'] ? (int)$client['package_id'] : null, false);
+    $pdo->prepare('UPDATE payments SET payment_date = ? WHERE transaction_id = ? AND client_id = ? AND tenant_id = ?')
+        ->execute([$txDateFmt, $refCode, $clientId, $tenantId]);
 
-    $pdo->prepare("INSERT INTO mpesa_transactions
-            (client_id, tenant_id, phone_number, amount, merchant_request_id, checkout_request_id,
-             status, result_code, result_desc, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'completed', '0', ?, ?, NOW())")
-        ->execute([
-            $clientId, $tenantId, $client['phone'] ?? '', $amount,
-            'MANUAL-' . strtoupper(substr(md5(uniqid()), 0, 6)),
-            $refCode, $resultDesc, $txDateFmt,
-        ]);
-
-    try {
-        $pdo->prepare("INSERT INTO payments (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, notes) VALUES (?,?,?,?,?,?,?,?)")
-            ->execute([$clientId, $tenantId, $amount, $dbMethod, $txDateFmt, $refCode, 'completed', $notes]);
-    } catch (PDOException $e) {
-        // notes column may not exist on older schemas
-        $pdo->prepare("INSERT INTO payments (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status) VALUES (?,?,?,?,?,?,?)")
-            ->execute([$clientId, $tenantId, $amount, $dbMethod, $txDateFmt, $refCode, 'completed']);
-    }
-
-    echo json_encode(['success' => true, 'reference' => $refCode, 'message' => 'Payment recorded']);
+    echo json_encode(['success' => true, 'reference' => $refCode, 'message' => 'Payment recorded', 'activation' => $activation]);
 
 } catch (Throwable $e) {
     http_response_code(500);

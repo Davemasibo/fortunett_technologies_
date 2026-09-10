@@ -30,12 +30,22 @@ $description = $_POST['description'] ?? '';
 // fired and the empty string was written straight to the column. Blank means
 // "derive it", not "no profile".
 $mikrotik_profile = trim($_POST['mikrotik_profile'] ?? '');
-$rate_limit = trim($_POST['rate_limit'] ?? '');
-if ($rate_limit === '') {
-    $rate_limit = packageRateLimit(['download_speed' => $download_speed, 'upload_speed' => $upload_speed]);
-}
+$rate_limit = packageRateLimit(['download_speed' => $download_speed, 'upload_speed' => $upload_speed]);
 $connection_type = $_POST['connection_type'] ?? 'pppoe';
 $hotspot_server = trim($_POST['hotspot_server'] ?? '');
+try {
+    if (!in_array($connection_type, ['hotspot', 'pppoe'], true)) throw new InvalidArgumentException('Invalid connection type');
+    $profileTerms = [
+        'download_speed' => $download_speed, 'upload_speed' => $upload_speed,
+        'validity_value' => $_POST['validity_value'] ?? 30,
+        'validity_unit' => packageValidityUnit($_POST['validity_unit'] ?? 'days', true),
+        'device_limit' => $_POST['device_limit'] ?? 1,
+    ];
+    packageProfileSettings($profileTerms, $connection_type);
+    if ($price < 0) throw new InvalidArgumentException('Package price cannot be negative');
+} catch (InvalidArgumentException $e) {
+    ob_clean(); echo json_encode(['success' => false, 'message' => $e->getMessage()]); exit;
+}
 $speed_display = $download_speed . "Mbps / " . $upload_speed . "Mbps";
 
 if (empty($id) || empty($name)) {
@@ -70,6 +80,10 @@ $mikrotik_profile = packageProfileName([
 
 try {
     $pdo->beginTransaction();
+    $profileOwner = $pdo->prepare('SELECT id FROM packages WHERE tenant_id = ? AND LOWER(mikrotik_profile) = LOWER(?) AND id <> ? LIMIT 1');
+    $profileOwner->execute([$tenant_id, $mikrotik_profile, $id]);
+    if ($profileOwner->fetchColumn()) throw new RuntimeException('This router profile belongs to another package. Choose a unique name or leave it blank.');
+
 
     // Detect available columns so we don't fail on old DB schemas
     $colRows  = $pdo->query("SHOW COLUMNS FROM packages")->fetchAll(PDO::FETCH_COLUMN);
@@ -86,9 +100,9 @@ try {
     if (isset($colCache['rate_limit']))        { $setCols[] = 'rate_limit=?';        $setVals[] = $rate_limit; }
     if (isset($colCache['connection_type']))   { $setCols[] = 'connection_type=?';   $setVals[] = $connection_type; }
     if (isset($colCache['mikrotik_profile']))  { $setCols[] = 'mikrotik_profile=?';  $setVals[] = $mikrotik_profile; }
-    if (isset($colCache['validity_value']))    { $setCols[] = 'validity_value=?';    $setVals[] = isset($_POST['validity_value']) && $_POST['validity_value'] !== '' ? (int)$_POST['validity_value'] : 30; }
-    if (isset($colCache['validity_unit']))     { $setCols[] = 'validity_unit=?';     $setVals[] = packageValidityUnit($_POST['validity_unit'] ?? 'days'); }
-    if (isset($colCache['device_limit']))      { $setCols[] = 'device_limit=?';      $setVals[] = isset($_POST['device_limit']) && $_POST['device_limit'] !== '' ? (int)$_POST['device_limit'] : 1; }
+    if (isset($colCache['validity_value']))    { $setCols[] = 'validity_value=?';    $setVals[] = (int)$profileTerms['validity_value']; }
+    if (isset($colCache['validity_unit']))     { $setCols[] = 'validity_unit=?';     $setVals[] = $profileTerms['validity_unit']; }
+    if (isset($colCache['device_limit']))      { $setCols[] = 'device_limit=?';      $setVals[] = (int)$profileTerms['device_limit']; }
     if (isset($colCache['hotspot_server']))   { $setCols[] = 'hotspot_server=?';   $setVals[] = $hotspot_server ?: null; }
 
     $setVals[] = $id;
@@ -114,7 +128,7 @@ try {
             try {
                 $api = new MikrotikAPI($connectIp, $router['username'], $router['password'], $router['api_port']);
                 if (!$api->connect()) { $failed[] = $router['ip_address']; continue; }
-                if (syncPackageProfileToRouter($api, $connection_type, $mikrotik_profile, $rate_limit)) {
+                if (syncPackageProfileToRouter($api, $connection_type, $mikrotik_profile, $rate_limit, $profileTerms)) {
                     $synced++;
                 } else {
                     $failed[] = $router['ip_address'];

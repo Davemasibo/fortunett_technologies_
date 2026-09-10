@@ -60,7 +60,7 @@ try {
 
         // Fetch client credentials
         $clSt = $pdo->prepare("
-            SELECT mikrotik_username, mikrotik_password, status, account_number, tenant_id
+            SELECT mikrotik_username, mikrotik_password, status, expiry_date, account_number, tenant_id
             FROM clients WHERE id = ? LIMIT 1
         ");
         $clSt->execute([$resolvedClientId]);
@@ -71,35 +71,27 @@ try {
             exit;
         }
 
-        // Activate if callback hasn't done it yet
-        if ($client['status'] === 'pending' || $client['status'] === 'inactive') {
-            try {
-                $pdo->prepare("UPDATE clients SET status = 'active' WHERE id = ?")
-                    ->execute([$resolvedClientId]);
-                $client['status'] = 'active';
-            } catch (Throwable $_e) {}
+        // A completed historic payment never reactivates an expired subscription.
+        if ($client['status'] !== 'active'
+            || (!empty($client['expiry_date']) && strtotime($client['expiry_date']) <= time())) {
+            echo json_encode(['status' => 'processing', 'message' => 'Payment recorded. Waiting for an active subscription.']);
+            exit;
         }
 
-        // ── Do not hand out credentials before the router knows them ──────────
-        // callback.php flips mpesa_transactions.status to 'completed' BEFORE the
-        // pipeline provisions the router. Returning credentials in that window
-        // made the portal auto-submit a login for a hotspot user that did not
-        // exist yet — RouterOS rejected it and the customer landed back on the
-        // sign-in page, which is exactly the "not authenticated automatically"
-        // complaint. Report 'processing' until provisioning is confirmed.
         $resolvedTenantId = (int)($client['tenant_id'] ?? $tx['tenant_id'] ?? 0);
         $provisioned = false;
         try {
             $psSt = $pdo->prepare("
                 SELECT 1 FROM router_services
-                WHERE client_id = ? AND status = 'active' LIMIT 1
+                WHERE client_id = ? AND tenant_id = ? AND status = 'active' AND paid_expiry_at = ?
+                  AND NOT EXISTS (SELECT 1 FROM pending_provisions pp
+                      WHERE pp.client_id = router_services.client_id AND pp.tenant_id = router_services.tenant_id) LIMIT 1
             ");
-            $psSt->execute([$resolvedClientId]);
+            $psSt->execute([$resolvedClientId, $resolvedTenantId, $client['expiry_date']]);
             $provisioned = (bool)$psSt->fetchColumn();
         } catch (Throwable $_e) {
-            // router_services missing on this deployment — fall back to assuming
-            // the pipeline handled it rather than blocking the customer forever.
-            $provisioned = true;
+            // Missing metadata requires a verified provisioning attempt.
+            $provisioned = false;
         }
 
         if (!$provisioned && $resolvedTenantId) {
@@ -234,7 +226,8 @@ try {
                                 $pdo, (int)$tx['client_id'], (int)$clRow['tenant_id'],
                                 (float)($tx['amount'] ?? 0), $checkoutId, 'mpesa_stk',
                                 $clRow['package_id'] ? (int)$clRow['package_id'] : null,
-                                !$hasTenantCreds
+                                !$hasTenantCreds,
+                                $checkoutId
                             );
                         }
                     } catch (Throwable $e) {

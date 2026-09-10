@@ -42,8 +42,8 @@ try {
     }
     
     // Get package details
-    $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ?");
-    $stmt->execute([$packageId]);
+    $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND tenant_id = ?");
+    $stmt->execute([$packageId, $customer['tenant_id']]);
     $package = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$package) {
@@ -51,6 +51,10 @@ try {
         exit;
     }
     
+    require_once __DIR__ . '/../../includes/payment_terms.php';
+    $purchaseTerms = preparePaymentTerms($pdo, (int)$packageId, (int)$customer['tenant_id']);
+    if ((float)$amount < (float)$purchaseTerms['price']) throw new RuntimeException('Payment is less than the selected package price');
+
     // Initiate M-Pesa STK Push
     // Pass tenant_id from customer record (multi-tenancy support)
     $mpesa = new MpesaAPI($pdo, $customer['tenant_id']);
@@ -60,6 +64,7 @@ try {
     $response = $mpesa->stkPush($phone, $amount, $accountRef, $description);
     
     if (isset($response->ResponseCode) && $response->ResponseCode == '0') {
+        recordPaymentTerms($pdo, $response->CheckoutRequestID, (int)$customer['id'], (int)$customer['tenant_id'], $purchaseTerms);
         // Save payment record
         $stmt = $pdo->prepare("
             INSERT INTO payments
@@ -75,16 +80,6 @@ try {
         ]);
         
         $paymentId = $pdo->lastInsertId();
-        
-        // Update customer package if changing
-        if ($packageId != $customer['package_id']) {
-            $stmt = $pdo->prepare("
-                UPDATE clients 
-                SET package_id = ?, package_price = ? 
-                WHERE id = ?
-            ");
-            $stmt->execute([$packageId, $package['price'], $customer['id']]);
-        }
         
         // Log activity
         $auth->logActivity($customer['id'], 'payment', 'Initiated M-Pesa payment of ' . $amount);

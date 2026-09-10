@@ -33,6 +33,8 @@ Confirm the cron entries exist:
 
 ```
 */15 * * * * php /var/www/html/cron/check_expiry.php        >> /var/log/fortunett_expiry.log 2>&1
+* * * * * php /var/www/html/cron/enforce_sessions.php >> /var/log/fortunett_enforce.log 2>&1
+* * * * * php /var/www/html/cron/retry_provisions.php >> /var/log/fortunett_provision.log 2>&1
 30   * * * * php /var/www/html/cron/sync_hotspot_pages.php  >> /var/log/fortunett_portal_sync.log 2>&1
 ```
 
@@ -218,3 +220,78 @@ automatically.
 
 `php tools/diagnose_autoactivation.php` covers most of this table automatically —
 run it first.
+
+
+## Purchased-time enforcement
+
+Run these offline regressions before deployment:
+
+```sh
+php -n tools/test_payment_connectivity.php
+php -n tools/test_package_deadlines.php
+```
+
+Hotspot and PPPoE access now end at each customer's purchased `expiry_date`, with
+zero grace. Provisioning installs a one-shot `fn-exp-*` scheduler on the router
+that disables the account and removes its live sessions at that deadline.
+The profile's login/up hook checks the stored deadline on reconnect, including
+a reboot that missed the scheduled event. Hotspot also carries a cumulative
+uptime limit, preserving used counters on retry, and disables new MAC cookies.
+A profile session timeout by itself would restart on reconnect; these controls
+use the purchased expiry in addition to the session limit. See the official
+[MikroTik Hotspot controls](https://manual.mikrotik.com/docs/authentication-authorization-accounting/hotspot-captive-portal/)
+and [scheduler behavior](https://help.mikrotik.com/docs/spaces/ROS/pages/40992881/Scheduler).
+
+Each package has its own profile, purchased speed cap and device count. Empty
+speeds, invalid durations, unknown duration units and duplicate explicit profile
+names are rejected. Existing shared profile names are separated during client
+provisioning. Package edits change the shared profile; already-paid absolute
+expiry dates are never recalculated by those edits.
+
+STK initiation snapshots the selected package and duration in
+`payment_purchase_terms`. Callbacks and queries use that snapshot, even when
+another purchase or a package edit changes the current package before payment
+confirms. Historical payments without snapshots retain their existing package
+resolution. An unpaid registration's provisional date is not credited as paid
+time, and polling an old receipt does not restart a subscription.
+
+Both callback URLs use the shared pipeline. `payment_activations` prevents
+repeated grants and `pending_provisions` retains failed router setup. Provisioning
+keeps the router account disabled unless the profile, time limit and scheduler
+are successfully written and read back. RADIUS sync writes an `Expiration`
+attribute and the package's `Mikrotik-Group`; FreeRADIUS must run its
+[expiration module after SQL](https://wiki.freeradius.org/modules/rlm-expiration)
+to calculate the remaining Session-Timeout on each authentication.
+
+Deploy the one-minute `retry_provisions` and `enforce_sessions` schedules above.
+The retry job automatically queues existing active customers whose
+`router_services.paid_expiry_at` does not match the purchased expiry, so existing
+router accounts receive the new controls. Tables/columns are created on use.
+This backfill reconnects existing customers. The fifteen-minute job remains for
+status transitions and reminders; the one-minute sweep is a recovery check,
+not the primary deadline timer once provisioning has succeeded.
+
+Live acceptance checks (not covered by the offline router double):
+
+- Verify router date/time and NTP, scripting permissions and the installed
+  `fn-exp-*` scheduler. Router-local deadlines require a correctly functioning
+  clock and scheduler; later clock changes or manual removal of the controls
+  invalidate that assumption.
+- Buy 30 minutes; verify the database expiry, profile speed/device limit,
+  user `limit-uptime`, and scheduler time. Disconnect and reconnect halfway
+  through; the original expiry must remain unchanged.
+- Leave the device online through expiry with the server-side cron disabled;
+  verify the router cuts it at the scheduled time (RouterOS clock resolution).
+- Reboot across expiry and attempt password/cookie reconnects. Access must be
+  denied. Verify the same behavior for hourly, daily and monthly packages and
+  PPPoE, and ensure unrelated customers' profiles are unaffected.
+- Replay a callback, poll the old receipt after expiry, and start two different
+  package purchases before paying. Each confirmed purchase must grant its own
+  duration once.
+- Reject a scheduler write or disconnect the router during provisioning; the
+  account must not become an unlimited user, and the retry queue must retain
+  the failure until the router can install the deadline.
+
+No live payment, MikroTik execution or deployed FreeRADIUS configuration is
+verified by the offline PHP tests. Complete these checks on the deployment's
+RouterOS versions before treating the rollout as validated.

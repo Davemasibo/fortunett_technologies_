@@ -23,7 +23,7 @@ $skipped = 0;
 $stmt = $pdo->query("
     SELECT c.id, c.mikrotik_username, c.mikrotik_password,
            c.status, c.expiry_date, c.full_name, c.tenant_id,
-           p.id AS pkg_id, p.upload_speed, p.download_speed, p.name AS pkg_name
+           p.id AS pkg_id, p.upload_speed, p.download_speed, p.name AS pkg_name, p.mikrotik_profile
     FROM clients c
     LEFT JOIN packages p ON p.id = c.package_id
     WHERE c.connection_type = 'pppoe'
@@ -33,7 +33,8 @@ $stmt = $pdo->query("
 
 foreach ($stmt as $c) {
     $username = $c['mikrotik_username'];
-    $package  = ['id' => $c['pkg_id'], 'upload_speed' => $c['upload_speed'], 'download_speed' => $c['download_speed']];
+    $package  = ['id' => $c['pkg_id'], 'name' => $c['pkg_name'], 'mikrotik_profile' => $c['mikrotik_profile'],
+        'upload_speed' => $c['upload_speed'], 'download_speed' => $c['download_speed']];
     $isActive = $c['status'] === 'active'
         && !empty($c['expiry_date'])
         && strtotime($c['expiry_date']) > time();

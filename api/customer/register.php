@@ -66,8 +66,10 @@ try {
     $randomPassword = bin2hex(random_bytes(4));
     $hashedPassword = password_hash($randomPassword, PASSWORD_DEFAULT);
 
-    // Expiry starts after payment; set a provisional date
-    $expiryDate = packageExpiryFrom($package['validity_value'] ?? 30, $package['validity_unit'] ?? 'days');
+    // Unpaid registrations have no time to carry forward on first payment.
+    $isFree = (float)$package['price'] === 0.0;
+    $expiryDate = $isFree ? packageExpiryFrom($package['validity_value'], $package['validity_unit']) : null;
+    $initialStatus = $isFree ? 'active' : 'inactive';
     $connType   = $package['type'] === 'pppoe' ? 'pppoe' : 'hotspot';
 
     // ── Insert client with tenant_id ──────────────────────────────────────────
@@ -77,7 +79,7 @@ try {
              username, auth_password, mikrotik_username, mikrotik_password,
              package_id, subscription_plan, package_price, expiry_date,
              status, connection_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inactive', ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $insertStmt->execute([
         $tenantId,
@@ -86,7 +88,7 @@ try {
         $username, $hashedPassword,
         $username, $randomPassword,
         $packageId, $package['name'], $package['price'],
-        $expiryDate, $connType,
+        $expiryDate, $initialStatus, $connType,
     ]);
     $clientId = (int)$pdo->lastInsertId();
 
@@ -139,9 +141,12 @@ try {
     // ── Initiate M-Pesa STK Push using tenant's gateway credentials ───────────
     $mpesa    = new MpesaAPI($pdo, $tenantId);
     $desc     = 'Registration - ' . $package['name'];
+    require_once __DIR__ . '/../../includes/payment_terms.php';
+    $purchaseTerms = preparePaymentTerms($pdo, (int)$packageId, (int)$tenantId);
     $response = $mpesa->stkPush($phone, $package['price'], $accountNumber, $desc);
 
     if (isset($response->ResponseCode) && $response->ResponseCode == '0') {
+        recordPaymentTerms($pdo, $response->CheckoutRequestID, $clientId, (int)$tenantId, $purchaseTerms);
         $pdo->prepare("UPDATE payments SET transaction_id = ? WHERE id = ?")
             ->execute([$response->CheckoutRequestID, $paymentId]);
 

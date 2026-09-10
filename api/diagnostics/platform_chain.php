@@ -255,8 +255,9 @@ $schemaCheck('platform_invoices has amount_paid', function () use ($pdo, $add) {
 
 $jobs = [
     ['stk_poll',          'STK reconciliation',   120,   '*/2 * * * *',  'A callback Safaricom fails to deliver leaves the payment pending forever and the customer never gets connected.'],
-    ['retry_provisions',  'Provisioning retry',   300,   '*/5 * * * *',  'A customer who paid while their router was unreachable stays paid-and-offline.'],
+    ['retry_provisions',  'Provisioning retry',   60,   '* * * * *',  'A customer who paid while their router was unreachable stays paid-and-offline.'],
     ['check_expiry',      'Expiry enforcement',   900,   '*/15 * * * *', 'Expired customers stay online indefinitely; the sweep that cuts live sessions lives here.'],
+    ['enforce_sessions',  'Session enforcement', 60, '* * * * *', 'Expired hotspot sessions must be disconnected without grace.'],
     ['check_router_status', 'Router status',      300,   '*/5 * * * *',  'Router online/offline state goes stale, and provisioning picks the first ACTIVE router.'],
     ['sync_hotspot_pages', 'Captive portal sync', 3600,  '30 * * * *',   'Login-page and package changes never reach reachable routers.'],
     ['check_suspensions', 'Tenant suspensions',   86400, '0 8 * * *',    'Overdue tenants are never suspended and paid-up ones are never reactivated.'],

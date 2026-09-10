@@ -96,42 +96,10 @@ if ($dbStatus === 'completed') {
             } catch (Exception $e) { /* log table may not exist */ }
         }
 
-    } else {
-        // Package payment — callback.php normally handles activation.
-        // As a safety fallback: if the client is still not active, activate now.
-        $clStmt = $pdo->prepare("SELECT status, package_id FROM clients WHERE id = ? AND tenant_id = ?");
-        $clStmt->execute([$clientId, $tenantId]);
-        $cl = $clStmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($cl && $cl['status'] !== 'active' && $cl['package_id']) {
-            $pkg = $pdo->prepare("SELECT validity_value, validity_unit FROM packages WHERE id = ? AND tenant_id = ?");
-            $pkg->execute([$cl['package_id'], $tenantId]);
-            $package = $pkg->fetch(PDO::FETCH_ASSOC);
-
-            if ($package) {
-                $expiryDate    = packageExpiryFrom($package['validity_value'] ?? 30, $package['validity_unit'] ?? 'days');
-
-                $pdo->prepare(
-                    "UPDATE clients SET status = 'active', expiry_date = ?
-                     WHERE id = ? AND tenant_id = ?"
-                )->execute([$expiryDate, $clientId, $tenantId]);
-
-                try {
-                    $pdo->prepare(
-                        "INSERT INTO customer_activity_log (client_id, tenant_id, activity_type, description)
-                         VALUES (?, ?, 'payment_success', ?)"
-                    )->execute([
-                        $clientId, $tenantId,
-                        'Service activated via M-Pesa' . (!empty($tx['mpesa_receipt']) ? ' (' . $tx['mpesa_receipt'] . ')' : '')
-                        . '. Expires ' . $expiryDate
-                    ]);
-                } catch (Exception $e) { /* log table may not exist */ }
-
-                // Auto-provision (best-effort)
-                autoProvisionClient($pdo, $clientId, $tenantId);
-            }
-        }
     }
+
+    // Package activation belongs to the receipt-idempotent payment pipeline.
+    // Polling a historical paid receipt must never restart an expired package.
 
     echo json_encode(['status' => 'paid', 'message' => 'Payment confirmed!']);
 

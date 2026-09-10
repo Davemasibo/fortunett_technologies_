@@ -42,13 +42,15 @@ try {
     $tenant_id = $current_tenant_id;
 
     if ($client_id > 0) {
-        $stmt = $pdo->prepare("SELECT tenant_id, account_number FROM clients WHERE id = ? AND tenant_id = ?");
+        $stmt = $pdo->prepare("SELECT tenant_id, account_number, package_id FROM clients WHERE id = ? AND tenant_id = ?");
         $stmt->execute([$client_id, $current_tenant_id]);
         $clientRow = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$clientRow) {
             echo json_encode(['success' => false, 'message' => 'Invalid customer or access denied']);
             exit;
         }
+        require_once __DIR__ . '/../../includes/payment_terms.php';
+        $purchaseTerms = preparePaymentTerms($pdo, (int)$clientRow['package_id'], (int)$tenant_id);
         if ($account_ref === 'Payment') {
             // M-Pesa AccountReference max = 12 characters
             $acctNo = $clientRow['account_number'] ?? '';
@@ -154,6 +156,7 @@ try {
     $responseCode = $response->ResponseCode ?? $response->errorCode ?? null;
 
     if ($responseCode === '0' || $responseCode === 0) {
+        if ($client_id > 0) recordPaymentTerms($pdo, $response->CheckoutRequestID, $client_id, (int)$tenant_id, $purchaseTerms);
 
         $bill_id = (int)($_POST['bill_id'] ?? 0);
 

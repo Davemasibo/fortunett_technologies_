@@ -28,6 +28,8 @@ require_once __DIR__ . '/auto_provision.php';
 require_once __DIR__ . '/radius_client.php';
 require_once __DIR__ . '/payment_routing.php';
 require_once __DIR__ . '/validity.php';
+require_once __DIR__ . '/payment_activation.php';
+require_once __DIR__ . '/payment_terms.php';
 
 /**
  * @param PDO    $pdo
@@ -56,7 +58,8 @@ function process_payment_success(
     string $receipt,
     string $paymentMethod   = 'mpesa',
     ?int   $packageId       = null,
-    ?bool  $platformCollected = null
+    ?bool  $platformCollected = null,
+    ?string $activationKey = null
 ): array {
     $results = [
         'expiry_date'  => null,
@@ -69,6 +72,11 @@ function process_payment_success(
     // Ensure all required tables and columns exist before any pipeline step runs
     _pipeline_ensure_tables($pdo);
 
+    $lockName = 'payment-client-' . $tenantId . '-' . $clientId;
+    $lock = $pdo->prepare('SELECT GET_LOCK(?, 30)');
+    $lock->execute([$lockName]);
+    if ((int)$lock->fetchColumn() !== 1) throw new RuntimeException('Payment activation is busy; retry required');
+    try {
     // ── 1. Load client + package ───────────────────────────────────────────────
     $cSt = $pdo->prepare("
         SELECT c.id, c.full_name, c.name, c.phone, c.status,
@@ -87,7 +95,8 @@ function process_payment_success(
         return $results;
     }
 
-    $resolvedPackageId = (int)$client['resolved_package_id'];
+    $purchaseTerms = loadPaymentTerms($pdo, $activationKey ?: $receipt, $clientId, $tenantId);
+    $resolvedPackageId = (int)($purchaseTerms['package_id'] ?? $client['resolved_package_id']);
 
     $package = null;
     if ($resolvedPackageId) {
@@ -98,7 +107,12 @@ function process_payment_success(
             FROM packages WHERE id = ? AND tenant_id = ?
         ");
         $pkgSt->execute([$resolvedPackageId, $tenantId]);
-        $package = $pkgSt->fetch(PDO::FETCH_ASSOC);
+        $package = $pkgSt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    if ($package && $purchaseTerms) {
+        $package['validity_value'] = $purchaseTerms['validity_value'];
+        $package['validity_unit'] = $purchaseTerms['validity_unit'];
     }
 
     $results['client_name']  = $client['full_name'] ?: ($client['name'] ?? '');
@@ -106,31 +120,10 @@ function process_payment_success(
     $results['package_name'] = $package['name'] ?? 'Subscription';
 
     // ── 2. Extend subscription ─────────────────────────────────────────────────
-    $expiryDate = null;
-    if ($package) {
-        // Extend from now if expired; extend from current expiry if still active
-        $expiryDate = packageExtendExpiry(
-            $client['expiry_date'] ?? null,
-            $package['validity_value'] ?? 30,
-            $package['validity_unit'] ?? 'days'
-        );
-
-        try {
-            $pdo->prepare("
-                UPDATE clients SET status = 'active', expiry_date = ?,
-                    expiry_reminder_3d_sent = 0, expiry_reminder_1d_sent = 0
-                WHERE id = ? AND tenant_id = ?
-            ")->execute([$expiryDate, $clientId, $tenantId]);
-        } catch (Throwable $_colErr) {
-            // Reminder-flag columns may not exist yet — fall back to basic update
-            $pdo->prepare("UPDATE clients SET status = 'active', expiry_date = ? WHERE id = ? AND tenant_id = ?")
-                ->execute([$expiryDate, $clientId, $tenantId]);
-        }
-    } else {
-        // No package — at least mark the account active
-        $pdo->prepare("UPDATE clients SET status = 'active' WHERE id = ? AND tenant_id = ?")
-            ->execute([$clientId, $tenantId]);
-    }
+    $activation = activatePaidSubscription(
+        $pdo, $clientId, $tenantId, $activationKey ?: $receipt, $receipt, $package
+    );
+    $expiryDate = $activation['expiry_date'];
     $results['expiry_date'] = $expiryDate;
 
     // ── 3. Mark payment as completed ───────────────────────────────────────────
@@ -139,10 +132,10 @@ function process_payment_success(
         // Try to find an existing pending row by checkout_request_id / receipt
         $pSt = $pdo->prepare("
             SELECT id, collection_type FROM payments
-            WHERE (transaction_id = ? OR transaction_id = ?) AND client_id = ?
+            WHERE (transaction_id = ? OR transaction_id = ?) AND client_id = ? AND tenant_id = ?
             LIMIT 1
         ");
-        $pSt->execute([$receipt, $receipt, $clientId]);
+        $pSt->execute([$receipt, $activationKey ?: $receipt, $clientId, $tenantId]);
         $pendingRow = $pSt->fetch(PDO::FETCH_ASSOC) ?: null;
         $paymentId  = $pendingRow ? (int)$pendingRow['id'] : null;
 
@@ -175,9 +168,9 @@ function process_payment_success(
         if ($paymentId) {
             $pdo->prepare("
                 UPDATE payments SET status = 'completed', transaction_id = ?,
-                       collection_type = ?, updated_at = NOW()
+                       collection_type = ?, payment_method = ?, updated_at = NOW()
                 WHERE id = ?
-            ")->execute([$receipt, $collectionType, $paymentId]);
+            ")->execute([$receipt, $collectionType, $paymentMethod, $paymentId]);
         } else {
             $pdo->prepare("
                 INSERT INTO payments
@@ -192,6 +185,7 @@ function process_payment_success(
         $results['steps']['payment'] = false;
     }
 
+    if (!$activation['already_applied']) {
     // ── 4. Client invoice ──────────────────────────────────────────────────────
     try {
         // Find an open invoice for this client, or create one and immediately close it
@@ -349,26 +343,15 @@ function process_payment_success(
         $results['steps']['payout_queue'] = false;
     }
 
-    // ── 8. RADIUS sync ─────────────────────────────────────────────────────────
-    try {
-        if ($package && !empty($client['mikrotik_username']) && !empty($client['mikrotik_password'])) {
-            $results['steps']['radius'] = radius_sync_client($pdo, [
-                'mikrotik_username' => $client['mikrotik_username'],
-                'mikrotik_password' => $client['mikrotik_password'],
-            ], $package);
-        } else {
-            $results['steps']['radius'] = false;
-        }
-    } catch (Throwable $e) {
-        error_log("pipeline radius [$receipt]: " . $e->getMessage());
-        $results['steps']['radius'] = false;
+    // RADIUS is enabled by autoProvisionClient only after the router deadline
+    // is installed. It must not provide an unbounded fallback on setup failure.
+
     }
 
     // ── 9. Auto-provision on MikroTik ──────────────────────────────────────────
     // Runs BEFORE the customer is notified: the SMS and email carry their login
     // credentials, and those are only final once the router has been programmed.
     try {
-        if ($resolvedPackageId) {
             $provResult = autoProvisionClient($pdo, $clientId, $tenantId);
             $results['steps']['provision'] = $provResult['success'] ?? false;
 
@@ -384,8 +367,8 @@ function process_payment_success(
                             package_id  = VALUES(package_id),
                             receipt     = VALUES(receipt),
                             fail_reason = VALUES(fail_reason),
-                            attempts    = attempts + 1,
-                            next_retry_at = NOW() + INTERVAL 5 MINUTE
+                            attempts    = 1,
+                            next_retry_at = NOW() + INTERVAL 1 MINUTE
                     ")->execute([$tenantId, $clientId, $resolvedPackageId, $receipt, $failReason]);
                 } catch (Throwable $_pe) {
                     error_log("pipeline: could not queue pending provision for client $clientId: " . $_pe->getMessage());
@@ -396,13 +379,12 @@ function process_payment_success(
                     $pdo->prepare("DELETE FROM pending_provisions WHERE client_id = ? AND tenant_id = ?")->execute([$clientId, $tenantId]);
                 } catch (Throwable $_) {}
             }
-        } else {
-            $results['steps']['provision'] = false;
-        }
     } catch (Throwable $e) {
         error_log("pipeline provision [$receipt]: " . $e->getMessage());
         $results['steps']['provision'] = false;
     }
+
+    if ($activation['already_applied']) return $results;
 
     // ── 10. Notify the customer — SMS + email, including their credentials ─────
     // Deliberately after provisioning: mikrotik_username/password are written by
@@ -566,6 +548,9 @@ function process_payment_success(
     }
 
     return $results;
+    } finally {
+        $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]);
+    }
 }
 
 /**

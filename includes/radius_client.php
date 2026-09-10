@@ -41,7 +41,19 @@ function radius_sync_client(PDO $pdo, array $client, array $package): bool {
     $password = $client['mikrotik_password'] ?? null;
     if (!$username || !$password) return false;
 
+    $expiry = !empty($client['expiry_date']) ? strtotime($client['expiry_date']) : false;
+    if (!$expiry || $expiry <= time()) {
+        radius_disable_client($pdo, $username);
+        return false;
+    }
+
     try {
+        // FreeRADIUS's expiration module computes a fresh Session-Timeout on
+        // every authentication; reconnecting cannot restart the purchased term.
+        $pdo->prepare("INSERT INTO radcheck (username, attribute, op, value)
+            VALUES (?, 'Expiration', ':=', ?)
+            ON DUPLICATE KEY UPDATE value = VALUES(value)")
+            ->execute([$username, gmdate('d M Y H:i:s', $expiry) . ' UTC']);
         // Upsert password
         $pdo->prepare("
             INSERT INTO radcheck (username, attribute, op, value)
@@ -221,15 +233,16 @@ function radius_get_monthly_usage(PDO $pdo, string $username): array {
  * Group name: "pkg-{id}" e.g. "pkg-5"
  */
 function radius_ensure_group(PDO $pdo, array $package): void {
+    require_once __DIR__ . '/package_profile.php';
     $groupName     = radius_group_name($package);
-    $uploadMbps    = max(1, (int)($package['upload_speed']   ?? 1));
-    $downloadMbps  = max(1, (int)($package['download_speed'] ?? 1));
 
     // upload/download from router perspective = rx/tx = client upload/download
-    $rateLimit = "{$uploadMbps}M/{$downloadMbps}M";
+    $rateLimit = packageRateLimit($package);
+    if ($rateLimit === '') throw new RuntimeException('RADIUS package speed is missing');
 
     $attributes = [
         ['Mikrotik-Rate-Limit', '=', $rateLimit],
+        ['Mikrotik-Group',      '=', packageProfileName($package)],
         ['Service-Type',        '=', 'Framed-User'],
         ['Framed-Protocol',     '=', 'PPP'],
     ];

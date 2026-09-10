@@ -153,7 +153,8 @@ foreach ($pending as $tx) {
                     $receipt,
                     'mpesa',
                     $tx['package_id'] ? (int)$tx['package_id'] : null,
-                    $platformCollected
+                    $platformCollected,
+                    $checkoutId
                 );
 
                 $log("SUCCESS {$checkoutId} → receipt={$receipt} amount={$amount} client={$clientId}");

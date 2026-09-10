@@ -90,6 +90,8 @@ try {
         exit;
     }
 
+    require_once __DIR__ . '/../../../includes/payment_terms.php';
+    $purchaseTerms = preparePaymentTerms($pdo, (int)$resolvedPackageId, $tenantId);
     $amount = (int)$package['price'];
 
     // Account reference (max 12 chars per Safaricom limit)
@@ -121,6 +123,7 @@ try {
 
     if (isset($response->ResponseCode) && $response->ResponseCode === '0') {
         $checkoutId = $response->CheckoutRequestID ?? '';
+        recordPaymentTerms($pdo, $checkoutId, $clientId, $tenantId, $purchaseTerms);
         $merchantId = $response->MerchantRequestID  ?? '';
 
         // Update transaction with Safaricom IDs

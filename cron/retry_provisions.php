@@ -2,14 +2,14 @@
 /**
  * Provisioning Retry — FortuNett Technologies
  *
- * Runs every 5 minutes. Picks up pending_provisions rows whose next_retry_at
+ * Runs every minute. Picks up pending_provisions rows whose next_retry_at
  * has elapsed and retries autoProvisionClient(). Backs off exponentially:
  *   attempt 1 → 5 min, 2 → 15 min, 3 → 30 min, 4 → 60 min, 5+ → 120 min.
  * After 10 failed attempts the row is left in place but not retried further;
  * a human must investigate.
  *
- * Cron schedule (every 5 minutes):
- *   *\/5 * * * * php /var/www/html/cron/retry_provisions.php >> /var/log/fortunett_provisions.log 2>&1
+ * Cron schedule (every minute):
+ *   * * * * * php /var/www/html/cron/retry_provisions.php >> /var/log/fortunett_provisions.log 2>&1
  *
  * NOTE: Run sql/migrations/2026-06-07-pending-provisions.sql before enabling.
  */
@@ -49,11 +49,29 @@ try {
     ");
 } catch (Throwable $_) {}
 
+// Existing users also need router-local deadlines; a successful old service
+// record alone is not proof that expiry was installed on the router.
+require_once __DIR__ . '/../includes/schema_guard.php';
+ensureColumn($pdo, 'router_services', 'paid_expiry_at', 'DATETIME NULL DEFAULT NULL');
+try {
+    $pdo->exec("INSERT INTO pending_provisions (tenant_id, client_id, package_id, fail_reason, next_retry_at)
+        SELECT c.tenant_id, c.id, c.package_id, 'Install purchased expiry on router', NOW()
+        FROM clients c
+        WHERE c.status = 'active' AND c.expiry_date > NOW()
+          AND c.package_id IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM router_services rs WHERE rs.client_id = c.id
+              AND rs.tenant_id = c.tenant_id AND rs.status = 'active'
+              AND rs.package_id = c.package_id AND rs.paid_expiry_at = c.expiry_date)
+        ON DUPLICATE KEY UPDATE client_id = VALUES(client_id)");
+} catch (Throwable $e) {
+    $log('Could not queue deadline backfill: ' . $e->getMessage());
+}
+
 // Max 10 attempts — beyond that requires human intervention
 $due = $pdo->query("
     SELECT pp.*, c.status AS client_status
     FROM pending_provisions pp
-    LEFT JOIN clients c ON c.id = pp.client_id
+    LEFT JOIN clients c ON c.id = pp.client_id AND c.tenant_id = pp.tenant_id
     WHERE pp.next_retry_at <= NOW()
       AND pp.attempts <= 10
     ORDER BY pp.next_retry_at ASC

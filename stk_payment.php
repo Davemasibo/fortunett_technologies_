@@ -110,6 +110,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $payment_id = $db->lastInsertId();
 
+            require_once __DIR__ . '/includes/payment_terms.php';
+            $purchaseTerms = $client ? preparePaymentTerms($db, (int)$client['package_id'], (int)$client['tenant_id']) : null;
+
             // Try to send a real STK push using lib/mpesa.php when configured
             $mpesaResult = null;
             try {
@@ -138,6 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
                 if ($checkoutId) {
+                    if ($purchaseTerms) recordPaymentTerms($db, $checkoutId, (int)$client['id'], (int)$client['tenant_id'], $purchaseTerms);
                     try {
                         $u = $db->prepare("UPDATE payments SET transaction_id = ? WHERE id = ?");
                         $u->execute([$checkoutId, $payment_id]);

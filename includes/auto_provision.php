@@ -26,13 +26,27 @@ require_once __DIR__ . '/hotspot_sync.php';
  */
 function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
 {
+    $lockName = 'payment-client-' . $tenantId . '-' . $clientId;
+    $locked = false;
     try {
+        // Share the payment lock so a login/backfill cannot overwrite a renewal
+        // with an older expiry while router I/O is in progress.
+        $lock = $pdo->prepare('SELECT GET_LOCK(?, 30)');
+        $lock->execute([$lockName]);
+        $locked = (int)$lock->fetchColumn() === 1;
+        if (!$locked) return ['success' => false, 'message' => 'Subscription update is in progress'];
         // ── Fetch client ──────────────────────────────────────────────────────
         $stmt = $pdo->prepare("SELECT * FROM clients WHERE id = ? AND tenant_id = ?");
         $stmt->execute([$clientId, $tenantId]);
         $client = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$client) {
             return ['success' => false, 'message' => 'Client not found'];
+        }
+
+        // Login and provisioning retries cannot extend purchased access.
+        if ($client['status'] !== 'active' || empty($client['expiry_date'])
+            || strtotime($client['expiry_date']) <= time()) {
+            return ['success' => false, 'message' => 'Subscription has no valid purchased expiry'];
         }
 
         // ── Fetch package ─────────────────────────────────────────────────────
@@ -46,7 +60,7 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
         // ── Find the tenant's first active router ─────────────────────────────
         $stmt = $pdo->prepare("
             SELECT * FROM mikrotik_routers
-            WHERE tenant_id = ? AND status = 'active'
+            WHERE tenant_id = ? AND status IN ('active', 'online')
             ORDER BY id ASC LIMIT 1
         ");
         $stmt->execute([$tenantId]);
@@ -64,31 +78,8 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
             ?: ('user_' . substr(preg_replace('/\D/', '', $client['phone'] ?? ''), -8));
         $password = $client['mikrotik_password'] ?: bin2hex(random_bytes(4));
 
-        // Speeds come from the package and nowhere else. The old code defaulted a
-        // missing download_speed to 10 Mbps, which silently handed out 10 Mbps on
-        // any package whose speed column was NULL — the customer got far more than
-        // they paid for and nothing in the UI explained why.
-        $downloadSpeed = (int)($package['download_speed'] ?? 0);
-        $uploadSpeed   = (int)($package['upload_speed']   ?? 0);
-
-        if ($downloadSpeed > 0 && $uploadSpeed <= 0) {
-            // Only a download cap configured — mirror it so upload is capped too
-            // rather than left wide open.
-            $uploadSpeed = $downloadSpeed;
-        }
-
-        // RouterOS rate-limit format: rx-rate/tx-rate from the ROUTER's view.
-        // rx = what the client uploads, tx = what the client downloads.
-        $rateLimit = ($downloadSpeed > 0)
-            ? "{$uploadSpeed}M/{$downloadSpeed}M"
-            : '';   // empty = uncapped; only when the package genuinely has no speed
-
-        if ($rateLimit === '') {
-            error_log(sprintf(
-                'autoProvisionClient(%d): package #%d "%s" has no download_speed — provisioning UNCAPPED. Set a speed on the package to enforce a limit.',
-                $clientId, (int)$package['id'], $package['name'] ?? '?'
-            ));
-        }
+        packageProfileSettings($package, $connType);
+        $rateLimit = packageRateLimit($package);
 
         // One shared profile per package. It must never resolve to "default":
         // RouterOS's default profile carries no rate-limit, so falling back to it
@@ -96,21 +87,16 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
         // single generator of this name - every other caller uses it too, so the
         // profile a client is put on is the same one the package page shows and
         // the same one api/packages/update.php pushes rate-limit changes to.
-        $profileName = packageProfileName($package);
-
-        // Persist the derived name so it stops being invisible: packages.php read
-        // a blank column as "no profile" and the operator had no way to tell which
-        // profile their customers were actually on.
-        if (trim((string)($package['mikrotik_profile'] ?? '')) === '') {
-            ensurePackageProfileName($pdo, $package);
-        }
+        $profileName = ensurePackageProfileName($pdo, $package);
+        $package['mikrotik_profile'] = $profileName;
 
         // ── Connect to router — prefer VPN IP (WireGuard) over public IP ─────
         $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
         $api = new MikrotikAPI(
             $connectIp,
             $router['username'],
-            $router['password']
+            $router['password'],
+            (int)($router['api_port'] ?: 8728)
         );
 
         if (!$api->isReachable(4)) {
@@ -131,8 +117,8 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
         }
 
         // ── Provision ─────────────────────────────────────────────────────────
-        // hotspot_shared_users: 0 = unlimited, 1 = one active session per user
-        $sharedUsers = ((int)($router['hotspot_shared_users'] ?? 0) === 1) ? '1' : 'unlimited';
+        // The purchased package defines the allowed simultaneous devices.
+        $sharedUsers = (string)max(1, (int)($package['device_limit'] ?? 1));
 
         // Use the hotspot server detected during bridge check if not overridden by package
         $hotspotServer = !empty($package['hotspot_server']) ? $package['hotspot_server'] : ($bridgeCheck['server_name'] ?? 'all');
@@ -151,7 +137,7 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
                     error_log('PPPoE captive portal setup: ' . $_e->getMessage());
                 }
             }
-            _provisionPPPoE($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '');
+            _provisionPPPoE($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '', $package, $client['expiry_date']);
 
             // Sync to RADIUS (best-effort — runs alongside MikroTik API provisioning)
             try {
@@ -160,7 +146,7 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
                 error_log('RADIUS sync on provision: ' . $_e->getMessage());
             }
         } else {
-            _provisionHotspot($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '', $sharedUsers, $hotspotServer);
+            _provisionHotspot($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '', $sharedUsers, $hotspotServer, $package, $client['expiry_date']);
         }
 
         $api->disconnect();
@@ -177,12 +163,16 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
             WHERE id = ? AND tenant_id = ?
         ")->execute([$username, $password, $clientId, $tenantId]);
 
+        require_once __DIR__ . '/schema_guard.php';
+        ensureColumn($pdo, 'router_services', 'paid_expiry_at', 'DATETIME NULL DEFAULT NULL');
         $pdo->prepare("
             INSERT INTO router_services
-                (tenant_id, router_id, client_id, service_type, package_id, username, password, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+                (tenant_id, router_id, client_id, service_type, package_id, username, password, status, paid_expiry_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)
             ON DUPLICATE KEY UPDATE
                 password = VALUES(password),
+                package_id = VALUES(package_id),
+                paid_expiry_at = VALUES(paid_expiry_at),
                 status   = VALUES(status),
                 deployed_at = CURRENT_TIMESTAMP
         ")->execute([
@@ -193,6 +183,7 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
             $client['package_id'],
             $username,
             $password,
+            $client['expiry_date'],
         ]);
 
         return [
@@ -208,6 +199,8 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
     } catch (Throwable $e) {
         error_log("autoProvisionClient($clientId, $tenantId): " . $e->getMessage());
         return ['success' => false, 'message' => 'Provisioning error: ' . $e->getMessage()];
+    } finally {
+        if ($locked) $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]);
     }
 }
 
@@ -253,233 +246,21 @@ function _clearStaleRateLimit($api, string $path, array $printed, string $record
  * Uses the package-level profile (profileName). Creates the profile on the router
  * if it doesn't exist yet (e.g. router was offline when the package was saved).
  */
-function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment): void
+function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment, array $package, string $expiry): void
 {
-    // Ensure the package profile exists with the correct rate-limit.
-    // Skip 'default' — it always exists and shouldn't be modified.
-    // IMPORTANT: even if the profile exists, update its rate-limit so speed caps are enforced.
-    if ($profileName !== 'default') {
-        $profiles = $api->comm('/ppp/profile/print', ['?name=' . $profileName]);
-        $profileId = null;
-        foreach ($profiles as $p) {
-            if (isset($p['!re']) && ($p['name'] ?? '') === $profileName) { $profileId = $p['.id'] ?? null; break; }
-        }
-        if ($profileId !== null) {
-            // Profile exists — enforce rate-limit in case it changed or was never set
-            $api->comm('/ppp/profile/set', [
-                '=.id='        . $profileId,
-                '=rate-limit=' . $rateLimit,
-            ]);
-        } else {
-            // Profile missing on this router — create it with rate-limit only.
-            // Do NOT reference pppoe-pool (it may not exist on new routers).
-            $api->comm('/ppp/profile/add', [
-                '=name='        . $profileName,
-                '=rate-limit='  . $rateLimit,
-            ]);
-        }
+    if (!syncPackageProfileToRouter($api, 'pppoe', $profileName, $rateLimit, $package)) {
+        throw new RuntimeException('PPPoE package profile could not be verified');
     }
-
-    // Upsert PPPoE secret — use case-insensitive match so "User1" ≡ "user1"
-    $secrets = $api->comm('/ppp/secret/print', ['?name=' . $username]);
-    $secretId = null;
-    foreach ($secrets as $s) {
-        if (isset($s['!re']) && strcasecmp($s['name'] ?? '', $username) === 0) { $secretId = $s['.id']; break; }
-    }
-
-    if ($secretId !== null) {
-        $api->comm('/ppp/secret/set', [
-            '=.id='       . $secretId,
-            '=password='  . $password,
-            '=profile='   . $profileName,
-            '=service=pppoe',
-        ]);
-        // A rate-limit set on the secret itself overrides the profile's cap, so a
-        // stale one must go. It is cleared in a SEPARATE call, and only when the
-        // print output actually reported the property — not every RouterOS build
-        // exposes rate-limit on /ppp/secret, and blindly sending it fails the
-        // whole request with "unknown parameter", which breaks provisioning.
-        _clearStaleRateLimit($api, '/ppp/secret', $secrets, $secretId);
-        // Re-enable in case it was disabled
-        $api->comm('/ppp/secret/enable', ['=.id=' . $secretId]);
-        // Kick any live session so the CPE must re-auth with the new password.
-        // Without this, a connected CPE holds an open session indefinitely despite
-        // the password change, and reconnects immediately after a kick because the
-        // old secret is still cached in the PPP daemon state.
-        $api->kickPPPoESession($username);
-    } else {
-        $api->comm('/ppp/secret/add', [
-            '=name='     . $username,
-            '=password=' . $password,
-            '=profile='  . $profileName,
-            '=service=pppoe',
-            '=comment='  . $comment,
-        ]);
-    }
+    provisionRouterPaidUser($api, 'pppoe', $username, $password, $profileName, $comment, $expiry);
 }
 
-/**
- * Create or update a hotspot user, enable it, set MAC auth, and reconnect
- * any active session so the customer gets internet access immediately.
- *
- * Uses the package-level profile (profileName) — one shared profile per package.
- * Creates the profile on the router if it doesn't exist yet.
- *
- * @param string $sharedUsers  RouterOS shared-users value: '1' (no sharing) or 'unlimited'
- */
-function _provisionHotspot(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment, string $sharedUsers = 'unlimited', string $hotspotServer = 'all'): void
+/** Shared package caps, individual purchased deadline; no counter reset on retry. */
+function _provisionHotspot(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment, string $sharedUsers, string $hotspotServer, array $package, string $expiry): void
 {
-    // ── Ensure package profile exists with correct rate-limit ─────────────────
-    // One profile per package; create on first use, update rate-limit on every
-    // provisioning call so speed caps are enforced even on new/re-added routers.
-    // $profileName is guaranteed by the caller never to be "default" — RouterOS's
-    // default profile has no rate-limit, so using it means no cap at all.
-    $profiles = $api->comm('/ip/hotspot/user/profile/print', ['?name=' . $profileName]);
-    $profileId = null;
-    foreach ($profiles as $p) {
-        if (isset($p['!re']) && ($p['name'] ?? '') === $profileName) { $profileId = $p['.id'] ?? null; break; }
+    if (!syncPackageProfileToRouter($api, 'hotspot', $profileName, $rateLimit, $package)) {
+        throw new RuntimeException('Hotspot package profile could not be verified');
     }
-    if ($profileId !== null) {
-        // Profile exists — enforce rate-limit in case it changed or was never set
-        $api->comm('/ip/hotspot/user/profile/set', [
-            '=.id='          . $profileId,
-            '=rate-limit='   . $rateLimit,
-            '=shared-users=' . $sharedUsers,
-        ]);
-    } else {
-        $api->comm('/ip/hotspot/user/profile/add', [
-            '=name='         . $profileName,
-            '=rate-limit='   . $rateLimit,
-            '=shared-users=' . $sharedUsers,
-        ]);
-    }
-
-    // Read back and confirm the cap actually stuck. A profile that silently keeps
-    // an old or empty rate-limit is exactly how customers end up on line speed.
-    if ($rateLimit !== '') {
-        try {
-            $verify = $api->comm('/ip/hotspot/user/profile/print', ['?name=' . $profileName]);
-            foreach ($verify as $v) {
-                if (!isset($v['!re']) || ($v['name'] ?? '') !== $profileName) continue;
-                $actual = trim($v['rate-limit'] ?? '');
-                if ($actual !== $rateLimit) {
-                    error_log("_provisionHotspot: profile '$profileName' rate-limit is '$actual', expected '$rateLimit'");
-                }
-                break;
-            }
-        } catch (Throwable $_e) { /* verification only */ }
-    }
-
-    // ── Upsert hotspot user ───────────────────────────────────────────────────
-    $userId    = null;
-    $isNewUser = false;
-    $users     = $api->comm('/ip/hotspot/user/print', ['?name=' . $username]);
-    foreach ($users as $u) {
-        if (isset($u['!re']) && strcasecmp($u['name'] ?? '', $username) === 0) { $userId = $u['.id']; break; }
-    }
-
-    if ($userId !== null) {
-        // Credential update — clear MAC so device must re-auth at the captive portal
-        // with the new password rather than bypassing via MAC auth.
-        //
-        $api->comm('/ip/hotspot/user/set', [
-            '=.id='         . $userId,
-            '=password='    . $password,
-            '=profile='     . $profileName,
-            '=mac-address=',
-        ]);
-        // A rate-limit on the USER overrides the profile's cap — that is how a 5M
-        // plan ended up delivering line speed. Cleared separately and only when
-        // the record actually carries the property (see _clearStaleRateLimit).
-        _clearStaleRateLimit($api, '/ip/hotspot/user', $users, $userId);
-        // Re-enable in case it was disabled by expiry/suspension
-        $api->comm('/ip/hotspot/user/enable', ['=.id=' . $userId]);
-        // Kick any live session so the device is redirected to the captive portal
-        $api->kickHotspotSession($username);
-    } else {
-        $isNewUser = true;
-        // No rate-limit here: a fresh user has none, and the property is not
-        // accepted on /add across all RouterOS builds. The profile governs.
-        $addResp = $api->comm('/ip/hotspot/user/add', [
-            '=name='       . $username,
-            '=password='   . $password,
-            '=profile='    . $profileName,
-            '=comment='    . $comment,
-            '=server='     . $hotspotServer,
-        ]);
-        // Check for RouterOS trap (error) — e.g. hotspot not configured on router
-        foreach ($addResp as $r) {
-            if (isset($r['!trap'])) {
-                throw new \RuntimeException('Hotspot user add failed: ' . ($r['message'] ?? 'RouterOS error. Is hotspot configured on this router?'));
-            }
-        }
-        // Fetch the .id of the newly created user
-        $newUsers = $api->comm('/ip/hotspot/user/print', ['?name=' . $username]);
-        foreach ($newUsers as $u) {
-            if (isset($u['!re']) && strcasecmp($u['name'] ?? '', $username) === 0) { $userId = $u['.id']; break; }
-        }
-    }
-
-    // ── MAC Auth + Immediate Reconnect (new users only) ───────────────────────
-    // For a first-time provisioning, capture the device's MAC from any active
-    // session and bind it to the user record for seamless future reconnections,
-    // then kick so the device re-authenticates via MAC bypass immediately.
-    //
-    // For credential updates this block is skipped — the MAC was already cleared
-    // above and the session was kicked, so the device must go through the portal.
-    if ($isNewUser) {
-        try {
-            $activeSessions = $api->comm('/ip/hotspot/active/print');
-            $reconnected    = false;
-
-            foreach ($activeSessions as $session) {
-                if (!isset($session['!re'])) continue;
-                if (strcasecmp($session['user'] ?? '', $username) !== 0) continue;
-
-                $mac       = $session['mac-address'] ?? null;
-                $sessionId = $session['.id']         ?? null;
-
-                // Bind MAC so the device is recognised on next reconnect
-                if ($mac && $userId) {
-                    $api->comm('/ip/hotspot/user/set', [
-                        '=.id='         . $userId,
-                        '=mac-address=' . $mac,
-                    ]);
-                }
-
-                // Kick → device reconnects → MAC auth grants immediate access
-                if ($sessionId) {
-                    $api->comm('/ip/hotspot/active/remove', ['=.id=' . $sessionId]);
-                    $reconnected = true;
-                }
-                break;
-            }
-
-            // Not in an active session — remove any stale host entry so the device
-            // is forced to re-authenticate (MAC auth fires on next connection).
-            if (!$reconnected && $userId) {
-                $uu = $api->comm('/ip/hotspot/user/print', ['?name=' . $username]);
-                foreach ($uu as $u) {
-                    if (!isset($u['!re'])) continue;
-                    if (strcasecmp($u['name'] ?? '', $username) !== 0) continue;
-                    $knownMac = $u['mac-address'] ?? null;
-                    if ($knownMac) {
-                        $hosts = $api->comm('/ip/hotspot/host/print');
-                        foreach ($hosts as $h) {
-                            if (!isset($h['!re'])) continue;
-                            if (($h['mac-address'] ?? '') === $knownMac && isset($h['.id'])) {
-                                $api->comm('/ip/hotspot/host/remove', ['=.id=' . $h['.id']]);
-                                break;
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
-        } catch (Throwable $e) {
-            error_log('_provisionHotspot MAC reconnect: ' . $e->getMessage());
-        }
-    }
+    provisionRouterPaidUser($api, 'hotspot', $username, $password, $profileName, $comment, $expiry, $hotspotServer);
 }
 
 /**

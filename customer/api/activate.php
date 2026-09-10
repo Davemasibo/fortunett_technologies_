@@ -74,6 +74,10 @@ if ($accountBalance < $packagePrice) {
 
 try {
     $pdo->beginTransaction();
+    $locked = $pdo->prepare('SELECT account_balance FROM clients WHERE id = ? AND tenant_id = ? FOR UPDATE');
+    $locked->execute([$clientId, $tenantId]);
+    $accountBalance = (float)$locked->fetchColumn();
+    if ($accountBalance < $packagePrice) throw new RuntimeException('Insufficient current balance');
 
     $newBalance    = $accountBalance - $packagePrice;
     $expiryDate    = packageExpiryFrom($package['validity_value'] ?? 30, $package['validity_unit'] ?? 'days');
@@ -81,9 +85,9 @@ try {
     // Activate client and deduct balance atomically
     $pdo->prepare(
         "UPDATE clients
-         SET status = 'active', expiry_date = ?, account_balance = ?
+         SET status = 'active', expiry_date = ?, account_balance = ?, package_id = ?
          WHERE id = ? AND tenant_id = ?"
-    )->execute([$expiryDate, $newBalance, $clientId, $tenantId]);
+    )->execute([$expiryDate, $newBalance, $packageId, $clientId, $tenantId]);
 
     // Payment record
     $pdo->prepare(

@@ -38,14 +38,24 @@ $mikrotik_profile = trim($_POST['mikrotik_profile'] ?? '');
 // Rate limit is rx/tx from the ROUTER's view: {upload}M/{download}M. Derived from
 // the speeds unless the operator typed one, and empty (uncapped) rather than
 // '0M/0M' when the package genuinely has no speed set.
-$rate_limit = trim($_POST['rate_limit'] ?? '');
-if ($rate_limit === '') {
-    $rate_limit = packageRateLimit(['download_speed' => $download_speed, 'upload_speed' => $upload_speed]);
-}
+$rate_limit = packageRateLimit(['download_speed' => $download_speed, 'upload_speed' => $upload_speed]);
 $connection_type = $_POST['connection_type'] ?? 'pppoe';
 $hotspot_server = trim($_POST['hotspot_server'] ?? '');
+try {
+    if (!in_array($connection_type, ['hotspot', 'pppoe'], true)) throw new InvalidArgumentException('Invalid connection type');
+    $profileTerms = [
+        'download_speed' => $download_speed, 'upload_speed' => $upload_speed,
+        'validity_value' => $_POST['validity_value'] ?? 30,
+        'validity_unit' => packageValidityUnit($_POST['validity_unit'] ?? 'days', true),
+        'device_limit' => $_POST['device_limit'] ?? 1,
+    ];
+    packageProfileSettings($profileTerms, $connection_type);
+    if ($price < 0) throw new InvalidArgumentException('Package price cannot be negative');
+} catch (InvalidArgumentException $e) {
+    ob_clean(); echo json_encode(['success' => false, 'message' => $e->getMessage()]); exit;
+}
 
-if (empty($name) || empty($price)) {
+if (empty($name) || $price < 0) {
     ob_clean(); echo json_encode(['success' => false, 'message' => 'Name and Price are required']);
     exit;
 }
@@ -90,9 +100,9 @@ try {
     if (isset($colCache['rate_limit']))        { $cols[] = 'rate_limit';        $vals[] = $rate_limit; }
     if (isset($colCache['connection_type']))   { $cols[] = 'connection_type';   $vals[] = $connection_type; }
     if (isset($colCache['mikrotik_profile']))  { $cols[] = 'mikrotik_profile';  $vals[] = $mikrotik_profile; }
-    if (isset($colCache['validity_value']))    { $cols[] = 'validity_value';    $vals[] = isset($_POST['validity_value']) && $_POST['validity_value'] !== '' ? (int)$_POST['validity_value'] : 30; }
-    if (isset($colCache['validity_unit']))     { $cols[] = 'validity_unit';     $vals[] = packageValidityUnit($_POST['validity_unit'] ?? 'days'); }
-    if (isset($colCache['device_limit']))      { $cols[] = 'device_limit';      $vals[] = isset($_POST['device_limit']) && $_POST['device_limit'] !== '' ? (int)$_POST['device_limit'] : 1; }
+    if (isset($colCache['validity_value']))    { $cols[] = 'validity_value';    $vals[] = (int)$profileTerms['validity_value']; }
+    if (isset($colCache['validity_unit']))     { $cols[] = 'validity_unit';     $vals[] = $profileTerms['validity_unit']; }
+    if (isset($colCache['device_limit']))      { $cols[] = 'device_limit';      $vals[] = (int)$profileTerms['device_limit']; }
     if (isset($colCache['hotspot_server']))   { $cols[] = 'hotspot_server';   $vals[] = $hotspot_server ?: null; }
 
     $placeholders = implode(',', array_fill(0, count($cols), '?'));
@@ -109,6 +119,10 @@ try {
         'name'             => $name,
         'mikrotik_profile' => $mikrotik_profile,
     ]);
+
+    $profileOwner = $pdo->prepare('SELECT id FROM packages WHERE tenant_id = ? AND LOWER(mikrotik_profile) = LOWER(?) AND id <> ? LIMIT 1');
+    $profileOwner->execute([$tenant_id, $mikrotik_profile, $package_id]);
+    if ($profileOwner->fetchColumn()) throw new RuntimeException('This router profile belongs to another package. Choose a unique name or leave it blank.');
     if (isset($colCache['mikrotik_profile'])) {
         $pdo->prepare("UPDATE packages SET mikrotik_profile = ? WHERE id = ?")
             ->execute([$mikrotik_profile, $package_id]);
@@ -121,48 +135,11 @@ try {
     
     foreach ($routers as $router) {
         try {
-            $api = new MikrotikAPI($router['ip_address'], $router['username'], $router['password'], $router['api_port']);
+            $api = new MikrotikAPI($router['vpn_ip'] ?: $router['ip_address'], $router['username'], $router['password'], $router['api_port']);
             if ($api->connect()) {
-                if ($connection_type === 'hotspot') {
-                    // Hotspot Profile — create or update rate-limit on all routers
-                    $profiles = $api->getHotspotUserProfiles();
-                    $existingId = null;
-                    foreach ((array)$profiles as $p) {
-                        if (isset($p['name']) && $p['name'] === $mikrotik_profile) {
-                            $existingId = $p['.id'] ?? null;
-                            break;
-                        }
-                    }
-                    if ($existingId !== null) {
-                        // Update rate-limit to enforce the package speed cap
-                        $api->comm('/ip/hotspot/user/profile/set', [
-                            '=.id='        . $existingId,
-                            '=rate-limit=' . $rate_limit,
-                        ]);
-                    } else {
-                        $api->createHotspotProfile($mikrotik_profile, $rate_limit);
-                    }
-                } else {
-                    // PPPoE Profile — create or update rate-limit on all routers
-                    $profiles = $api->getPPPoEProfiles();
-                    $existingId = null;
-                    foreach ((array)$profiles as $p) {
-                        if (isset($p['name']) && $p['name'] === $mikrotik_profile) {
-                            $existingId = $p['.id'] ?? null;
-                            break;
-                        }
-                    }
-                    if ($existingId !== null) {
-                        // Update rate-limit to enforce the package speed cap
-                        $api->comm('/ppp/profile/set', [
-                            '=.id='        . $existingId,
-                            '=rate-limit=' . $rate_limit,
-                        ]);
-                    } else {
-                        $api->createPPPoEProfile($mikrotik_profile, null, null, $rate_limit);
-                    }
+                if (!syncPackageProfileToRouter($api, $connection_type, $mikrotik_profile, $rate_limit, $profileTerms)) {
+                    throw new RuntimeException('Package profile settings could not be verified on router');
                 }
-                
                 $api->disconnect();
             }
         } catch (Throwable $e) {

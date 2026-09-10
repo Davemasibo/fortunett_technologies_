@@ -114,19 +114,23 @@ try {
         $txStmt->execute([$checkoutRequestId]);
         $tx = $txStmt->fetch(PDO::FETCH_ASSOC);
 
-        // Resolve tenant_id: prefer host-detected, fall back to transaction's client tenant
-        if (!$tenant_id && $tx) {
-            $tenant_id = $tx['c_tenant_id'] ?? null;
+        // Legacy STK initiators stored only a payments row. Match checkout IDs
+        // exactly: a phone number can belong to customers in several tenants.
+        if (!$tx) {
+            $legacy = $pdo->prepare("SELECT p.client_id, p.tenant_id, p.status,
+                    c.tenant_id AS c_tenant_id, c.package_id
+                FROM payments p JOIN clients c ON c.id = p.client_id
+                WHERE p.transaction_id IN (?, ?) LIMIT 1");
+            $legacy->execute([$checkoutRequestId, $receipt]);
+            $tx = $legacy->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+        if ($tx && !empty($tx['c_tenant_id'])) {
+            $tenant_id = (int)$tx['c_tenant_id'];
+        }
+        if ($receipt === '' || $amount <= 0 || !$checkoutRequestId) {
+            throw new RuntimeException('Successful callback is missing payment metadata');
         }
 
-        // Update mpesa_transactions — use mpesa_receipt_number (schema column)
-        // raw_callback stores the full Safaricom payload for auditing
-        $pdo->prepare("
-            UPDATE mpesa_transactions
-            SET status = 'completed', result_code = ?, result_desc = ?,
-                mpesa_receipt_number = ?, raw_callback = ?, updated_at = NOW()
-            WHERE checkout_request_id = ?
-        ")->execute([$resultCode, $resultDesc, $receipt, $content, $checkoutRequestId]);
 
         // ── Tenant settling their own platform invoice by STK ────────────────
         // Marked by result_desc "BILLING:<id>" when the STK was initiated from
@@ -161,32 +165,9 @@ try {
             }
         }
 
-        // ── Fix 2: Idempotency guard — skip pipeline if already processed ────────
-        // Safaricom retries callbacks up to 3×. Without this guard the subscription
-        // extension runs again, adding another full validity period.
-        if ($tx && $tx['status'] !== 'pending') {
-            echo json_encode(['result' => 'success']);
-            exit;
-        }
-
         if ($tx && $tx['client_id']) {
             $clientId         = (int)$tx['client_id'];
             $resolvedTenantId = (int)($tenant_id ?? $tx['c_tenant_id']);
-
-            // Convert pending payment row from checkout_request_id to the real receipt
-            $rows = $pdo->prepare("
-                UPDATE payments
-                SET status = 'completed', transaction_id = ?
-                WHERE transaction_id = ? AND (tenant_id = ? OR ? IS NULL)
-            ");
-            $rows->execute([$receipt, $checkoutRequestId, $resolvedTenantId, $resolvedTenantId]);
-
-            // No INSERT fallback here on purpose. A row created without
-            // collection_type takes the column DEFAULT 'direct', and step 3 of
-            // the pipeline treats an existing tag as authoritative - so an
-            // untagged row written here would permanently book platform money as
-            // the ISP's own. When the rename above matches nothing, the pipeline
-            // creates the row itself with the collection type resolved properly.
 
             // Whose till received this money. The old check here queried
             // gateway_type = 'mpesa', which is not a member of the
@@ -200,7 +181,7 @@ try {
             // stk_push.php routes on.
             $platformCollected = null;
 
-            process_payment_success(
+            $activationResult = process_payment_success(
                 $pdo,
                 $clientId,
                 $resolvedTenantId,
@@ -208,9 +189,20 @@ try {
                 $receipt,
                 'mpesa',
                 $tx['package_id'] ? (int)$tx['package_id'] : null,
-                $platformCollected
+                $platformCollected,
+                $checkoutRequestId
             );
+            error_log("[callback] pipeline processed client=$clientId checkout=$checkoutRequestId provision=" . json_encode($activationResult['steps']['provision'] ?? false));
         }
+
+        // Update mpesa_transactions — use mpesa_receipt_number (schema column)
+        // raw_callback stores the full Safaricom payload for auditing
+        $pdo->prepare("
+            UPDATE mpesa_transactions
+            SET status = 'completed', result_code = ?, result_desc = ?,
+                mpesa_receipt_number = ?, raw_callback = ?, updated_at = NOW()
+            WHERE checkout_request_id = ?
+        ")->execute([$resultCode, $resultDesc, $receipt, $content, $checkoutRequestId]);
 
     } else {
         // Failed / cancelled

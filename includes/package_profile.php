@@ -37,13 +37,16 @@
  *
  * @param array $package  Package row; needs at least 'id' and 'name'.
  */
+require_once __DIR__ . '/validity.php';
+require_once __DIR__ . '/router_expiry.php';
+
 function packageProfileName(array $package): string
 {
     $explicit = trim((string)($package['mikrotik_profile'] ?? ''));
 
     // 'default' is rejected as deliberately as blank: RouterOS's default profile
     // has no rate-limit, so honouring it would disable the cap.
-    if ($explicit !== '' && strcasecmp($explicit, 'default') !== 0) {
+    if ($explicit !== '' && !in_array(strtolower($explicit), ['default', 'default-encryption', 'walled-garden', 'fortunett-limited'], true)) {
         return $explicit;
     }
 
@@ -83,6 +86,14 @@ function ensurePackageProfileName(PDO $pdo, array $package): string
     $name     = packageProfileName($package);
     $existing = trim((string)($package['mikrotik_profile'] ?? ''));
 
+    // Sharing a profile between different packages makes the last provision
+    // overwrite everyone else's speed, duration and device count.
+    if (!empty($package['tenant_id'])) {
+        $check = $pdo->prepare('SELECT id FROM packages WHERE tenant_id = ? AND LOWER(mikrotik_profile) = LOWER(?) AND id <> ? LIMIT 1');
+        $check->execute([$package['tenant_id'], $name, $package['id']]);
+        if ($check->fetchColumn()) $name = packageProfileName(array_merge($package, ['mikrotik_profile' => '']));
+    }
+
     if ($existing === $name) return $name;
 
     try {
@@ -107,9 +118,35 @@ function ensurePackageProfileName(PDO $pdo, array $package): string
  * @param string $connectionType 'hotspot' | 'pppoe'
  * @return bool  TRUE when the profile now carries $rateLimit.
  */
-function syncPackageProfileToRouter($api, string $connectionType, string $profileName, string $rateLimit): bool
+function packageProfileSettings(array $package, string $connectionType): array
 {
-    if ($profileName === '' || strcasecmp($profileName, 'default') === 0) {
+    $value = $package['validity_value'] ?? null;
+    $unit = packageValidityUnit($package['validity_unit'] ?? null, true);
+    // Calendar-month purchases have individual deadlines. The shared profile
+    // uses the longest possible month as a reconnect cap, never as a renewal.
+    $base = time();
+    $duration = strtotime(packageExpiryFrom($value, $unit, $base)) - $base;
+    if ($unit === 'months') $duration = (int)$value * 31 * 86400;
+    if ($duration <= 0) throw new InvalidArgumentException('Package duration must be positive');
+    if ((int)($package['download_speed'] ?? 0) <= 0 || (int)($package['upload_speed'] ?? 0) < 0) {
+        throw new InvalidArgumentException('Set a positive package download speed and a non-negative upload speed');
+    }
+    $settings = ['rate-limit' => packageRateLimit($package), 'session-timeout' => $duration . 's',
+        $connectionType === 'hotspot' ? 'on-login' : 'on-up' => routerExpiryLoginScript($connectionType)];
+    if ($connectionType === 'hotspot') {
+        $devices = $package['device_limit'] ?? 1;
+        if (filter_var($devices, FILTER_VALIDATE_INT) === false || (int)$devices < 1) {
+            throw new InvalidArgumentException('Package device limit must be a positive whole number');
+        }
+        $settings['shared-users'] = (string)$devices;
+        $settings['add-mac-cookie'] = 'no';
+    }
+    return $settings;
+}
+
+function syncPackageProfileToRouter($api, string $connectionType, string $profileName, string $rateLimit, ?array $package = null): bool
+{
+    if ($profileName === '' || in_array(strtolower($profileName), ['default', 'default-encryption', 'walled-garden', 'fortunett-limited'], true)) {
         error_log("syncPackageProfileToRouter: refusing to touch profile '$profileName'");
         return false;
     }
@@ -117,33 +154,42 @@ function syncPackageProfileToRouter($api, string $connectionType, string $profil
     $base = ($connectionType === 'hotspot') ? '/ip/hotspot/user/profile' : '/ppp/profile';
 
     try {
-        $existing  = $api->comm($base . '/print', ['?name=' . $profileName]);
+        $settings = $package !== null ? packageProfileSettings($package, $connectionType) : ['rate-limit' => $rateLimit];
+        $params = [];
+        foreach ($settings as $key => $value) $params[] = '=' . $key . '=' . $value;
+        $existing  = routerCheckedCommand($api, $base . '/print', ['?name=' . $profileName]);
         $profileId = null;
         foreach ((array)$existing as $p) {
             if (($p['name'] ?? '') === $profileName) { $profileId = $p['.id'] ?? null; break; }
         }
 
         if ($profileId !== null) {
-            $api->comm($base . '/set', ['=.id=' . $profileId, '=rate-limit=' . $rateLimit]);
+            routerCheckedCommand($api, $base . '/set', array_merge(['=.id=' . $profileId], $params));
         } else {
-            $api->comm($base . '/add', ['=name=' . $profileName, '=rate-limit=' . $rateLimit]);
+            routerCheckedCommand($api, $base . '/add', array_merge(['=name=' . $profileName], $params));
         }
 
         // Read back: a profile that silently keeps an old or empty rate-limit is
         // exactly how customers end up on line speed.
-        if ($rateLimit !== '') {
-            $verify = $api->comm($base . '/print', ['?name=' . $profileName]);
+        {
+            $verify = routerCheckedCommand($api, $base . '/print', ['?name=' . $profileName]);
             foreach ((array)$verify as $v) {
                 if (($v['name'] ?? '') !== $profileName) continue;
-                $actual = trim($v['rate-limit'] ?? '');
-                if ($actual !== $rateLimit) {
-                    error_log("syncPackageProfileToRouter: profile '$profileName' rate-limit is '$actual', expected '$rateLimit'");
-                    return false;
+                foreach ($settings as $key => $expected) {
+                    $actual = (string)($v[$key] ?? '');
+                    if ($key === 'session-timeout') {
+                        if (routerUptimeSeconds($actual) !== routerUptimeSeconds($expected)) return false;
+                    } elseif ($key === 'add-mac-cookie') {
+                        if (!in_array($actual, ['no', 'false'], true)) return false;
+                    } elseif ($actual !== $expected) {
+                        error_log("Profile '$profileName' did not retain '$key'");
+                        return false;
+                    }
                 }
                 return true;
             }
         }
-        return true;
+        return false;
     } catch (Throwable $e) {
         error_log("syncPackageProfileToRouter('$profileName'): " . $e->getMessage());
         return false;

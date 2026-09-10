@@ -106,6 +106,8 @@ try {
         exit;
     }
 
+    require_once __DIR__ . '/../../includes/payment_terms.php';
+    $purchaseTerms = $type === 'topup' ? null : preparePaymentTerms($pdo, (int)$customer['package_id'], $tenantId);
     $isSandbox = $mpesa->getEnvironment() !== 'production';
     $response  = $mpesa->stkPush($phone, $amount, $accountRef);
 
@@ -118,6 +120,7 @@ try {
 
     if ($responseCode === '0' || $responseCode === 0) {
         $checkoutId = $response->CheckoutRequestID ?? '';
+        if ($purchaseTerms) recordPaymentTerms($pdo, $checkoutId, $clientId, $tenantId, $purchaseTerms);
         $merchantId = $response->MerchantRequestID ?? 'N/A';
 
         // For TOPUP: omit client_id so the standard callback doesn't activate a package.

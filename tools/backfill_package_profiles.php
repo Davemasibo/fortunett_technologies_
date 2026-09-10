@@ -51,7 +51,7 @@ foreach ($argv as $a) {
 
 echo $apply ? "=== APPLYING ===\n\n" : "=== DRY RUN (add --apply to commit) ===\n\n";
 
-$sql = "SELECT id, tenant_id, name, mikrotik_profile, download_speed, upload_speed,
+$sql = "SELECT id, tenant_id, name, mikrotik_profile, download_speed, upload_speed, validity_value, validity_unit, device_limit,
                COALESCE(NULLIF(connection_type,''), NULLIF(type,''), 'pppoe') AS conn_type
         FROM packages";
 $params = [];
@@ -149,7 +149,7 @@ foreach ($byTenant as $tenantId => $pkgs) {
             // configuration problem to fix, not one to propagate to routers.
             if ($pkg['_rate'] === '') { $skip++; continue; }
             if (syncPackageProfileToRouter($api, $pkg['conn_type'] === 'hotspot' ? 'hotspot' : 'pppoe',
-                                           $pkg['_profile'], $pkg['_rate'])) {
+                                           $pkg['_profile'], $pkg['_rate'], $pkg)) {
                 $ok++;
             } else {
                 $bad++;
