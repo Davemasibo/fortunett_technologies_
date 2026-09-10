@@ -3,6 +3,11 @@ function hotspotDeviceMac(string $raw): string {
     $mac = strtoupper(str_replace('-', ':', rawurldecode($raw)));
     return preg_match('/^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$/', $mac) ? $mac : '';
 }
+function hotspotBoundMac(string $raw): string {
+    $mac = hotspotDeviceMac($raw);
+    if (!$mac || $mac === '00:00:00:00:00:00' || (hexdec(substr($mac,0,2)) & 1)) throw new InvalidArgumentException('Enter the TV Wi-Fi device MAC address; zero, broadcast and multicast addresses are not allowed.');
+    return $mac;
+}
 function rememberHotspotDevice(PDO $pdo, int $tenant, int $client, string $raw): void {
     $mac = hotspotDeviceMac($raw);
     if (!$mac) return;
@@ -26,10 +31,10 @@ function connectKnownHotspotDevice($api, string $mac, string $username, string $
 
 /** Resolve the router actually seeing the device; never guess among several routers. */
 function resolveClientRouter(PDO $pdo, array $client, int $tenant): int {
-    $mac = '';
+    $mac = $client['bound_mac_address'] ?? '';
     try {
         $st = $pdo->prepare('SELECT mac_address FROM hotspot_device_context WHERE tenant_id=? AND client_id=? AND updated_at>NOW()-INTERVAL 1 DAY');
-        $st->execute([$tenant,$client['id']]); $mac = $st->fetchColumn() ?: '';
+        $st->execute([$tenant,$client['id']]); $mac = $mac ?: ($st->fetchColumn() ?: '');
     } catch (PDOException $e) { if (($e->errorInfo[1] ?? null) !== 1146) throw $e; }
     $routers = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE tenant_id=? AND status IN ('active','online') ORDER BY id");
     $routers->execute([$tenant]); $rows = $routers->fetchAll(PDO::FETCH_ASSOC);

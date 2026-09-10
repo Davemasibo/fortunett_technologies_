@@ -100,12 +100,15 @@ function installPaidExpiryWatchdog($api): void
         $base = $service === 'hotspot' ? '/ip hotspot user' : '/ppp secret';
         $active = $service === 'hotspot' ? '/ip hotspot active' : '/ppp active';
         $field = $service === 'hotspot' ? 'user' : 'name';
-        $script .= ':foreach id in=[' . $base . ' find where disabled=no] do={ :local c [' . $base . ' get $id comment]; ';
+        $script .= ':foreach id in=[' . $base . ' find] do={ :local c [' . $base . ' get $id comment]; ';
         $script .= ':if ([:pick $c 0 6] = "FNEXP:") do={ :local u [' . $base . ' get $id name]; :local allowed false; :do { ';
         $script .= ':local deadline [:tonum [:pick $c 6 20]]; :local issued [:tonum [:pick $c 29 43]]; ';
         $script .= ':if (([:len $daykey] = 8) && ($clockkey >= $issued) && ($clockkey < $deadline)) do={ :set allowed true; }; } on-error={}; ';
         $script .= ':if (!$allowed) do={ ' . $base . ' disable $id; ' . $active . ' remove [' . $active . ' find where ' . $field . '=$u]; ';
-        if ($service === 'hotspot') $script .= '/ip hotspot cookie remove [/ip hotspot cookie find where user=$u]; ';
+        if ($service === 'hotspot') {
+            $script .= '/ip hotspot cookie remove [/ip hotspot cookie find where user=$u]; ';
+            $script .= ':local mac [/ip hotspot user get $id mac-address]; :if (([:len [:tostr $mac]] = 17) && ($mac != "00:00:00:00:00:00")) do={ /ip hotspot ip-binding remove [/ip hotspot ip-binding find where mac-address=$mac and type=bypassed]; }; ';
+        }
         $script .= '}; }; }; ';
     }
     $rows = routerCheckedCommand($api, '/system/scheduler/print', ['?name=' . $name]);
@@ -126,8 +129,12 @@ function installPaidExpiryWatchdog($api): void
 
 /** Keep the account disabled until its independently enforced deadline is verified. */
 function provisionRouterPaidUser($api, string $service, string $username, string $password,
-    string $profile, string $comment, string $expiry, string $server = 'all'): void
+    string $profile, string $comment, string $expiry, string $server = 'all', string $boundMac = ''): void
 {
+    if ($boundMac) {
+        require_once __DIR__ . '/hotspot_device.php';
+        $boundMac = hotspotBoundMac($boundMac);
+    }
     $base = $service === 'hotspot' ? '/ip/hotspot/user' : '/ppp/secret';
     $active = $service === 'hotspot' ? '/ip hotspot active' : '/ppp active';
     $scriptBase = str_replace('/', ' ', ltrim($base, '/'));
@@ -145,7 +152,7 @@ function provisionRouterPaidUser($api, string $service, string $username, string
     }
     try {
         $params = ['=password=' . $password, '=profile=' . $profile, '=disabled=yes'];
-        if ($service === 'hotspot') { $params[] = '=server=' . $server; $params[] = '=mac-address=00:00:00:00:00:00'; }
+        if ($service === 'hotspot') { $params[] = '=server=' . $server; $params[] = '=mac-address=' . ($boundMac ?: '00:00:00:00:00:00'); }
         else $params[] = '=service=pppoe';
         if ($id === null) {
             routerCheckedCommand($api, $base . '/add', array_merge(['=name=' . $username], $params));
@@ -181,6 +188,7 @@ function provisionRouterPaidUser($api, string $service, string $username, string
         $event .= ':if ([:pick [' . $scriptBase . ' get $id comment] 0 21] = ' . routerScriptString($tag) . ') do={ ';
         $event .= $scriptBase . ' disable $id; ' . $active . ' remove [' . $active . ' find where ' . $activeField . '=$u]; ';
         if ($service === 'hotspot') $event .= '/ip hotspot cookie remove [/ip hotspot cookie find where user=$u]; ';
+        if ($boundMac) $event .= '/ip hotspot ip-binding remove [/ip hotspot ip-binding find where mac-address=' . routerScriptString($boundMac) . ' and type=bypassed]; ';
         $event .= '}; };';
         $scheduleId = null;
         foreach (routerCheckedCommand($api, '/system/scheduler/print', ['?name=' . $name]) as $row) {
@@ -203,7 +211,7 @@ function provisionRouterPaidUser($api, string $service, string $username, string
                 && str_starts_with($row['comment'] ?? '', $tag)
                 && ($row['disabled'] ?? '') === 'true';
             if ($service === 'hotspot') {
-                $userVerified = $userVerified && routerUptimeSeconds($row['limit-uptime'] ?? '0s')
+                $userVerified = $userVerified && (!$boundMac || strtoupper($row['mac-address'] ?? '') === $boundMac) && routerUptimeSeconds($row['limit-uptime'] ?? '0s')
                     === routerUptimeSeconds($user['uptime'] ?? '0s') + $deadline['remaining'];
             }
         }

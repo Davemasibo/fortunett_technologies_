@@ -481,6 +481,15 @@ input::placeholder{color:rgba(var(--tint),.2)}
   .pkg-list{grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px}
   .pkg-price{font-size:19px}
 }
+
+#tv-dialog{width:min(600px,calc(100vw - 32px));max-height:90dvh;overflow:auto;border:0;border-radius:12px;padding:28px;background:#fff;color:#4b5563;box-sizing:border-box}
+#tv-dialog::backdrop{background:#0008}#tv-dialog h2{text-align:center;font-size:26px;color:#4b4b4b;margin:4px 0 24px}
+#tv-dialog p{font-size:14px;line-height:1.6;margin:16px 0}#tv-dialog .tv-tip{background:#edf6ff;border:1px solid #d4e4f3;color:#285282;padding:16px;border-radius:10px}
+#tv-dialog details{background:#f7f8fa;padding:14px;border-radius:8px;margin:18px 0}#tv-dialog summary{cursor:pointer;font-weight:600}
+#tv-dialog label{display:block;margin:18px 0 7px;font-size:14px;font-weight:600}#tv-dialog label span{font-weight:400;color:#8b929c}
+#tv-dialog input,#tv-dialog select{width:100%;box-sizing:border-box;padding:13px;border:1px solid #d4d6db;border-radius:10px;background:#fff;color:#30343b;font:inherit}
+#tv-dialog .tv-warning{background:#fff8eb;border:1px solid #eedfbd;color:#874a20;border-radius:10px;padding:14px}
+#tv-dialog .tv-actions{display:flex;justify-content:center;gap:12px;margin-top:24px}#tv-dialog button{padding:13px 22px;border:0;border-radius:7px;background:#7560e8;color:white;font:inherit;cursor:pointer}#tv-dialog button[type=button]{background:#74818a}#tv-dialog button:disabled{opacity:.6;cursor:wait}#tv-error{color:#b91c1c}
 </style>
 </head>
 <body>
@@ -504,6 +513,26 @@ input::placeholder{color:rgba(var(--tint),.2)}
     <div class="pkg-section-title">Choose your plan</div>
     {{PACKAGE_FILTERS}}
     {{PACKAGES_SECTION}}
+    <button type="button" class="btn-ghost" id="connect-tv" onclick="openTvDialog()" style="width:100%;margin:18px 0">Connect TV / Device</button>
+    <dialog id="tv-dialog" aria-labelledby="tv-title">
+      <form id="tv-form" onsubmit="submitTvPayment(event)">
+        <h2 id="tv-title">Connect Your TV / Device</h2>
+        <p class="tv-tip"><strong>Tip:</strong> If your TV can open this page, choose a package above and buy normally. Use this form when your TV cannot show the sign-in page.</p>
+        <p>Connect your TV to this Wi-Fi, enter its Wi-Fi MAC address, choose a package and pay.</p>
+        <details><summary>How do I find my TV MAC address?</summary><p>Open your TV?s Settings ? Network ? Wi-Fi ? Network details or About. Use the Wi-Fi MAC address, not the Ethernet address. Keep the TV connected to this hotspot.</p></details>
+        <label for="tv-mac">Device MAC Address</label>
+        <input id="tv-mac" required maxlength="17" placeholder="e.g. AA:BB:CC:DD:EE:FF" autocomplete="off" spellcheck="false">
+        <label for="tv-name">Device Name <span>(optional)</span></label>
+        <input id="tv-name" maxlength="80" placeholder="e.g. Living Room TV">
+        <label for="tv-package">Select Package</label>
+        <select id="tv-package" required></select>
+        <p class="tv-warning"><strong>One device per purchase.</strong> This access is bound to the TV MAC address and stops at the paid expiry, with zero grace.</p>
+        <label for="tv-phone">Phone Number (M-Pesa)</label>
+        <input id="tv-phone" type="tel" required placeholder="e.g. 0712345678" autocomplete="tel">
+        <p id="tv-error" role="alert"></p>
+        <div class="tv-actions"><button type="submit" id="tv-submit">Bind &amp; Pay</button><button type="button" onclick="closeTvDialog()">Cancel</button></div>
+      </form>
+    </dialog>
     <div class="pkg-none" id="pkg-none">No plans in this category. Try another filter.</div>
 
     <div id="buy-notice" class="notice err"></div>
@@ -1047,6 +1076,46 @@ function normalisePhone(raw) {
   return String(raw || '').replace(/[\s\-()+]/g, '');
 }
 
+function openTvDialog() {
+  if (_buyReqId) { setBuyNotice('Your current payment is still being checked. Please wait; do not pay again.', 'warn'); return; }
+  var select = document.getElementById('tv-package');
+  select.replaceChildren(new Option('? Choose a package ?', ''));
+  document.querySelectorAll('.pkg-row').forEach(function(row) {
+    var input = row.querySelector('input[type=radio]');
+    if (input && Number(row.getAttribute('data-price')) > 0) select.add(new Option(row.getAttribute('data-name') + ' ? ' + row.getAttribute('data-dur') + ' ? KES ' + row.getAttribute('data-price'), input.value));
+  });
+  document.getElementById('tv-error').textContent = '';
+  document.getElementById('tv-dialog').showModal();
+}
+function closeTvDialog() { if (!document.getElementById('tv-submit').disabled) document.getElementById('tv-dialog').close(); }
+async function submitTvPayment(event) {
+  event.preventDefault();
+  var button = document.getElementById('tv-submit');
+  if (button.disabled) return;
+  var mac = document.getElementById('tv-mac').value.trim().replace(/-/g, ':').toUpperCase();
+  var phone = normalisePhone(document.getElementById('tv-phone').value);
+  var error = document.getElementById('tv-error');
+  if (!/^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(mac)) { error.textContent = 'Enter the full Wi-Fi MAC address, such as AA:BB:CC:DD:EE:FF.'; return; }
+  if (!/^(?:254|0)?[17]\d{8}$/.test(phone)) { error.textContent = 'Enter a valid M-Pesa phone number.'; return; }
+  button.disabled = true; button.textContent = 'Sending prompt?'; error.textContent = '';
+  try {
+    var body = new URLSearchParams({action:'paid',device_only:'1',mac_address:mac,device_name:document.getElementById('tv-name').value,phone:phone,package_id:document.getElementById('tv-package').value,tenant_id:TID});
+    var response = await fetch(PORTAL + '/api/payment/hotspot_stk_push.php', {method:'POST',body:body});
+    var data = await response.json();
+    if (!data.success || !data.checkout_request_id) throw new Error(data.message || 'Could not start the payment.');
+    _buyReqId = data.checkout_request_id; _buyClientId = data.client_id; _buyPollCount = 0; _paidConfirmed = false;
+    rememberCheckout();
+    document.getElementById('tv-dialog').close();
+    document.getElementById('buy-form').style.display = 'none';
+    document.getElementById('buy-status').style.display = 'block';
+    document.getElementById('buy-result').style.display = 'none';
+    setStep(2); clearInterval(_buyTimer); _buyTimer = setInterval(pollBuyStatus,4000);
+  } catch (e) { error.textContent = e.message || 'Could not reach the payment service. If a prompt arrived, do not pay twice.'; }
+  finally { button.disabled = false; button.textContent = 'Bind & Pay'; }
+}
+var tvDialog = document.getElementById('tv-dialog');
+if (tvDialog) tvDialog.addEventListener('cancel', function(e) { if (document.getElementById('tv-submit').disabled) e.preventDefault(); });
+
 function doBuyPlan() {
   var phone = normalisePhone(document.getElementById('buy-phone').value);
   var row   = document.querySelector('.pkg-row.selected');
@@ -1174,6 +1243,12 @@ function pollBuyStatus() {
         setStep(4);
         document.getElementById('buy-countdown').textContent = '';
 
+        if (d.device_only) {
+          forgetCheckout();
+          document.getElementById('buy-status').style.display = 'none';
+          showResult('buy-result', true, 'TV / device connected', 'Your selected device is connected until its paid expiry. This purchase does not connect this phone.', '');
+          return;
+        }
         if (d.username && d.password) {
           autoConnect(d.username, d.password, 'buy-result', 'Payment confirmed');
         } else {

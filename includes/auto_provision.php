@@ -151,12 +151,12 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
                 error_log('RADIUS sync on provision: ' . $_e->getMessage());
             }
         } else {
-            _provisionHotspot($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '', $sharedUsers, $hotspotServer, $package, $client['expiry_date']);
+            _provisionHotspot($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '', $sharedUsers, $hotspotServer, $package, $client['expiry_date'], $client['bound_mac_address'] ?? '');
             try {
                 require_once __DIR__ . '/hotspot_device.php';
                 $device = $pdo->prepare('SELECT mac_address FROM hotspot_device_context WHERE tenant_id=? AND client_id=? AND updated_at>NOW()-INTERVAL 1 DAY');
                 $device->execute([$tenantId,$clientId]);
-                $mac = $device->fetchColumn();
+                $mac = ($client['bound_mac_address'] ?? '') ?: $device->fetchColumn();
                 if ($mac) $deviceConnected = connectKnownHotspotDevice($api, $mac, $username, $password, $client['expiry_date']);
             } catch (Throwable $e) {
                 // Portal credential handoff remains available on older RouterOS.
@@ -184,7 +184,7 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
         $pdo->prepare("
             INSERT INTO router_services
                 (tenant_id, router_id, client_id, service_type, package_id, username, password, status, paid_expiry_at, expiry_policy_version)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 2)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 3)
             ON DUPLICATE KEY UPDATE
                 password = VALUES(password),
                 package_id = VALUES(package_id),
@@ -273,7 +273,7 @@ function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, s
 }
 
 /** Shared package caps, individual purchased deadline; no counter reset on retry. */
-function _provisionHotspot(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment, string $sharedUsers, string $hotspotServer, array $package, string $expiry): void
+function _provisionHotspot(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment, string $sharedUsers, string $hotspotServer, array $package, string $expiry, string $boundMac = ''): void
 {
     // The portal posts a password. Verify the matching server accepts that
     // login method without downloading/redeploying the portal on every payment.
@@ -301,7 +301,12 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
     if (!syncPackageProfileToRouter($api, 'hotspot', $profileName, $rateLimit, $package)) {
         throw new RuntimeException('Hotspot package profile could not be verified');
     }
-    provisionRouterPaidUser($api, 'hotspot', $username, $password, $profileName, $comment, $expiry, $hotspotServer);
+    if ($boundMac) {
+        foreach (routerCheckedCommand($api, '/ip/hotspot/ip-binding/print', ['?mac-address=' . $boundMac]) as $binding) {
+            if (($binding['type'] ?? '') === 'bypassed' && isset($binding['.id'])) routerCheckedCommand($api, '/ip/hotspot/ip-binding/remove', ['=.id=' . $binding['.id']]);
+        }
+    }
+    provisionRouterPaidUser($api, 'hotspot', $username, $password, $profileName, $comment, $expiry, $hotspotServer, $boundMac);
 }
 
 /**

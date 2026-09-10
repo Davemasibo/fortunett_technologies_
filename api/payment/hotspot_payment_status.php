@@ -88,7 +88,7 @@ try {
 
         // Fetch client credentials
         $clSt = $pdo->prepare("
-            SELECT mikrotik_username, mikrotik_password, status, expiry_date, account_number, tenant_id
+            SELECT *
             FROM clients WHERE id = ? LIMIT 1
         ");
         $clSt->execute([$resolvedClientId]);
@@ -160,6 +160,15 @@ try {
                 'payment_confirmed' => true,
                 'message' => 'Payment confirmed. Preparing your credentials…',
             ]);
+            exit;
+        }
+
+        if (!empty($client['bound_mac_address'])) {
+            require_once __DIR__ . '/../../includes/auto_provision.php';
+            $tv = $prov ?? autoProvisionClient($pdo, $resolvedClientId, $resolvedTenantId, 0, false);
+            echo json_encode(!empty($tv['device_connected'])
+                ? ['status'=>'completed','device_only'=>true,'message'=>'Your TV / device is connected.']
+                : ['status'=>'processing','payment_confirmed'=>true,'message'=>'Payment received. Keep the TV connected to this Wi-Fi; we are retrying its connection.']);
             exit;
         }
 

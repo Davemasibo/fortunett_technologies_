@@ -38,6 +38,17 @@ $packageId  = (int)($_POST['package_id'] ?? 0);
 require_once __DIR__ . '/../../includes/hotspot_device.php';
 $macAddress = hotspotDeviceMac($_POST['mac_address'] ?? '');
 $tenantId   = (int)($_POST['tenant_id'] ?? 0);
+$deviceOnly = ($_POST['device_only'] ?? '') === '1';
+ensureColumn($pdo, 'clients', 'bound_mac_address', 'VARCHAR(17) NULL DEFAULT NULL');
+if ($deviceOnly && ($action !== 'paid' || !$macAddress)) {
+    echo json_encode(['success'=>false,'message'=>'Enter a valid TV MAC address and choose a paid package.']); exit;
+}
+if ($deviceOnly) {
+    try { $macAddress = hotspotBoundMac($macAddress); }
+    catch (InvalidArgumentException $e) { echo json_encode(['success'=>false,'message'=>$e->getMessage()]); exit; }
+}
+if ($deviceOnly) $fullName = substr(trim($_POST['device_name'] ?? ''), 0, 80) ?: 'TV / Device';
+
 // NOTE: no $amount is read from the request — both paid flows charge the price
 // on the package row. See the 'paid' and 'renew' branches below.
 
@@ -115,7 +126,7 @@ try {
         }
 
         // Check if phone already registered for this tenant
-        $existSt = $pdo->prepare("SELECT id, mikrotik_username, mikrotik_password, status FROM clients WHERE tenant_id = ? AND phone = ? LIMIT 1");
+        $existSt = $pdo->prepare("SELECT id, mikrotik_username, mikrotik_password, status FROM clients WHERE tenant_id = ? AND phone = ? AND bound_mac_address IS NULL AND connection_type='hotspot' LIMIT 1");
         $existSt->execute([$tenantId, $phone]);
         $existClient = $existSt->fetch(PDO::FETCH_ASSOC);
 
@@ -202,21 +213,25 @@ try {
             $password = bin2hex(random_bytes(6)); // 12-char random
         }
 
-        // Check if phone already registered
-        $existSt = $pdo->prepare("SELECT id, status, expiry_date, mikrotik_username, mikrotik_password FROM clients WHERE tenant_id = ? AND phone = ? LIMIT 1");
-        $existSt->execute([$tenantId, $phone]);
+        if ($deviceOnly) {
+            $existSt = $pdo->prepare("SELECT id,status,expiry_date,mikrotik_username,mikrotik_password FROM clients WHERE tenant_id=? AND bound_mac_address=? AND connection_type='hotspot' LIMIT 1");
+            $existSt->execute([$tenantId,$macAddress]);
+        } else {
+            $existSt = $pdo->prepare("SELECT id,status,expiry_date,mikrotik_username,mikrotik_password FROM clients WHERE tenant_id=? AND phone=? AND bound_mac_address IS NULL AND connection_type='hotspot' LIMIT 1");
+            $existSt->execute([$tenantId,$phone]);
+        }
         $existClient = $existSt->fetch(PDO::FETCH_ASSOC);
 
         $gen           = new AccountNumberGenerator($pdo);
         $accountNumber = $gen->generateAccountNumber($tenantId);
-        $mikUsername   = 'hs' . substr(preg_replace('/\D/', '', $phone), -8);
+        $mikUsername   = $deviceOnly ? 'tv' . $tenantId . str_replace(':','',$macAddress) : 'hs' . substr(preg_replace('/\D/', '', $phone), -8);
         $mikPassword   = bin2hex(random_bytes(4));
 
         if ($existClient) {
             $clientId = (int)$existClient['id'];
             // Update password + package for renewal
-            $pdo->prepare("UPDATE clients SET auth_password = ?, package_id = ?, mikrotik_username = COALESCE(NULLIF(mikrotik_username,''), ?), mikrotik_password = COALESCE(NULLIF(mikrotik_password,''), ?) WHERE id = ?"
-            )->execute([password_hash($password, PASSWORD_BCRYPT), $packageId, $mikUsername, $mikPassword, $clientId]);
+            $pdo->prepare("UPDATE clients SET mikrotik_username = COALESCE(NULLIF(mikrotik_username,''), ?), mikrotik_password = COALESCE(NULLIF(mikrotik_password,''), ?) WHERE id = ?"
+            )->execute([$mikUsername, $mikPassword, $clientId]);
             $mikUsername = $existClient['mikrotik_username'] ?: $mikUsername;
             $mikPassword = $existClient['mikrotik_password'] ?: $mikPassword;
         } else {
@@ -228,13 +243,14 @@ try {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'hotspot', 'pending', ?, ?)
             ")->execute([
                 $tenantId, $fullName, $fullName, $phone,
-                'hs' . substr(preg_replace('/\D/', '', $phone), -8),
+                $mikUsername,
                 password_hash($password, PASSWORD_BCRYPT),
                 $accountNumber, $packageId, $mikUsername, $mikPassword
             ]);
             $clientId = (int)$pdo->lastInsertId();
         }
 
+        if ($deviceOnly) $pdo->prepare('UPDATE clients SET bound_mac_address=? WHERE id=? AND tenant_id=?')->execute([$macAddress,$clientId,$tenantId]);
         rememberHotspotDevice($pdo, $tenantId, $clientId, $macAddress);
 
         // Determine M-Pesa credentials for this tenant
@@ -342,7 +358,7 @@ try {
         }
 
         // Update package_id to renew with selected package
-        $pdo->prepare("UPDATE clients SET package_id = ? WHERE id = ?")->execute([$packageId, $clientId]);
+        // The selected package is applied by the confirmed payment snapshot, not by the prompt.
 
         // Determine M-Pesa credentials
         $gwCheck = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1 ORDER BY is_default DESC LIMIT 1");

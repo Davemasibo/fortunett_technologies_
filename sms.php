@@ -2,10 +2,12 @@
 require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/classes/SMSHelper.php';
+require_once __DIR__ . '/includes/sms_retry.php';
 redirectIfNotLoggedIn();
 
 // Get tenant context using existing logic (assuming auth.php sets session or we infer from user)
 if (session_status() === PHP_SESSION_NONE) session_start();
+$_SESSION['sms_retry_csrf'] = $_SESSION['sms_retry_csrf'] ?? bin2hex(random_bytes(32));
 $user_id = $_SESSION['user_id'] ?? 0;
 $stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
@@ -64,7 +66,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Fetch outbox log
 $sms_logs = [];
 try {
-    $logs = $pdo->prepare("SELECT sl.*, c.full_name FROM sms_outbox sl LEFT JOIN clients c ON sl.client_id = c.id WHERE sl.tenant_id = ? ORDER BY sl.sent_at DESC LIMIT 50");
+    smsRetrySchema($pdo);
+    $logs = $pdo->prepare("SELECT sl.*, c.full_name, sr.status AS retry_status, sr.created_at AS retried_at
+        FROM sms_outbox sl LEFT JOIN clients c ON sl.client_id = c.id AND c.tenant_id=sl.tenant_id
+        LEFT JOIN sms_retry_attempts sr ON sr.id=(SELECT MAX(r.id) FROM sms_retry_attempts r WHERE r.tenant_id=sl.tenant_id AND r.outbox_id=sl.id)
+        WHERE sl.tenant_id = ? ORDER BY sl.sent_at DESC LIMIT 50");
     $logs->execute([$tenant_id]);
     $sms_logs = $logs->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { /* table may not exist yet */ }
@@ -176,6 +182,7 @@ include 'includes/sidebar.php';
                             <th>MESSAGE</th>
                             <th>STATUS</th>
                             <th>DATE</th>
+                            <th>ACTION</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -190,16 +197,27 @@ include 'includes/sidebar.php';
                             </td>
                             <td>
                                 <span class="<?php echo $log['status'] === 'sent' ? 'sms-status-sent' : 'sms-status-failed'; ?>">
-                                    <?php echo strtoupper($log['status']); ?>
+                                    <?php echo htmlspecialchars(strtoupper($log['status'])); ?>
                                 </span>
                             </td>
                             <td style="font-size:12px;color:rgba(255,255,255,.4);">
                                 <?php echo date('M d, H:i', strtotime($log['sent_at'])); ?>
                             </td>
+                            <td style="min-width:180px;max-width:300px;">
+                                <?php if ($log['status'] === 'failed'): ?>
+                                    <?php if (empty($log['retry_status']) || $log['retry_status'] === 'failed'): ?>
+                                        <button type="button" class="btn-settings sms-retry" data-id="<?php echo (int)$log['id']; ?>">Retry SMS</button>
+                                    <?php endif; ?>
+                                    <div class="sms-retry-feedback" role="status" aria-live="polite" style="margin-top:6px;font-size:12px;">
+                                        <?php echo ($log['retry_status'] ?? '') === 'sent' ? 'Resent successfully' : (in_array($log['retry_status'] ?? '', ['sending', 'unknown'], true) ? 'Awaiting confirmation. Check provider history.' : (($log['retry_status'] ?? '') === 'failed' ? 'Last retry failed' : '')); ?>
+                                        <?php if (!empty($log['retried_at'])) echo ' (' . htmlspecialchars($log['retried_at']) . ')'; ?>
+                                    </div>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                         <?php endforeach; ?>
                         <?php if (empty($sms_logs)): ?>
-                            <tr><td colspan="4" style="text-align:center;padding:20px;color:rgba(255,255,255,.35);">No sent messages found.</td></tr>
+                            <tr><td colspan="5" style="text-align:center;padding:20px;color:rgba(255,255,255,.35);">No sent messages found.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -323,6 +341,10 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
+<script>
+const smsRetryCsrf = <?php echo json_encode($_SESSION['sms_retry_csrf']); ?>;
+</script>
+<script src="sms-retry.js"></script>
 <script>
 function openConfigModal() {
     document.getElementById('configModal').style.display = 'flex';

@@ -62,7 +62,7 @@ try {
           AND c.package_id IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM router_services rs WHERE rs.client_id = c.id
               AND rs.tenant_id = c.tenant_id AND rs.status = 'active'
-              AND rs.package_id = c.package_id AND rs.paid_expiry_at = c.expiry_date AND rs.expiry_policy_version >= 2)
+              AND rs.package_id = c.package_id AND rs.paid_expiry_at = c.expiry_date AND rs.expiry_policy_version >= 3)
         ON DUPLICATE KEY UPDATE client_id = VALUES(client_id)");
 } catch (Throwable $e) {
     $log('Could not queue deadline backfill: ' . $e->getMessage());

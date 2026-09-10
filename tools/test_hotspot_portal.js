@@ -26,6 +26,11 @@ function portal(response) {
     assert.equal(p.calls[0][0],'connect'); assert.equal(p.calls[0][1],'paid-user');
     assert.equal(p.calls.includes('forgot'),false);
     console.log('PASS: verified payment hands credentials to RouterOS and retains recovery through handoff');
+    p=portal({status:'completed',device_only:true});
+    p.pollBuyStatus(); await new Promise(setImmediate);
+    assert.equal(p.calls.includes('forgot'),true);
+    assert.equal(p.calls.some(call=>Array.isArray(call)&&call[0]==='connect'),false);
+    console.log('PASS: a TV payment never logs the paying phone into the TV subscription');
     p=portal({status:'failed'});p.pollBuyStatus();await new Promise(setImmediate);
     assert.deepEqual(p.calls,['forgot','buy-again']);
     console.log('PASS: an explicit failed payment unlocks a new purchase');

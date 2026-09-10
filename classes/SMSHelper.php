@@ -42,7 +42,7 @@ class SMSHelper {
         return !empty($this->config);
     }
 
-    public function send($phone, $message, $clientId = null) {
+    public function send($phone, $message, $clientId = null, $log = true) {
         if (!$this->config) {
             return ['success' => false, 'message' => 'SMS not configured. Set up SMS credentials in Settings or contact your platform admin.'];
         }
@@ -77,11 +77,15 @@ class SMSHelper {
                     $this->using_platform = false;
                     $response['message']  = ($response['message'] ?? 'SMS failed.')
                         . ' The platform key was tried as a fallback and was also rejected.';
+                    if (!empty($retry['uncertain'])) {
+                        $response['uncertain'] = true;
+                        $response['message'] = 'The tenant key was rejected and the platform fallback delivery could not be confirmed.';
+                    }
                 }
             }
         }
 
-        $this->logMessage($clientId, $phone, $message, $response);
+        if ($log) $this->logMessage($clientId, $phone, $message, $response);
 
         return $response;
     }
@@ -175,7 +179,7 @@ class SMSHelper {
         curl_close($ch);
 
         if ($curlError) {
-            return ['success' => false, 'message' => 'Could not reach the SMS provider: ' . $curlError];
+            return ['success' => false, 'uncertain' => true, 'message' => 'Could not confirm the SMS provider response: ' . $curlError];
         }
 
         // An HTML body means we reached a web page, not an API — almost always a
@@ -192,6 +196,10 @@ class SMSHelper {
         }
 
         $json = json_decode((string)$result, true);
+
+        if ($httpCode >= 500 || ($httpCode >= 200 && $httpCode < 300 && !is_array($json))) {
+            return ['success' => false, 'uncertain' => true, 'message' => 'The SMS provider did not return a valid confirmation. Check the provider history.'];
+        }
 
         if ($httpCode >= 200 && $httpCode < 300) {
             // A 200 is not proof of delivery. These APIs return an error status

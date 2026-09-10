@@ -47,6 +47,30 @@ function enforceCustomerSessions(PDO $pdo, callable $log, array $services = ['pp
             continue;
         }
 
+        // TVs cannot reopen a captive browser after a reboot. Restore their paid
+        // sessions without resetting timers or provisioning an expired account.
+        try {
+            require_once __DIR__ . '/hotspot_device.php';
+            $devices = $pdo->prepare("SELECT id FROM clients WHERE tenant_id=? AND connection_type='hotspot' AND bound_mac_address IS NOT NULL AND status='active' AND expiry_date>NOW()");
+            $devices->execute([$tid]);
+            foreach ($devices->fetchAll(PDO::FETCH_COLUMN) as $deviceId) {
+                $deviceLock = 'payment-client-' . $tid . '-' . $deviceId;
+                $lock = $pdo->prepare('SELECT GET_LOCK(?,0)'); $lock->execute([$deviceLock]);
+                if ((int)$lock->fetchColumn() !== 1) continue;
+                try {
+                    $fresh = $pdo->prepare("SELECT * FROM clients WHERE id=? AND tenant_id=? AND status='active' AND expiry_date>NOW()");
+                    $fresh->execute([$deviceId,$tid]);
+                    $device = $fresh->fetch(PDO::FETCH_ASSOC);
+                    if (!$device) continue;
+                    $sessions = routerCheckedCommand($sweepApi,'/ip/hotspot/active/print',['?user='.$device['mikrotik_username']]);
+                    if (!array_filter($sessions,fn($row)=>isset($row['.id']))) connectKnownHotspotDevice($sweepApi,$device['bound_mac_address'],$device['mikrotik_username'],$device['mikrotik_password'],$device['expiry_date']);
+                } catch (Throwable $e) { $log('TV reconnect pending for client ' . $deviceId); }
+                finally { $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$deviceLock]); }
+            }
+        } catch (PDOException $e) {
+            if (($e->errorInfo[1] ?? null) !== 1054) $log('TV reconnect scan unavailable: ' . $e->getMessage());
+        }
+
         foreach ($services as $svc) {
             try {
                 $live = ($svc === 'pppoe')

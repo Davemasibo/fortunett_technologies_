@@ -327,3 +327,12 @@ Offline verification: `php -n tools/test_hotspot_onboarding.php`, `node tools/te
 Live acceptance requires a Safaricom-confirmed test payment, matching checkout/receipt and paid expiry in the database, an active hotspot session on the selected router, successful HTTPS traffic with mobile data disabled, then loss of Internet at the paid deadline. Run both the full 30-minute and three-hour tests, including a reconnect without resetting expiry. Also test a lost callback, a closed captive browser, a temporarily unreachable router, and a late duplicate callback. No live test was completed in the local workspace: its configured database refused connections; the VPS/router selection is pending.
 
 RouterOS references: [Hotspot limits and login methods](https://help.mikrotik.com/docs/spaces/ROS/pages/56459266/HotSpot%20-%20Captive%20portal), [direct hotspot login command](https://manual.mikrotik.com/docs/cli-reference/ip/hotspot/active/login/).
+
+
+## Connect TV / Device
+
+The captive portal now offers Connect TV / Device below the package list. Its dialog accepts a valid unicast Wi-Fi MAC address, optional device name, paid package and M-Pesa number. TV purchases use a separate tenant/device account; phone purchases exclude those accounts. The TV account is bound to the entered MAC, and the phone polling the payment receives a TV-specific completion response without router credentials or a phone login handoff.
+
+TVs use the same finite uptime, purchased deadline and reconnect guard as other paid hotspot customers. Exact-MAC bypass entries on a bound TV are removed during provisioning and expiry. Expiry policy version 3 also sweeps already-disabled paid accounts, because disabling an account alone does not prove its active session was removed. The minute enforcement worker reconnects eligible bound devices after reboot without extending their expiry. An expired device cannot use that reconnect path.
+
+Verification: `php -n tools/test_tv_onboarding.php` and `node tools/test_hotspot_portal.js`. Live test: connect a TV to Wi-Fi, enter its Wi-Fi MAC on a phone, pay, verify Internet on the TV and that the phone has not received that subscription. Reboot the TV during paid time and verify recovery; at expiry verify traffic stops and reboot/reconnect does not restore it. Deploy the refreshed portal HTML and PHP; run the existing minute expiry/provisioning jobs so policy version 3 reaches active accounts. Live device verification remains outstanding.
