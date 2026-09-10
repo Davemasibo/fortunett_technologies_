@@ -124,6 +124,14 @@ try {
             $legacy->execute([$checkoutRequestId, $receipt]);
             $tx = $legacy->fetch(PDO::FETCH_ASSOC) ?: null;
         }
+        if (!$tx) {
+            // Checkout terms are stored before the optional transaction display
+            // row. A display-row failure must not orphan Safaricom's payment.
+            $terms = $pdo->prepare('SELECT pt.client_id, pt.tenant_id, pt.package_id, c.tenant_id AS c_tenant_id FROM payment_purchase_terms pt JOIN clients c ON c.id=pt.client_id AND c.tenant_id=pt.tenant_id WHERE pt.checkout_id=?');
+            $terms->execute([$checkoutRequestId]);
+            $tx = $terms->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+        if (!$tx) throw new RuntimeException('Confirmed checkout has no matching customer or billing transaction');
         if ($tx && !empty($tx['c_tenant_id'])) {
             $tenant_id = (int)$tx['c_tenant_id'];
         }
@@ -187,7 +195,7 @@ try {
                 $resolvedTenantId,
                 $amount,
                 $receipt,
-                'mpesa',
+                'mpesa_stk',
                 $tx['package_id'] ? (int)$tx['package_id'] : null,
                 $platformCollected,
                 $checkoutRequestId
@@ -210,7 +218,7 @@ try {
             UPDATE mpesa_transactions
             SET status = 'failed', result_code = ?, result_desc = ?,
                 raw_callback = ?, updated_at = NOW()
-            WHERE checkout_request_id = ?
+            WHERE checkout_request_id = ? AND status <> 'completed'
         ")->execute([$resultCode, $resultDesc, $content, $checkoutRequestId]);
 
         // Mark the pending payment as failed

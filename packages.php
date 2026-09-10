@@ -4,6 +4,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/package_profile.php';
 require_once __DIR__ . '/includes/validity.php';
 redirectIfNotLoggedIn();
+$_SESSION['dashboard_sync_csrf'] ??= bin2hex(random_bytes(32));
 
 $database = new Database();
 $pdo = $database->getConnection();
@@ -694,6 +695,7 @@ include 'includes/sidebar.php';
 </div>
 </div>
 
+<script src="dashboard-sync.js" data-csrf="<?= htmlspecialchars($_SESSION['dashboard_sync_csrf'], ENT_QUOTES) ?>"></script>
 <script>
 /* ── Connection type pills ── */
 function setConnType(type) {
@@ -731,7 +733,7 @@ function openEditPackageModal(pkg) {
     document.getElementById('pkgModalTitle').textContent = 'Edit Package';
     document.getElementById('packageId').value = pkg.id;
     document.getElementById('pkgName').value = pkg.name || '';
-    document.getElementById('pkgPrice').value = pkg.price || '';
+    document.getElementById('pkgPrice').value = pkg.price ?? '';
     document.getElementById('pkgDownload').value = pkg.download_speed || '';
     document.getElementById('pkgUpload').value = pkg.upload_speed || '';
     document.getElementById('pkgDataLimit').value = pkg.data_limit || '';
@@ -833,6 +835,7 @@ function loadHotspotServers() {
 }
 
 function closePackageModal() {
+    if (document.getElementById('pkgSaveBtn').disabled) return;
     document.getElementById('packageModal').style.display = 'none';
 }
 
@@ -847,6 +850,7 @@ function handlePackageSubmit(e) {
     const id = formData.get('id');
     const url = id ? 'api/packages/update.php' : 'api/packages/create.php';
     const btn = document.getElementById('pkgSaveBtn');
+    if (btn.disabled) return;
     const origHTML = btn.innerHTML;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
     btn.disabled = true;
@@ -855,8 +859,9 @@ function handlePackageSubmit(e) {
         .then(r => r.json())
         .then(data => {
             if (data.success) {
-                showToast('Package saved successfully.', 'success');
-                setTimeout(() => location.reload(), 900);
+                btn.innerHTML = origHTML; btn.disabled = false;
+                closePackageModal();
+                DashboardSync.saved(data);
             } else {
                 showToast('Error: ' + (data.message || 'Unknown error'), 'error');
                 btn.innerHTML = origHTML; btn.disabled = false;

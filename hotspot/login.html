@@ -734,7 +734,7 @@ input::placeholder{color:rgba(var(--tint),.2)}
 var PORTAL  = '{{PORTAL_URL}}';
 var HAS_PAID_TAB = {{HAS_PAID_TAB}};
 var TID     = '{{TENANT_ID}}';
-var MAC     = '$(mac-esc)';
+var MAC     = '$(mac)';
 /* Only the tabs this tenant enabled. Everything below indexes into it rather
    than assuming all four exist — a getElementById on a switched-off tab used
    to throw and take the rest of the script, including the pay button, with
@@ -954,6 +954,11 @@ if (_loginForm) _loginForm.addEventListener('submit', function (e) {
     }
     btn.disabled = false;
     label.textContent = 'Connect to Internet';
+    if (d.processing) {
+      setLoginError(d.message || 'Payment received. Retrying your connection; do not pay again.');
+      setTimeout(function () { if (document.getElementById('hs-user').value === u) form.dispatchEvent(new Event('submit', {cancelable:true})); }, 8000);
+      return;
+    }
     if (d.expired) {
       setLoginError((d.message || 'Your subscription has expired.') + ' Pick a plan to get back online.');
       switchTab('buy');
@@ -1094,6 +1099,8 @@ function doBuyPlan() {
       _buyReqId     = d.checkout_request_id;
       _buyClientId  = d.client_id || null;
       _buyPollCount = 0;
+      _paidConfirmed = false;
+      rememberCheckout();
       setStep(2);
       _buyTimer = setInterval(pollBuyStatus, 4000);
       tickCountdown();
@@ -1117,6 +1124,15 @@ function tickCountdown() {
   el.innerHTML = 'Waiting for confirmation — <b>' + m + ':' + (s < 10 ? '0' : '') + s + '</b> left';
 }
 
+var _buyPolling = false;
+var _paidConfirmed = false;
+function rememberCheckout() {
+  try { localStorage.setItem('fortunett-checkout-' + TID, JSON.stringify({checkout:_buyReqId, client:_buyClientId, saved:Date.now()})); } catch (_) {}
+}
+function forgetCheckout() {
+  try { localStorage.removeItem('fortunett-checkout-' + TID); } catch (_) {}
+}
+
 function pollBuyStatus() {
   if (!_buyReqId) return;
 
@@ -1126,17 +1142,12 @@ function pollBuyStatus() {
   /* After ~20s the PIN prompt has been answered one way or the other */
   if (_buyPollCount === 5) setStep(3);
 
+  if (_buyPolling) return;
+  _buyPolling = true;
   if (_buyPollCount > _buyPollMax) {
-    clearInterval(_buyTimer);
-    cancelBuy();
-    showResult('buy-result', false, 'Payment timed out',
-      HAS_PAID_TAB
-        ? 'No confirmation after 5 minutes. If the money left your account, open the <strong>Paid?</strong> tab and enter the M-Pesa code from your SMS.'
-        : 'No confirmation after 5 minutes. If the money left your account, contact support with your M-Pesa code.',
-      HAS_PAID_TAB
-        ? '<button class="btn-ghost" type="button" onclick="switchTab(\'reconnect\')">Enter M-Pesa code</button>'
-        : '');
-    return;
+    document.getElementById('buy-countdown').textContent = _paidConfirmed
+      ? 'Payment received. Retrying your connection automatically; do not pay again.'
+      : 'Confirmation is taking longer. We are still checking; do not pay again.';
   }
 
   var url = PORTAL + '/api/payment/hotspot_payment_status.php?checkout_request_id=' + encodeURIComponent(_buyReqId);
@@ -1150,6 +1161,7 @@ function pollBuyStatus() {
          than submitting credentials the hotspot doesn't know about — doing that
          bounces the customer back to the sign-in page. */
       if (d.status === 'processing') {
+        _paidConfirmed = d.payment_confirmed === true;
         setStep(4);
         var sub = document.querySelector('#st-4 .step-sub');
         if (sub) sub.textContent = d.message || 'Setting up your connection…';
@@ -1175,7 +1187,15 @@ function pollBuyStatus() {
               ? '<button class="btn-ghost" type="button" onclick="switchTab(\'reconnect\')">Enter M-Pesa code</button>'
               : '');
         }
+      } else if (d.status === 'expired') {
+        forgetCheckout();
+        cancelBuy();
+        setBuyNotice(d.message || 'Your purchased access time has ended.', 'warn');
+      } else if (d.status === 'blocked') {
+        clearInterval(_buyTimer);
+        setBuyNotice(d.message, 'warn');
       } else if (d.status === 'failed') {
+        forgetCheckout();
         /* Terminal — usually the customer cancelled or let the PIN prompt time
            out. Say which, and put the pay button straight back so they can retry
            without hunting for it. */
@@ -1186,7 +1206,8 @@ function pollBuyStatus() {
         document.getElementById('buy-phone').scrollIntoView({ block: 'center', behavior: 'smooth' });
       }
     })
-    .catch(function () { /* transient — keep polling */ });
+    .catch(function () { /* Keep the checkout while the network recovers. */ })
+    .finally(function () { _buyPolling = false; });
 }
 
 function cancelBuy() {
@@ -1216,7 +1237,7 @@ function autoConnect(username, password, resultId, title) {
 
   /* Give the customer a moment to read the credentials before RouterOS
      redirects the browser away from this page. */
-  setTimeout(function () { document.getElementById('hs-auto-form').submit(); }, 2600);
+  setTimeout(function () { document.getElementById('hs-auto-form').submit(); }, 300);
 }
 
 function showResult(id, ok, title, sub, extraHtml) {
@@ -1235,6 +1256,21 @@ function escHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+
+(function resumeCheckout() {
+  try {
+    var saved = JSON.parse(localStorage.getItem('fortunett-checkout-' + TID) || 'null');
+    if (!saved || !saved.checkout || Date.now() - saved.saved > 24 * 60 * 60 * 1000) return;
+    _buyReqId = saved.checkout; _buyClientId = saved.client; _buyPollCount = 0;
+    switchTab('buy');
+    document.getElementById('buy-form').style.display = 'none';
+    document.getElementById('buy-status').style.display = 'block';
+    setStep(3);
+    clearInterval(_buyTimer);
+    _buyTimer = setInterval(pollBuyStatus, 4000);
+    pollBuyStatus();
+  } catch (_) {}
+})();
 </script>
 </body>
 </html>

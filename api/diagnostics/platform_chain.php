@@ -254,7 +254,7 @@ $schemaCheck('platform_invoices has amount_paid', function () use ($pdo, $add) {
 // simply never happens. Each script stamps a heartbeat so absence is visible.
 
 $jobs = [
-    ['stk_poll',          'STK reconciliation',   120,   '*/2 * * * *',  'A callback Safaricom fails to deliver leaves the payment pending forever and the customer never gets connected.'],
+    ['stk_poll',          'STK reconciliation',   60,   '* * * * *',  'A callback Safaricom fails to deliver leaves the payment pending forever and the customer never gets connected.'],
     ['retry_provisions',  'Provisioning retry',   60,   '* * * * *',  'A customer who paid while their router was unreachable stays paid-and-offline.'],
     ['check_expiry',      'Expiry enforcement',   900,   '*/15 * * * *', 'Expired customers stay online indefinitely; the sweep that cuts live sessions lives here.'],
     ['enforce_sessions',  'Session enforcement', 60, '* * * * *', 'Expired hotspot sessions must be disconnected without grace.'],

@@ -92,7 +92,7 @@ function process_payment_success(
 
     if (!$client) {
         error_log("payment_pipeline: client $clientId not found for tenant $tenantId (receipt $receipt)");
-        return $results;
+        throw new RuntimeException('Customer not found for confirmed payment');
     }
 
     $purchaseTerms = loadPaymentTerms($pdo, $activationKey ?: $receipt, $clientId, $tenantId);
@@ -352,7 +352,7 @@ function process_payment_success(
     // Runs BEFORE the customer is notified: the SMS and email carry their login
     // credentials, and those are only final once the router has been programmed.
     try {
-            $provResult = autoProvisionClient($pdo, $clientId, $tenantId);
+            $provResult = autoProvisionClient($pdo, $clientId, $tenantId, 0, false);
             $results['steps']['provision'] = $provResult['success'] ?? false;
 
             // Queue for retry if provisioning failed (router unreachable, etc.)
@@ -571,6 +571,7 @@ function _pipeline_ensure_tables(PDO $pdo): void {
     // branch does not name the column, which is why this stayed invisible:
     // it only fires when a payments row already carries the final receipt.
     require_once __DIR__ . '/schema_guard.php';
+    ensurePaymentStatusEnums($pdo);
     ensureColumn($pdo, 'payments', 'updated_at', 'TIMESTAMP NULL DEFAULT NULL');
 
     // Ensure expiry-reminder flag columns exist (added by the expiry-reminders feature;

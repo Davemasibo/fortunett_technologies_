@@ -31,7 +31,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     }
     if ($exp_method && $exp_method !== 'All Methods') {
         $mv  = strtolower($exp_method) === 'm-pesa' ? 'mpesa' : strtolower($exp_method);
-        $q  .= " AND p.payment_method = ?"; $qp[] = $mv;
+        if ($mv === 'mpesa') $q .= " AND p.payment_method IN ('mpesa','mpesa_stk','mpesa_paybill','mpesa_c2b')";
+        else { $q .= " AND p.payment_method = ?"; $qp[] = $mv; }
     }
     if ($exp_status && $exp_status !== 'All') {
         $q  .= " AND p.status = ?"; $qp[] = strtolower($exp_status);
@@ -181,11 +182,11 @@ if ($search) {
 }
 
 if ($filter_method && $filter_method !== 'All Methods') {
-    $query .= " AND p.payment_method = ?";
     // Clean string (e.g. from UI 'Cash', 'M-Pesa')
     $filterVal = strtolower($filter_method);
     if ($filterVal == 'm-pesa') $filterVal = 'mpesa';
-    $params[] = $filterVal;
+    if ($filterVal === 'mpesa') $query .= " AND p.payment_method IN ('mpesa','mpesa_stk','mpesa_paybill','mpesa_c2b')";
+    else { $query .= " AND p.payment_method = ?"; $params[] = $filterVal; }
 }
 
 $query .= " ORDER BY p.payment_date DESC, p.created_at DESC LIMIT 100";
@@ -673,9 +674,9 @@ include 'includes/sidebar.php';
                             <strong>KES <?php echo number_format($tx['amount'] ?? 0, 2); ?></strong>
                         </td>
                         <td>
-                            <span class="payment-method <?php echo $method === 'mpesa' ? 'mpesa' : 'cash'; ?>">
-                                <i class="fas fa-<?php echo $method === 'mpesa' ? 'mobile-alt' : 'money-bill'; ?>"></i>
-                                <?php echo ucfirst($method); ?>
+                            <span class="payment-method <?php echo str_starts_with($method, 'mpesa') ? 'mpesa' : 'cash'; ?>">
+                                <i class="fas fa-<?php echo str_starts_with($method, 'mpesa') ? 'mobile-alt' : 'money-bill'; ?>"></i>
+                                <?php echo $method === 'mpesa_stk' ? 'M-Pesa (phone prompt)' : (str_starts_with($method, 'mpesa') ? 'M-Pesa' : htmlspecialchars(ucfirst($method))); ?>
                             </span>
                         </td>
                         <td>
@@ -1377,10 +1378,10 @@ let currentViewTx = null;
 function openViewModal(tx) {
     currentViewTx = tx;
     const content = document.getElementById('viewModalContent');
-    // Check for mpesa_receipt_number or transaction_id to determine method
-    const isMpesa = tx.mpesa_receipt_number || (tx.transaction_id && tx.transaction_id.toLowerCase().includes('mpesa'));
-    const method = isMpesa ? 'M-Pesa' : (tx.method || 'Cash'); // Use tx.method if available, else default to Cash
-    
+    const recordedMethod = String(tx.payment_method || tx.method || '').toLowerCase();
+    const methodLabels = {mpesa_stk:'M-Pesa (phone prompt)', mpesa:'M-Pesa', mpesa_paybill:'M-Pesa Paybill', mpesa_c2b:'M-Pesa Paybill', cash:'Cash', bank_transfer:'Bank transfer', card:'Card'};
+    const method = methodLabels[recordedMethod] || (recordedMethod ? escapeHtmlPay(recordedMethod) : 'Not recorded');
+
     // Determine status based on result_code for M-Pesa or 'status' for recorded transactions
     let status = 'pending';
     if (tx.result_code === '0') {

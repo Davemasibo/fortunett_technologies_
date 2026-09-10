@@ -115,18 +115,39 @@ switch ($action) {
         if (!$packageId) { echo json_encode(['success'=>false,'message'=>'No package selected.']); exit; }
 
         // Verify package belongs to tenant
-        $pkgSt = $pdo->prepare("SELECT id, name, validity_value, validity_unit FROM packages WHERE id = ? AND tenant_id = ? AND status = 'active'");
+        $pkgSt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND tenant_id = ? AND status = 'active'");
         $pkgSt->execute([$packageId, $tenantId]);
         $pkg = $pkgSt->fetch(PDO::FETCH_ASSOC);
         if (!$pkg) { echo json_encode(['success'=>false,'message'=>'Package not found.']); exit; }
 
+        $locks = [];
         try {
-            $upd = $pdo->prepare("UPDATE clients SET package_id = ?, updated_at = NOW() WHERE id IN ($ph) AND tenant_id = ?");
-            $upd->execute(array_merge([$packageId], $ids, [$tenantId]));
-            $count = $upd->rowCount();
-            echo json_encode(['success'=>true,'message'=>"Package changed to \"{$pkg['name']}\" for $count customer(s).",'count'=>$count]);
+            require_once __DIR__ . '/../../includes/dashboard_sync.php';
+            dashboardSyncSchema($pdo);
+            $ids = array_values(array_unique($ids)); sort($ids, SORT_NUMERIC);
+            foreach ($ids as $id) {
+                $key = 'payment-client-' . $tenantId . '-' . $id;
+                $lock = $pdo->prepare('SELECT GET_LOCK(?,0)'); $lock->execute([$key]);
+                if ((int)$lock->fetchColumn() !== 1) throw new RuntimeException('A selected customer is being updated. Please try again.');
+                $locks[] = $key;
+            }
+            $pdo->beginTransaction();
+            $selectedPlaceholders = implode(',', array_fill(0, count($ids), '?'));
+            $selected = $pdo->prepare("SELECT * FROM clients WHERE id IN ($selectedPlaceholders) AND tenant_id=? FOR UPDATE");
+            $selected->execute(array_merge($ids, [$tenantId]));
+            $customers = $selected->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($customers as $customer) {
+                if ($customer['connection_type'] !== ($pkg['connection_type'] ?: $pkg['type'])) throw new RuntimeException('All selected customers must match the package connection type.');
+                $pdo->prepare('UPDATE clients SET package_id=?, subscription_plan=?, updated_at=NOW() WHERE tenant_id=? AND id=?')->execute([$packageId, $pkg['name'], $tenantId, $customer['id']]);
+                dashboardQueueCustomer($pdo, $tenantId, (int)$customer['id']);
+            }
+            $pdo->commit();
+            echo json_encode(['success'=>true,'sync_pending'=>true,'message'=>'Packages saved. Applying access settings; paid expiry is unchanged.','count'=>count($customers)]);
         } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
             echo json_encode(['success'=>false,'message'=>'Update failed: '.$e->getMessage()]);
+        } finally {
+            foreach ($locks as $key) $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$key]);
         }
         break;
 

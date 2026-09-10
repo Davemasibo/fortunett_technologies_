@@ -16,6 +16,7 @@ header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
 require_once '../../includes/package_profile.php';
+require_once __DIR__ . '/../../includes/dashboard_sync.php';
 require_once __DIR__ . '/../../includes/validity.php';
 
 // Validate Inputs
@@ -65,9 +66,9 @@ $t_stmt->execute([$user_id]);
 $tenant_id = $t_stmt->fetchColumn();
 
 // Check if package belongs to tenant
-$check = $pdo->prepare("SELECT id FROM packages WHERE id = ? AND tenant_id = ?");
+$check = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND tenant_id = ?");
 $check->execute([$id, $tenant_id]);
-if (!$check->fetch()) {
+if (!($oldPackage = $check->fetch(PDO::FETCH_ASSOC))) {
     ob_clean(); echo json_encode(['success' => false, 'message' => 'Package not found or access denied']);
     exit;
 }
@@ -79,12 +80,18 @@ $mikrotik_profile = packageProfileName([
 ]);
 
 try {
+    dashboardSyncSchema($pdo);
     $pdo->beginTransaction();
     $profileOwner = $pdo->prepare('SELECT id FROM packages WHERE tenant_id = ? AND LOWER(mikrotik_profile) = LOWER(?) AND id <> ? LIMIT 1');
     $profileOwner->execute([$tenant_id, $mikrotik_profile, $id]);
     if ($profileOwner->fetchColumn()) throw new RuntimeException('This router profile belongs to another package. Choose a unique name or leave it blank.');
 
 
+    if ($connection_type !== ($oldPackage['connection_type'] ?: $oldPackage['type'])) {
+        $assigned = $pdo->prepare('SELECT id FROM clients WHERE tenant_id=? AND package_id=? LIMIT 1');
+        $assigned->execute([$tenant_id, $id]);
+        if ($assigned->fetchColumn()) throw new RuntimeException('This package has customers. Create a separate package to change its connection type.');
+    }
     // Detect available columns so we don't fail on old DB schemas
     $colRows  = $pdo->query("SHOW COLUMNS FROM packages")->fetchAll(PDO::FETCH_COLUMN);
     $colCache = array_flip($colRows);
@@ -109,51 +116,15 @@ try {
     $stmt = $pdo->prepare("UPDATE packages SET " . implode(',', $setCols) . " WHERE id = ?");
     $stmt->execute($setVals);
 
-    $pdo->commit();
-
-    // ── Push the speed change to the routers ──────────────────────────────────
-    // This endpoint used to write the new speed to the database and touch no
-    // router at all, so editing a package's speed changed the price the customer
-    // paid and nothing else - the profile kept its old rate-limit indefinitely.
-    // Runs after the commit: a router that is unreachable must not roll back a
-    // perfectly good package edit.
-    $synced = 0;
-    $failed = [];
-    try {
-        $rSt = $pdo->prepare("SELECT id, ip_address, vpn_ip, username, password, api_port
-                              FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
-        $rSt->execute([$tenant_id]);
-        foreach ($rSt->fetchAll(PDO::FETCH_ASSOC) as $router) {
-            $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
-            try {
-                $api = new MikrotikAPI($connectIp, $router['username'], $router['password'], $router['api_port']);
-                if (!$api->connect()) { $failed[] = $router['ip_address']; continue; }
-                if (syncPackageProfileToRouter($api, $connection_type, $mikrotik_profile, $rate_limit, $profileTerms)) {
-                    $synced++;
-                } else {
-                    $failed[] = $router['ip_address'];
-                }
-                $api->disconnect();
-            } catch (Throwable $re) {
-                $failed[] = $router['ip_address'];
-                error_log('Package update router sync (' . $router['ip_address'] . '): ' . $re->getMessage());
-            }
-        }
-    } catch (Throwable $e) {
-        error_log('Package update router sync: ' . $e->getMessage());
+    $networkChanged = false;
+    $networkTerms = array_merge($profileTerms, ['mikrotik_profile' => $mikrotik_profile, 'connection_type' => $connection_type, 'hotspot_server' => $hotspot_server]);
+    foreach ($networkTerms as $field => $value) {
+        if ((string)($oldPackage[$field] ?? '') !== (string)$value) $networkChanged = true;
     }
-
-    // An unreachable router is reported, never hidden: the operator otherwise
-    // believes a speed change took effect on a router that never heard about it.
-    $msg = 'Package updated successfully';
-    if ($synced) $msg .= ' - profile "' . $mikrotik_profile . '" set to ' . ($rate_limit !== '' ? $rate_limit : 'uncapped') . ' on ' . $synced . ' router(s)';
-    if ($failed) $msg .= '. Could not reach: ' . implode(', ', array_unique($failed));
-    // RouterOS applies a profile change only to NEW sessions, so anyone online
-    // keeps the old speed until they reconnect.
-    if ($synced) $msg .= '. Customers already online keep the old speed until they reconnect.';
-
+    if ($networkChanged) dashboardQueuePackage($pdo, (int)$tenant_id, $id);
+    $pdo->commit();
     ob_clean();
-    echo json_encode(['success' => true, 'message' => $msg, 'profile' => $mikrotik_profile, 'rate_limit' => $rate_limit]);
+    echo json_encode(['success' => true, 'sync_pending' => $networkChanged, 'message' => $networkChanged ? 'Package saved. Applying settings to routers and connected customers.' : 'Package saved.']);
 
 } catch (Throwable $e) {
     try { if ($pdo->inTransaction()) $pdo->rollBack(); } catch (Throwable $re) {}

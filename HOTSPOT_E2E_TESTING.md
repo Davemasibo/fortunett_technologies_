@@ -295,3 +295,35 @@ Live acceptance checks (not covered by the offline router double):
 No live payment, MikroTik execution or deployed FreeRADIUS configuration is
 verified by the offline PHP tests. Complete these checks on the deployment's
 RouterOS versions before treating the rollout as validated.
+
+
+## Tenant dashboard application status
+
+Package create/edit, customer edit, pause/resume, expiry reductions, and individual/bulk package changes now save a durable `dashboard_sync_jobs` entry in the same transaction as the edit. The package/customer pages immediately refresh their lists and process jobs through the authenticated, tenant-scoped `api/dashboard_sync.php` endpoint. It reports pending work separately from saved data. Price/contact-only edits do not reconnect sessions. Access-setting edits reconnect affected users with the remaining purchased deadline. Package changes and resuming access never restart a duration; manual grace and unpaid extensions are rejected.
+
+Keep `cron/retry_provisions.php` scheduled every minute. It also drains dashboard jobs when the browser is closed; failures remain queued and become eligible after 30 seconds. Jobs read the latest customer/package values and share payment locks for customer provisioning. A router outage cannot be applied in real time; the UI keeps the change pending instead of claiming success. Large packages apply progressively, one customer/router job at a time in the browser (up to 30 per cron run).
+
+Live acceptance checks:
+
+1. Edit a package speed while a paid user is online. Confirm the list changes without page reload, the progress panel reaches applied, and the reconnected session uses the new profile/rate. Confirm expiry is unchanged.
+2. Suspend an online hotspot/PPPoE user. Confirm the session is removed, the account is disabled, and hotspot cookies are removed. Resume before expiry and verify only remaining purchased time is available; resume after expiry must not enable access.
+3. Disconnect router management, save an edit, then close the browser. Restore management connectivity and verify the minute cron applies it. Reopen the dashboard and verify pending status clears.
+4. Rename credentials and verify the former account cannot reconnect. Test edits on another tenant and ensure their jobs/status are inaccessible.
+5. Try a later expiry, grace hours, and a package switch. The first two must be rejected; a package switch must preserve expiry. Bulk package changes must reject mixed connection types.
+
+Offline checks: `php -n tools/test_dashboard_sync.php`, `php -n tools/test_payment_connectivity.php`, `php -n tools/test_package_deadlines.php`, and `node --check dashboard-sync.js`. Live router/database/browser acceptance remains required before production rollout.
+
+
+## Paid-but-offline recovery and short-package verification
+
+The shared STK reconciler accepts successful provider queries without requiring callback-only receipt metadata. Checkout IDs deduplicate the later receipt callback. Confirmation is retained if activation fails, and the minute reconciler retries. An unknown query result or an old pending payment is never silently declared unpaid based on age. Completed legacy payments with existing expiry are not replayed as fresh purchases. Prompt payments are recorded as `mpesa_stk` and displayed as **M-Pesa (phone prompt)**; the transaction modal reads the stored method rather than guessing Cash from the receipt text.
+
+The portal retains the checkout across reopening, prevents overlapping polls, and continues connection recovery beyond five minutes. Known hotspot devices are resolved against the router host table and can be logged in through RouterOS after the paid deadline is installed, even if their browser closed. A successful API command alone is not evidence of Internet access: the active session is read back, and live testing must still verify traffic from the customer's Wi-Fi device. The browser login remains a fallback. Multi-router tenants require either observed device context or a saved router assignment.
+
+Provisioning installs an exact per-customer deadline, finite uptime and session caps, a reconnect guard, and a five-second router-local watchdog for missed events/reboots. The watchdog is a fallback, not an added grace allowance. `expiry_policy_version=2` causes the minute provisioning backfill to upgrade existing active customers. Deploy the refreshed hotspot page as well as PHP; an old page retains its old polling behavior.
+
+Offline verification: `php -n tools/test_hotspot_onboarding.php`, `node tools/test_hotspot_portal.js`, and `php -n tools/test_dashboard_sync.php`. These use fake external systems and do not prove a live payment or Internet session. Live audit (read only, after the file is deployed): `php tools/audit_paid_connectivity.php --router=ID --client=ID`. It omits passwords, phone numbers and receipt values.
+
+Live acceptance requires a Safaricom-confirmed test payment, matching checkout/receipt and paid expiry in the database, an active hotspot session on the selected router, successful HTTPS traffic with mobile data disabled, then loss of Internet at the paid deadline. Run both the full 30-minute and three-hour tests, including a reconnect without resetting expiry. Also test a lost callback, a closed captive browser, a temporarily unreachable router, and a late duplicate callback. No live test was completed in the local workspace: its configured database refused connections; the VPS/router selection is pending.
+
+RouterOS references: [Hotspot limits and login methods](https://help.mikrotik.com/docs/spaces/ROS/pages/56459266/HotSpot%20-%20Captive%20portal), [direct hotspot login command](https://manual.mikrotik.com/docs/cli-reference/ip/hotspot/active/login/).

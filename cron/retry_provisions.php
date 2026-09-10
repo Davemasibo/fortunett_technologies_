@@ -2,11 +2,8 @@
 /**
  * Provisioning Retry — FortuNett Technologies
  *
- * Runs every minute. Picks up pending_provisions rows whose next_retry_at
- * has elapsed and retries autoProvisionClient(). Backs off exponentially:
- *   attempt 1 → 5 min, 2 → 15 min, 3 → 30 min, 4 → 60 min, 5+ → 120 min.
- * After 10 failed attempts the row is left in place but not retried further;
- * a human must investigate.
+ * Runs every minute and retries pending paid provisioning while access remains valid.
+ * Failures retain their diagnostic reason and retry after one minute, with no attempt cap.
  *
  * Cron schedule (every minute):
  *   * * * * * php /var/www/html/cron/retry_provisions.php >> /var/log/fortunett_provisions.log 2>&1
@@ -22,6 +19,9 @@ require_once __DIR__ . '/../includes/auto_provision.php';
 require_once __DIR__ . '/../includes/cron_heartbeat.php';
 
 cron_heartbeat($pdo, 'retry_provisions');
+require_once __DIR__ . '/../includes/dashboard_sync.php';
+dashboardSyncSchema($pdo);
+dashboardProcessSync($pdo, null, 30);
 
 $log = function(string $msg) {
     echo '[' . date('Y-m-d H:i:s') . '] ' . $msg . PHP_EOL;
@@ -53,6 +53,7 @@ try {
 // record alone is not proof that expiry was installed on the router.
 require_once __DIR__ . '/../includes/schema_guard.php';
 ensureColumn($pdo, 'router_services', 'paid_expiry_at', 'DATETIME NULL DEFAULT NULL');
+ensureColumn($pdo, 'router_services', 'expiry_policy_version', 'INT NOT NULL DEFAULT 0');
 try {
     $pdo->exec("INSERT INTO pending_provisions (tenant_id, client_id, package_id, fail_reason, next_retry_at)
         SELECT c.tenant_id, c.id, c.package_id, 'Install purchased expiry on router', NOW()
@@ -61,7 +62,7 @@ try {
           AND c.package_id IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM router_services rs WHERE rs.client_id = c.id
               AND rs.tenant_id = c.tenant_id AND rs.status = 'active'
-              AND rs.package_id = c.package_id AND rs.paid_expiry_at = c.expiry_date)
+              AND rs.package_id = c.package_id AND rs.paid_expiry_at = c.expiry_date AND rs.expiry_policy_version >= 2)
         ON DUPLICATE KEY UPDATE client_id = VALUES(client_id)");
 } catch (Throwable $e) {
     $log('Could not queue deadline backfill: ' . $e->getMessage());
@@ -73,7 +74,6 @@ $due = $pdo->query("
     FROM pending_provisions pp
     LEFT JOIN clients c ON c.id = pp.client_id AND c.tenant_id = pp.tenant_id
     WHERE pp.next_retry_at <= NOW()
-      AND pp.attempts <= 10
     ORDER BY pp.next_retry_at ASC
     LIMIT 30
 ")->fetchAll(PDO::FETCH_ASSOC);
@@ -101,8 +101,8 @@ foreach ($due as $row) {
             $pdo->prepare("DELETE FROM pending_provisions WHERE id = ?")->execute([$row['id']]);
             $log("  SUCCESS #{$row['id']} client {$clientId} — provisioned (attempt {$attempt})");
         } else {
-            // Exponential backoff: 5, 15, 30, 60, 120, 120, ... minutes
-            $backoffMinutes = min(120, 5 * (int)pow(2, min($attempt - 1, 4)));
+            // Short packages cannot tolerate multi-hour retry delays.
+            $backoffMinutes = 1;
             $nextRetry      = date('Y-m-d H:i:s', strtotime("+{$backoffMinutes} minutes"));
 
             $pdo->prepare("
@@ -116,7 +116,7 @@ foreach ($due as $row) {
             $log("  FAIL #{$row['id']} client {$clientId} — {$result['message']} — next retry in {$backoffMinutes}min");
         }
     } catch (Throwable $e) {
-        $backoffMinutes = min(120, 5 * (int)pow(2, min($attempt - 1, 4)));
+        $backoffMinutes = 1;
         $nextRetry      = date('Y-m-d H:i:s', strtotime("+{$backoffMinutes} minutes"));
         $pdo->prepare("
             UPDATE pending_provisions SET attempts = attempts + 1, fail_reason = ?, next_retry_at = ? WHERE id = ?
@@ -129,7 +129,7 @@ foreach ($due as $row) {
 // Report rows that have hit the attempt limit
 $stuck = $pdo->query("SELECT COUNT(*) FROM pending_provisions WHERE attempts > 10")->fetchColumn();
 if ($stuck > 0) {
-    $log("WARNING: {$stuck} provision(s) exceeded 10 attempts — manual investigation required.");
+    $log("WARNING: {$stuck} provision(s) exceeded 10 attempts — still retrying; investigate router connectivity.");
 }
 
 $log("=== Done ===");

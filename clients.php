@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/db_master.php';
 require_once 'includes/auth.php';
 redirectIfNotLoggedIn();
+$_SESSION['dashboard_sync_csrf'] ??= bin2hex(random_bytes(32));
 
 $database = new Database();
 $db = $database->getConnection();
@@ -954,18 +955,7 @@ include 'includes/sidebar.php';
         <button onclick="closeExpiryModal()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:7px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#9ca3af;display:flex;align-items:center;justify-content:center;line-height:1;">&times;</button>
     </div>
     <div style="padding:20px;">
-        <!-- Quick add buttons -->
-        <div style="margin-bottom:18px;">
-            <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Quick Extend</div>
-            <div style="display:flex;gap:7px;flex-wrap:wrap;">
-                <button onclick="applyQuickExpiry(60)" class="expiry-quick-btn">+1 Hour</button>
-                <button onclick="applyQuickExpiry(720)" class="expiry-quick-btn">+12 Hours</button>
-                <button onclick="applyQuickExpiry(1440)" class="expiry-quick-btn">+1 Day</button>
-                <button onclick="applyQuickExpiry(10080)" class="expiry-quick-btn">+7 Days</button>
-                <button onclick="applyQuickExpiry(43200)" class="expiry-quick-btn">+1 Month</button>
-                <button onclick="applyQuickExpiry(129600)" class="expiry-quick-btn">+3 Months</button>
-            </div>
-        </div>
+        <p style="color:#e2e2e0">Access ends at the paid expiry, with zero grace. Additional time requires a successful payment. Changing packages preserves the paid expiry.</p>
         <!-- Set specific date -->
         <div style="margin-bottom:16px;">
             <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Set Specific Date</div>
@@ -985,14 +975,6 @@ include 'includes/sidebar.php';
                     <?php endforeach; ?>
                 </select>
                 <button onclick="applyChangePackage()" style="padding:8px 14px;background:#059669;color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Apply</button>
-            </div>
-        </div>
-        <!-- Grace period -->
-        <div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:10px;padding:12px;">
-            <div style="font-size:10px;font-weight:700;color:#fcd34d;text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Grace Period (added on top)</div>
-            <div style="display:flex;align-items:center;gap:10px;">
-                <input type="number" id="graceHoursInput" min="0" max="720" value="0" style="width:80px;padding:7px;background:#1c1c1b;border:1px solid rgba(251,191,36,.25);border-radius:6px;font-size:13px;text-align:center;color:#fcd34d;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;">
-                <span style="font-size:13px;font-weight:500;color:#fcd34d;">hours of grace period</span>
             </div>
         </div>
         <!-- Current expiry info -->
@@ -1164,6 +1146,7 @@ include 'includes/sidebar.php';
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="dashboard-sync.js" data-csrf="<?= htmlspecialchars($_SESSION['dashboard_sync_csrf'], ENT_QUOTES) ?>"></script>
 <script>
 let currentCustomer = null;
 let clientPaymentChart = null;
@@ -1352,6 +1335,7 @@ function closeModal() {
 }
 
 function closeFormModal() {
+    if (document.querySelector('button[form="customerForm"][type="submit"]')?.disabled) return;
     document.getElementById('customerFormModal').style.display = 'none';
 }
 
@@ -1378,27 +1362,14 @@ function closeExpiryModal() {
     document.getElementById('expiryModal').style.display = 'none';
 }
 
-function applyQuickExpiry(minutes) {
-    if (!currentCustomer) return;
-    const grace = parseInt(document.getElementById('graceHoursInput').value) || 0;
-    const fd = new FormData();
-    fd.append('client_id', currentCustomer.id);
-    fd.append('action', 'add_minutes');
-    fd.append('minutes', minutes);
-    fd.append('grace_hours', grace);
-    submitExpiryChange(fd, '+' + (minutes >= 43200 ? Math.round(minutes/43200)+'mo' : minutes >= 1440 ? Math.round(minutes/1440)+'d' : minutes >= 60 ? Math.round(minutes/60)+'h' : minutes+'m'));
-}
-
 function applySetDate() {
     if (!currentCustomer) return;
     const dateVal = document.getElementById('expiryDateInput').value;
     if (!dateVal) { showToast('Please select a date.', 'warning'); return; }
-    const grace = parseInt(document.getElementById('graceHoursInput').value) || 0;
     const fd = new FormData();
     fd.append('client_id', currentCustomer.id);
     fd.append('action', 'set_date');
     fd.append('expiry_date', dateVal);
-    fd.append('grace_hours', grace);
     submitExpiryChange(fd, 'specific date');
 }
 
@@ -1406,12 +1377,10 @@ function applyChangePackage() {
     if (!currentCustomer) return;
     const pkgId = document.getElementById('expiryPackageSelect').value;
     if (!pkgId) { showToast('Please select a package.', 'warning'); return; }
-    const grace = parseInt(document.getElementById('graceHoursInput').value) || 0;
     const fd = new FormData();
     fd.append('client_id', currentCustomer.id);
     fd.append('action', 'change_package');
     fd.append('package_id', pkgId);
-    fd.append('grace_hours', grace);
     submitExpiryChange(fd, 'package change');
 }
 
@@ -1420,7 +1389,7 @@ function submitExpiryChange(fd, label) {
         .then(r => r.json())
         .then(d => {
             if (d.success) {
-                showToast('Expiry updated (' + label + ').', 'success');
+                DashboardSync.saved(d);
                 currentCustomer.expiry_date = d.new_expiry;
                 document.getElementById('currentExpiryDisplay').textContent = formatDate(d.new_expiry);
                 // Refresh time display in general tab
@@ -1644,6 +1613,7 @@ function handleFormSubmit(e) {
     
     // Button is outside the <form> (linked via form="customerForm"), so we must query the document
     const btn = document.querySelector('button[form="customerForm"][type="submit"]') || form.querySelector('button[type="submit"]');
+    if (btn && btn.disabled) return;
     const originalText = btn ? btn.textContent : '';
     if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
     
@@ -1668,8 +1638,10 @@ function handleFormSubmit(e) {
                 }
                 setTimeout(() => location.reload(), 1800);
             } else {
-                showToast('Customer updated successfully.', 'success');
-                setTimeout(() => location.reload(), 1800);
+                if (btn) btn.disabled = false;
+                closeFormModal();
+                closeModal();
+                DashboardSync.saved(data);
             }
         } else {
             showToast('Error: ' + data.message, 'error');
@@ -2165,6 +2137,7 @@ function pauseSubscription() {
         .then(r => r.json())
         .then(d => {
             if (d.success) {
+                DashboardSync.saved(d);
                 currentCustomer.status = d.new_status;
                 showToast(d.message, 'success');
                 updatePauseBtn(d.new_status);
@@ -2464,7 +2437,7 @@ function submitBulkPackage() {
     fetch('api/clients/bulk_action.php', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(d => {
-            if (d.success) { showToast(d.message, 'success'); closeBulkPackageModal(); setTimeout(() => location.reload(), 800); }
+            if (d.success) { closeBulkPackageModal(); DashboardSync.saved(d); }
             else showToast('Error: ' + d.message, 'error');
         })
         .catch(() => showToast('Network error.', 'error'))

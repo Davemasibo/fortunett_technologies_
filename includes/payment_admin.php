@@ -561,6 +561,7 @@ function paymentNormalizeMethod(string $raw): string
 {
     $map = [
         'm-pesa' => 'mpesa', 'mpesa' => 'mpesa', 'safaricom' => 'mpesa',
+        'mpesa_stk' => 'mpesa_stk', 'stk' => 'mpesa_stk',
         'cash' => 'cash',
         'bank_transfer' => 'bank_transfer', 'bank transfer' => 'bank_transfer', 'bank' => 'bank_transfer',
         'card' => 'card', 'credit card' => 'card', 'debit card' => 'card',

@@ -9,6 +9,7 @@ header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
 require_once '../../includes/package_profile.php';
+require_once __DIR__ . '/../../includes/dashboard_sync.php';
 
 // Validate Inputs
 $id               = $_POST['id'] ?? 0;
@@ -41,8 +42,15 @@ if (empty($id) || empty($name)) {
     $t_stmt->execute([$user_id]);
     $tenant_id = $t_stmt->fetchColumn();
 
+    $lockName = 'payment-client-' . $tenant_id . '-' . $id;
+    $locked = false;
     try {
-        $pdo->beginTransaction();
+        $lock = $pdo->prepare('SELECT GET_LOCK(?,30)');
+        $lock->execute([$lockName]);
+        $locked = (int)$lock->fetchColumn() === 1;
+        if (!$locked) throw new Exception('Customer update in progress. Please try again.');
+        dashboardSyncSchema($pdo);
+    $pdo->beginTransaction();
     
         // 1. Get Old Details (to check if package changed) AND verify tenant
         $stmt = $pdo->prepare("SELECT * FROM clients WHERE id = ? AND tenant_id = ?");
@@ -58,6 +66,12 @@ if (empty($id) || empty($name)) {
             $status = $oldClient['status'];
         }
     
+        if (!in_array($connection_type, ['hotspot', 'pppoe'], true)) throw new Exception('Choose Hotspot or PPPoE.');
+        if (!in_array($status, ['active', 'inactive', 'suspended', 'expired', 'blocked'], true)) throw new Exception('Invalid customer status.');
+        if (trim($mikrotik_username) === '') throw new Exception('Router username is required.');
+        $owner = $pdo->prepare('SELECT id FROM clients WHERE tenant_id=? AND mikrotik_username=? AND id<>?');
+        $owner->execute([$tenant_id, $mikrotik_username, $id]);
+        if ($owner->fetchColumn()) throw new Exception('This router username belongs to another customer.');
         // 2. Get Package Details (if changed)
         $pkgName = $oldClient['subscription_plan'];
         if ($package_id) {
@@ -84,11 +98,11 @@ if (empty($id) || empty($name)) {
     // Base fields
     $fields = [
         'full_name = ?', 'name = ?', 'email = ?', 'phone = ?', 'address = ?', 'username = ?', 
-        'mikrotik_username = ?', 'status = ?'
+        'mikrotik_username = ?', 'status = ?', 'connection_type = ?'
     ];
     $values = [
         $name, $name, $email, $phone, $address, $username, 
-        $mikrotik_username, $status
+        $mikrotik_username, $status, $connection_type
     ];
     
     // Add logic for optional fields
@@ -108,6 +122,9 @@ if (empty($id) || empty($name)) {
         $values[] = password_hash($mikrotik_password, PASSWORD_DEFAULT);
     }
     
+    if ($expiry_date && (strtotime($expiry_date) === false || empty($oldClient['expiry_date']) || strtotime($expiry_date) > strtotime($oldClient['expiry_date']))) {
+        throw new Exception('Access time can only be extended through a successful payment.');
+    }
     if ($expiry_date) {
         $fields[] = 'expiry_date = ?';
         $values[] = $expiry_date;
@@ -127,70 +144,20 @@ if (empty($id) || empty($name)) {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($values);
     
-    // 4. Update on MikroTik (tenant-scoped)
-    $router_stmt = $pdo->prepare("SELECT id, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ? LIMIT 1");
-    $router_stmt->execute([$tenant_id]);
-    $router = $router_stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($router && !empty($mikrotik_username)) {
-        try {
-            $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
-            $api = new MikrotikAPI($connectIp, $router['username'], $router['password'], $router['api_port']);
-            if ($api->connect()) {
-                $profile = null;
-                $hotspot_server = 'all';
-                if ($package_id && !empty($package)) {
-                    // `?? 'default'` did not catch the empty string this column
-                    // actually held, so an empty profile name went to RouterOS -
-                    // which resolves to the built-in default profile, and that one
-                    // has no rate-limit. The customer ran uncapped.
-                    $profile = packageProfileName($package);
-                    $hotspot_server = !empty($package['hotspot_server']) ? $package['hotspot_server'] : 'all';
-                }
-
-                $pass = !empty($mikrotik_password) ? $mikrotik_password : null;
-
-                $targetUser = $oldClient['mikrotik_username']; // The name currently on router
-
-                if ($connection_type === 'hotspot') {
-                    try {
-                        $api->updateHotspotUser($targetUser, $pass, $profile);
-                    } catch (Exception $e) {
-                        // Try adding if update failed
-                        if (!empty($mikrotik_password)) {
-                            $api->addHotspotUser($mikrotik_username, $mikrotik_password, $profile ?: packageProfileName($package ?: []), $hotspot_server);
-                        }
-                    }
-                } else {
-                    // PPPoE
-                    try {
-                        $api->updatePPPoEUser($targetUser, $pass, $profile);
-                    } catch (Exception $e) {
-                         // Try adding if update failed
-                         if (!empty($mikrotik_password)) {
-                             $api->addPPPoEUser($mikrotik_username, $mikrotik_password, $profile ?: packageProfileName($package ?: []));
-                         }
-                    }
-                }
-                
-                if ($status == 'inactive' || $status == 'suspended') {
-                    // Disable user logic ideally goes here, for now we skip exact disable command per protocol 
-                    // or implement a generic disable method later.
-                }
-
-                $api->disconnect();
-            }
-        } catch (Exception $e) {
-            // Log error
-        }
-    }
-
+    $networkChanged = $mikrotik_username !== $oldClient['mikrotik_username']
+        || $status !== $oldClient['status'] || $connection_type !== $oldClient['connection_type']
+        || ($package_id && (int)$package_id !== (int)$oldClient['package_id'])
+        || ($mikrotik_password !== '' && $mikrotik_password !== $oldClient['mikrotik_password'])
+        || ($expiry_date && strtotime($expiry_date) !== strtotime($oldClient['expiry_date']));
+    if ($networkChanged) dashboardQueueCustomer($pdo, (int)$tenant_id, (int)$id, $oldClient);
     $pdo->commit();
     ob_clean();
-    echo json_encode(['success' => true, 'message' => 'Customer updated successfully']);
+    echo json_encode(['success' => true, 'sync_pending' => (bool)$networkChanged, 'message' => $networkChanged ? 'Customer saved. Applying access settings.' : 'Customer saved.']);
 
 } catch (Exception $e) {
     if ($pdo->inTransaction()) { try { $pdo->rollBack(); } catch (Exception $re) {} }
     ob_clean();
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }
+
+finally { if ($locked) $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]); }

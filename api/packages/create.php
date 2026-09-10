@@ -17,6 +17,7 @@ header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
 require_once '../../includes/package_profile.php';
+require_once __DIR__ . '/../../includes/dashboard_sync.php';
 require_once __DIR__ . '/../../includes/validity.php';
 
 // Validate Inputs
@@ -72,6 +73,7 @@ if (empty($name) || $price < 0) {
     $tenant_id = $t_stmt->fetchColumn();
 
 try {
+    dashboardSyncSchema($pdo);
     $pdo->beginTransaction();
 
     // Duplicate check — wrapped in try so missing columns don't crash outside the transaction
@@ -129,28 +131,10 @@ try {
     }
     
     // 2. Create Profile on all active Routers for this tenant
-    $router_stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
-    $router_stmt->execute([$tenant_id]);
-    $routers = $router_stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    foreach ($routers as $router) {
-        try {
-            $api = new MikrotikAPI($router['vpn_ip'] ?: $router['ip_address'], $router['username'], $router['password'], $router['api_port']);
-            if ($api->connect()) {
-                if (!syncPackageProfileToRouter($api, $connection_type, $mikrotik_profile, $rate_limit, $profileTerms)) {
-                    throw new RuntimeException('Package profile settings could not be verified on router');
-                }
-                $api->disconnect();
-            }
-        } catch (Throwable $e) {
-            // Log error, but don't fail DB insert
-             error_log("Router profile sync failed for router ID " . $router['id'] . ": " . $e->getMessage());
-        }
-    }
-
+    dashboardQueuePackage($pdo, (int)$tenant_id, $package_id);
     $pdo->commit();
     ob_clean();
-    echo json_encode(['success' => true, 'message' => 'Package created successfully']);
+    echo json_encode(['success' => true, 'sync_pending' => true, 'message' => 'Package saved. Applying settings to routers.']);
 
 } catch (Throwable $e) {
     try { if ($pdo->inTransaction()) $pdo->rollBack(); } catch (Throwable $re) {}

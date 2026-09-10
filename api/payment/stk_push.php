@@ -8,6 +8,8 @@ require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
 require_once '../../classes/MpesaAPI.php';
 require_once '../../includes/credential_helper.php';
+require_once __DIR__ . '/../../includes/schema_guard.php';
+ensurePaymentStatusEnums($pdo);
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -182,7 +184,7 @@ try {
                         $payStmt = $pdo->prepare(
                             "INSERT INTO payments
                              (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, collection_type)
-                             VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending', ?)"
+                             VALUES (?, ?, ?, 'mpesa_stk', NOW(), ?, 'pending', ?)"
                         );
                         $payStmt->execute([
                             $client_id, $tenant_id, $amount,
@@ -193,7 +195,7 @@ try {
                         $payStmt = $pdo->prepare(
                             "INSERT INTO payments
                              (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status)
-                             VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending')"
+                             VALUES (?, ?, ?, 'mpesa_stk', NOW(), ?, 'pending')"
                         );
                         $payStmt->execute([
                             $client_id, $tenant_id, $amount,

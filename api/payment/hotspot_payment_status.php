@@ -13,6 +13,8 @@ header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
 require_once __DIR__ . '/../../includes/db_master.php';
+require_once __DIR__ . '/../../includes/stk_reconciliation.php';
+header('Cache-Control: no-store');
 
 $checkoutId = trim($_GET['checkout_request_id'] ?? '');
 $clientId   = (int)($_GET['client_id']  ?? 0);
@@ -28,7 +30,7 @@ try {
     // Use client_id when provided (more precise); otherwise use tenant_id as scope guard.
     if ($clientId) {
         $txSt = $pdo->prepare("
-            SELECT mt.status, mt.result_desc, mt.client_id, mt.tenant_id, mt.created_at, mt.amount
+            SELECT mt.*
             FROM mpesa_transactions mt
             WHERE mt.checkout_request_id = ? AND mt.client_id = ?
             LIMIT 1
@@ -36,7 +38,7 @@ try {
         $txSt->execute([$checkoutId, $clientId]);
     } elseif ($tenantId) {
         $txSt = $pdo->prepare("
-            SELECT mt.status, mt.result_desc, mt.client_id, mt.tenant_id, mt.created_at, mt.amount
+            SELECT mt.*
             FROM mpesa_transactions mt
             WHERE mt.checkout_request_id = ? AND mt.tenant_id = ?
             LIMIT 1
@@ -50,8 +52,34 @@ try {
     $tx = $txSt->fetch(PDO::FETCH_ASSOC);
 
     if (!$tx) {
+        $scope = $clientId ? 'p.client_id=?' : 'p.tenant_id=?';
+        $scopeId = $clientId ?: $tenantId;
+        $base = "SELECT p.client_id,p.tenant_id,p.amount,p.status,p.payment_date AS created_at,
+            p.transaction_id AS mpesa_receipt_number, ? AS checkout_request_id,
+            CASE WHEN p.status='completed' THEN 0 ELSE NULL END AS result_code, '' AS result_desc FROM payments p ";
+        $legacy = $pdo->prepare($base . " WHERE p.transaction_id=? AND $scope AND p.payment_method IN ('mpesa','mpesa_stk') LIMIT 1");
+        $legacy->execute([$checkoutId,$checkoutId,$scopeId]);
+        $tx = $legacy->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$tx) try {
+            $legacy = $pdo->prepare($base . " JOIN payment_activations receipt ON receipt.tenant_id=p.tenant_id AND receipt.client_id=p.client_id AND receipt.activation_key=p.transaction_id
+                JOIN payment_activations checkout ON checkout.tenant_id=receipt.tenant_id AND checkout.client_id=receipt.client_id AND checkout.expiry_date=receipt.expiry_date
+                WHERE checkout.activation_key=? AND $scope AND p.payment_method IN ('mpesa','mpesa_stk') LIMIT 1");
+            $legacy->execute([$checkoutId,$checkoutId,$scopeId]);
+            $tx = $legacy->fetch(PDO::FETCH_ASSOC) ?: null;
+        } catch (PDOException $e) { if (($e->errorInfo[1] ?? null) !== 1146) throw $e; }
+    }
+
+    if (!$tx) {
         // Transaction not yet written — callback hasn't arrived yet
         echo json_encode(['status' => 'pending']);
+        exit;
+    }
+
+    try {
+        $tx['status'] = reconcileCustomerStk($pdo, $tx);
+    } catch (Throwable $e) {
+        error_log('Payment activation recovery: ' . $e->getMessage());
+        echo json_encode(['status'=>'processing', 'message'=>'We are recovering your payment and connection. Do not pay again.']);
         exit;
     }
 
@@ -71,10 +99,16 @@ try {
             exit;
         }
 
+        if (!empty($client['expiry_date']) && strtotime($client['expiry_date']) <= time()) {
+            echo json_encode(['status'=>'expired', 'message'=>'The access time from this payment has ended.']); exit;
+        }
+        if (in_array($client['status'], ['suspended','blocked'], true)) {
+            echo json_encode(['status'=>'blocked', 'message'=>'This account is suspended. Contact your ISP; do not pay again.']); exit;
+        }
         // A completed historic payment never reactivates an expired subscription.
         if ($client['status'] !== 'active'
             || (!empty($client['expiry_date']) && strtotime($client['expiry_date']) <= time())) {
-            echo json_encode(['status' => 'processing', 'message' => 'Payment recorded. Waiting for an active subscription.']);
+            echo json_encode(['status' => 'processing', 'payment_confirmed' => true, 'message' => 'Payment recorded. Waiting for an active subscription.']);
             exit;
         }
 
@@ -100,7 +134,7 @@ try {
             // is safe and usually completes on the first poll.
             try {
                 require_once __DIR__ . '/../../includes/auto_provision.php';
-                $prov = autoProvisionClient($pdo, $resolvedClientId, $resolvedTenantId);
+                $prov = autoProvisionClient($pdo, $resolvedClientId, $resolvedTenantId, 0, false);
                 $provisioned = (bool)($prov['success'] ?? false);
             } catch (Throwable $e) {
                 error_log("hotspot_payment_status provision retry [$resolvedClientId]: " . $e->getMessage());
@@ -110,6 +144,7 @@ try {
         if (!$provisioned) {
             echo json_encode([
                 'status'  => 'processing',
+                'payment_confirmed' => true,
                 'message' => 'Payment confirmed. Setting up your connection…',
             ]);
             exit;
@@ -122,6 +157,7 @@ try {
         if (empty($client['mikrotik_username']) || empty($client['mikrotik_password'])) {
             echo json_encode([
                 'status'  => 'processing',
+                'payment_confirmed' => true,
                 'message' => 'Payment confirmed. Preparing your credentials…',
             ]);
             exit;
@@ -153,121 +189,8 @@ try {
         exit;
     }
 
-    // ── Still pending: ask Safaricom directly rather than waiting on a callback ─
-    //
-    // The callback is not guaranteed to arrive — a WAF/CDN in front of the
-    // callback URL, a transient Safaricom failure, or a customer who simply
-    // cancels all leave the row 'pending' forever, and the portal spun for the
-    // full five minutes with no explanation. stkpushquery gives the authoritative
-    // outcome, including 1032 "cancelled by user", within seconds.
-    //
-    // cron/stk_poll.php does the same thing every 2 minutes as a backstop, but a
-    // customer standing at the router should not wait 2 minutes to be told they
-    // cancelled.
-    $createdAt = strtotime($tx['created_at'] ?? 'now');
-    $ageSec    = time() - $createdAt;
-
-    // Give the real callback ~25s first, then query at most once every ~12s.
-    if ($ageSec >= 25 && ($ageSec % 12) < 5) {
-        try {
-            require_once __DIR__ . '/../../classes/MpesaAPI.php';
-            require_once __DIR__ . '/../../includes/credential_helper.php';
-
-            $txTenantId = (int)($tx['tenant_id'] ?? 0);
-            $hasTenantCreds = false;
-            if ($txTenantId) {
-                $gwCheck = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type='mpesa_api' AND is_active=1 ORDER BY is_default DESC LIMIT 1");
-                $gwCheck->execute([$txTenantId]);
-                if ($gwRow = $gwCheck->fetch(PDO::FETCH_ASSOC)) {
-                    $gwCreds = decrypt_gateway_credentials($gwRow['credentials']);
-                    $hasTenantCreds = !empty($gwCreds['consumer_key']) && !empty($gwCreds['consumer_secret'])
-                                   && !empty($gwCreds['passkey']) && !empty($gwCreds['shortcode']);
-                }
-            }
-
-            $mpesa = new MpesaAPI($pdo, $hasTenantCreds ? $txTenantId : null);
-            if (!$hasTenantCreds) {
-                $plSt = $pdo->query("SELECT * FROM platform_mpesa_config LIMIT 1");
-                $platCreds = $plSt ? $plSt->fetch(PDO::FETCH_ASSOC) : null;
-                if ($platCreds && !empty($platCreds['consumer_key'])) {
-                    $mpesa->loadFromArray($platCreds);
-                }
-            }
-
-            $q    = $mpesa->stkQuery($checkoutId);
-            $code = (int)($q['result_code'] ?? -1);
-
-            // 1025 = still being processed, -1 = our own lookup failed. Keep waiting.
-            if ($code !== 1025 && $code !== -1) {
-                if ($code === 0) {
-                    // Paid. Let the pipeline do the real work, then report next poll —
-                    // this keeps activation logic in exactly one place.
-                    $pdo->prepare("
-                        UPDATE mpesa_transactions
-                        SET status = 'completed', result_code = ?, result_desc = ?, updated_at = NOW()
-                        WHERE checkout_request_id = ?
-                    ")->execute([$code, $q['result_desc'] ?? 'Confirmed via stkQuery', $checkoutId]);
-
-                    try {
-                        require_once __DIR__ . '/../../includes/payment_pipeline.php';
-                        $cl = $pdo->prepare("SELECT tenant_id, package_id FROM clients WHERE id = ? LIMIT 1");
-                        $cl->execute([(int)$tx['client_id']]);
-                        if ($clRow = $cl->fetch(PDO::FETCH_ASSOC)) {
-                            // $hasTenantCreds above is the same test that chose
-                            // the credentials this stkQuery ran against, so it is
-                            // the truth about whose till received the money. The
-                            // literal `false` that used to sit here booked every
-                            // platform-collected hotspot payment as 'direct' —
-                            // overwriting the correct tag hotspot_stk_push.php had
-                            // already written on the pending row — so the ISP was
-                            // shown as already holding cash FortuNett had, and no
-                            // payout was ever queued for it.
-                            process_payment_success(
-                                $pdo, (int)$tx['client_id'], (int)$clRow['tenant_id'],
-                                (float)($tx['amount'] ?? 0), $checkoutId, 'mpesa_stk',
-                                $clRow['package_id'] ? (int)$clRow['package_id'] : null,
-                                !$hasTenantCreds,
-                                $checkoutId
-                            );
-                        }
-                    } catch (Throwable $e) {
-                        error_log("stkQuery pipeline [$checkoutId]: " . $e->getMessage());
-                    }
-
-                    echo json_encode(['status' => 'processing', 'message' => 'Payment confirmed. Setting up your connection…']);
-                    exit;
-                }
-
-                // Anything else is terminal — tell the customer which, by name.
-                $reasons = [
-                    1032 => 'You cancelled the payment request.',
-                    1037 => 'The request timed out — you did not enter your PIN in time.',
-                    1019 => 'The payment request expired. Please try again.',
-                    2001 => 'Wrong M-Pesa PIN entered.',
-                    1    => 'Insufficient M-Pesa balance.',
-                ];
-                $msg = $reasons[$code] ?? ('Payment was not completed. ' . ($q['result_desc'] ?? ''));
-
-                $pdo->prepare("
-                    UPDATE mpesa_transactions
-                    SET status = 'failed', result_code = ?, result_desc = ?, updated_at = NOW()
-                    WHERE checkout_request_id = ?
-                ")->execute([$code, $q['result_desc'] ?? 'Failed via stkQuery', $checkoutId]);
-
-                $pdo->prepare("UPDATE payments SET status = 'failed' WHERE transaction_id = ? AND status = 'pending'")
-                    ->execute([$checkoutId]);
-
-                echo json_encode(['status' => 'failed', 'message' => $msg]);
-                exit;
-            }
-        } catch (Throwable $e) {
-            error_log("hotspot_payment_status stkQuery [$checkoutId]: " . $e->getMessage());
-            // Fall through and keep polling
-        }
-    }
-
-    echo json_encode(['status' => 'pending']);
-
+    echo json_encode(['status' => 'pending', 'message' => 'Waiting for Safaricom confirmation. Do not send another payment.']);
 } catch (Throwable $e) {
-    echo json_encode(['status' => 'error', 'message' => 'Server error.']);
+    error_log('Hotspot payment status: ' . $e->getMessage());
+    echo json_encode(['status'=>'processing', 'message'=>'We are checking your payment and connection. Do not pay again.']);
 }

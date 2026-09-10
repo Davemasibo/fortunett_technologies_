@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../classes/MikrotikAPI.php';
 require_once __DIR__ . '/radius_client.php';
+require_once __DIR__ . '/dashboard_sync.php';
 
 function enforceCustomerSessions(PDO $pdo, callable $log, array $services = ['pppoe', 'hotspot']): void
 {
@@ -66,7 +67,7 @@ function enforceCustomerSessions(PDO $pdo, callable $log, array $services = ['pp
                 // manually created account — is left alone. Cutting an unknown session
                 // risks knocking the operator off their own network.
                 $whoSt = $pdo->prepare("
-                    SELECT id, full_name, status, expiry_date,
+                    SELECT id, full_name, mikrotik_username, status, expiry_date,
                            (status = 'active' AND (expiry_date IS NOT NULL AND expiry_date > NOW())) AS entitled
                     FROM clients
                     WHERE tenant_id = ? AND LOWER(mikrotik_username) = ? LIMIT 1
@@ -81,20 +82,22 @@ function enforceCustomerSessions(PDO $pdo, callable $log, array $services = ['pp
                     ? "status={$who['status']}"
                     : 'expired ' . ($who['expiry_date'] ?? '?');
 
+                $lockName = 'payment-client-' . $tid . '-' . $who['id'];
+                $lock = $pdo->prepare('SELECT GET_LOCK(?,0)'); $lock->execute([$lockName]);
+                if ((int)$lock->fetchColumn() !== 1) continue;
                 try {
-                    if ($svc === 'pppoe') {
-                        $sweepApi->disablePPPoEUser($sessionUser);
-                        $sweepApi->kickPPPoESession($sessionUser);
-                        radius_disable_client($pdo, $sessionUser);
-                    } else {
-                        $sweepApi->disableHotspotUser($sessionUser);
-                        $sweepApi->kickHotspotSession($sessionUser);
-                        radius_disable_client($pdo, $sessionUser);
-                    }
+                    // Recheck after acquiring the same lock as payment activation.
+                    $whoSt->execute([$tid, $sessionUser]);
+                    $who = $whoSt->fetch(PDO::FETCH_ASSOC);
+                    if (!$who || $who['entitled']) continue;
+                    dashboardDisableUser($sweepApi, $svc, $who['mikrotik_username']);
+                    radius_disable_client($pdo, $who['mikrotik_username']);
                     $sweptOff++;
                     $log("  [{$tid}] {$rName} — CUT {$svc} '{$sessionUser}' (#{$who['id']} {$who['full_name']}, {$why})");
                 } catch (Throwable $e) {
                     $log("  [{$tid}] {$rName} — could not cut '{$sessionUser}': " . $e->getMessage());
+                } finally {
+                    $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]);
                 }
             }
         }

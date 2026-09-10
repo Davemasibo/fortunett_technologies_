@@ -91,6 +91,39 @@ function routerUptimeSeconds(string $value): int
     return $seconds;
 }
 
+/** Backstop for missed one-shot events, including reboot and clock corrections. */
+function installPaidExpiryWatchdog($api): void
+{
+    $name = 'fn-paid-expiry-watchdog';
+    $script = routerClockKeyScript();
+    foreach (['hotspot', 'pppoe'] as $service) {
+        $base = $service === 'hotspot' ? '/ip hotspot user' : '/ppp secret';
+        $active = $service === 'hotspot' ? '/ip hotspot active' : '/ppp active';
+        $field = $service === 'hotspot' ? 'user' : 'name';
+        $script .= ':foreach id in=[' . $base . ' find where disabled=no] do={ :local c [' . $base . ' get $id comment]; ';
+        $script .= ':if ([:pick $c 0 6] = "FNEXP:") do={ :local u [' . $base . ' get $id name]; :local allowed false; :do { ';
+        $script .= ':local deadline [:tonum [:pick $c 6 20]]; :local issued [:tonum [:pick $c 29 43]]; ';
+        $script .= ':if (([:len $daykey] = 8) && ($clockkey >= $issued) && ($clockkey < $deadline)) do={ :set allowed true; }; } on-error={}; ';
+        $script .= ':if (!$allowed) do={ ' . $base . ' disable $id; ' . $active . ' remove [' . $active . ' find where ' . $field . '=$u]; ';
+        if ($service === 'hotspot') $script .= '/ip hotspot cookie remove [/ip hotspot cookie find where user=$u]; ';
+        $script .= '}; }; }; ';
+    }
+    $rows = routerCheckedCommand($api, '/system/scheduler/print', ['?name=' . $name]);
+    $id = null;
+    foreach ($rows as $row) if (($row['name'] ?? '') === $name) {
+        $id = $row['.id'];
+        if (($row['on-event'] ?? '') === $script && ($row['disabled'] ?? '') === 'false' && routerUptimeSeconds($row['interval'] ?? '0s') === 5) return;
+    }
+    routerCheckedCommand($api, '/system/scheduler/' . ($id ? 'set' : 'add'), [
+        $id ? '=.id=' . $id : '=name=' . $name, '=start-time=startup', '=interval=5s',
+        '=on-event=' . $script, '=policy=read,write,test', '=disabled=no',
+    ]);
+    foreach (routerCheckedCommand($api, '/system/scheduler/print', ['?name=' . $name]) as $row) {
+        if (($row['on-event'] ?? '') === $script && ($row['disabled'] ?? '') === 'false' && routerUptimeSeconds($row['interval'] ?? '0s') === 5) return;
+    }
+    throw new RuntimeException('Router expiry watchdog could not be verified');
+}
+
 /** Keep the account disabled until its independently enforced deadline is verified. */
 function provisionRouterPaidUser($api, string $service, string $username, string $password,
     string $profile, string $comment, string $expiry, string $server = 'all'): void
@@ -175,6 +208,8 @@ function provisionRouterPaidUser($api, string $service, string $username, string
             }
         }
         if (!$verified || !$userVerified || strtotime($expiry) <= time()) throw new RuntimeException('Paid deadline could not be verified before expiry');
+        installPaidExpiryWatchdog($api);
+        if (strtotime($expiry) <= time()) throw new RuntimeException('Purchased time elapsed while installing expiry protection');
         routerCheckedCommand($api, $base . '/set', ['=.id=' . $id, '=disabled=no']);
     } catch (Throwable $e) {
         if ($id !== null) {

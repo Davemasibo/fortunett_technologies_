@@ -35,7 +35,8 @@ $phone      = trim($_POST['phone'] ?? '');
 $fullName   = trim($_POST['full_name'] ?? '');
 $password   = trim($_POST['password'] ?? '');
 $packageId  = (int)($_POST['package_id'] ?? 0);
-$macAddress = strtoupper(preg_replace('/[^a-fA-F0-9:]/', '', $_POST['mac_address'] ?? ''));
+require_once __DIR__ . '/../../includes/hotspot_device.php';
+$macAddress = hotspotDeviceMac($_POST['mac_address'] ?? '');
 $tenantId   = (int)($_POST['tenant_id'] ?? 0);
 // NOTE: no $amount is read from the request — both paid flows charge the price
 // on the package row. See the 'paid' and 'renew' branches below.
@@ -165,6 +166,7 @@ try {
         }
 
         // Provision on router
+        rememberHotspotDevice($pdo, $tenantId, $clientId, $macAddress);
         autoProvisionClient($pdo, $clientId, $tenantId);
 
         // Create auto-login token for customer portal
@@ -233,6 +235,8 @@ try {
             $clientId = (int)$pdo->lastInsertId();
         }
 
+        rememberHotspotDevice($pdo, $tenantId, $clientId, $macAddress);
+
         // Determine M-Pesa credentials for this tenant
         $gwCheck = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1 ORDER BY is_default DESC LIMIT 1");
         $gwCheck->execute([$tenantId]);
@@ -296,7 +300,7 @@ try {
             // sets this again on completion, but a pending row left on the column
             // DEFAULT 'direct' shows an ISP money as already theirs while the STK
             // is still in flight to FortuNett's shared paybill.
-            $pdo->prepare("INSERT INTO payments (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, collection_type) VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending', ?)")
+            $pdo->prepare("INSERT INTO payments (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, collection_type) VALUES (?, ?, ?, 'mpesa_stk', NOW(), ?, 'pending', ?)")
                 ->execute([$clientId, $tenantId, $amount, $checkoutId, $usingPlatform ? 'platform' : 'direct']);
         } catch (Exception $_e) {}
 
@@ -324,6 +328,7 @@ try {
             exit;
         }
         $clientId = (int)$renewClient['id'];
+        rememberHotspotDevice($pdo, $tenantId, $clientId, $macAddress);
         $amount   = (float)$package['price'];   // same rule as the paid flow
         if ($amount <= 0) {
             echo json_encode(['success' => false, 'message' => 'Selected plan has no price set.']);
@@ -388,7 +393,7 @@ try {
             // sets this again on completion, but a pending row left on the column
             // DEFAULT 'direct' shows an ISP money as already theirs while the STK
             // is still in flight to FortuNett's shared paybill.
-            $pdo->prepare("INSERT INTO payments (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, collection_type) VALUES (?, ?, ?, 'mpesa', NOW(), ?, 'pending', ?)")
+            $pdo->prepare("INSERT INTO payments (client_id, tenant_id, amount, payment_method, payment_date, transaction_id, status, collection_type) VALUES (?, ?, ?, 'mpesa_stk', NOW(), ?, 'pending', ?)")
                 ->execute([$clientId, $tenantId, $amount, $checkoutId, $usingPlatform ? 'platform' : 'direct']);
         } catch (Exception $_e) {}
 

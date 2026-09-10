@@ -24,7 +24,7 @@ require_once __DIR__ . '/hotspot_sync.php';
  * @param int $tenantId
  * @return array
  */
-function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
+function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $routerId = 0, bool $uploadPortal = true): array
 {
     $lockName = 'payment-client-' . $tenantId . '-' . $clientId;
     $locked = false;
@@ -58,12 +58,16 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
         }
 
         // ── Find the tenant's first active router ─────────────────────────────
+        if (!$routerId) {
+            require_once __DIR__ . '/hotspot_device.php';
+            $routerId = resolveClientRouter($pdo, $client, $tenantId);
+        }
         $stmt = $pdo->prepare("
             SELECT * FROM mikrotik_routers
-            WHERE tenant_id = ? AND status IN ('active', 'online')
+            WHERE tenant_id = ? AND (id = ? OR (? = 0 AND status IN ('active', 'online')))
             ORDER BY id ASC LIMIT 1
         ");
-        $stmt->execute([$tenantId]);
+        $stmt->execute([$tenantId, $routerId, $routerId]);
         $router = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$router) {
             return ['success' => false, 'message' => 'No active router found for tenant'];
@@ -121,7 +125,7 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
         $sharedUsers = (string)max(1, (int)($package['device_limit'] ?? 1));
 
         // Use the hotspot server detected during bridge check if not overridden by package
-        $hotspotServer = !empty($package['hotspot_server']) ? $package['hotspot_server'] : ($bridgeCheck['server_name'] ?? 'all');
+        $hotspotServer = !empty($package['hotspot_server']) ? $package['hotspot_server'] : 'all';
 
         // Fetch server IP for captive portal setup
         $serverIp = '';
@@ -130,6 +134,7 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
             $serverIp = $ipSt ? ($ipSt->fetchColumn() ?: '') : '';
         } catch (Throwable $_e) {}
 
+        $deviceConnected = false;
         if ($connType === 'pppoe') {
             // Ensure captive-portal infrastructure exists before provisioning the real profile
             if ($serverIp) {
@@ -147,13 +152,23 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
             }
         } else {
             _provisionHotspot($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '', $sharedUsers, $hotspotServer, $package, $client['expiry_date']);
+            try {
+                require_once __DIR__ . '/hotspot_device.php';
+                $device = $pdo->prepare('SELECT mac_address FROM hotspot_device_context WHERE tenant_id=? AND client_id=? AND updated_at>NOW()-INTERVAL 1 DAY');
+                $device->execute([$tenantId,$clientId]);
+                $mac = $device->fetchColumn();
+                if ($mac) $deviceConnected = connectKnownHotspotDevice($api, $mac, $username, $password, $client['expiry_date']);
+            } catch (Throwable $e) {
+                // Portal credential handoff remains available on older RouterOS.
+                error_log('Hotspot device login: ' . $e->getMessage());
+            }
         }
 
         $api->disconnect();
 
         // ── Upload hotspot login page (hotspot only) ──────────────────────────
         // Non-fatal during provisioning — failure is reported by the deploy button separately.
-        if ($connType === 'hotspot') {
+        if ($uploadPortal && $connType === 'hotspot') {
             try { _uploadHotspotLoginPage($pdo, $router, $tenantId); } catch (Throwable $_e) {}
         }
 
@@ -165,14 +180,16 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
 
         require_once __DIR__ . '/schema_guard.php';
         ensureColumn($pdo, 'router_services', 'paid_expiry_at', 'DATETIME NULL DEFAULT NULL');
+        ensureColumn($pdo, 'router_services', 'expiry_policy_version', 'INT NOT NULL DEFAULT 0');
         $pdo->prepare("
             INSERT INTO router_services
-                (tenant_id, router_id, client_id, service_type, package_id, username, password, status, paid_expiry_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)
+                (tenant_id, router_id, client_id, service_type, package_id, username, password, status, paid_expiry_at, expiry_policy_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 2)
             ON DUPLICATE KEY UPDATE
                 password = VALUES(password),
                 package_id = VALUES(package_id),
                 paid_expiry_at = VALUES(paid_expiry_at),
+                expiry_policy_version = VALUES(expiry_policy_version),
                 status   = VALUES(status),
                 deployed_at = CURRENT_TIMESTAMP
         ")->execute([
@@ -188,6 +205,7 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId): array
 
         return [
             'success'  => true,
+            'device_connected' => $deviceConnected,
             'message'  => 'Provisioned successfully',
             'username' => $username,
             'password' => $password,
@@ -257,6 +275,29 @@ function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, s
 /** Shared package caps, individual purchased deadline; no counter reset on retry. */
 function _provisionHotspot(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment, string $sharedUsers, string $hotspotServer, array $package, string $expiry): void
 {
+    // The portal posts a password. Verify the matching server accepts that
+    // login method without downloading/redeploying the portal on every payment.
+    $serverProfiles = [];
+    foreach (routerCheckedCommand($api, '/ip/hotspot/print') as $server) {
+        if (!isset($server['.id']) || ($server['disabled'] ?? '') === 'true') continue;
+        if ($hotspotServer === 'all' || ($server['name'] ?? '') === $hotspotServer) $serverProfiles[$server['profile']] = true;
+    }
+    if (!$serverProfiles) throw new RuntimeException('No enabled hotspot server matches this package');
+    foreach (array_keys($serverProfiles) as $serverProfile) {
+        $verified = false;
+        foreach (routerCheckedCommand($api, '/ip/hotspot/profile/print', ['?name=' . $serverProfile]) as $row) {
+            if (!isset($row['.id'])) continue;
+            $methods = array_filter(explode(',', $row['login-by'] ?? ''));
+            if (!in_array('http-pap', $methods, true)) {
+                $methods[] = 'http-pap';
+                routerCheckedCommand($api, '/ip/hotspot/profile/set', ['=.id=' . $row['.id'], '=login-by=' . implode(',', $methods)]);
+            }
+        }
+        foreach (routerCheckedCommand($api, '/ip/hotspot/profile/print', ['?name=' . $serverProfile]) as $row) {
+            if (in_array('http-pap', explode(',', $row['login-by'] ?? ''), true)) $verified = true;
+        }
+        if (!$verified) throw new RuntimeException('Hotspot password login could not be verified');
+    }
     if (!syncPackageProfileToRouter($api, 'hotspot', $profileName, $rateLimit, $package)) {
         throw new RuntimeException('Hotspot package profile could not be verified');
     }

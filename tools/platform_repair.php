@@ -76,7 +76,7 @@ echo "\nScheduled jobs\n" . str_repeat('=', 14) . "\n";
 
 $php  = PHP_BINARY ?: 'php';
 $jobs = [
-    ['stk_poll',            '*/2 * * * *',  'fortunett_stk_poll'],
+    ['stk_poll',            '* * * * *',  'fortunett_stk_poll'],
     ['retry_provisions',    '* * * * *',  'fortunett_provision'],
     ['check_expiry',        '*/15 * * * *', 'fortunett_expiry'],
     ['enforce_sessions',    '* * * * *',    'fortunett_enforce'],

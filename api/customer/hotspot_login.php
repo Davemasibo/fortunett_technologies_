@@ -90,13 +90,24 @@ try {
     }
 
     // ── Check account status ──────────────────────────────────────────────────
+    require_once __DIR__ . '/../../includes/hotspot_device.php';
+    rememberHotspotDevice($pdo, $tenantId, (int)$client['id'], $_POST['mac_address'] ?? '');
+    require_once __DIR__ . '/../../includes/stk_reconciliation.php';
+    $recovering = recoverCustomerPayments($pdo, (int)$client['id'], $tenantId);
+    $fresh = $pdo->prepare('SELECT * FROM clients WHERE id=? AND tenant_id=?');
+    $fresh->execute([$client['id'], $tenantId]);
+    $client = array_merge($client, $fresh->fetch(PDO::FETCH_ASSOC) ?: []);
+    if ($recovering && ($client['status'] !== 'active' || empty($client['expiry_date']) || strtotime($client['expiry_date']) <= time())) {
+        echo json_encode(['success'=>false,'processing'=>true,'message'=>'We are checking your previous payment. Do not pay again; connection recovery will retry automatically.']); exit;
+    }
+
     if ($client['status'] === 'suspended') {
         echo json_encode(['success' => false, 'message' => 'Account suspended. Contact your ISP.']);
         exit;
     }
 
     if ($client['status'] === 'pending') {
-        echo json_encode(['success' => false, 'message' => 'Account pending activation.', 'redirect' => 'register']);
+        echo json_encode(['success' => false, 'message' => 'Account pending activation.', 'processing' => true]);
         exit;
     }
 
@@ -126,9 +137,9 @@ try {
     }
 
     // ── Resolve MikroTik credentials — provision if missing ──────────────────
-    $provision = autoProvisionClient($pdo, (int)$client['id'], $tenantId);
+    $provision = autoProvisionClient($pdo, (int)$client['id'], $tenantId, 0, false);
     if (!($provision['success'] ?? false)) {
-        echo json_encode(['success' => false, 'message' => 'Your connection is not ready. Please try again shortly.']);
+        echo json_encode(['success' => false, 'processing' => true, 'message' => 'Payment received. Your connection is being retried. Do not pay again.']);
         exit;
     }
     $mkUsername = $provision['username'] ?? '';

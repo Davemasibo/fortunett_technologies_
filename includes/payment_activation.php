@@ -43,11 +43,13 @@ function activatePaidSubscription(PDO $pdo, int $clientId, int $tenantId, string
                 ->execute([$expiry, $package['id'], $clientId, $tenantId]);
         }
         // A missing package requires repair, not an unlimited active subscription.
-        $pdo->prepare('INSERT INTO payment_activations (tenant_id, activation_key, client_id, expiry_date) VALUES (?, ?, ?, ?)')
-            ->execute([$tenantId, $key, $clientId, $expiry]);
-        if ($receipt !== $key) {
+        if ($package) {
             $pdo->prepare('INSERT INTO payment_activations (tenant_id, activation_key, client_id, expiry_date) VALUES (?, ?, ?, ?)')
-                ->execute([$tenantId, $receipt, $clientId, $expiry]);
+                ->execute([$tenantId, $key, $clientId, $expiry]);
+            if ($receipt !== $key) {
+                $pdo->prepare('INSERT INTO payment_activations (tenant_id, activation_key, client_id, expiry_date) VALUES (?, ?, ?, ?)')
+                    ->execute([$tenantId, $receipt, $clientId, $expiry]);
+            }
         }
         $pdo->prepare("INSERT INTO pending_provisions (tenant_id, client_id, package_id, receipt, fail_reason, next_retry_at)
             VALUES (?, ?, ?, ?, 'Payment activation awaiting provisioning', NOW() + INTERVAL 1 MINUTE)

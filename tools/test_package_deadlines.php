@@ -94,7 +94,7 @@ $router->data['/ip/hotspot/user']['*1']['uptime'] = '10m';
 provisionRouterPaidUser($router, 'hotspot', 'alice', 'test', 'pkg8-half-hour', 'Alice', date('Y-m-d H:i:s', time() + 1200));
 $user = $router->data['/ip/hotspot/user']['*1'];
 deadlineCheck(routerUptimeSeconds($user['limit-uptime']) <= 1800 && $user['uptime'] === '10m', 'Retry retains consumed uptime and only grants remaining time');
-deadlineCheck(count($router->data['/system/scheduler']) === 1, 'Renewal replaces the same customer schedule');
+deadlineCheck(count(array_filter($router->data['/system/scheduler'], fn($row) => str_starts_with($row['name'], 'fn-exp-'))) === 1, 'Renewal replaces the same customer schedule');
 $router->fail = '/system/scheduler/set';
 deadlineRejects(fn() => provisionRouterPaidUser($router, 'hotspot', 'alice', 'test', 'pkg8-half-hour', '', $paidUntil), 'Scheduler rejection fails provisioning');
 deadlineCheck($router->data['/ip/hotspot/user']['*1']['disabled'] === 'true', 'Failed deadline installation leaves account disabled');
