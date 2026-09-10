@@ -1,0 +1,23 @@
+#smsModal { position:fixed; inset:0; z-index:1002; background:rgba(0,0,0,.65); align-items:center; justify-content:center; padding:16px; box-sizing:border-box; }
+.customer-sms-card { width:100%; max-width:520px; max-height:90dvh; overflow:auto; background:var(--neu-s2,#222221); color:#e2e2e0; border:1px solid var(--neu-border,rgba(255,255,255,.1)); border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.4); }
+.customer-sms-header { display:flex; justify-content:space-between; align-items:flex-start; padding:20px; border-bottom:1px solid rgba(255,255,255,.08); }
+.customer-sms-header h3 { margin:0 0 8px; font-size:18px; color:#e2e2e0; }
+.customer-sms-header p { margin:3px 0; font-size:13px; color:#a9a9a7; overflow-wrap:anywhere; }
+.customer-sms-close { background:none; border:0; color:#bbb; font-size:24px; cursor:pointer; padding:0 6px; }
+#smsForm { padding:20px; }
+#smsForm label { display:block; font-size:13px; font-weight:600; margin-bottom:8px; }
+#smsForm label span { color:#a9a9a7; font-weight:400; }
+#smsForm select, #smsForm textarea { display:block; width:100%; box-sizing:border-box; padding:11px; margin-bottom:16px; background:var(--neu-surf,#1c1c1b); color:#e2e2e0; border:1px solid rgba(255,255,255,.15); border-radius:8px; font:inherit; font-size:14px; }
+#smsForm textarea { resize:vertical; min-height:130px; margin-bottom:6px; }
+#smsForm :focus-visible, .customer-sms-close:focus-visible { outline:2px solid var(--primary-color,#60a5fa); outline-offset:3px; }
+#smsCharCount { font-size:12px; text-align:right; color:#a9a9a7; }
+.customer-sms-hint { font-size:12px; color:#a9a9a7; line-height:1.5; }
+#smsFeedback { margin:14px 0; padding:12px; border-radius:8px; font-size:13px; line-height:1.5; overflow-wrap:anywhere; background:rgba(96,165,250,.12); color:#bfdbfe; }
+#smsFeedback[data-state="error"] { background:rgba(248,113,113,.12); color:#fecaca; }
+#smsFeedback[data-state="success"] { background:rgba(52,211,153,.12); color:#a7f3d0; }
+.customer-sms-settings { font-size:12px; color:#93c5fd; }
+.customer-sms-footer { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; padding-top:16px; border-top:1px solid rgba(255,255,255,.08); }
+.customer-sms-footer button { padding:10px 18px; border-radius:8px; cursor:pointer; font:inherit; font-size:13px; }
+.customer-sms-cancel { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); color:#d4d4d2; }
+.customer-sms-send { background:linear-gradient(135deg,var(--primary-dark,#2a5a8f),var(--primary-color,#3B6EA5)); color:white; border:0; }
+#smsModal button:disabled { opacity:.55; cursor:wait; }

@@ -44,7 +44,9 @@ class SMSHelper {
 
     public function send($phone, $message, $clientId = null, $log = true) {
         if (!$this->config) {
-            return ['success' => false, 'message' => 'SMS not configured. Set up SMS credentials in Settings or contact your platform admin.'];
+            $response = ['success' => false, 'message' => 'SMS not configured. Open SMS Manager > Settings or contact your platform admin.'];
+            if ($log) $this->logMessage($clientId, $phone, $message, $response);
+            return $response;
         }
 
         $phone    = $this->formatPhone($phone);

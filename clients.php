@@ -3,6 +3,7 @@ require_once __DIR__ . '/includes/db_master.php';
 require_once 'includes/auth.php';
 redirectIfNotLoggedIn();
 $_SESSION['dashboard_sync_csrf'] ??= bin2hex(random_bytes(32));
+$_SESSION['sms_retry_csrf'] ??= bin2hex(random_bytes(32));
 
 $database = new Database();
 $db = $database->getConnection();
@@ -12,6 +13,13 @@ $user_id = $_SESSION['user_id'];
 $stmt = $db->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
 $tenant_id = $stmt->fetchColumn();
+$customerSmsTemplates = [];
+try {
+    $templates = $db->prepare('SELECT template_name, template_content FROM sms_templates WHERE tenant_id=? OR is_global=1 ORDER BY template_name');
+    $templates->execute([$tenant_id]);
+    $customerSmsTemplates = $templates->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) { /* Sending a custom message remains available. */ }
+
 
 // Lazy-add last_seen column (silent if already exists)
 try { $db->exec("ALTER TABLE clients ADD COLUMN last_seen DATETIME NULL DEFAULT NULL"); } catch (Exception $_e) {}
@@ -1105,45 +1113,39 @@ include 'includes/sidebar.php';
 </div>
 
 <!-- SMS Modal -->
-<div id="smsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1002;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
-<div style="background:white;width:100%;max-width:500px;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden;">
-    <!-- Header -->
-    <div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
-        <div>
-            <div style="font-size:15px;font-weight:700;color:#111827;">Send SMS</div>
-            <div style="font-size:12px;color:#9CA3AF;margin-top:2px;">To: <span id="smsCustomerName" style="color:#374151;font-weight:500;"></span></div>
+<link rel="stylesheet" href="customer-sms.css">
+<div id="smsModal" role="dialog" aria-modal="true" aria-labelledby="smsTitle" style="display:none;">
+    <div class="customer-sms-card">
+        <div class="customer-sms-header">
+            <div><h3 id="smsTitle">Send SMS</h3><p id="smsCustomerName"></p><p id="smsRecipientPhone"></p></div>
+            <button type="button" class="customer-sms-close" onclick="closeSMSModal()" aria-label="Close SMS form">&times;</button>
         </div>
-        <button onclick="closeSMSModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9CA3AF;line-height:1;padding:4px;">&times;</button>
-    </div>
-    <!-- Body -->
-    <div style="padding:20px;">
         <form onsubmit="handleSendSMS(event)" id="smsForm">
             <input type="hidden" name="client_id" id="smsClientId">
             <input type="hidden" name="phone" id="smsClientPhone">
-            <div style="margin-bottom:14px;">
-                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Template <span style="color:#9CA3AF;font-weight:400;">(optional)</span></label>
-                <select id="smsTemplate" onchange="applyTemplate()" style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;background:white;" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'">
-                    <option value="">— Select a Template —</option>
-                    <option value="credentials">Login Credentials</option>
-                    <option value="payment">Payment Details</option>
-                    <option value="alert">Service Alert</option>
-                    <option value="promo">Promotional Message</option>
-                </select>
-            </div>
-            <div style="margin-bottom:6px;">
-                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px;">Message *</label>
-                <textarea name="message" id="smsMessage" rows="5" required style="width:100%;padding:9px 11px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box;" placeholder="Type your message here…" onfocus="this.style.borderColor='var(--primary-color,#3B6EA5)'" onblur="this.style.borderColor='#D1D5DB'"></textarea>
-                <div style="font-size:11px;color:#9CA3AF;margin-top:3px;text-align:right;" id="smsCharCount">0 characters</div>
+            <label for="smsTemplate">Template <span>(optional)</span></label>
+            <select id="smsTemplate" onchange="applyTemplate()">
+                <option value="">Write a message</option>
+                <?php foreach ($customerSmsTemplates as $template): ?>
+                <option value="<?= htmlspecialchars($template['template_content'], ENT_QUOTES) ?>"><?= htmlspecialchars($template['template_name']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <label for="smsMessage">Message</label>
+            <textarea name="message" id="smsMessage" rows="5" required maxlength="4000" placeholder="Type your message?" aria-describedby="smsCharCount smsFeedback"></textarea>
+            <div id="smsCharCount">0 characters</div>
+            <p class="customer-sms-hint">Template placeholders are filled from the customer's saved details when sent.</p>
+            <div id="smsFeedback" role="status" aria-live="polite" hidden></div>
+            <a href="sms.php" class="customer-sms-settings">SMS settings and full outbox history</a>
+            <div class="customer-sms-footer">
+                <button type="button" class="customer-sms-cancel" onclick="closeSMSModal()">Close</button>
+                <button type="submit" id="smsSendBtn" class="customer-sms-send">Send SMS</button>
             </div>
         </form>
     </div>
-    <!-- Footer -->
-    <div style="padding:14px 20px;border-top:1px solid #E5E7EB;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;background:white;">
-        <button type="button" onclick="closeSMSModal()" style="padding:9px 18px;background:white;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;color:#374151;">Cancel</button>
-        <button type="submit" form="smsForm" style="padding:9px 20px;background:linear-gradient(135deg,#1D4ED8 0%,#3B82F6 100%);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;"><i class="fas fa-paper-plane"></i> Send SMS</button>
-    </div>
 </div>
-</div>
+<script>const smsRetryCsrf = <?= json_encode($_SESSION['sms_retry_csrf']) ?>;</script>
+<script src="customer-sms.js"></script>
+<script src="sms-retry.js"></script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="dashboard-sync.js" data-csrf="<?= htmlspecialchars($_SESSION['dashboard_sync_csrf'], ENT_QUOTES) ?>"></script>
@@ -1337,10 +1339,6 @@ function closeModal() {
 function closeFormModal() {
     if (document.querySelector('button[form="customerForm"][type="submit"]')?.disabled) return;
     document.getElementById('customerFormModal').style.display = 'none';
-}
-
-function closeSMSModal() {
-    document.getElementById('smsModal').style.display = 'none';
 }
 
 function toggleActionsMenu() {
@@ -1773,65 +1771,6 @@ function verifyOnRouter() {
         .catch(() => showToast('Network error during verification.', 'error'));
 }
 
-function openSMSModal(customer) {
-    if (!customer) return;
-    document.getElementById('smsClientId').value = customer.id;
-    document.getElementById('smsClientPhone').value = customer.phone;
-    document.getElementById('smsCustomerName').textContent = customer.full_name || customer.name;
-    document.getElementById('smsMessage').value = '';
-    document.getElementById('smsTemplate').value = '';
-    document.getElementById('smsCharCount').textContent = '0 characters';
-    document.getElementById('smsModal').style.display = 'flex';
-}
-
-function applyTemplate() {
-    const template = document.getElementById('smsTemplate').value;
-    const msgBox = document.getElementById('smsMessage');
-    
-    if (!currentCustomer) return;
-    
-    let text = '';
-    const name = currentCustomer.full_name || currentCustomer.name || 'Customer';
-    const username = currentCustomer.mikrotik_username || currentCustomer.username || '[Username]';
-    const password = currentCustomer.mikrotik_password || currentCustomer.password || '[Password]';
-    const expiry = currentCustomer.expiry_date ? formatDate(currentCustomer.expiry_date) : '[Date]';
-    const account = currentCustomer.account_number || currentCustomer.id;
-    const price = currentCustomer.package_price || '0';
-    
-    switch(template) {
-        case 'credentials':
-            text = `Hello ${name}, your internet login details are:\nUsername: ${username}\nPassword: ${password}\nExpires: ${expiry}\nThank you for choosing Fortunnet.`;
-            break;
-        case 'payment':
-            text = `Dear ${name}, kindly make your payment of KES ${price} to Paybill: 247247, Account: ${account}.\nTo avoid disconnection, please pay before ${expiry}.`;
-            break;
-        case 'alert':
-            text = `Dear ${name}, this is a reminder that your internet subscription is expiring soon (${expiry}). Please renew to ensure uninterrupted service.`;
-            break;
-        case 'promo':
-            text = `Hello ${name}, check out our new high-speed fibre packages! Upgrade today and get 2x speed for the same price. Call us on 0700000000.`;
-            break;
-    }
-    
-    if (text) msgBox.value = text;
-}
-
-function handleSendSMS(e) {
-    e.preventDefault();
-    const btn = e.target.querySelector('button[type="submit"]');
-    const original = btn.textContent;
-    btn.textContent = 'Sending...';
-    btn.disabled = true;
-    
-    // Placeholder for actual SMS API
-    setTimeout(() => {
-        showToast('SMS sent successfully.', 'success');
-        closeSMSModal();
-        btn.textContent = original;
-        btn.disabled = false;
-    }, 1000);
-}
-
 function deleteUser() {
     if (currentCustomer) {
         closeModal(); // Close the detailed modal first
@@ -2009,6 +1948,7 @@ function loadSMSHistory(clientId) {
     const body    = document.getElementById('smsTableBody');
     const empty   = document.getElementById('smsEmpty');
     if (!loading||!wrap||!body) return;
+    loading.textContent = 'Loading SMS history?';
     loading.style.display = 'block'; wrap.style.display = 'none';
 
     fetch('api/clients/sms_history.php?client_id=' + clientId)
@@ -2025,7 +1965,12 @@ function loadSMSHistory(clientId) {
                 <td>${fmtShortDate(m.sent_at)}</td>
                 <td>${m.phone || '—'}</td>
                 <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(m.message)}">${escHtml(m.message)}</td>
-                <td><span class="pill ${pillClass[m.status]||'pending'}">${ucFirst(m.status||'pending')}</span></td>
+                <td><span class="pill ${pillClass[m.status]||'pending'}">${escHtml(ucFirst(m.status||'pending'))}</span>
+                    ${m.status === 'failed' ? `<div style="margin-top:8px;">
+                        ${!m.retry_status || m.retry_status === 'failed' ? `<button type="button" class="sms-retry customer-sms-cancel" data-id="${Number(m.id)}">Retry SMS</button>` : ''}
+                        <div class="sms-retry-feedback" role="status" aria-live="polite">${m.retry_status === 'sent' ? 'Resent successfully' : (['sending','unknown'].includes(m.retry_status) ? 'Awaiting confirmation. Check provider history.' : '')}</div>
+                    </div>` : ''}
+                </td>
             </tr>`).join('');
         })
         .catch(() => { loading.innerHTML = '<span style="color:#EF4444;">Error loading SMS history.</span>'; loading.style.display='block'; });
