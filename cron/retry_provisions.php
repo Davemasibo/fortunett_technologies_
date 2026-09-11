@@ -95,7 +95,7 @@ foreach ($due as $row) {
     $log("  Retry #{$row['id']} client {$clientId} tenant {$tenantId} (attempt {$attempt})");
 
     try {
-        $result = autoProvisionClient($pdo, $clientId, $tenantId);
+        $result = autoProvisionClient($pdo, $clientId, $tenantId, 0, false);
 
         if ($result['success']) {
             $pdo->prepare("DELETE FROM pending_provisions WHERE id = ?")->execute([$row['id']]);

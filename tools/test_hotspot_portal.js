@@ -39,4 +39,13 @@ function portal(response) {
     p.pollBuyStatus();p.pollBuyStatus();assert.equal(requests,1);release();await new Promise(setImmediate);
     assert.equal(p._buyPolling,false);
     console.log('PASS: slow requests cannot overlap and repeatedly reprovision the customer');
+    p=portal({status:'pending'});
+    let expire;
+    p.AbortController=AbortController;
+    p.setTimeout=fn=>{expire=fn;return 1;}; p.clearTimeout=()=>{};
+    p.fetch=(_,options)=>new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new Error('Timed out'))));
+    p.pollBuyStatus(); expire(); await new Promise(setImmediate);
+    assert.equal(p._buyPolling,false); assert.equal(p._buyReqId,'checkout');
+    assert.equal(p.calls.includes('buy-again'),false);
+    console.log('PASS: hung status requests release the poll lock without discarding the payment');
 })().catch(error=>{console.error(error);process.exitCode=1;});

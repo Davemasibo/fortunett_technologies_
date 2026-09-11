@@ -158,6 +158,7 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
                 $device->execute([$tenantId,$clientId]);
                 $mac = ($client['bound_mac_address'] ?? '') ?: $device->fetchColumn();
                 if ($mac) $deviceConnected = connectKnownHotspotDevice($api, $mac, $username, $password, $client['expiry_date']);
+                if ($deviceConnected) $pdo->prepare('UPDATE clients SET last_seen=NOW() WHERE id=? AND tenant_id=?')->execute([$clientId,$tenantId]);
             } catch (Throwable $e) {
                 // Portal credential handoff remains available on older RouterOS.
                 error_log('Hotspot device login: ' . $e->getMessage());

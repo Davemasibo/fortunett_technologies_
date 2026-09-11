@@ -32,6 +32,19 @@ try {
         $live = routerCheckedCommand($api,($hotspot?'/ip/hotspot/active':'/ppp/active').'/print',[($hotspot?'?user=':'?name=').$username]);
         $client['active_sessions'] = count(array_filter($live,fn($row)=>isset($row['.id'])));
         $client['expired_but_online'] = !$client['entitled_now'] && $client['active_sessions']>0;
+        try {
+            $details = $pdo->prepare('SELECT last_seen FROM clients WHERE id=? AND tenant_id=?');
+            $details->execute([$client['id'],$router['tenant_id']]);
+            $client['last_seen'] = $details->fetchColumn();
+            $details = $pdo->prepare('SELECT attempts,fail_reason,next_retry_at FROM pending_provisions WHERE client_id=? AND tenant_id=?');
+            $details->execute([$client['id'],$router['tenant_id']]);
+            $client['provisioning_retry'] = $details->fetch(PDO::FETCH_ASSOC) ?: null;
+            $details = $pdo->prepare('SELECT mac_address FROM hotspot_device_context WHERE client_id=? AND tenant_id=? AND updated_at>NOW()-INTERVAL 1 DAY');
+            $details->execute([$client['id'],$router['tenant_id']]);
+            $mac = $details->fetchColumn();
+            $client['device_context_available'] = (bool)$mac;
+            $client['device_visible_on_router'] = $mac ? count(array_filter(routerCheckedCommand($api,'/ip/hotspot/host/print',['?mac-address='.$mac]),fn($row)=>isset($row['.id'])))>0 : false;
+        } catch (Throwable $e) { $client['recovery_metadata_available'] = false; }
         $schedule = 'fn-exp-'.($hotspot?'hotspot':'pppoe').'-'.substr(hash('sha256',$username),0,24);
         $client['deadline_schedule'] = null;
         foreach (routerCheckedCommand($api,'/system/scheduler/print',['?name='.$schedule]) as $row) if (isset($row['.id'])) $client['deadline_schedule'] = array_intersect_key($row,array_flip(['disabled','start-date','start-time','run-count','next-run']));

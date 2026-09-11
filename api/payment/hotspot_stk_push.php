@@ -73,13 +73,9 @@ if (!$tenantId || !$packageId || !$phone) {
 // Captive portal sends phone-only; fall back gracefully
 if (!$fullName) $fullName = 'Customer-' . substr(preg_replace('/\D/', '', $phone), -4);
 
-// Format phone: 0712... → 254712...
-$phone = preg_replace('/[^0-9]/', '', $phone);
-if (substr($phone, 0, 1) === '0') $phone = '254' . substr($phone, 1);
-if (strlen($phone) < 10) {
-    echo json_encode(['success' => false, 'message' => 'Invalid phone number.']);
-    exit;
-}
+require_once __DIR__ . '/../../includes/kenyan_phone.php';
+try { $phone = kenyanMobileNumber($phone); }
+catch (InvalidArgumentException $e) { echo json_encode(['success'=>false,'message'=>$e->getMessage()]); exit; }
 
 try {
     // Verify package belongs to tenant
@@ -350,8 +346,7 @@ try {
             echo json_encode(['success' => false, 'message' => 'Selected plan has no price set.']);
             exit;
         }
-        $renewPhone = preg_replace('/[^0-9]/', '', $renewClient['phone'] ?: $phone);
-        if (substr($renewPhone, 0, 1) === '0') $renewPhone = '254' . substr($renewPhone, 1);
+        $renewPhone = kenyanMobileNumber($renewClient['phone'] ?: $phone);
         if (!$renewPhone || strlen($renewPhone) < 10) {
             echo json_encode(['success' => false, 'message' => 'No phone number on this account.']);
             exit;

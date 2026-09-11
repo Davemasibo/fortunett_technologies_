@@ -336,3 +336,14 @@ The captive portal now offers Connect TV / Device below the package list. Its di
 TVs use the same finite uptime, purchased deadline and reconnect guard as other paid hotspot customers. Exact-MAC bypass entries on a bound TV are removed during provisioning and expiry. Expiry policy version 3 also sweeps already-disabled paid accounts, because disabling an account alone does not prove its active session was removed. The minute enforcement worker reconnects eligible bound devices after reboot without extending their expiry. An expired device cannot use that reconnect path.
 
 Verification: `php -n tools/test_tv_onboarding.php` and `node tools/test_hotspot_portal.js`. Live test: connect a TV to Wi-Fi, enter its Wi-Fi MAC on a phone, pay, verify Internet on the TV and that the phone has not received that subscription. Reboot the TV during paid time and verify recovery; at expiry verify traffic stops and reboot/reconnect does not restore it. Deploy the refreshed portal HTML and PHP; run the existing minute expiry/provisioning jobs so policy version 3 reaches active accounts. Live device verification remains outstanding.
+
+
+## Paid phone recovery (11 September)
+
+The enforcement worker now reconnects paid phones using their remembered device MAC, as well as bound TVs. It only considers the assigned router service with the current purchased expiry and policy version, rechecks entitlement under the payment lock, and updates last_seen after verifying an active session. An existing session is left running. Provision retries skip portal uploads. Status polling aborts a hung request after 45 seconds and resumes checking the same checkout.
+
+Mobile normalization is shared by the M-Pesa gateway and hotspot endpoint: 07/01, bare 7/1, +254, and spaced formats are accepted without a carrier-prefix allowlist. Valid formatting cannot guarantee Safaricom will deliver a prompt to an unavailable or ineligible SIM.
+
+Local checks: `php tools/test_paid_phone_recovery.php`, `php tools/test_tv_onboarding.php`, `node tools/test_hotspot_portal.js`.
+
+Live acceptance remains required: deploy the code and updated hotspot/login.html to router 9; verify cron/enforce_sessions.php, cron/retry_provisions.php and cron/stk_poll.php run every minute. On an authorized test customer, confirm a payment, close the captive browser, keep Wi-Fi connected, and verify an active router session and actual Internet traffic. Repeat after a brief router outage; verify exact paid expiry is unchanged. Run `php tools/audit_paid_connectivity.php --router=9 --client=ID` before and after. The audit is read-only and reports provisioning failure reasons and whether the remembered device is visible on the router.

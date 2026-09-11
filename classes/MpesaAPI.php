@@ -606,13 +606,7 @@ class MpesaAPI {
     }
 
     private function formatPhone($phone) {
-        $phone = preg_replace('/[^0-9]/', '', $phone); // Remove non-numeric
-        if (substr($phone, 0, 1) == '0') {
-            return '254' . substr($phone, 1);
-        }
-        if (substr($phone, 0, 3) == '254') {
-            return $phone;
-        }
-        return '254' . $phone; // Assume local if strange
+        require_once __DIR__ . '/../includes/kenyan_phone.php';
+        return kenyanMobileNumber((string)$phone);
     }
 }

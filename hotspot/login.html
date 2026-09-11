@@ -1073,7 +1073,11 @@ var _buyPollCount = 0;
 var _buyPollMax   = 75;   /* 75 × 4s = 5 min — matches Safaricom's STK timeout */
 
 function normalisePhone(raw) {
-  return String(raw || '').replace(/[\s\-()+]/g, '');
+  var phone = String(raw || '').replace(/[\s\-()+]/g, '');
+  if (/^2540[17]\d{8}$/.test(phone)) phone = '254' + phone.slice(4);
+  if (/^0[17]\d{8}$/.test(phone)) phone = '254' + phone.slice(1);
+  if (/^[17]\d{8}$/.test(phone)) phone = '254' + phone;
+  return phone;
 }
 
 function openTvDialog() {
@@ -1223,7 +1227,9 @@ function pollBuyStatus() {
   url += _buyClientId ? '&client_id=' + encodeURIComponent(_buyClientId)
                       : '&tenant_id=' + encodeURIComponent(TID);
 
-  fetch(url)
+  var pollController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var pollTimeout = pollController ? setTimeout(function () { pollController.abort(); }, 45000) : null;
+  fetch(url, pollController ? {signal:pollController.signal} : {})
     .then(function (r) { return r.json(); })
     .then(function (d) {
       /* Paid, but the router hasn't been provisioned yet. Keep waiting rather
@@ -1282,7 +1288,7 @@ function pollBuyStatus() {
       }
     })
     .catch(function () { /* Keep the checkout while the network recovers. */ })
-    .finally(function () { _buyPolling = false; });
+    .finally(function () { if (pollTimeout) clearTimeout(pollTimeout); _buyPolling = false; });
 }
 
 function cancelBuy() {
