@@ -7,6 +7,7 @@
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../../includes/db_master.php';
+require_once __DIR__ . '/../../../includes/schema_guard.php';
 require_once __DIR__ . '/../../../includes/api_auth.php';
 require_once __DIR__ . '/../../../includes/account_number_generator.php';
 require_once __DIR__ . '/../../../includes/auto_provision.php';
@@ -14,6 +15,7 @@ require_once __DIR__ . '/../../../includes/validity.php';
 
 api_cors_headers();
 $auth = require_api_auth($pdo);
+ensurePaymentStatusEnums($pdo);
 
 $tenantId = $auth['tenant_id'];
 if (!$tenantId) { http_response_code(403); echo json_encode(['error' => 'Tenant context required']); exit; }
@@ -94,16 +96,20 @@ if ($expiryDate !== '') {
 }
 
 try {
+    require_once __DIR__ . '/../../../includes/hotspot_access_policy.php';
+    $registration = hotspotRegistrationAccess($package, $connType);
+    $initialStatus = $registration['status'] ?? 'active';
+    if ($registration !== null) $expiry = $registration['expiry'];
     $hashedPw = password_hash($plainPassword, PASSWORD_DEFAULT);
     $stmt = $pdo->prepare("INSERT INTO clients
         (tenant_id, full_name, name, email, phone, address, username, auth_password,
          mikrotik_username, mikrotik_password, package_id, subscription_plan,
          expiry_date, status, connection_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)");
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     $stmt->execute([
         $tenantId, $name, $name, $email, $phone, $address,
         $username, $hashedPw, $username, $plainPassword,
-        $packageId, $package['name'], $expiry, $connType
+        $packageId, $package['name'], $expiry, $initialStatus, $connType
     ]);
     $clientId = (int)$pdo->lastInsertId();
 
@@ -117,7 +123,7 @@ try {
     }
 
     // Provision to MikroTik (best-effort)
-    $prov = autoProvisionClient($pdo, $clientId, $tenantId);
+    $prov = $initialStatus === 'pending' ? ['success'=>false,'message'=>'Awaiting payment'] : autoProvisionClient($pdo, $clientId, $tenantId,0,false);
 
     echo json_encode([
         'success'         => true,
@@ -125,7 +131,7 @@ try {
         'username'        => $username,
         'password'        => $plainPassword,
         'mikrotik_synced' => $prov['success'],
-        'message'         => $prov['success'] ? 'Client created and provisioned' : 'Client created (router sync failed: ' . ($prov['message'] ?? '') . ')',
+        'message'         => $initialStatus === 'pending' ? 'Customer saved. Awaiting payment.' : ($prov['success'] ? 'Client created and provisioned' : 'Client created (router sync failed: ' . ($prov['message'] ?? '') . ')'),
     ]);
 
 } catch (Throwable $e) {

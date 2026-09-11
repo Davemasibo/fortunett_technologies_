@@ -11,9 +11,11 @@
  */
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/db_master.php';
+require_once __DIR__ . '/../../includes/schema_guard.php';
 require_once __DIR__ . '/../../includes/auth.php';
 
 redirectIfNotLoggedIn();
+ensurePaymentStatusEnums($pdo);
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'POST only']); exit;
@@ -103,6 +105,19 @@ while (($row = fgetcsv($fh)) !== false) {
             $existing = $chk->fetchColumn() ?: null;
         }
 
+        $existingHotspot = false;
+        if ($existing) {
+            $typeStmt=$pdo->prepare('SELECT connection_type FROM clients WHERE id=? AND tenant_id=?');
+            $typeStmt->execute([$existing,$tenantId]);
+            $existingHotspot=$typeStmt->fetchColumn()==='hotspot';
+        }
+        if ($existing && ($existingHotspot || $connType==='hotspot')) {
+            // Contact imports cannot overwrite paid expiry, status, or service type.
+            $pdo->prepare("UPDATE clients SET full_name=?,name=?,phone=COALESCE(NULLIF(?,''),phone),email=COALESCE(NULLIF(?,''),email),address=COALESCE(NULLIF(?,''),address) WHERE id=? AND tenant_id=?")
+                ->execute([$fullName,$fullName,$phone,$email,$address,$existing,$tenantId]);
+            $updated++;
+            continue;
+        }
         if ($existing) {
             // Update existing customer — only update non-empty fields
             $sets = ['full_name = ?', 'name = ?'];
@@ -135,7 +150,8 @@ while (($row = fgetcsv($fh)) !== false) {
                 $password = substr(str_shuffle('abcdefghijklmnopqrstuvwxyz0123456789'), 0, 8);
             }
 
-            $expiryVal = $expiryDate ?: date('Y-m-d', strtotime('+30 days'));
+            $expiryVal = $connType==='hotspot' ? null : ($expiryDate ?: date('Y-m-d', strtotime('+30 days')));
+            if ($connType==='hotspot') $status='pending';
 
             $pdo->prepare("
                 INSERT INTO clients

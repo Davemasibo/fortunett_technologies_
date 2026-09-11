@@ -1,0 +1,12 @@
+{
+    "checked_at": "2026-09-11T08:36:29+03:00",
+    "router_id": 19,
+    "tenant_id": 9,
+    "checks": [],
+    "error": "Cannot connect to 10.200.200.19:8728 \u2014 Connection timed out (110)",
+    "customers_checked": 0,
+    "customers_expected": 67,
+    "audit_complete": false,
+    "scope": "All customers in this tenant against the selected router",
+    "internet_traffic_verified": false
+}

@@ -32,6 +32,8 @@ $client = $clientStmt->fetch(PDO::FETCH_ASSOC);
 if (!$client) { http_response_code(404); echo json_encode(['error' => 'Client not found']); exit; }
 
 try {
+    require_once __DIR__ . '/../../../includes/hotspot_access_policy.php';
+    assertHotspotApiProfileOnly($client, $body);
     // ── Status-only quick actions ─────────────────────────────────────────────
     $statusMap = ['suspend' => 'suspended', 'activate' => 'active', 'expire' => 'expired'];
     if (isset($statusMap[$action])) {

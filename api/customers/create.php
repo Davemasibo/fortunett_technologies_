@@ -23,6 +23,8 @@ $user_id = $_SESSION['user_id'];
 $t_stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $t_stmt->execute([$user_id]);
 $tenant_id = $t_stmt->fetchColumn();
+require_once __DIR__ . '/../../includes/schema_guard.php';
+ensurePaymentStatusEnums($pdo);
 if (!$tenant_id) {
     ob_clean();
     echo json_encode(['success' => false, 'message' => 'No tenant assigned']);
@@ -134,16 +136,20 @@ try {
     // 3. Insert client — status 'active' immediately so the customer can log in.
     //    MikroTik provisioning (step 6) is best-effort; failure only means the admin
     //    needs to provision the router manually, but the account itself is valid.
+    require_once __DIR__ . '/../../includes/hotspot_access_policy.php';
+    $registration = hotspotRegistrationAccess($package, $connection_type);
+    $initialStatus = $registration['status'] ?? 'active';
+    if ($registration !== null) $expiry_date = $registration['expiry'];
     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
     $stmt = $pdo->prepare("INSERT INTO clients
         (tenant_id, full_name, name, email, phone, address, username, auth_password,
          mikrotik_username, mikrotik_password, package_id, subscription_plan,
          expiry_date, status, connection_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)");
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     $stmt->execute([
         $tenant_id, $name, $name, $email, $phone, $address,
         $username, $hashed_password, $mikrotik_username, $mikrotik_password,
-        $package_id, $package['name'], $expiry_date, $connection_type
+        $package_id, $package['name'], $expiry_date, $initialStatus, $connection_type
     ]);
     $client_id = $pdo->lastInsertId();
 
@@ -162,7 +168,7 @@ try {
     }
 
     // 6. Sync to MikroTik via autoProvisionClient (non-fatal — client saved regardless)
-    $provResult     = autoProvisionClient($pdo, $client_id, $tenant_id);
+    $provResult = $initialStatus === 'pending' ? ['success'=>false,'message'=>'Awaiting payment'] : autoProvisionClient($pdo, $client_id, $tenant_id,0,false);
     $mikrotikSynced = $provResult['success'];
     $mikrotikError  = $provResult['success'] ? null : ($provResult['message'] ?? 'Provisioning failed');
     $noRouter       = (strpos($mikrotikError ?? '', 'No active router') !== false);
@@ -177,6 +183,8 @@ try {
     ob_clean();
     echo json_encode([
         'success'           => true,
+        'payment_required'  => $initialStatus === 'pending',
+        'message'           => $initialStatus === 'pending' ? 'Customer saved. Internet activates after payment.' : 'Customer saved.',
         'client_id'         => $client_id,
         'mikrotik_synced'   => $mikrotikSynced,
         'mikrotik_error'    => $mikrotikError,
