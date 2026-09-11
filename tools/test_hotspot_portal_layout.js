@@ -52,6 +52,7 @@ function fixture(buyOnly=false) {
         assert.equal(await page.locator('.pkg-row.selected input').inputValue(),'39');
         assert.equal(await page.locator('#payment-dialog').evaluate(el=>el.open),true);
         assert.equal(requests,0);
+        assert.equal(await page.evaluate(()=>document.activeElement.id),'buy-phone');
         await page.screenshot({path:path.join(artifacts,'hotspot-simplified-payment.png')});
         console.log('PASS: forced page reload restores selected package, partial number and payment dialog without an API request');
         await page.getByRole('button',{name:'Close payment',exact:true}).click();
