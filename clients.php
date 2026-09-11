@@ -607,7 +607,7 @@ include 'includes/sidebar.php';
                             <div class="contact-email"><?php echo htmlspecialchars($customer['email'] ?? ''); ?></div>
                         </td>
                         <td>
-                            <div style="font-weight:500;color:#e2e2e0;"><?php echo htmlspecialchars($customer['package_name'] ?? $customer['subscription_plan'] ?? '—'); ?></div>
+                            <div style="font-weight:500;color:#e2e2e0;"><?php echo htmlspecialchars(($customer['package_name'] ?? '') ?: (($customer['subscription_plan'] ?? '') ?: 'No package assigned')); ?></div>
                             <span class="conn-type <?php echo in_array($connType, ['pppoe','hotspot']) ? $connType : 'unknown'; ?>">
                                 <i class="fas fa-<?php echo $connType === 'pppoe' ? 'plug' : 'wifi'; ?>" style="font-size:8px;"></i>
                                 <?php echo strtoupper($connType); ?>
@@ -624,12 +624,12 @@ include 'includes/sidebar.php';
                             <?php if ($lastSeen): ?>
                                 <span style="font-size:12px;color:rgba(255,255,255,.55);"><?php echo $lastSeenFmt; ?></span>
                             <?php else: ?>
-                                <span style="font-size:11px;color:rgba(255,255,255,.25);">Never</span>
+                                <span style="font-size:11px;color:rgba(255,255,255,.25);">No connection recorded</span>
                             <?php endif; ?>
                         </td>
                         <td>
                             <div class="expiry-date <?php echo $is_expired ? 'expiry-warning' : ''; ?>" style="font-variant-numeric:tabular-nums;">
-                                <?php echo $expiry_date ? date('M d, Y', strtotime($expiry_date)) : '—'; ?>
+                                <?php echo $expiry_date ? date('M d, Y H:i', strtotime($expiry_date)) : 'No access expiry recorded'; ?>
                                 <?php if ($is_expired): ?><div style="font-size:10px;color:#f87171;margin-top:2px;">Expired</div><?php endif; ?>
                             </div>
                         </td>
@@ -2172,7 +2172,7 @@ function loadOnlineStatus() {
     fetch('api/clients/online_status.php')
         .then(r => r.json())
         .then(d => {
-            if (!d.success) return;
+            if (!d.success) throw new Error('Status check failed');
             const onlineSet = new Set((d.online || []).map(u => u.toLowerCase()));
             onlineStatusCache = { set: onlineSet, details: d.details || {} };
 
@@ -2191,20 +2191,27 @@ function loadOnlineStatus() {
                         lsCell.dataset.ts = new Date().toISOString().replace('T',' ').slice(0,19);
                         lsCell.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#10b981;font-weight:600;"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;animation:pulseDot 1.5s ease-in-out infinite;"></span>Now</span>';
                     }
+                } else if (d.no_routers || Object.keys(d.unavailable || {}).length) {
+                    badge.textContent = 'Status unavailable';
+                    badge.title = 'One or more router checks failed. Offline status is not confirmed.';
+                    if (lsCell) { lsCell.dataset.online = '0'; _lsRefreshCell(lsCell); }
                 } else if (uname) {
                     badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;background:#F3F4F6;color:#9CA3AF;font-size:11px;font-weight:500;">Offline</span>';
                     if (lsCell) { lsCell.dataset.online = '0'; _lsRefreshCell(lsCell); }
                 } else {
-                    badge.innerHTML = '<span style="font-size:11px;color:#D1D5DB;">—</span>';
+                    badge.textContent = 'Not provisioned';
                 }
             });
 
             // If modal is open, update connectivity field
             if (currentCustomer && document.getElementById('userModal').style.display !== 'none') {
-                updateModalOnlineStatus(onlineSet, d.details || {});
+                if (!onlineSet.has((currentCustomer.mikrotik_username || '').toLowerCase()) && (d.no_routers || Object.keys(d.unavailable || {}).length)) {
+                    const status = document.getElementById('infoOnlineStatus');
+                    if (status) status.textContent = 'Status unavailable';
+                } else updateModalOnlineStatus(onlineSet, d.details || {});
             }
         })
-        .catch(() => {}); // Silent fail — routers may be unreachable
+        .catch(() => { document.querySelectorAll('.online-badge').forEach(badge => { badge.textContent = 'Status unavailable'; }); });
 }
 
 function updateModalOnlineStatus(onlineSet, details) {
@@ -2257,7 +2264,7 @@ function updateModalOnlineStatus(onlineSet, details) {
 
 // ── Last-seen relative time helpers ──────────────────────────────────────────
 function _lsRelText(ts) {
-    if (!ts) return '<span style="font-size:11px;color:rgba(255,255,255,.25);">Never</span>';
+    if (!ts) return '<span style="font-size:11px;color:rgba(255,255,255,.25);">No connection recorded</span>';
     const diff = Math.floor((Date.now() - new Date(ts.replace(' ','T')).getTime()) / 1000);
     if (diff <  10)   return '<span style="font-size:12px;color:#10b981;font-weight:600;">Just now</span>';
     if (diff <  60)   return '<span style="font-size:12px;color:rgba(255,255,255,.6);">'  + diff                  + 's ago</span>';
