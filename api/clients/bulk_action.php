@@ -98,15 +98,17 @@ switch ($action) {
         $cSt->execute(array_merge($ids, [$tenantId]));
         $clients = $cSt->fetchAll(PDO::FETCH_ASSOC);
 
-        $sent = 0; $failed = 0;
+        $sent = 0; $failed = 0; $errors = [];
         foreach ($clients as $c) {
             try {
-                $result = $sms->send($c['phone'], $message, $c['id']);
-                if ($result['success']) $sent++; else $failed++;
+                require_once __DIR__ . '/../../includes/customer_sms.php';
+                $result = sendCustomerSms($pdo,$tenantId,(int)$c['id'],$message);
+                if ($result['success']) $sent++; else { $failed++; $errors[] = $result['message'] ?? 'Sending failed'; }
             } catch (Throwable $_e) { $failed++; }
         }
         $msg = "Sent $sent SMS" . ($failed ? ", $failed failed" : '') . '.';
-        echo json_encode(['success'=>true,'message'=>$msg,'sent'=>$sent,'failed'=>$failed]);
+        if ($errors) $msg .= ' ' . implode(' ', array_unique($errors));
+        echo json_encode(['success'=>$failed===0 && $sent>0,'message'=>$msg,'sent'=>$sent,'failed'=>$failed]);
         break;
 
     // ── CHANGE PACKAGE ────────────────────────────────────────────────────────

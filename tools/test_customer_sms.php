@@ -30,7 +30,7 @@ function customerSmsCheck(bool $ok, string $label): void {
 }
 $db = new CustomerSmsPDO(); $helper = new CustomerSmsHelper();
 $result = sendCustomerSms($db,1,7,'Hello {name}, KES {amount}',$helper);
-customerSmsCheck($result['success'] && $helper->calls === [['254712345678','Hello Test Customer, KES 50',7]], 'Send uses saved recipient and resolves real customer/package template details');
+customerSmsCheck($result['success'] && $helper->calls === [['254712345678','Hello Test Customer, KES 50.00',7]], 'Send uses saved recipient and resolves real customer/package template details');
 customerSmsCheck(str_contains($result['message'], 'accepted by the provider'), 'Success does not claim handset delivery');
 customerSmsCheck(!sendCustomerSms($db,2,7,'Hello',$helper)['success'] && count($helper->calls) === 1, 'Other tenants cannot send to this customer');
 customerSmsCheck(!sendCustomerSms($db,1,7,'  ',$helper)['success'] && count($helper->calls) === 1, 'Blank message does not reach provider');

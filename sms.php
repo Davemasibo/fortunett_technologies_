@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // placeholders below need it. The old query looked the client up by id
         // ALONE, so any logged-in tenant could message another tenant's
         // customer by changing the id in the form.
-        $cStmt = $pdo->prepare("SELECT * FROM clients WHERE id = ? AND tenant_id = ? LIMIT 1");
+        $cStmt = $pdo->prepare("SELECT c.*, p.price AS package_price, p.name AS package_name FROM clients c LEFT JOIN packages p ON p.id=c.package_id AND p.tenant_id=c.tenant_id WHERE c.id = ? AND c.tenant_id = ? LIMIT 1");
         $cStmt->execute([$recipientId, $tenant_id]);
         $client = $cStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -51,9 +51,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             // Substitute whether the text came from a template or was typed, so
             // {name} always resolves and a customer never receives raw braces.
-            $message = $smsHelper->renderPlaceholders($message, $client);
-
-            $res = $smsHelper->send($client['phone'], $message, $recipientId);
+            try {
+                $message = $smsHelper->renderPlaceholders($message, $client);
+                $res = $smsHelper->send($client['phone'], $message, $recipientId);
+            } catch (InvalidArgumentException $e) { $res = ['success'=>false,'message'=>$e->getMessage()]; }
             if ($res['success']) {
                 $success_message = "Message sent to " . htmlspecialchars($client['full_name'] ?? $client['phone']) . ".";
             } else {
@@ -76,12 +77,7 @@ try {
 } catch (Exception $e) { /* table may not exist yet */ }
 
 // Fetch Templates
-$all_templates = [];
-try {
-    $t_stmt = $pdo->prepare("SELECT * FROM sms_templates WHERE tenant_id = ? OR is_global = 1 ORDER BY is_global DESC, template_name ASC");
-    $t_stmt->execute([$tenant_id]);
-    $all_templates = $t_stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { /* table may not exist yet */ }
+$all_templates = $smsHelper->getTemplates();
 
 // Fetch Config
 $config = [];
@@ -165,7 +161,7 @@ include 'includes/sidebar.php';
             <div style="padding: 12px; background: #D1FAE5; color: #065F46; border-radius: 6px; margin-bottom: 20px;"><?php echo $success_message; ?></div>
         <?php endif; ?>
         <?php if ($error_message): ?>
-            <div style="padding: 12px; background: #FEE2E2; color: #991B1B; border-radius: 6px; margin-bottom: 20px;"><?php echo $error_message; ?></div>
+            <div style="padding: 12px; background: #FEE2E2; color: #991B1B; border-radius: 6px; margin-bottom: 20px;"><?php echo htmlspecialchars($error_message, ENT_QUOTES, 'UTF-8'); ?></div>
         <?php endif; ?>
 
         <!-- Content Grid -->

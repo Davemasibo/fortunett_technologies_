@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/sms_config.php';
+require_once __DIR__ . '/../includes/sms_templates.php';
 require_once __DIR__ . '/../includes/schema_guard.php';
 
 class SMSHelper {
@@ -43,6 +44,11 @@ class SMSHelper {
     }
 
     public function send($phone, $message, $clientId = null, $log = true) {
+        if (preg_match('/\{\{?\s*[a-z_][a-z0-9_]*\s*\}\}?|\[\s*[a-z_][a-z0-9_]*\s*\]/i', $message)) {
+            $response = ['success'=>false,'message'=>'SMS contains an unresolved variable. Open the customer SMS form and correct the template before sending.'];
+            if ($log) $this->logMessage($clientId, $phone, $message, $response);
+            return $response;
+        }
         if (!$this->config) {
             $response = ['success' => false, 'message' => 'SMS not configured. Open SMS Manager > Settings or contact your platform admin.'];
             if ($log) $this->logMessage($clientId, $phone, $message, $response);
@@ -261,9 +267,7 @@ class SMSHelper {
     }
 
     public function getTemplates() {
-        $stmt = $this->pdo->prepare("SELECT * FROM sms_templates WHERE tenant_id = ?");
-        $stmt->execute([$this->tenant_id]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return smsAvailableTemplates($this->pdo, (int)$this->tenant_id);
     }
 
     public function saveTemplate($key, $name, $content) {
@@ -328,19 +332,18 @@ class SMSHelper {
     }
 
     public function sendTemplate($clientId, $templateKey) {
-        $cStmt = $this->pdo->prepare("SELECT * FROM clients WHERE id = ? AND tenant_id = ?");
+        $cStmt = $this->pdo->prepare("SELECT c.*, p.price AS package_price, p.name AS package_name FROM clients c LEFT JOIN packages p ON p.id=c.package_id AND p.tenant_id=c.tenant_id WHERE c.id = ? AND c.tenant_id = ?");
         $cStmt->execute([$clientId, $this->tenant_id]);
         $client = $cStmt->fetch(PDO::FETCH_ASSOC);
         if (!$client) return ['success' => false, 'message' => 'Client not found'];
 
-        $tStmt = $this->pdo->prepare("SELECT * FROM sms_templates WHERE tenant_id = ? AND template_key = ?");
-        $tStmt->execute([$this->tenant_id, $templateKey]);
-        $template = $tStmt->fetch(PDO::FETCH_ASSOC);
-        if (!$template) return ['success' => false, 'message' => 'Template not found'];
-
-        $message = $this->renderPlaceholders($template['template_content'], $client);
-
-        return $this->send($client['phone'], $message, $clientId);
+        foreach ($this->getTemplates() as $template) {
+            if ($template['template_key'] !== $templateKey) continue;
+            try { $message = $this->renderPlaceholders($template['template_content'], $client); }
+            catch (InvalidArgumentException $e) { return ['success'=>false,'message'=>$e->getMessage()]; }
+            return $this->send($client['phone'], $message, $clientId);
+        }
+        return ['success'=>false,'message'=>'Template not found'];
     }
 
     /**
@@ -353,18 +356,7 @@ class SMSHelper {
      */
     public function renderPlaceholders(string $message, array $client): string
     {
-        $map = [
-            '{name}'           => $client['full_name']         ?? ($client['name'] ?? ''),
-            '{username}'       => $client['mikrotik_username'] ?? '',
-            '{password}'       => $client['mikrotik_password'] ?? '',
-            '{phone}'          => $client['phone']             ?? '',
-            '{account_number}' => $client['account_number']    ?? '',
-            '{expiry_date}'    => !empty($client['expiry_date'])
-                                  ? date('d M Y', strtotime($client['expiry_date'])) : '',
-            '{amount}'         => number_format((float)($client['package_price'] ?? 0)),
-        ];
-
-        return str_replace(array_keys($map), array_values($map), $message);
+        return smsRenderCustomerTemplate($message, $client);
     }
 }
 ?>

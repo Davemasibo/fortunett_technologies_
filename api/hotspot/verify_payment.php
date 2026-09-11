@@ -3,8 +3,8 @@
  * POST /api/hotspot/verify_payment.php
  *
  * Public endpoint (no session required) — called by the captive portal's
- * "Reconnect" tab. Verifies an M-Pesa transaction code, re-enables the
- * client's account in the DB, kicks the router into allowing them back in,
+ * "Reconnect" tab. Verifies an M-Pesa transaction code and reconnects the
+ * client only while their existing paid access is valid,
  * and returns their MikroTik credentials so the portal can auto-login.
  *
  * POST params:
@@ -19,7 +19,9 @@ error_reporting(0);
 
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../classes/MikrotikAPI.php';
-require_once __DIR__ . '/../../includes/validity.php';
+require_once __DIR__ . '/../../includes/receipt_reconnect.php';
+header('Cache-Control: no-store');
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit; }
 
 function fail(string $msg, string $hint = ''): void {
     echo json_encode(['success' => false, 'message' => $msg, 'hint' => $hint]);
@@ -39,11 +41,11 @@ $tx = null;
 try {
     $st = $pdo->prepare("
         SELECT mt.id, mt.client_id, mt.tenant_id, mt.amount, mt.status,
-               mt.transaction_id AS mpesa_receipt
+               mt.mpesa_receipt_number AS mpesa_receipt
         FROM mpesa_transactions mt
-        WHERE mt.transaction_id = ?
+        WHERE mt.mpesa_receipt_number = ?
           AND mt.tenant_id = ?
-          AND mt.status = 'completed'
+          AND mt.status = 'completed' AND mt.result_code = 0
         LIMIT 1
     ");
     $st->execute([$mpesaCode, $tenantId]);
@@ -79,88 +81,9 @@ if (!$clientId) {
     fail('Payment found but no account is linked to it. Please contact support.');
 }
 
-// ── Load the client ───────────────────────────────────────────────────────────
 try {
-    $cSt = $pdo->prepare("
-        SELECT c.id, c.full_name, c.mikrotik_username, c.mikrotik_password,
-               c.connection_type, c.status, c.expiry_date, c.package_id,
-               p.validity_value, p.validity_unit
-        FROM clients c
-        LEFT JOIN packages p ON p.id = c.package_id
-        WHERE c.id = ? AND c.tenant_id = ?
-        LIMIT 1
-    ");
-    $cSt->execute([$clientId, $tenantId]);
-    $client = $cSt->fetch(PDO::FETCH_ASSOC);
+    echo json_encode(reconnectReceiptClient($pdo, $clientId, $tenantId, $mac));
 } catch (Throwable $e) {
-    fail('Database error looking up account.');
+    error_log('Receipt reconnect: ' . $e->getMessage());
+    fail('Payment found. Connection setup needs attention; do not pay again.', 'Contact your ISP with the payment code.');
 }
-
-if (!$client) {
-    fail('Account not found for this tenant.');
-}
-
-if (empty($client['mikrotik_username']) || empty($client['mikrotik_password'])) {
-    fail('Account has no router credentials. Please contact support.');
-}
-
-// ── Extend expiry if account is inactive/expired ──────────────────────────────
-$newExpiry = packageExtendExpiry(
-    $client['expiry_date'] ?? null,
-    $client['validity_value'] ?? 30,
-    $client['validity_unit']  ?? 'days'
-);
-
-try {
-    $upd = $pdo->prepare("
-        UPDATE clients
-        SET status = 'active', expiry_date = ?, updated_at = NOW()
-        WHERE id = ? AND tenant_id = ?
-    ");
-    $upd->execute([$newExpiry, $clientId, $tenantId]);
-} catch (Throwable $e) {
-    fail('Failed to update account. Please try again.');
-}
-
-// ── Re-enable on MikroTik router ──────────────────────────────────────────────
-$routerOk = false;
-try {
-    $rSt = $pdo->prepare("
-        SELECT id, ip_address, vpn_ip, username, password, api_port
-        FROM mikrotik_routers
-        WHERE tenant_id = ? AND status IN ('active','online')
-        ORDER BY id ASC LIMIT 1
-    ");
-    $rSt->execute([$tenantId]);
-    $router = $rSt->fetch(PDO::FETCH_ASSOC);
-
-    if ($router) {
-        $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
-        $port = (int)($router['api_port'] ?: 8728);
-        $sock = @fsockopen($connectIp, $port, $errno, $errstr, 4);
-        if ($sock) {
-            fclose($sock);
-            $mk = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
-            $mk->connect();
-            $connType = strtolower($client['connection_type'] ?? 'hotspot');
-            $uname = $client['mikrotik_username'];
-            if ($connType === 'pppoe') {
-                $mk->enablePPPoEUser($uname);
-            } else {
-                $mk->enableHotspotUser($uname);
-            }
-            $mk->disconnect();
-            $routerOk = true;
-        }
-    }
-} catch (Throwable $_e) {
-    // Router might be unreachable — DB is already updated, that's the source of truth
-}
-
-echo json_encode([
-    'success'   => true,
-    'username'  => $client['mikrotik_username'],
-    'password'  => $client['mikrotik_password'],
-    'expiry'    => $newExpiry,
-    'router_ok' => $routerOk,
-]);

@@ -13,13 +13,8 @@ $user_id = $_SESSION['user_id'];
 $stmt = $db->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
 $tenant_id = $stmt->fetchColumn();
-$customerSmsTemplates = [];
-try {
-    $templates = $db->prepare('SELECT template_name, template_content FROM sms_templates WHERE tenant_id=? OR is_global=1 ORDER BY template_name');
-    $templates->execute([$tenant_id]);
-    $customerSmsTemplates = $templates->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) { /* Sending a custom message remains available. */ }
-
+require_once __DIR__ . '/includes/sms_templates.php';
+$customerSmsTemplates = smsAvailableTemplates($db, (int)$tenant_id);
 
 // Lazy-add last_seen column (silent if already exists)
 try { $db->exec("ALTER TABLE clients ADD COLUMN last_seen DATETIME NULL DEFAULT NULL"); } catch (Exception $_e) {}
