@@ -3,7 +3,8 @@
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/../classes/MikrotikAPI.php';
-$options = getopt('', ['router:', 'client::', 'all']);
+require_once __DIR__ . '/../includes/connectivity_audit.php';
+$options = getopt('', ['router:', 'client::', 'all', 'evidence']);
 $routerId = (int)($options['router'] ?? 0);
 if (!$routerId) exit("Usage: php tools/audit_paid_connectivity.php --router=ID [--client=ID]\n");
 $stmt = $pdo->prepare('SELECT * FROM mikrotik_routers WHERE id=?'); $stmt->execute([$routerId]);
@@ -60,6 +61,23 @@ try {
             if ($client['entitled_now'] && !$client['active_sessions']) $client['findings'][]='PAID_ACCESS_NO_ACTIVE_SESSION';
             if (empty($client['last_seen'])) $client['findings'][]='NO_RECORDED_CONNECTION';
         } catch (Throwable $e) { $client['payment_audit_unavailable']=true; }
+        $client['findings'] = connectivityEvidenceFindings($client);
+        if (array_key_exists('evidence', $options)) {
+            // Keep transaction references, phone numbers and credentials out of shared reports.
+            foreach ([
+                'payment_history' => "SELECT id,amount,payment_method,status,payment_date FROM payments WHERE tenant_id=? AND client_id=? ORDER BY payment_date,id",
+                'activation_history' => 'SELECT DISTINCT expiry_date,created_at FROM payment_activations WHERE tenant_id=? AND client_id=? ORDER BY created_at',
+                'purchased_terms' => 'SELECT package_id,validity_value,validity_unit FROM payment_purchase_terms WHERE tenant_id=? AND client_id=?',
+                'stk_history' => 'SELECT amount,status,result_code,created_at,updated_at FROM mpesa_transactions WHERE tenant_id=? AND client_id=? ORDER BY created_at',
+                'service_history' => 'SELECT router_id,package_id,status,paid_expiry_at,expiry_policy_version FROM router_services WHERE tenant_id=? AND client_id=?',
+            ] as $label => $sql) {
+                try {
+                    $evidence = $pdo->prepare($sql);
+                    $evidence->execute([$router['tenant_id'],$client['id']]);
+                    $client[$label] = $evidence->fetchAll(PDO::FETCH_ASSOC);
+                } catch (Throwable $e) { $client[$label] = ['unavailable'=>true]; }
+            }
+        }
         $schedule = 'fn-exp-'.($hotspot?'hotspot':'pppoe').'-'.substr(hash('sha256',$username),0,24);
         $client['deadline_schedule'] = null;
         foreach (routerCheckedCommand($api,'/system/scheduler/print',['?name='.$schedule]) as $row) if (isset($row['.id'])) $client['deadline_schedule'] = array_intersect_key($row,array_flip(['disabled','start-date','start-time','run-count','next-run']));
