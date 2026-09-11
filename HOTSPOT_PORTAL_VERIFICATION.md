@@ -1,6 +1,6 @@
 # Captive portal refresh and purchased-time verification
 
-Deployed on 2026-09-11 to `/var/www/html/fortunett_technologies_` and tenant 9's router 19 (rb951). Router build `e899b1b9f51d` was read back as CURRENT at 18:36 Africa/Nairobi. Original files and repair evidence are backed up under `/root/fortunett-portal-20260911/`.
+Deployed on 2026-09-11 to `/var/www/html/fortunett_technologies_` and tenant 9's router 19 (rb951). Router build `20f02b99eb51` was read back as CURRENT at 18:42 Africa/Nairobi. Original files and repair evidence are backed up under `/root/fortunett-portal-20260911/`.
 
 Live results:
 
@@ -8,7 +8,7 @@ Live results:
 - Read back and verified all ten current package profiles. All tenant 9 dashboard synchronization jobs finished with zero unapplied jobs. Fixed a production schema mismatch: router service states now use `expired`/`suspended` instead of the unsupported `inactive` value.
 - Fixed the portal sync script's live RouterOS syntax error caused by attempting to rename a file. It now updates the version marker's contents; API script failures are checked rather than reported as success. Both the new layout and draft recovery were found in the page downloaded by the router. Cloudflare adds a 367-byte analytics script to that response; the rest matched the server-rendered page.
 - A temporary isolated account on the real router was enabled with a 45-second deadline. Its scheduled expiry event ran once, and the account was disabled after expiry. The temporary account and its schedule were removed. This proves the tested router event executed; it does not measure packet cutoff latency or prove real-phone M-Pesa delivery.
-- The live audit covers all 67 tenant 9 customers. Historical financial exceptions still prevent a universal entitlement guarantee. G020 has active access through 6 October without a completed payment record; owner clarification was requested. Do not silently assume that grant is either paid or complimentary.
+- The final live audit covers all 67 tenant 9 customers, with no enabled-unentitled or router-deadline-beyond-database findings. The audit recorded eighteen historical purchase review findings, with only G020 active. On 2026-09-11 the owner confirmed G020 was manually created and its access is authorized, resolving that account's review question. Its existing access through 6 October remains unchanged. The original audit counts are retained as evidence, with the owner resolution recorded separately; the other seventeen historical findings remain unresolved. Historical financial exceptions and the outstanding real-device tests still prevent a universal entitlement guarantee.
 
 The subsequent user recording (19 seconds) shows the selected package disappearing on reload before payment. This does not establish the cause of that particular reload. The simplified portal now restores a partial phone number, selected package and receipt draft from session storage for up to 30 minutes, without issuing payment or reconnect requests. A checkout that started after the draft takes precedence; confirmed credential handoff clears the draft. Live Android/RouterOS reload behaviour still needs checking.
 

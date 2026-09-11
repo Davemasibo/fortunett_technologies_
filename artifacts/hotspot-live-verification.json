@@ -1,0 +1,54 @@
+{
+  "checked_at": "2026-09-11T18:36:24+03:00",
+  "router_id": 19,
+  "tenant_id": 9,
+  "router_clock": {
+    "time": "18:36:25",
+    "date": "2026-09-11",
+    "time-zone-name": "Africa/Nairobi"
+  },
+  "watchdog_installed": true,
+  "customers_checked": 67,
+  "customers_expected": 67,
+  "audit_complete": true,
+  "scope": "All customers in this tenant against the selected router",
+  "internet_traffic_verified": false,
+  "expiry_cutoff_traffic_verified": false,
+  "finding_counts": {
+    "NO_RECORDED_CONNECTION": 26,
+    "ROUTER_USAGE_WITHOUT_LAST_SEEN_TIMESTAMP": 11,
+    "ROUTER_PROFILE_DIFFERS_FROM_CURRENT_PACKAGE": 11,
+    "PURCHASE_HISTORY_REQUIRES_REVIEW": 18,
+    "NO_PACKAGE": 1,
+    "PAID_ACCESS_NO_ACTIVE_SESSION": 2,
+    "NO_RECENT_DEVICE_FOR_AUTOMATIC_LOGIN": 1,
+    "ACTIVE_ACCESS_WITHOUT_COMPLETED_PAYMENT_RECORD": 1
+  },
+  "active_accounts_requiring_purchase_review": [
+    "G020"
+  ],
+  "owner_review_resolutions": [
+    {
+      "account": "G020",
+      "confirmed_on": "2026-09-11",
+      "resolution": "Owner confirmed account was manually created and its existing access is authorized.",
+      "owner_statement": "G020 was created manually its alright",
+      "access_changed": false
+    }
+  ],
+  "unresolved_active_accounts_after_owner_review": [],
+  "expiry_corrections": 44,
+  "live_router_deadline_test": {
+    "started_at": "2026-09-11T18:21:10+03:00",
+    "test": "isolated router deadline",
+    "paid_until": "2026-09-11 18:21:55",
+    "traffic_verified": false,
+    "enabled_before_deadline": true,
+    "disabled_after_deadline": true,
+    "deadline_event_runs": 1,
+    "passed": true,
+    "test_user_removed": true
+  },
+  "portal_build": "20f02b99eb51",
+  "portal_build_verified_at": "2026-09-11T18:42:28+03:00"
+}
