@@ -48,4 +48,10 @@ function portal(response) {
     assert.equal(p._buyPolling,false); assert.equal(p._buyReqId,'checkout');
     assert.equal(p.calls.includes('buy-again'),false);
     console.log('PASS: hung status requests release the poll lock without discarding the payment');
+    p=portal({status:'pending'});
+    let complete;
+    p.fetch=()=>new Promise(resolve=>{complete=()=>resolve({json:async()=>({status:'completed',username:'old-user',password:'test-only'})});});
+    p.pollBuyStatus();p._buyReqId=null;complete();await new Promise(setImmediate);
+    assert.deepEqual(p.calls,[]);
+    console.log('PASS: closing a payment while polling prevents the late response from submitting router login');
 })().catch(error=>{console.error(error);process.exitCode=1;});

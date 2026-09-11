@@ -63,6 +63,8 @@ deadlineCheck(isset(packageProfileSettings($terms, 'pppoe')['on-up']), 'PPPoE pr
 deadlineRejects(fn() => packageExpiryFrom(30, 'minutess'), 'Unknown duration units cannot silently become days');
 deadlineRejects(fn() => packageExpiryFrom(0, 'hours'), 'Zero-duration packages cannot receive fallback time');
 deadlineRejects(fn() => packageExpiryFrom(1.5, 'hours'), 'Fractional durations are not silently rounded');
+deadlineRejects(fn() => packageExpiryFrom(30, 'minutes', 'invalid-date'), 'Invalid original timestamp cannot restart purchased time from now');
+deadlineCheck(strtotime(packageExpiryFrom(30, 'minutes', '1970-01-01 00:00:00 UTC')) === 1800, 'Unix epoch timestamp is preserved instead of replaced with now');
 deadlineRejects(fn() => packageProfileSettings(array_merge($terms, ['download_speed' => 0]), 'hotspot'), 'Paid profiles cannot silently become uncapped');
 deadlineRejects(fn() => packageProfileSettings(array_merge($terms, ['device_limit' => 0]), 'hotspot'), 'Invalid device count is rejected');
 deadlineCheck(packageProfileName(array_merge($terms, ['mikrotik_profile' => 'default'])) !== 'default', 'Built-in default profile is never used for a package');

@@ -103,7 +103,8 @@ function dashboardApplyJob(PDO $pdo, array $job): void {
         if ($client['status'] !== 'active' || empty($client['expiry_date']) || strtotime($client['expiry_date']) <= time()) {
             radius_disable_client($pdo, $username);
             dashboardDisableUser($api, $service, $username);
-            $pdo->prepare("UPDATE router_services SET status='inactive' WHERE tenant_id=? AND client_id=? AND router_id=?")->execute([$tenant, $client['id'], $router['id']]);
+            $serviceStatus = !empty($client['expiry_date']) && strtotime($client['expiry_date']) > time() ? 'suspended' : 'expired';
+            $pdo->prepare('UPDATE router_services SET status=? WHERE tenant_id=? AND client_id=? AND router_id=?')->execute([$serviceStatus, $tenant, $client['id'], $router['id']]);
         } else {
             $api->disconnect();
             $result = autoProvisionClient($pdo, (int)$client['id'], $tenant, (int)$router['id'], false);

@@ -1,0 +1,17 @@
+{
+  "tenant_id": 9,
+  "subdomain": "ghettohlink",
+  "source": "Owner-approved advertised durations, including historical hotspot corrections, 2026-09-11",
+  "prices": {
+    "5": {"package_id": 39, "validity_value": 30, "validity_unit": "minutes"},
+    "10": {"package_id": 37, "validity_value": 1, "validity_unit": "hours"},
+    "15": {"package_id": 36, "validity_value": 3, "validity_unit": "hours"},
+    "20": {"package_id": 35, "validity_value": 6, "validity_unit": "hours"},
+    "25": {"package_id": 40, "validity_value": 8, "validity_unit": "hours"},
+    "30": {"package_id": 34, "validity_value": 14, "validity_unit": "hours"},
+    "40": {"package_id": 33, "validity_value": 24, "validity_unit": "hours"},
+    "100": {"package_id": 31, "validity_value": 4, "validity_unit": "days"},
+    "150": {"package_id": 30, "validity_value": 7, "validity_unit": "days"},
+    "700": {"package_id": 41, "validity_value": 30, "validity_unit": "days"}
+  }
+}

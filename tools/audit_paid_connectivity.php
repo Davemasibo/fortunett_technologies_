@@ -4,12 +4,20 @@ if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/../classes/MikrotikAPI.php';
 require_once __DIR__ . '/../includes/connectivity_audit.php';
-$options = getopt('', ['router:', 'client::', 'all', 'evidence']);
+$options = getopt('', ['router:', 'client::', 'all', 'evidence', 'tariffs:']);
 $routerId = (int)($options['router'] ?? 0);
-if (!$routerId) exit("Usage: php tools/audit_paid_connectivity.php --router=ID [--client=ID]\n");
+if (!$routerId) exit("Usage: php tools/audit_paid_connectivity.php --router=ID [--client=ID|--all] [--evidence] [--tariffs=approved-tariffs.json]\n");
 $stmt = $pdo->prepare('SELECT * FROM mikrotik_routers WHERE id=?'); $stmt->execute([$routerId]);
 $router = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$router) exit("Router not found\n");
+require_once __DIR__ . '/../includes/hotspot_expiry_reconciliation.php';
+$tariff=[];
+if (isset($options['tariffs'])) {
+    $tariff=json_decode(file_get_contents($options['tariffs']),true,512,JSON_THROW_ON_ERROR);
+    if ((int)($tariff['tenant_id'] ?? 0)!==(int)$router['tenant_id'] || empty($tariff['source']) || empty($tariff['prices'])) throw new RuntimeException('Tariff must belong to the audited tenant');
+    $identity=$pdo->prepare('SELECT subdomain FROM tenants WHERE id=?');$identity->execute([$router['tenant_id']]);
+    if ($identity->fetchColumn()!==($tariff['subdomain'] ?? null)) throw new RuntimeException('Tariff tenant identity mismatch');
+}
 $clientId = (int)($options['client'] ?? 0);
 $all = array_key_exists('all', $options);
 $clients = $pdo->prepare("SELECT c.id,c.account_number,c.package_id,c.status,c.expiry_date,c.connection_type,c.mikrotik_username,p.validity_value,p.validity_unit,p.mikrotik_profile
@@ -81,6 +89,20 @@ try {
         $schedule = 'fn-exp-'.($hotspot?'hotspot':'pppoe').'-'.substr(hash('sha256',$username),0,24);
         $client['deadline_schedule'] = null;
         foreach (routerCheckedCommand($api,'/system/scheduler/print',['?name='.$schedule]) as $row) if (isset($row['.id'])) $client['deadline_schedule'] = array_intersect_key($row,array_flip(['disabled','start-date','start-time','run-count','next-run']));
+        if ($hotspot) {
+            try { $client['purchase_entitlement']=hotspotPurchaseEvidence($pdo,(int)$router['tenant_id'],(int)$client['id'],[],$tariff); }
+            catch (Throwable $e) { $client['purchase_entitlement']=['repairable'=>false,'reason'=>'Purchase evidence unavailable']; }
+            $client['watchdog_installed']=$report['watchdog_installed'];
+            if ($client['entitled_now']) {
+                // Upper bound allows only clock-read latency, not a fresh package.
+                $sampleStarted=time();
+                foreach (routerCheckedCommand($api,'/system/clock/print') as $clock) if (isset($clock['date'],$clock['time'])) {
+                    $bound=routerPaidDeadline($clock,$client['expiry_date'],$sampleStarted);
+                    $client['latest_allowed_router_deadline']=$bound['key'];
+                }
+            }
+            $client['findings']=array_values(array_unique(array_merge($client['findings'],connectivityExpiryFindings($client))));
+        }
         $report['checks'][] = $client;
     }
 } catch (Throwable $e) { $report['error'] = $e->getMessage(); }
@@ -90,4 +112,5 @@ $report['customers_expected']=count($customerRows);
 $report['audit_complete']=!isset($report['error']) && count($report['checks'])===count($customerRows);
 $report['scope']=$all?'All customers in this tenant against the selected router':'Selected customer or latest 50';
 $report['internet_traffic_verified']=false;
+$report['expiry_cutoff_traffic_verified']=false;
 echo json_encode($report,JSON_PRETTY_PRINT),PHP_EOL;

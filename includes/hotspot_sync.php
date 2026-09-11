@@ -17,6 +17,7 @@
  */
 
 const HOTSPOT_SYNC_NAME = 'FortuNett-Portal-Sync';
+require_once __DIR__ . '/router_expiry.php';
 
 /**
  * Resolve the portal URLs for a tenant.
@@ -110,8 +111,9 @@ function hotspotSyncScriptBody(string $pageUrl, string $verUrl): string
       } on-error={}
     }
     :if (\$wrote) do={
-      :if ([:len [/file find name=\$VerFile]] > 0) do={ /file remove [find name=\$VerFile] }
-      :do { /file set [find name=\$TmpFile] name=\$VerFile } on-error={}
+      :if ([:len [/file find name=\$VerFile]] = 0) do={ /tool fetch url=\$VerUrl dst-path=\$VerFile check-certificate=no }
+      /file set [find name=\$VerFile] contents=\$new
+      /file remove [find name=\$TmpFile]
       :log info "FortuNett portal sync: login page updated"
     } else={
       :log warning "FortuNett portal sync: page download failed - keeping old page"
@@ -140,17 +142,17 @@ function installHotspotSyncScheduler($api, string $pageUrl, string $verUrl, stri
     try {
         // ── /system/script ────────────────────────────────────────────────────
         $scriptId = null;
-        foreach ($api->comm('/system/script/print') as $s) {
+        foreach (routerCheckedCommand($api, '/system/script/print') as $s) {
             if (($s['name'] ?? '') === HOTSPOT_SYNC_NAME) { $scriptId = $s['.id'] ?? null; break; }
         }
         if ($scriptId) {
-            $api->comm('/system/script/set', [
+            routerCheckedCommand($api, '/system/script/set', [
                 '=.id='     . $scriptId,
                 '=source='  . $source,
                 '=policy=read,write,test,policy,ftp',
             ]);
         } else {
-            $api->comm('/system/script/add', [
+            routerCheckedCommand($api, '/system/script/add', [
                 '=name='    . HOTSPOT_SYNC_NAME,
                 '=source='  . $source,
                 '=policy=read,write,test,policy,ftp',
@@ -162,12 +164,12 @@ function installHotspotSyncScheduler($api, string $pageUrl, string $verUrl, stri
         // start-time=startup also fires ~3 min after every reboot, so a router
         // that was offline during a portal change catches up as soon as it boots.
         $schedId = null;
-        foreach ($api->comm('/system/scheduler/print') as $s) {
+        foreach (routerCheckedCommand($api, '/system/scheduler/print') as $s) {
             if (($s['name'] ?? '') === HOTSPOT_SYNC_NAME) { $schedId = $s['.id'] ?? null; break; }
         }
         $onEvent = '/system script run ' . HOTSPOT_SYNC_NAME;
         if ($schedId) {
-            $api->comm('/system/scheduler/set', [
+            routerCheckedCommand($api, '/system/scheduler/set', [
                 '=.id='         . $schedId,
                 '=interval='    . $interval,
                 '=on-event='    . $onEvent,
@@ -176,7 +178,7 @@ function installHotspotSyncScheduler($api, string $pageUrl, string $verUrl, stri
                 '=disabled=no',
             ]);
         } else {
-            $api->comm('/system/scheduler/add', [
+            routerCheckedCommand($api, '/system/scheduler/add', [
                 '=name='        . HOTSPOT_SYNC_NAME,
                 '=interval='    . $interval,
                 '=on-event='    . $onEvent,

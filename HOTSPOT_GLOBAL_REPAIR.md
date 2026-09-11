@@ -1,5 +1,16 @@
 # Hotspot expiry correction across tenants
 
+## Approved ghettohlink tariff correction
+
+The owner approved the screenshot's advertised durations for tenant 9, including historical correction: KES 5/10/15/20/25/30/40/100/150/700 correspond to 30 minutes/1 hour/3 hours/6 hours/8 hours/14 hours/24 hours/4 days/7 days/30 days. `config/ghettohlink_hotspot_tariffs.json` records that authorization. This file must not be applied to another tenant.
+
+```bash
+php tools/reconcile_hotspot_expiries.php --tenant=9 --tariffs=config/ghettohlink_hotspot_tariffs.json
+php tools/reconcile_hotspot_expiries.php --tenant=9 --tariffs=config/ghettohlink_hotspot_tariffs.json --apply > /root/hotspot-expiry-repairs.json
+```
+
+This corrects package durations as well as reconstructing customer deadlines. It matches exact prices, preserves shorter recorded terms, and uses original payment_date only when the activation timestamp was not saved; that conservative fallback may exclude the seconds spent awaiting the original confirmation and is explicitly recorded. It never uses the mutable STK updated_at timestamp. Unknown amounts and financial-ledger discrepancies remain review items. Successful apply writes durable router jobs; cron/retry_provisions.php must run and its router results must be audited. No live changes have been performed by local tests.
+
 The receipt reconnect fix prevents reused payment codes from granting time. Additional guards stop v1 renew/edit requests and paid customer registration/import from creating unpurchased hotspot access. Paid registrations remain pending with no expiry; contact imports preserve existing hotspot access settings. Free packages retain their configured finite duration.
 
 The bulk reconciliation command replaces account-specific repair scripts. It selects every hotspot customer in the chosen tenant, or every tenant, and reconstructs the purchased deadline chronologically from payment-linked duration snapshots and activation timestamps. It does not use today's package or the existing potentially inflated expiry as its starting point.

@@ -1,0 +1,601 @@
+{
+    "mode": "preview",
+    "customers_checked": 74,
+    "corrections": 0,
+    "review_required": 74,
+    "checks": [
+        {
+            "id": 28,
+            "tenant_id": 1,
+            "account": "F00028",
+            "old_expiry": "2026-09-16 19:25:14",
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 32,
+            "tenant_id": 1,
+            "account": null,
+            "old_expiry": "2026-05-26 09:07:06",
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 33,
+            "tenant_id": 1,
+            "account": null,
+            "old_expiry": "2026-09-16 19:25:26",
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 38,
+            "tenant_id": 1,
+            "account": "D011",
+            "old_expiry": "2026-08-14 06:03:56",
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 62,
+            "tenant_id": 1,
+            "account": "DEMO0042",
+            "old_expiry": "2026-06-05 00:00:00",
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 295,
+            "tenant_id": 1,
+            "account": "D043",
+            "old_expiry": "2026-09-06 09:44:49",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 24,
+            "tenant_id": 3,
+            "account": "SILDEMO",
+            "old_expiry": "2026-05-20 10:26:19",
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 157,
+            "tenant_id": 9,
+            "account": "G001",
+            "old_expiry": "2026-09-06 16:56:00",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 158,
+            "tenant_id": 9,
+            "account": "G002",
+            "old_expiry": "2026-07-26 11:46:35",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 159,
+            "tenant_id": 9,
+            "account": "G003",
+            "old_expiry": "2026-07-27 12:02:26",
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 160,
+            "tenant_id": 9,
+            "account": "G004",
+            "old_expiry": "2026-09-10 19:56:17",
+            "repairable": false,
+            "reason": "Confirmed STK payment missing from completed payment ledger; financial reconciliation required"
+        },
+        {
+            "id": 176,
+            "tenant_id": 9,
+            "account": "G005",
+            "old_expiry": "2026-09-10 21:26:55",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 187,
+            "tenant_id": 9,
+            "account": "G006",
+            "old_expiry": "2026-09-01 17:09:00",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 189,
+            "tenant_id": 9,
+            "account": "G007",
+            "old_expiry": "2026-09-01 22:56:44",
+            "repairable": false,
+            "reason": "Confirmed STK payment missing from completed payment ledger; financial reconciliation required"
+        },
+        {
+            "id": 190,
+            "tenant_id": 9,
+            "account": "G008",
+            "old_expiry": "2026-09-02 01:12:15",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 371,
+            "tenant_id": 9,
+            "account": null,
+            "old_expiry": "2026-09-06 16:59:49",
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 382,
+            "tenant_id": 9,
+            "account": "G009",
+            "old_expiry": null,
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 383,
+            "tenant_id": 9,
+            "account": "G010",
+            "old_expiry": "2026-09-08 21:25:53",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 384,
+            "tenant_id": 9,
+            "account": "G011",
+            "old_expiry": null,
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 385,
+            "tenant_id": 9,
+            "account": "G012",
+            "old_expiry": "2026-09-11 04:18:21",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 386,
+            "tenant_id": 9,
+            "account": "G013",
+            "old_expiry": "2026-09-12 10:23:10",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 387,
+            "tenant_id": 9,
+            "account": "G014",
+            "old_expiry": "2026-09-06 20:19:38",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 388,
+            "tenant_id": 9,
+            "account": "G015",
+            "old_expiry": null,
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 389,
+            "tenant_id": 9,
+            "account": "G016",
+            "old_expiry": "2026-09-12 14:32:34",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 390,
+            "tenant_id": 9,
+            "account": "G017",
+            "old_expiry": null,
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 391,
+            "tenant_id": 9,
+            "account": "G018",
+            "old_expiry": "2026-09-07 20:18:30",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 392,
+            "tenant_id": 9,
+            "account": "G019",
+            "old_expiry": "2026-09-06 21:55:44",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 393,
+            "tenant_id": 9,
+            "account": "G020",
+            "old_expiry": "2026-10-06 00:00:00",
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 394,
+            "tenant_id": 9,
+            "account": "G021",
+            "old_expiry": null,
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 395,
+            "tenant_id": 9,
+            "account": "G022",
+            "old_expiry": "2026-09-08 22:49:05",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 396,
+            "tenant_id": 9,
+            "account": "G023",
+            "old_expiry": "2026-09-06 22:50:27",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 397,
+            "tenant_id": 9,
+            "account": "G024",
+            "old_expiry": "2026-09-08 00:50:22",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 398,
+            "tenant_id": 9,
+            "account": "G025",
+            "old_expiry": "2026-09-10 23:24:27",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 399,
+            "tenant_id": 9,
+            "account": "G026",
+            "old_expiry": "2026-12-07 23:10:00",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 400,
+            "tenant_id": 9,
+            "account": "G027",
+            "old_expiry": "2026-09-28 22:47:00",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 401,
+            "tenant_id": 9,
+            "account": "G028",
+            "old_expiry": "2026-09-10 22:18:52",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 402,
+            "tenant_id": 9,
+            "account": "G029",
+            "old_expiry": "2026-09-07 13:38:01",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 403,
+            "tenant_id": 9,
+            "account": "G030",
+            "old_expiry": "2026-09-11 04:37:56",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 404,
+            "tenant_id": 9,
+            "account": "G031",
+            "old_expiry": null,
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 405,
+            "tenant_id": 9,
+            "account": "G032",
+            "old_expiry": "2026-09-09 21:09:33",
+            "repairable": false,
+            "reason": "Confirmed STK payment missing from completed payment ledger; financial reconciliation required"
+        },
+        {
+            "id": 406,
+            "tenant_id": 9,
+            "account": "G033",
+            "old_expiry": "2026-09-07 16:32:53",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 407,
+            "tenant_id": 9,
+            "account": "G034",
+            "old_expiry": "2026-09-07 18:36:34",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 408,
+            "tenant_id": 9,
+            "account": "G035",
+            "old_expiry": "2026-09-10 21:44:42",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 409,
+            "tenant_id": 9,
+            "account": "G036",
+            "old_expiry": "2026-09-07 19:45:31",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 412,
+            "tenant_id": 9,
+            "account": "G037",
+            "old_expiry": null,
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 413,
+            "tenant_id": 9,
+            "account": "G038",
+            "old_expiry": "2026-09-07 22:04:48",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 414,
+            "tenant_id": 9,
+            "account": "G039",
+            "old_expiry": null,
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 415,
+            "tenant_id": 9,
+            "account": "G040",
+            "old_expiry": "2026-09-07 23:05:57",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 416,
+            "tenant_id": 9,
+            "account": "G041",
+            "old_expiry": "2026-09-16 04:35:25",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 417,
+            "tenant_id": 9,
+            "account": "G042",
+            "old_expiry": "2026-09-10 22:06:22",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 418,
+            "tenant_id": 9,
+            "account": "G043",
+            "old_expiry": null,
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 419,
+            "tenant_id": 9,
+            "account": "G044",
+            "old_expiry": "2026-09-08 00:59:45",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 420,
+            "tenant_id": 9,
+            "account": "G045",
+            "old_expiry": "2026-09-08 10:14:06",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 421,
+            "tenant_id": 9,
+            "account": "G046",
+            "old_expiry": "2026-09-08 16:54:36",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 423,
+            "tenant_id": 9,
+            "account": "G047",
+            "old_expiry": "2026-09-08 22:06:39",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 424,
+            "tenant_id": 9,
+            "account": "G048",
+            "old_expiry": "2026-09-08 21:15:28",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 425,
+            "tenant_id": 9,
+            "account": "G049",
+            "old_expiry": "2026-09-08 23:54:30",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 426,
+            "tenant_id": 9,
+            "account": "G050",
+            "old_expiry": "2026-09-08 21:57:47",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 427,
+            "tenant_id": 9,
+            "account": "G051",
+            "old_expiry": "2026-09-08 23:12:00",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 428,
+            "tenant_id": 9,
+            "account": "G052",
+            "old_expiry": "2026-09-08 23:26:39",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 429,
+            "tenant_id": 9,
+            "account": "G053",
+            "old_expiry": null,
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 430,
+            "tenant_id": 9,
+            "account": "G054",
+            "old_expiry": "2026-09-09 04:58:31",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 431,
+            "tenant_id": 9,
+            "account": "G055",
+            "old_expiry": "2026-09-08 23:47:58",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 432,
+            "tenant_id": 9,
+            "account": "G056",
+            "old_expiry": "2026-09-09 19:16:03",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 433,
+            "tenant_id": 9,
+            "account": "G057",
+            "old_expiry": null,
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 434,
+            "tenant_id": 9,
+            "account": "G058",
+            "old_expiry": "2026-09-09 13:13:25",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 435,
+            "tenant_id": 9,
+            "account": "G059",
+            "old_expiry": null,
+            "repairable": false,
+            "reason": "No confirmed purchase history; review required"
+        },
+        {
+            "id": 436,
+            "tenant_id": 9,
+            "account": "G060",
+            "old_expiry": "2026-09-09 20:03:20",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 437,
+            "tenant_id": 9,
+            "account": "G061",
+            "old_expiry": "2026-09-10 22:33:32",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 438,
+            "tenant_id": 9,
+            "account": "G062",
+            "old_expiry": "2026-09-10 04:44:30",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 439,
+            "tenant_id": 9,
+            "account": "G063",
+            "old_expiry": "2026-09-11 13:04:32",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 440,
+            "tenant_id": 9,
+            "account": "G064",
+            "old_expiry": "2026-09-14 22:43:00",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 441,
+            "tenant_id": 9,
+            "account": "G065",
+            "old_expiry": "2026-09-11 05:19:07",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        },
+        {
+            "id": 443,
+            "tenant_id": 9,
+            "account": "G066",
+            "old_expiry": "2026-09-11 03:14:47",
+            "repairable": false,
+            "reason": "Original purchase duration or activation time is missing; current package settings cannot reconstruct it"
+        }
+    ],
+    "router_enforcement_verified": false
+}

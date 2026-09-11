@@ -22,14 +22,40 @@ function hotspotPurchasedDeadline(array $events): array {
     return ['repairable'=>true,'expiry'=>date('Y-m-d H:i:s',$deadline),'purchases'=>count($ordered)];
 }
 
-function hotspotPurchaseEvidence(PDO $pdo,int $tenant,int $client,array $historicalTerms=[]): array {
-    $st=$pdo->prepare("SELECT id,transaction_id,payment_date FROM payments WHERE tenant_id=? AND client_id=? AND status='completed' ORDER BY payment_date,id");
+/** Collapse receipt/checkout ledger aliases only when both resolve to one confirmed STK. */
+function hotspotConfirmedLedgerEvents(array $events): array {
+    $unique=[];$positions=[];
+    foreach($events as $event){
+        $key=$event['identity'];
+        if (!empty($event['canonical_stk']) && isset($positions[$key])) {
+            $i=$positions[$key];$previous=$unique[$i];
+            if (!empty($previous['canonical_stk']) &&
+                isset($previous['amount'],$event['amount'],$previous['validity_value'],$event['validity_value'],$previous['validity_unit'],$event['validity_unit']) &&
+                (string)$previous['amount']===(string)$event['amount'] &&
+                (int)$previous['validity_value']===(int)$event['validity_value'] &&
+                $previous['validity_unit']===$event['validity_unit'] &&
+                !empty($previous['confirmed_at']) && !empty($event['confirmed_at']) &&
+                strtotime($previous['confirmed_at'])!==false && strtotime($event['confirmed_at'])!==false) {
+                if (strtotime($event['confirmed_at'])<strtotime($previous['confirmed_at'])) $unique[$i]['confirmed_at']=$event['confirmed_at'];
+                $unique[$i]['ledger_payment_ids']=array_values(array_unique(array_merge($previous['ledger_payment_ids']??[$previous['payment_id']],[$event['payment_id']])));
+                continue;
+            }
+        }
+        $positions[$key]=count($unique);$unique[]=$event;
+    }
+    return $unique;
+}
+
+function hotspotPurchaseEvidence(PDO $pdo,int $tenant,int $client,array $historicalTerms=[],array $tariff=[]): array {
+    $st=$pdo->prepare("SELECT id,transaction_id,payment_date,amount FROM payments WHERE tenant_id=? AND client_id=? AND status='completed' ORDER BY payment_date,id");
     $st->execute([$tenant,$client]);$payments=$st->fetchAll(PDO::FETCH_ASSOC);$events=[];
     foreach ($payments as $payment) {
-        $event=['identity'=>(string)$payment['transaction_id'],'payment_id'=>(int)$payment['id']];
+        $event=['identity'=>(string)$payment['transaction_id'],'payment_id'=>(int)$payment['id'],'amount'=>$payment['amount']];
         $st=$pdo->prepare("SELECT checkout_request_id FROM mpesa_transactions WHERE tenant_id=? AND client_id=? AND status='completed' AND result_code=0 AND (checkout_request_id=? OR mpesa_receipt_number=?)");
         $st->execute([$tenant,$client,$payment['transaction_id'],$payment['transaction_id']]);$matches=$st->fetchAll(PDO::FETCH_COLUMN);
         if (count($matches)===1) {
+            $event['identity']=$matches[0]; // Receipt and checkout aliases are one purchase.
+            $event['canonical_stk']=true;
             try {
                 $st=$pdo->prepare('SELECT t.validity_value,t.validity_unit,MIN(a.created_at) AS confirmed_at FROM payment_purchase_terms t JOIN payment_activations a ON a.tenant_id=t.tenant_id AND a.client_id=t.client_id AND a.activation_key=t.checkout_id WHERE t.tenant_id=? AND t.client_id=? AND t.checkout_id=? GROUP BY t.validity_value,t.validity_unit');
                 $st->execute([$tenant,$client,$matches[0]]);$event=array_merge($event,$st->fetch(PDO::FETCH_ASSOC) ?: []);
@@ -40,11 +66,18 @@ function hotspotPurchaseEvidence(PDO $pdo,int $tenant,int $client,array $histori
         if ($override && !empty($override['source'])) {
             foreach (['validity_value','validity_unit','confirmed_at'] as $field) if (empty($event[$field]) && isset($override[$field])) $event[$field]=$override[$field];
         }
+        if ($tariff && (int)$tariff['tenant_id']===$tenant) {
+            require_once __DIR__ . '/hotspot_tariffs.php';
+            $event=hotspotApplyHistoricalTariff($event,$payment,$tariff);
+        }
         $events[]=$event;
     }
     // A confirmed STK missing from the ledger prevents an incomplete reconstruction.
     $st=$pdo->prepare("SELECT COUNT(*) FROM mpesa_transactions m WHERE m.tenant_id=? AND m.client_id=? AND m.status='completed' AND m.result_code=0 AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.tenant_id=m.tenant_id AND p.client_id=m.client_id AND p.status='completed' AND p.transaction_id IN (m.checkout_request_id,m.mpesa_receipt_number))");
     $st->execute([$tenant,$client]);
     if ((int)$st->fetchColumn()>0) return ['repairable'=>false,'reason'=>'Confirmed STK payment missing from completed payment ledger; financial reconciliation required'];
-    return hotspotPurchasedDeadline($events);
+    $events=hotspotConfirmedLedgerEvents($events);
+    $plan=hotspotPurchasedDeadline($events);
+    $plan['purchase_evidence']=array_map(function($event){unset($event['identity']);return $event;},$events);
+    return $plan;
 }

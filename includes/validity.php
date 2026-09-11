@@ -67,14 +67,17 @@ function packageValidityLabel($value, $unit): string
  */
 function packageExpiryFrom($value, $unit, $base = 'now'): string
 {
-    $baseTs = is_int($base) ? $base : (strtotime((string)$base) ?: time());
+    $baseTs = is_int($base) ? $base : strtotime((string)$base);
+    if ($baseTs === false) throw new InvalidArgumentException('Package start timestamp is invalid');
     if (filter_var($value, FILTER_VALIDATE_INT) === false || (int)$value < 1) {
         throw new InvalidArgumentException('Package duration must be a positive whole number');
     }
     $val    = (int)$value;
     $u      = packageValidityUnit($unit, true);
 
-    return date('Y-m-d H:i:s', strtotime('+' . $val . ' ' . $u, $baseTs));
+    $expiry = strtotime('+' . $val . ' ' . $u, $baseTs);
+    if ($expiry === false || $expiry <= $baseTs) throw new InvalidArgumentException('Package expiry is invalid');
+    return date('Y-m-d H:i:s', $expiry);
 }
 
 /**

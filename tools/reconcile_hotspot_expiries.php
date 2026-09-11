@@ -4,9 +4,15 @@ if (PHP_SAPI!=='cli') { http_response_code(403); exit; }
 require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/../includes/hotspot_expiry_reconciliation.php';
 require_once __DIR__ . '/../includes/dashboard_sync.php';
-$options=getopt('',['tenant:','all-tenants','apply','terms:']);
+$options=getopt('',['tenant:','all-tenants','apply','terms:','tariffs:']);
 $tenant=(int)($options['tenant'] ?? 0);$apply=array_key_exists('apply',$options);
 if (!$tenant && !array_key_exists('all-tenants',$options)) exit("Usage: php tools/reconcile_hotspot_expiries.php --tenant=ID|--all-tenants [--terms=reviewed-history.json] [--apply]\n");
+$tariff=[];
+if (isset($options['tariffs'])) {
+    $tariff=json_decode(file_get_contents($options['tariffs']),true,512,JSON_THROW_ON_ERROR);
+    if (!$tenant || $tenant!==(int)($tariff['tenant_id'] ?? 0) || empty($tariff['source']) || empty($tariff['prices'])) throw new RuntimeException('Use the tariff file only with its explicit --tenant ID');
+    require_once __DIR__ . '/../includes/hotspot_tariffs.php';
+}
 $terms=[];
 if (isset($options['terms'])) {
     $terms=json_decode(file_get_contents($options['terms']),true,512,JSON_THROW_ON_ERROR);
@@ -14,10 +20,12 @@ if (isset($options['terms'])) {
 }
 if ($apply) {
     dashboardSyncSchema($pdo);
+    $pdo->exec("CREATE TABLE IF NOT EXISTS hotspot_tariff_repairs (id BIGINT AUTO_INCREMENT PRIMARY KEY,tenant_id INT NOT NULL,package_id INT NOT NULL,evidence LONGTEXT NOT NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB");
     $pdo->exec("CREATE TABLE IF NOT EXISTS hotspot_expiry_repairs (id BIGINT AUTO_INCREMENT PRIMARY KEY,tenant_id INT NOT NULL,client_id INT NOT NULL,old_expiry DATETIME NULL,new_expiry DATETIME NOT NULL,evidence LONGTEXT NOT NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB");
 }
+$packageChanges=$tariff?hotspotTariffPackagePlan($pdo,$tariff,$apply):[];
 $st=$pdo->prepare("SELECT id,tenant_id FROM clients WHERE connection_type='hotspot' AND (?=0 OR tenant_id=?) ORDER BY tenant_id,id");$st->execute([$tenant,$tenant]);
-$customers=$st->fetchAll(PDO::FETCH_ASSOC);$report=['mode'=>$apply?'apply':'preview','customers_checked'=>0,'corrections'=>0,'review_required'=>0,'checks'=>[]];
+$customers=$st->fetchAll(PDO::FETCH_ASSOC);$report=['mode'=>$apply?'apply':'preview','package_changes'=>$packageChanges,'customers_checked'=>0,'corrections'=>0,'review_required'=>0,'checks'=>[]];
 foreach ($customers as $entry) {
     $key='payment-client-'.$entry['tenant_id'].'-'.$entry['id'];$locked=false;$row=$entry;
     try {
@@ -26,7 +34,7 @@ foreach ($customers as $entry) {
         $pdo->beginTransaction();
         $st=$pdo->prepare('SELECT * FROM clients WHERE id=? AND tenant_id=? FOR UPDATE');$st->execute([$entry['id'],$entry['tenant_id']]);$client=$st->fetch(PDO::FETCH_ASSOC);
         $row['account']=$client['account_number'];$row['old_expiry']=$client['expiry_date'];
-        $plan=hotspotPurchaseEvidence($pdo,(int)$entry['tenant_id'],(int)$entry['id'],$terms);$row=array_merge($row,$plan);
+        $plan=hotspotPurchaseEvidence($pdo,(int)$entry['tenant_id'],(int)$entry['id'],$terms,$tariff);$row=array_merge($row,$plan);
         if (!$plan['repairable']) { $report['review_required']++;$pdo->rollBack(); }
         elseif (empty($client['expiry_date']) || strtotime($plan['expiry'])>strtotime($client['expiry_date'])) {
             $row['repairable']=false;$row['reason']='Reconstructed entitlement would extend current access; requires review, not an automatic replay';$report['review_required']++;$pdo->rollBack();

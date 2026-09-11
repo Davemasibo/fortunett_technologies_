@@ -155,7 +155,7 @@ function renderHotspotLoginPage(PDO $pdo, array $tenant): string
         }
         $steps[] = 'Enter the plan amount and confirm with your PIN';
         if ($theme['show_paid'] === '1') {
-            $steps[] = 'Got the M-Pesa code? Open the <strong>Paid?</strong> tab and enter it';
+            $steps[] = 'Got the M-Pesa code? Enter it in <strong>Reconnect</strong> at the top of this page';
         }
 
         $manual = '    <details class="how-to"><summary>Pay manually with '
@@ -261,7 +261,6 @@ function _renderHotspotPackages(PDO $pdo, int $tenantId): array
             WHERE tenant_id = ? AND status = 'active'
               AND COALESCE(NULLIF(connection_type,''), 'hotspot') = 'hotspot'
             ORDER BY price ASC
-            LIMIT 12
         ");
         $pkgStmt->execute([$tenantId]);
         $pkgs = $pkgStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -279,118 +278,37 @@ function _renderHotspotPackages(PDO $pdo, int $tenantId): array
         ];
     }
 
-    // ── Pass 1: normalise durations and find the best value ───────────────────
-    $groupLabels = [
-        'minute' => 'Minutes', 'hour' => 'Hourly', 'day' => 'Daily',
-        'week'   => 'Weekly',  'month' => 'Monthly',
-    ];
-    $hoursPer = ['minute' => 1 / 60, 'hour' => 1, 'day' => 24, 'week' => 168, 'month' => 720];
-
-    $bestIdx  = -1;
-    $bestRate = INF;
-
-    foreach ($pkgs as $i => $p) {
-        $val   = max(1, (int)($p['validity_value'] ?? 1));
-        $unit  = rtrim(strtolower(trim((string)($p['validity_unit'] ?? 'days'))), 's');
-        // Anything unrecognised (mins, hrs, a typo) is treated as days — the
-        // same assumption the provisioning code makes for the expiry date.
-        if (!isset($groupLabels[$unit])) $unit = 'day';
-
-        $hours = $val * $hoursPer[$unit];
-
-        $pkgs[$i]['_group'] = $unit;
-        $pkgs[$i]['_hours'] = $hours;
-        $pkgs[$i]['_dur']   = $val . ' ' . $unit . ($val === 1 ? '' : 's');
-
-        // Cheapest per hour of access wins the badge — only among paid plans
-        // that last at least a day, so a 1-hour teaser can't game it.
+    require_once __DIR__ . '/../includes/validity.php';
+    $rows = '';
+    foreach ($pkgs as $p) {
+        // Display exactly the units accepted by payment activation; never guess days.
+        try {
+            packageExpiryFrom($p['validity_value'], $p['validity_unit']);
+            $duration = packageValidityLabel($p['validity_value'], $p['validity_unit']);
+        } catch (InvalidArgumentException $e) { continue; }
         $price = (float)$p['price'];
-        if ($price > 0 && $hours >= 24) {
-            $rate = $price / $hours;
-            if ($rate < $bestRate) { $bestRate = $rate; $bestIdx = $i; }
-        }
-    }
-
-    // ── Pass 2: markup ────────────────────────────────────────────────────────
-    $rows        = '';
-    $groupsInUse = [];
-
-    // Nothing is pre-selected: the pay dock in login.html only appears once a
-    // plan is tapped, and a plan the customer never chose would open it for
-    // them. The one exception is a tenant selling a single plan -- there is no
-    // choice to make, so making them tap it is friction for its own sake.
-    $autoSelect  = count($pkgs) === 1;
-
-    foreach ($pkgs as $idx => $p) {
-        $price   = (float)$p['price'];
-        $isFree  = $price <= 0;
-        $group   = $p['_group'];
-        $groupsInUse[$group] = $groupLabels[$group];
-
-        // Feature chips. The duration is promoted out of the chip row and given
-        // its own line -- in a side-by-side card it is the second thing a
-        // customer compares after the price, and it was competing with the
-        // speed and data pills for the same eye.
-        $chips = '';
-        if (!empty($p['download_speed'])) {
-            $chips .= _hsChip('bolt', (int)$p['download_speed'] . ' Mbps');
-        }
+        $isFree = $price <= 0;
+        $speed = (float)($p['download_speed'] ?? 0);
+        $speedLabel = $speed > 0 ? rtrim(rtrim(number_format($speed, 2, '.', ''), '0'), '.') . ' Mbps' : 'Unlimited speed';
         $limit = (float)($p['data_limit'] ?? 0);
-        $chips .= _hsChip('data', $limit > 0 ? _hsFormatBytes($limit) : 'Unlimited');
+        $dataLabel = $limit > 0 ? _hsFormatBytes($limit) . ' data' : 'Unlimited data';
         $devices = (int)($p['device_limit'] ?? 0);
-        if ($devices > 1) {
-            $chips .= _hsChip('device', $devices . ' devices');
-        }
-
-        // At most one tag per card — free beats best-value
-        $tag = '';
-        if ($isFree) {
-            $tag = '<em class="pkg-tag pkg-tag-free">Free</em>';
-        } elseif ($idx === $bestIdx && count($pkgs) > 1) {
-            $tag = '<em class="pkg-tag">Best value</em>';
-        }
-
-        $checked = $autoSelect ? ' checked' : '';
-        $selCls  = $autoSelect ? ' selected' : '';
-
-        $priceHtml = $isFree
-            ? '<span class="pkg-price pkg-price-free">FREE</span>'
-            : '<span class="pkg-price"><small>KES</small>' . number_format($price, 0) . '</span>';
-
-        // <label> wrapping the radio gives native click + keyboard + a11y for
-        // free. The class stays `pkg-row` -- every filter, selection and pay
-        // handler in login.html keys off it, so the layout change is entirely
-        // in CSS and markup order, not in the page's behaviour.
-        $rows .= '<label class="pkg-row' . $selCls . '"'
-            . ' data-price="' . number_format($price, 0, '.', '') . '"'
-            . ' data-group="' . $group . '"'
+        if ($devices > 1) $dataLabel .= ' ? ' . $devices . ' devices';
+        $rows .= '<label class="pkg-row" data-price="' . number_format($price, 2, '.', '') . '"'
             . ' data-free="' . ($isFree ? '1' : '0') . '"'
             . ' data-name="' . htmlspecialchars($p['name'], ENT_QUOTES) . '"'
-            . ' data-dur="'  . htmlspecialchars($p['_dur'], ENT_QUOTES) . '"'
-            . ' style="--i:' . $idx . '">'
-            . '<input type="radio" name="buy_package" value="' . (int)$p['id'] . '"' . $checked . '>'
-            . '<span class="pkg-check"></span>'
-            . '<span class="pkg-name">' . htmlspecialchars($p['name']) . '</span>'
-            . $priceHtml
-            . '<span class="pkg-dur">' . htmlspecialchars($p['_dur']) . '</span>'
-            . '<span class="pkg-chips">' . $chips . '</span>'
-            . $tag
+            . ' data-dur="' . htmlspecialchars($duration, ENT_QUOTES) . '">'
+            . '<input type="radio" name="buy_package" value="' . (int)$p['id'] . '" aria-label="'
+            . htmlspecialchars($duration . ', ' . ($isFree ? 'free' : 'Ksh ' . number_format($price, 2)), ENT_QUOTES) . '">'
+            . '<span class="pkg-dur">' . htmlspecialchars($duration) . '</span>'
+            . '<span class="pkg-speed">' . htmlspecialchars($speedLabel) . '</span>'
+            . '<span class="pkg-data">' . htmlspecialchars($dataLabel) . '</span>'
+            . '<span class="pkg-price">' . ($isFree ? 'FREE' : 'Ksh ' . number_format($price, 2)) . '</span>'
+            . '<span class="pkg-buy">&#10095; ' . ($isFree ? 'GET FREE ACCESS' : 'BUY NOW') . '</span>'
             . '</label>';
     }
-
-    // Filter chips only earn their space when there's more than one duration
-    $filters = '';
-    if (count($groupsInUse) > 1) {
-        $filters = '<div class="pkg-filters"><button type="button" class="filter-chip active" data-filter="all">All</button>';
-        foreach (['minute', 'hour', 'day', 'week', 'month'] as $g) {
-            if (isset($groupsInUse[$g])) {
-                $filters .= '<button type="button" class="filter-chip" data-filter="' . $g . '">' . $groupsInUse[$g] . '</button>';
-            }
-        }
-        $filters .= '</div>';
-    }
-
-    return ['<div class="pkg-list">' . $rows . '</div>', $filters];
+    if ($rows === '') return ['<div class="pkg-empty">No plans available. Please contact support.</div>', ''];
+    return ['<div class="pkg-list">' . $rows . '</div>', ''];
 }
 
 /** A small icon + label pill inside a plan row. */

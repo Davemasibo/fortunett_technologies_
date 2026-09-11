@@ -6,7 +6,9 @@ require_once __DIR__ . '/../includes/stk_reconciliation.php';
 require_once __DIR__ . '/../includes/hotspot_device.php';
 
 date_default_timezone_set('Africa/Nairobi');
-foreach ([[30,'minutes',1800], [3,'hours',10800]] as [$value,$unit,$seconds]) {
+foreach ([[30,'minutes',1800], [1,'hours',3600], [3,'hours',10800], [6,'hours',21600],
+    [8,'hours',28800], [14,'hours',50400], [24,'hours',86400], [4,'days',345600],
+    [7,'days',604800], [30,'days',2592000]] as [$value,$unit,$seconds]) {
     $db = new ConnectivityTestPDO();
     $db->client['status'] = 'pending';
     $db->client['expiry_date'] = null;

@@ -170,7 +170,7 @@ foreach ($routers as $router) {
         if (!$scriptId) {
             throw new RuntimeException('sync script missing after install');
         }
-        $api->comm('/system/script/run', ['=.id=' . $scriptId]);
+        routerCheckedCommand($api, '/system/script/run', ['=.id=' . $scriptId]);
         try { $api->disconnect(); } catch (Throwable $_e) {}
 
         out("  PUSH  $label — sync triggered (was: " . ($onRouter ?: 'unknown') . ", now: " . ($currentVersion ?: '?') . ')');
