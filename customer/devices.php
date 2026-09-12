@@ -60,12 +60,12 @@ include 'includes/header.php';
 <style>
 /* ── Page ──────────────────────────────────────────── */
 .dev-page { padding: 28px 32px; max-width: 1000px; }
-.dev-page-title { font-size: 26px; font-weight: 700; color: #e2e2e0; margin: 0 0 4px; }
-.dev-page-sub   { font-size: 14px; color: rgba(255,255,255,.4); margin: 0 0 28px; }
+.dev-page-title { font-size: 26px; font-weight: 700; color:var(--ink); margin: 0 0 4px; }
+.dev-page-sub   { font-size: 14px; color:var(--ink-dim); margin: 0 0 28px; }
 
 /* ── Card ──────────────────────────────────────────── */
 .dev-card {
-    background: #222221;
+    background:var(--surface);
     border: 1px solid rgba(255,255,255,.07);
     border-radius: 14px;
     box-shadow: 8px 8px 20px rgba(0,0,0,.4), -4px -4px 10px rgba(255,255,255,.03);
@@ -81,15 +81,15 @@ include 'includes/header.php';
 .dev-card-head-left {
     font-size: 15px;
     font-weight: 600;
-    color: #e2e2e0;
+    color:var(--ink);
     display: flex;
     align-items: center;
     gap: 8px;
 }
-.dev-card-head-left i { color: rgba(255,255,255,.4); font-size: 14px; }
+.dev-card-head-left i { color:var(--ink-dim); font-size: 14px; }
 .dev-count {
     font-size: 12px;
-    color: rgba(255,255,255,.35);
+    color:var(--ink-dim);
     background: rgba(255,255,255,.06);
     padding: 3px 10px;
     border-radius: 20px;
@@ -105,7 +105,7 @@ include 'includes/header.php';
     text-align: left;
     font-size: 10px;
     font-weight: 700;
-    color: rgba(255,255,255,.35);
+    color:var(--ink-dim);
     text-transform: uppercase;
     letter-spacing: .06em;
     white-space: nowrap;
@@ -131,8 +131,8 @@ include 'includes/header.php';
     flex-shrink: 0;
 }
 .dev-icon.current { background: rgba(59,130,246,.15); color: #93c5fd; }
-.dev-icon.other   { background: rgba(255,255,255,.07); color: rgba(255,255,255,.4); }
-.dev-ip    { font-size: 13px; font-weight: 500; color: #e2e2e0; }
+.dev-icon.other   { background: rgba(255,255,255,.07); color:var(--ink-dim); }
+.dev-ip    { font-size: 13px; font-weight: 500; color:var(--ink); }
 .dev-badge {
     display: inline-block;
     margin-top: 2px;
@@ -150,7 +150,7 @@ include 'includes/header.php';
 .mac {
     font-family: 'JetBrains Mono', 'Fira Mono', monospace;
     font-size: 12px;
-    color: rgba(255,255,255,.45);
+    color:var(--ink-dim);
     background: rgba(255,255,255,.05);
     padding: 2px 8px;
     border-radius: 5px;
@@ -166,10 +166,10 @@ include 'includes/header.php';
 .dev-empty {
     text-align: center;
     padding: 64px 24px;
-    color: rgba(255,255,255,.25);
+    color:var(--ink-dim);
 }
 .dev-empty i { font-size: 44px; display: block; margin-bottom: 14px; }
-.dev-empty h3 { font-size: 18px; font-weight: 600; color: rgba(255,255,255,.4); margin-bottom: 6px; }
+.dev-empty h3 { font-size: 18px; font-weight: 600; color:var(--ink-dim); margin-bottom: 6px; }
 .dev-empty p  { font-size: 13px; }
 
 /* ── Info strip ────────────────────────────────────── */
@@ -183,13 +183,13 @@ include 'includes/header.php';
     border: 1px solid rgba(59,130,246,.18);
     border-radius: 10px;
     font-size: 13px;
-    color: rgba(255,255,255,.55);
+    color:var(--ink-dim);
 }
 .dev-info-strip i { color: #93c5fd; flex-shrink: 0; }
 </style>
 
 <div class="dev-page">
-    <h1 class="dev-page-title"><i class="fas fa-laptop" style="color:rgba(255,255,255,.4);margin-right:10px;"></i>Connected Devices</h1>
+    <h1 class="dev-page-title"><i class="fas fa-laptop" style="color:var(--ink-dim);margin-right:10px;"></i>Connected Devices</h1>
     <p class="dev-page-sub">Your live network connection and portal sessions</p>
 
     <!-- Live MikroTik Connection Card -->
@@ -207,29 +207,29 @@ include 'includes/header.php';
         </div>
 
         <?php if ($mkError): ?>
-        <div style="padding:20px 22px;font-size:13px;color:rgba(255,255,255,.4);">
+        <div style="padding:20px 22px;font-size:13px;color:var(--ink-dim);">
             <i class="fas fa-exclamation-circle" style="color:#f87171;margin-right:6px;"></i><?php echo htmlspecialchars($mkError); ?>
         </div>
         <?php elseif ($mkSession): ?>
         <div style="padding:20px 22px;">
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;">
                 <div>
-                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Type</div>
-                    <div style="font-size:13px;font-weight:600;color:#e2e2e0;"><?php echo htmlspecialchars($mkSession['type']); ?></div>
+                    <div style="font-size:10px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Type</div>
+                    <div style="font-size:13px;font-weight:600;color:var(--ink);"><?php echo htmlspecialchars($mkSession['type']); ?></div>
                 </div>
                 <div>
-                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">IP Address</div>
+                    <div style="font-size:10px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">IP Address</div>
                     <div style="font-size:13px;font-family:monospace;color:#93c5fd;"><?php echo htmlspecialchars($mkSession['address'] ?? '—'); ?></div>
                 </div>
                 <?php if (!empty($mkSession['caller'])): ?>
                 <div>
-                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">MAC / Caller-ID</div>
+                    <div style="font-size:10px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">MAC / Caller-ID</div>
                     <div class="mac"><?php echo htmlspecialchars($mkSession['caller']); ?></div>
                 </div>
                 <?php endif; ?>
                 <div>
-                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Uptime</div>
-                    <div style="font-size:13px;color:#e2e2e0;"><?php echo htmlspecialchars($mkSession['uptime'] ?? '—'); ?></div>
+                    <div style="font-size:10px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Uptime</div>
+                    <div style="font-size:13px;color:var(--ink);"><?php echo htmlspecialchars($mkSession['uptime'] ?? '—'); ?></div>
                 </div>
                 <?php
                 $rxBytes = (int)($mkSession['rx_byte'] ?? 0);
@@ -242,24 +242,24 @@ include 'includes/header.php';
                 }
                 ?>
                 <div>
-                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Downloaded</div>
+                    <div style="font-size:10px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Downloaded</div>
                     <div style="font-size:13px;color:#6ee7b7;"><?php echo fmtCustBytes($rxBytes); ?></div>
                 </div>
                 <div>
-                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Uploaded</div>
+                    <div style="font-size:10px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Uploaded</div>
                     <div style="font-size:13px;color:#a5b4fc;"><?php echo fmtCustBytes($txBytes); ?></div>
                 </div>
                 <div>
-                    <div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Router</div>
-                    <div style="font-size:13px;color:rgba(255,255,255,.55);"><?php echo htmlspecialchars($mkSession['router_name']); ?></div>
+                    <div style="font-size:10px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Router</div>
+                    <div style="font-size:13px;color:var(--ink-dim);"><?php echo htmlspecialchars($mkSession['router_name']); ?></div>
                 </div>
             </div>
         </div>
         <?php else: ?>
         <div style="text-align:center;padding:40px 24px;">
-            <i class="fas fa-unlink" style="font-size:32px;color:rgba(255,255,255,.15);display:block;margin-bottom:12px;"></i>
-            <div style="font-size:14px;font-weight:600;color:rgba(255,255,255,.35);margin-bottom:4px;">No Active Connection</div>
-            <div style="font-size:12px;color:rgba(255,255,255,.2);">No live session found for your account on any router.</div>
+            <i class="fas fa-unlink" style="font-size:32px;color:var(--ink-dim);display:block;margin-bottom:12px;"></i>
+            <div style="font-size:14px;font-weight:600;color:var(--ink-dim);margin-bottom:4px;">No Active Connection</div>
+            <div style="font-size:12px;color:var(--ink-dim);">No live session found for your account on any router.</div>
         </div>
         <?php endif; ?>
     </div>
@@ -313,7 +313,7 @@ include 'includes/header.php';
                         <?php if (!empty($s['mac_address'])): ?>
                             <span class="mac"><?php echo htmlspecialchars($s['mac_address']); ?></span>
                         <?php else: ?>
-                            <span style="color:rgba(255,255,255,.2);">—</span>
+                            <span style="color:var(--ink-dim);">—</span>
                         <?php endif; ?>
                     </td>
                     <td>
@@ -322,8 +322,8 @@ include 'includes/header.php';
                             <?php echo $isActive ? 'Active' : 'Expired'; ?>
                         </span>
                     </td>
-                    <td style="color:rgba(255,255,255,.45);"><?php echo $lastAct; ?></td>
-                    <td style="color:rgba(255,255,255,.45);"><?php echo $expiresAt; ?></td>
+                    <td style="color:var(--ink-dim);"><?php echo $lastAct; ?></td>
+                    <td style="color:var(--ink-dim);"><?php echo $expiresAt; ?></td>
                 </tr>
                 <?php endforeach; ?>
                 </tbody>

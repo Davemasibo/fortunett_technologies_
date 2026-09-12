@@ -28,7 +28,7 @@ if (!in_array($subdomain, ['localhost', 'www']) && !filter_var($host, FILTER_VAL
     try {
         $tSt = $pdo->prepare("SELECT t.id, t.company_name, ts.setting_key, ts.setting_value
             FROM tenants t LEFT JOIN tenant_settings ts ON ts.tenant_id = t.id
-            WHERE t.subdomain = ? LIMIT 20");
+            WHERE t.subdomain = ?");
         $tSt->execute([$subdomain]);
         $rows = $tSt->fetchAll(PDO::FETCH_ASSOC);
         if ($rows) {
@@ -161,6 +161,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tenantId) {
     }
 }
 
+require_once __DIR__ . '/includes/theme.php';
+$customerAppearance = customerThemeData($pdo, (int)($tenantId ?? 0));
+$branding['color'] = $customerAppearance['accent'];
+$branding['gradient'] = $customerAppearance['accent'];
+if ($customerAppearance['logo'] !== '') $branding['logo'] = $customerAppearance['logo'];
 $hex = ltrim($branding['color'], '#');
 if (strlen($hex) === 3) $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
 $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr($hex,4,2));
@@ -196,8 +201,8 @@ $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr
 .pkg-card:hover{border-color:rgba(255,255,255,.18);}
 .pkg-card.selected{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand),inset 2px 2px 5px var(--neu-sh-d);}
 .pkg-card input[type=radio]{position:absolute;opacity:0;width:0;height:0;}
-.pkg-card-name{font-weight:700;font-size:13px;color:#e2e2e0;margin-bottom:3px;}
-.pkg-card-meta{font-size:11px;color:rgba(255,255,255,.4);}
+.pkg-card-name{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:3px;}
+.pkg-card-meta{font-size:11px;color:var(--ink-dim);}
 .pkg-card-price{font-size:15px;font-weight:800;color:var(--brand);margin-top:6px;}
 .pkg-card-free{font-size:11px;color:var(--ok);font-weight:700;margin-top:4px;}
 .pkg-card-check{
@@ -208,12 +213,14 @@ $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr
     display:flex;align-items:center;justify-content:center;
 }
 .pkg-card.selected .pkg-card-check{border-color:var(--brand);background:var(--brand);}
-.pkg-card.selected .pkg-card-check::after{content:'✓';color:#fff;font-size:10px;font-weight:700;}
+.pkg-card.selected .pkg-card-check::after{content:'✓';color:var(--ink);font-size:10px;font-weight:700;}
 </style>
+<?php require_once __DIR__ . '/includes/theme.php'; customerThemeHead($pdo, (int)($tenantId ?? 0)); ?>
 </head>
 <body class="auth-page">
 <div class="auth-container" style="max-width:480px;">
     <div class="auth-header">
+        <?php if (!empty($branding['logo'])): ?><img class="customer-logo" src="<?= htmlspecialchars($branding['logo'], ENT_QUOTES) ?>" alt="<?= htmlspecialchars($branding['name'], ENT_QUOTES) ?>"><?php endif; ?>
         <div class="auth-icon-wrap">
             <i class="fas fa-user-plus"></i>
         </div>
@@ -268,7 +275,7 @@ $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr
                     </label>
                     <?php endforeach; ?>
                 </div>
-                <div style="font-size:11px;color:rgba(255,255,255,.35);margin-top:4px;">
+                <div style="font-size:11px;color:var(--ink-dim);margin-top:4px;">
                     Free packages are activated immediately. Paid packages require an M-Pesa payment after registration.
                 </div>
             </div>

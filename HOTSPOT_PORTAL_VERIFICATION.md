@@ -1,5 +1,7 @@
 # Captive portal refresh and purchased-time verification
 
+Update: tenant appearance has since been restored across captive and customer portals. Router build `0b944725a972` was verified CURRENT on 2026-09-11 at 20:18:56 Africa/Nairobi; see `CUSTOMER_THEME_VERIFICATION.md`. The earlier fixed reference colors described below are superseded by the saved tenant palette.
+
 Deployed on 2026-09-11 to `/var/www/html/fortunett_technologies_` and tenant 9's router 19 (rb951). Router build `20f02b99eb51` was read back as CURRENT at 18:42 Africa/Nairobi. Original files and repair evidence are backed up under `/root/fortunett-portal-20260911/`.
 
 Live results:

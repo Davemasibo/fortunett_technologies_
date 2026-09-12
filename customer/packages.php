@@ -38,9 +38,9 @@ include 'includes/header.php';
         <!-- JS will populate -->
     </div>
         
-    <div id="emptyState" style="text-align:center;padding:48px 24px;display:none;background:#222221;border-radius:14px;border:1px solid rgba(255,255,255,.07);">
-        <i class="fas fa-inbox" style="font-size:44px;color:rgba(255,255,255,.2);margin-bottom:14px;display:block;"></i>
-        <p style="color:rgba(255,255,255,.35);font-size:14px;">No packages available in this category.</p>
+    <div id="emptyState" style="text-align:center;padding:48px 24px;display:none;background:var(--surface);border-radius:14px;border:1px solid rgba(255,255,255,.07);">
+        <i class="fas fa-inbox" style="font-size:44px;color:var(--ink-dim);margin-bottom:14px;display:block;"></i>
+        <p style="color:var(--ink-dim);font-size:14px;">No packages available in this category.</p>
     </div>
 </div>
 
@@ -84,8 +84,8 @@ include 'includes/header.php';
 .packages-container { max-width: 1000px; margin: 0 auto; }
 
 .page-header { text-align: center; margin-bottom: 28px; }
-.page-header h1 { font-size: 26px; font-weight: 700; color: #e2e2e0; display:flex; align-items:center; justify-content:center; gap:10px; }
-.page-header p  { font-size:14px; color:rgba(255,255,255,.4); margin-top:4px; }
+.page-header h1 { font-size: 26px; font-weight: 700; color:var(--ink); display:flex; align-items:center; justify-content:center; gap:10px; }
+.page-header p  { font-size:14px; color:var(--ink-dim); margin-top:4px; }
 
 .current-package-notice {
     background: rgba(59,130,246,.1);
@@ -115,7 +115,7 @@ include 'includes/header.php';
     border-radius: 40px;
     border: none;
     background: transparent;
-    color: rgba(255,255,255,.45);
+    color:var(--ink-dim);
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
@@ -123,14 +123,14 @@ include 'includes/header.php';
     font-family: inherit;
 }
 .toggle-btn.active {
-    background: #222221;
-    color: #e2e2e0;
+    background:var(--surface);
+    color:var(--ink);
     box-shadow: 4px 4px 10px rgba(0,0,0,.4), -2px -2px 6px rgba(255,255,255,.04);
 }
 
 /* Package list */
 .packages-list {
-    background: #222221;
+    background:var(--surface);
     border: 1px solid rgba(255,255,255,.07);
     border-radius: 14px;
     overflow: hidden;
@@ -166,10 +166,10 @@ include 'includes/header.php';
     gap: 12px;
     min-width: 0;
 }
-.pkg-name { font-weight: 700; color: #e2e2e0; font-size: 14px; margin-bottom: 2px; }
-.pkg-desc { font-size: 12px; color: rgba(255,255,255,.35); }
+.pkg-name { font-weight: 700; color:var(--ink); font-size: 14px; margin-bottom: 2px; }
+.pkg-desc { font-size: 12px; color:var(--ink-dim); }
 .pkg-stat { font-size: 13px; color: #d4d4d2; }
-.pkg-stat span { display: block; font-size: 10px; text-transform: uppercase; color: rgba(255,255,255,.3); font-weight: 600; letter-spacing:.04em; margin-bottom:2px; }
+.pkg-stat span { display: block; font-size: 10px; text-transform: uppercase; color:var(--ink-dim); font-weight: 600; letter-spacing:.04em; margin-bottom:2px; }
 .pkg-price { font-weight: 700; font-size: 15px; color: #93c5fd; text-align: right; white-space:nowrap; }
 .pkg-price.free { color: #6ee7b7; }
 
@@ -181,14 +181,14 @@ include 'includes/header.php';
     border: none;
     cursor: pointer;
     background: linear-gradient(135deg, var(--primary-dark,#1e3a5f) 0%, var(--primary,#2C5282) 100%);
-    color: #fff;
+    color:var(--ink);
     white-space: nowrap;
     flex-shrink: 0;
     transition: opacity .2s, transform .15s;
 }
 .btn-select:hover { opacity: .85; transform: translateY(-1px); }
 .btn-select.free { background: linear-gradient(135deg, #059669, #10b981); }
-.btn-select:disabled { background: rgba(255,255,255,.08); color: rgba(255,255,255,.3); cursor: not-allowed; transform: none; }
+.btn-select:disabled { background: rgba(255,255,255,.08); color:var(--ink-dim); cursor: not-allowed; transform: none; }
 
 /* Confirm modal */
 .modal {
@@ -203,7 +203,7 @@ include 'includes/header.php';
 }
 .modal.show { display: flex; }
 .modal-content {
-    background: #222221;
+    background:var(--surface);
     border: 1px solid rgba(255,255,255,.1);
     border-radius: 20px;
     width: 100%;
@@ -219,20 +219,20 @@ include 'includes/header.php';
     align-items: center;
     border-radius: 20px 20px 0 0;
 }
-.modal-header h2 { font-size: 16px; font-weight: 700; color: #e2e2e0; margin: 0; }
+.modal-header h2 { font-size: 16px; font-weight: 700; color:var(--ink); margin: 0; }
 .modal-close {
     width: 28px; height: 28px;
     background: rgba(255,255,255,.07);
     border: 1px solid rgba(255,255,255,.08);
     border-radius: 6px;
-    color: rgba(255,255,255,.5);
+    color:var(--ink-dim);
     display: flex; align-items: center; justify-content: center;
     cursor: pointer;
     font-size: 13px;
 }
-.modal-close:hover { background: rgba(255,255,255,.13); color: #fff; }
+.modal-close:hover { background: rgba(255,255,255,.13); color:var(--ink); }
 .modal-body  { padding: 22px; }
-.modal-body p { color: rgba(255,255,255,.55); font-size: 13px; margin-bottom: 14px; }
+.modal-body p { color:var(--ink-dim); font-size: 13px; margin-bottom: 14px; }
 .selected-package-info {
     background: rgba(255,255,255,.04);
     border: 1px solid rgba(255,255,255,.08);
@@ -241,11 +241,11 @@ include 'includes/header.php';
     text-align: center;
     margin-bottom: 16px;
 }
-.selected-package-info h3 { color: #e2e2e0; font-size: 17px; margin-bottom: 6px; }
+.selected-package-info h3 { color:var(--ink); font-size: 17px; margin-bottom: 6px; }
 .selected-price { font-size: 22px; font-weight: 800; color: #93c5fd; }
 .modal-note {
     font-size: 12px;
-    color: rgba(255,255,255,.4);
+    color:var(--ink-dim);
     padding: 10px 14px;
     background: rgba(255,255,255,.04);
     border-radius: 8px;
@@ -265,12 +265,12 @@ include 'includes/header.php';
     background: rgba(255,255,255,.07);
     border: 1px solid rgba(255,255,255,.1);
     border-radius: 8px;
-    color: rgba(255,255,255,.7);
+    color:var(--ink-dim);
     font-size: 14px;
     cursor: pointer;
     font-family: inherit;
 }
-.btn-secondary:hover { background: rgba(255,255,255,.12); color: #fff; }
+.btn-secondary:hover { background: rgba(255,255,255,.12); color:var(--ink); }
 /* .btn-primary comes from css/customer.css. It was redefined here as a
    flatter, smaller button with a different gradient and no lift on hover,
    so the same action looked like a different control on this page than on

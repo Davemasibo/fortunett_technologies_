@@ -39,7 +39,7 @@ if (!in_array($subdomain, ['localhost', 'www']) && !filter_var($host, FILTER_VAL
     try {
         $tSt = $pdo->prepare("SELECT t.id, t.company_name, ts.setting_key, ts.setting_value
             FROM tenants t LEFT JOIN tenant_settings ts ON ts.tenant_id = t.id
-            WHERE t.subdomain = ? LIMIT 30");
+            WHERE t.subdomain = ?");
         $tSt->execute([$subdomain]);
         $rows = $tSt->fetchAll(PDO::FETCH_ASSOC);
         if ($rows) {
@@ -137,6 +137,11 @@ if ($client && !empty($client['expiry_date'])) {
 }
 
 // ── Brand CSS vars ────────────────────────────────────────────────────────────
+require_once __DIR__ . '/includes/theme.php';
+$customerAppearance = customerThemeData($pdo, (int)($tenantId ?? 0));
+$branding['color'] = $customerAppearance['accent'];
+$branding['gradient'] = $customerAppearance['accent'];
+if ($customerAppearance['logo'] !== '') $branding['logo'] = $customerAppearance['logo'];
 $hex = ltrim($branding['color'], '#');
 if (strlen($hex) === 3) $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
 $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr($hex,4,2));
@@ -184,7 +189,7 @@ body.auth-page{padding:16px 12px;}
 @media(max-width:400px){.info-grid{grid-template-columns:1fr;}}
 .info-card{background:var(--neu-well);border-radius:12px;padding:14px 16px;
     box-shadow:inset 2px 2px 5px var(--neu-sh-d),inset -1px -1px 4px var(--neu-sh-l2);}
-.info-label{font-size:11px;font-weight:600;color:rgba(255,255,255,.38);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
+.info-label{font-size:11px;font-weight:600;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
 .info-value{font-size:15px;font-weight:700;color:var(--neu-ink);}
 .info-value.danger{color:var(--bad);}
 .info-value.ok{color:var(--ok);}
@@ -199,13 +204,13 @@ body.auth-page{padding:16px 12px;}
 .renew-page .pkg-card:hover{border-color:rgba(255,255,255,.2);}
 .renew-page .pkg-card.selected{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand);}
 .renew-page .pkg-card input[type=radio]{position:absolute;opacity:0;pointer-events:none;}
-.pkg-name{font-weight:700;font-size:12px;color:#e2e2e0;margin-bottom:4px;}
-.pkg-meta{font-size:11px;color:rgba(255,255,255,.38);}
+.pkg-name{font-weight:700;font-size:12px;color:var(--ink);margin-bottom:4px;}
+.pkg-meta{font-size:11px;color:var(--ink-dim);}
 .pkg-price{font-size:15px;font-weight:800;color:var(--brand);margin-top:6px;}
 .pkg-check{position:absolute;top:8px;right:8px;width:16px;height:16px;border-radius:50%;
     border:2px solid rgba(255,255,255,.2);background:transparent;transition:all .14s;}
 .renew-page .pkg-card.selected .pkg-check{border-color:var(--brand);background:var(--brand);}
-.renew-page .pkg-card.selected .pkg-check::after{content:'✓';color:#fff;font-size:8px;font-weight:700;
+.renew-page .pkg-card.selected .pkg-check::after{content:'✓';color:var(--ink);font-size:8px;font-weight:700;
     display:flex;align-items:center;justify-content:center;line-height:13px;}
 
 /* Modal overlay */
@@ -218,7 +223,7 @@ body.auth-page{padding:16px 12px;}
 .modal-detail{background:var(--neu-well);border-radius:10px;padding:14px 16px;margin-bottom:20px;}
 .modal-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px;}
 .modal-row:last-child{margin-bottom:0;}
-.modal-row-label{color:rgba(255,255,255,.45);}
+.modal-row-label{color:var(--ink-dim);}
 .modal-row-val{font-weight:700;color:var(--neu-ink);}
 .modal-total{font-size:20px;font-weight:800;color:var(--brand);}
 
@@ -248,6 +253,7 @@ body.auth-page{padding:16px 12px;}
 .sec-divider{height:1px;background:rgba(255,255,255,.07);margin:22px 0;}
 .lnk{background:none;border:none;color:var(--brand);filter:brightness(1.5);font-size:13px;font-weight:600;cursor:pointer;padding:0;font-family:inherit;text-decoration:underline;}
 </style>
+<?php require_once __DIR__ . '/includes/theme.php'; customerThemeHead($pdo, (int)($tenantId ?? 0)); ?>
 </head>
 <body class="renew-page auth-page">
 <div class="renew-wrap">
@@ -268,8 +274,8 @@ body.auth-page{padding:16px 12px;}
 
     <?php if (!$client): ?>
     <!-- ── Account Lookup Form ──────────────────────────────────────────── -->
-    <div style="font-size:16px;font-weight:700;color:#e8e8e6;margin-bottom:4px;">Find Your Account</div>
-    <div style="font-size:13px;color:rgba(255,255,255,.4);margin-bottom:20px;">Enter your account number or phone to look up your subscription.</div>
+    <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:4px;">Find Your Account</div>
+    <div style="font-size:13px;color:var(--ink-dim);margin-bottom:20px;">Enter your account number or phone to look up your subscription.</div>
 
     <?php if ($lookupError): ?>
     <div class="p-alert p-alert-err"><i class="fas fa-exclamation-circle"></i><span><?php echo htmlspecialchars($lookupError); ?></span></div>
@@ -369,8 +375,8 @@ body.auth-page{padding:16px 12px;}
     <div class="sec-divider"></div>
 
     <!-- Package selection for renewal -->
-    <div style="font-size:15px;font-weight:700;color:#e8e8e6;margin-bottom:4px;">Choose Package to Renew</div>
-    <div style="font-size:12px;color:rgba(255,255,255,.38);margin-bottom:16px;">Select the plan you want to subscribe to</div>
+    <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px;">Choose Package to Renew</div>
+    <div style="font-size:12px;color:var(--ink-dim);margin-bottom:16px;">Select the plan you want to subscribe to</div>
 
     <?php if (!empty($packages)): ?>
     <div class="pkg-grid">
@@ -388,7 +394,7 @@ body.auth-page{padding:16px 12px;}
                    <?php echo $isCurrent ? 'checked' : ''; ?>
                    onchange="selPkg(this)">
             <div class="pkg-check"></div>
-            <div class="pkg-name"><?php echo htmlspecialchars($pkg['name']); ?><?php if ($isCurrent) echo ' <span style="font-size:9px;color:rgba(255,255,255,.4);">(current)</span>'; ?></div>
+            <div class="pkg-name"><?php echo htmlspecialchars($pkg['name']); ?><?php if ($isCurrent) echo ' <span style="font-size:9px;color:var(--ink-dim);">(current)</span>'; ?></div>
             <div class="pkg-meta"><?php echo htmlspecialchars($speed . $dur); ?></div>
             <div class="pkg-price">KES <?php echo number_format((float)$pkg['price'], 0); ?></div>
         </label>
@@ -401,7 +407,7 @@ body.auth-page{padding:16px 12px;}
         <input type="tel" id="renew-phone" class="form-control-auth"
                placeholder="e.g. 0712345678"
                value="<?php echo htmlspecialchars($client['phone'] ?? ''); ?>">
-        <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:5px;"><i class="fas fa-lock" style="font-size:9px;"></i> STK push will be sent to this number</div>
+        <div style="font-size:11px;color:var(--ink-dim);margin-top:5px;"><i class="fas fa-lock" style="font-size:9px;"></i> STK push will be sent to this number</div>
     </div>
 
     <button type="button" class="btn-auth" onclick="openRenewModal()">
@@ -410,10 +416,10 @@ body.auth-page{padding:16px 12px;}
 
     <?php if ($paybill): ?>
     <div style="text-align:center;margin-top:16px;">
-        <div style="font-size:12px;color:rgba(255,255,255,.3);margin-bottom:8px;">Or pay manually via M-Pesa:</div>
-        <div style="font-size:12px;color:rgba(255,255,255,.5);">
-            Paybill: <strong style="color:#e8e8e6;"><?php echo htmlspecialchars($paybill); ?></strong> &nbsp;|&nbsp;
-            Account: <strong style="color:#e8e8e6;"><?php echo htmlspecialchars($client['account_number'] ?? 'Your Acc No.'); ?></strong>
+        <div style="font-size:12px;color:var(--ink-dim);margin-bottom:8px;">Or pay manually via M-Pesa:</div>
+        <div style="font-size:12px;color:var(--ink-dim);">
+            Paybill: <strong style="color:var(--ink);"><?php echo htmlspecialchars($paybill); ?></strong> &nbsp;|&nbsp;
+            Account: <strong style="color:var(--ink);"><?php echo htmlspecialchars($client['account_number'] ?? 'Your Acc No.'); ?></strong>
         </div>
     </div>
     <?php endif; ?>
@@ -475,11 +481,11 @@ body.auth-page{padding:16px 12px;}
                 </div>
             </div>
             <div style="margin-bottom:16px;">
-                <div style="font-size:12px;color:rgba(255,255,255,.38);margin-bottom:8px;">Payment Method</div>
+                <div style="font-size:12px;color:var(--ink-dim);margin-bottom:8px;">Payment Method</div>
                 <div style="display:flex;gap:10px;">
-                    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#e8e8e6;cursor:pointer;">
+                    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;">
                         <input type="radio" name="pay_method" value="stk" checked style="accent-color:var(--brand);">
-                        M-Pesa STK Push <span style="color:rgba(255,255,255,.4);font-size:11px;">(popup on phone)</span>
+                        M-Pesa STK Push <span style="color:var(--ink-dim);font-size:11px;">(popup on phone)</span>
                     </label>
                 </div>
             </div>
@@ -505,12 +511,12 @@ body.auth-page{padding:16px 12px;}
             <div class="pay-spinner" id="proc-spinner"></div>
             <div id="proc-icon-ok"   class="pay-icon ok"   style="display:none;"><i class="fas fa-check"></i></div>
             <div id="proc-icon-fail" class="pay-icon fail"  style="display:none;"><i class="fas fa-times"></i></div>
-            <div style="font-size:17px;font-weight:700;color:#e8e8e6;margin-bottom:8px;" id="proc-title">Sending Payment Request</div>
+            <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:8px;" id="proc-title">Sending Payment Request</div>
             <div style="font-size:24px;font-weight:800;color:var(--brand);margin-bottom:4px;" id="proc-amount"></div>
-            <div style="font-size:13px;color:rgba(255,255,255,.45);margin-bottom:16px;" id="proc-msg">
+            <div style="font-size:13px;color:var(--ink-dim);margin-bottom:16px;" id="proc-msg">
                 A USSD popup will appear on your phone. Enter your M-Pesa PIN to complete the payment.
             </div>
-            <div style="font-size:12px;color:rgba(255,255,255,.28);margin-bottom:18px;" id="proc-hint"></div>
+            <div style="font-size:12px;color:var(--ink-dim);margin-bottom:18px;" id="proc-hint"></div>
             <button type="button" class="btn-auth" id="proc-close" style="display:none;" onclick="closeModal()">Close</button>
         </div>
     </div>

@@ -1368,8 +1368,8 @@ function updateRouterCard(id, data) {
             let headline = full;
             if (data.reason === 'unreachable') {
                 headline = /wireguard|vpn/i.test(full)
-                    ? 'API unreachable over VPN — tunnel is down (hover for fix)'
-                    : 'API port unreachable — check router firewall (hover for fix)';
+                    ? 'API unreachable over VPN — check VPN diagnostics'
+                    : 'API port unreachable — check service and firewall';
             }
             bd.textContent = headline;
             bd.title = full;               // full step-by-step guidance on hover
@@ -1801,7 +1801,7 @@ function closeTerminal() {
 function clearTerminal() {
     document.getElementById('termOutput').innerHTML =
         '<div class="term-welcome">' +
-        'Connected to <strong style="color:#a5f3fc;">' + termEsc(termRouterName) + '</strong>. ' +
+        'API terminal for <strong style="color:#a5f3fc;">' + termEsc(termRouterName) + '</strong>. Connection is checked when you send a command. ' +
         'Enter RouterOS API commands and press Enter.<br>' +
         '<span style="opacity:.5;">Tip: commands start with / &nbsp;·&nbsp; use Up/Down for history &nbsp;·&nbsp; Esc closes</span>' +
         '</div>';

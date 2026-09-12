@@ -1,0 +1,108 @@
+{
+  "checked_at": "2026-09-12T18:32:29+03:00",
+  "vps_public_key": "x1ihG46Lqv4VrbtYVuewDRFdEPmWwqIO/UAsSVq4kB4=",
+  "udp_listening": true,
+  "routers": [
+    {
+      "router_id": 9,
+      "tenant_id": 1,
+      "name": "rb99",
+      "vpn_ip": "10.200.200.7",
+      "db_keypair_present": true,
+      "db_peer_loaded": true,
+      "db_peer_persisted": false,
+      "route_owner_matches_db": false,
+      "route_persisted": true,
+      "route_handshake_age_seconds": 1278,
+      "api_tcp_open": false,
+      "router_config_verified": false
+    },
+    {
+      "router_id": 12,
+      "tenant_id": 5,
+      "name": "RB4011",
+      "vpn_ip": "10.200.200.8",
+      "db_keypair_present": true,
+      "db_peer_loaded": false,
+      "db_peer_persisted": false,
+      "route_owner_matches_db": false,
+      "route_persisted": true,
+      "route_handshake_age_seconds": 74,
+      "api_tcp_open": true,
+      "router_config_verified": true,
+      "router_interfaces": [
+        {
+          "name": "wg-fortunett",
+          "public-key": "oM3x5uz/xHShtWdF2VPkYZQu0YbKul5+WQoSF4oF8lo=",
+          "running": "true",
+          "disabled": "false"
+        }
+      ],
+      "router_peer_settings": [
+        {
+          "interface": "wg-fortunett",
+          "public-key": "x1ihG46Lqv4VrbtYVuewDRFdEPmWwqIO/UAsSVq4kB4=",
+          "endpoint-address": "212.95.34.211",
+          "endpoint-port": "51820",
+          "allowed-address": "10.200.200.0/24",
+          "persistent-keepalive": "25s",
+          "last-handshake": "1m19s",
+          "disabled": "false"
+        }
+      ],
+      "vps_endpoint_correct": true
+    },
+    {
+      "router_id": 15,
+      "tenant_id": 6,
+      "name": "rb4011",
+      "vpn_ip": "10.200.200.15",
+      "db_keypair_present": true,
+      "db_peer_loaded": true,
+      "db_peer_persisted": true,
+      "route_owner_matches_db": true,
+      "route_persisted": true,
+      "route_handshake_age_seconds": null,
+      "api_tcp_open": false,
+      "router_config_verified": false
+    },
+    {
+      "router_id": 19,
+      "tenant_id": 9,
+      "name": "rb951",
+      "vpn_ip": "10.200.200.19",
+      "db_keypair_present": true,
+      "db_peer_loaded": true,
+      "db_peer_persisted": true,
+      "route_owner_matches_db": true,
+      "route_persisted": true,
+      "route_handshake_age_seconds": 1,
+      "api_tcp_open": true,
+      "router_config_verified": true,
+      "router_interfaces": [
+        {
+          "name": "wg-fortunett",
+          "public-key": "u1E5vIep9JKT4EG70NK6zMvE1M3YzbyajsWcInBsvX0=",
+          "running": "true",
+          "disabled": "false"
+        }
+      ],
+      "router_peer_settings": [
+        {
+          "interface": "wg-fortunett",
+          "public-key": "x1ihG46Lqv4VrbtYVuewDRFdEPmWwqIO/UAsSVq4kB4=",
+          "endpoint-address": "212.95.34.211",
+          "endpoint-port": "51820",
+          "allowed-address": "10.200.200.0/24",
+          "persistent-keepalive": "25s",
+          "last-handshake": "10s",
+          "disabled": "false"
+        }
+      ],
+      "vps_endpoint_correct": true
+    }
+  ],
+  "service_active": true,
+  "service_enabled_at_boot": true,
+  "udp_51820_firewall_allowed": true
+}

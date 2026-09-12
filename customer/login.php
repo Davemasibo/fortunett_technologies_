@@ -35,7 +35,7 @@ if (!in_array($subdomain, ['localhost', 'www']) && !filter_var($host, FILTER_VAL
     try {
         $tSt = $pdo->prepare("SELECT t.id, t.company_name, ts.setting_key, ts.setting_value
             FROM tenants t LEFT JOIN tenant_settings ts ON ts.tenant_id = t.id
-            WHERE t.subdomain = ? LIMIT 30");
+            WHERE t.subdomain = ?");
         $tSt->execute([$subdomain]);
         $rows = $tSt->fetchAll(PDO::FETCH_ASSOC);
         if ($rows) {
@@ -118,6 +118,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // ── Brand CSS vars ────────────────────────────────────────────────────────────
+require_once __DIR__ . '/includes/theme.php';
+$customerAppearance = customerThemeData($pdo, (int)($tenantId ?? 0));
+$branding['color'] = $customerAppearance['accent'];
+$branding['gradient'] = $customerAppearance['accent'];
+if ($customerAppearance['logo'] !== '') $branding['logo'] = $customerAppearance['logo'];
 $hex = ltrim($branding['color'], '#');
 if (strlen($hex) === 3) $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
 $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr($hex,4,2));
@@ -154,14 +159,14 @@ body.auth-page { padding: 16px; }
     border:1px solid rgba(52,211,153,.2);border-radius:14px;margin-bottom:20px;}
 .connected-banner i{font-size:32px;color:var(--ok);margin-bottom:10px;display:block;}
 .connected-banner h3{font-size:18px;font-weight:700;color:var(--neu-ink);margin-bottom:6px;}
-.connected-banner p{font-size:13px;color:rgba(255,255,255,.5);}
+.connected-banner p{font-size:13px;color:var(--ink-dim);}
 
 /* Expired banner */
 .expired-banner{text-align:center;padding:22px;background:rgba(248,113,113,.08);
     border:1px solid rgba(248,113,113,.25);border-radius:14px;margin-bottom:20px;}
 .expired-banner i{font-size:30px;color:var(--bad);margin-bottom:10px;display:block;}
 .expired-banner h3{font-size:16px;font-weight:700;color:#fca5a5;margin-bottom:6px;}
-.expired-banner p{font-size:13px;color:rgba(255,255,255,.45);margin-bottom:14px;}
+.expired-banner p{font-size:13px;color:var(--ink-dim);margin-bottom:14px;}
 
 /* Inline alerts */
 .p-alert{display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border-radius:9px;
@@ -175,8 +180,9 @@ body.auth-page { padding: 16px; }
     font-weight:600;cursor:pointer;padding:0;text-decoration:underline;font-family:inherit;}
 
 .sec-title{font-size:16px;font-weight:700;color:var(--neu-ink);margin-bottom:4px;}
-.sec-sub{font-size:12px;color:rgba(255,255,255,.4);margin-bottom:20px;}
+.sec-sub{font-size:12px;color:var(--ink-dim);margin-bottom:20px;}
 </style>
+<?php require_once __DIR__ . '/includes/theme.php'; customerThemeHead($pdo, (int)($tenantId ?? 0)); ?>
 </head>
 <body class="auth-page">
 <div class="auth-container">

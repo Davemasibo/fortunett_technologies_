@@ -146,6 +146,11 @@ if ($loginDone) {
 }
 
 // Auto-login failed — show a friendly page with a manual login link
+require_once __DIR__ . '/includes/theme.php';
+$customerAppearance = customerThemeData($pdo, (int)($tenantId ?? 0));
+$branding['color'] = $customerAppearance['accent'];
+$branding['gradient'] = $customerAppearance['accent'];
+if ($customerAppearance['logo'] !== '') $branding['logo'] = $customerAppearance['logo'];
 $hex = ltrim($branding['color'], '#');
 if (strlen($hex) === 3) $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
 $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr($hex,4,2));
@@ -171,6 +176,7 @@ $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr
   --brand-gradient:linear-gradient(135deg,<?php echo $branding['color'];?> 0%,<?php echo $branding['color'];?>99 100%);
 }
 </style>
+<?php require_once __DIR__ . '/includes/theme.php'; customerThemeHead($pdo, (int)($tenantId ?? 0)); ?>
 </head>
 <body class="auth-page">
 <div class="auth-container">
@@ -186,10 +192,10 @@ $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr
             <i class="fas fa-check-circle" style="color:#34d399;font-size:20px;"></i>
             <div>
                 <div style="font-weight:700;color:#6ee7b7;font-size:14px;">Connected Successfully</div>
-                <div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:2px;">Sign in below to manage your account</div>
+                <div style="font-size:12px;color:var(--ink-dim);margin-top:2px;">Sign in below to manage your account</div>
             </div>
         </div>
-        <div style="text-align:center;margin-bottom:18px;color:rgba(255,255,255,.45);font-size:13px;">
+        <div style="text-align:center;margin-bottom:18px;color:var(--ink-dim);font-size:13px;">
             Sign in to your customer account to view your subscription, usage, and make payments.
         </div>
         <a href="login.php" class="btn-auth" style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;">

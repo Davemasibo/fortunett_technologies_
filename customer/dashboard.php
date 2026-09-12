@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/../includes/validity.php';
 $customer = requireCustomerLogin();
 
 // Redirect expired customers to renewal page (allow re-check after renew)
@@ -58,7 +59,7 @@ include 'includes/header.php';
                 <i class="fas fa-<?php echo $isActive ? 'check-circle' : 'exclamation-circle'; ?>"></i>
             </div>
             <div class="status-info">
-                <div class="status-label">Connection Status</div>
+                <div class="status-label">Subscription</div>
                 <div class="status-value"><?php echo $isActive ? 'Active' : 'Expired'; ?></div>
             </div>
         </div>
@@ -122,7 +123,7 @@ include 'includes/header.php';
                 </div>
                 <div class="package-price">
                     <div class="price-amount"><?php echo formatCurrency($package['price']); ?></div>
-                    <div class="price-period">/<?php echo $package['validity_unit'] ?? 'month'; ?></div>
+                    <div class="price-period">for <?php echo htmlspecialchars(packageValidityLabel($package['validity_value'], $package['validity_unit'])); ?></div>
                 </div>
             </div>
             
@@ -137,7 +138,7 @@ include 'includes/header.php';
                 </div>
                 <div class="feature-item">
                     <i class="fas fa-calendar"></i>
-                    <span>Expires: <?php echo formatDate($customer['expiry_date']); ?></span>
+                    <span>Expires: <?php echo formatDateTime($customer['expiry_date']); ?></span>
                 </div>
             </div>
         </div>

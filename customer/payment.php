@@ -66,7 +66,7 @@ include 'includes/header.php';
    ═══════════════════════════════════════════════════ */
 :root {
     --green:    #10b981;
-    --green-lt: #6ee7b7;
+    --green-lt: var(--ok);
     --neu-inset: inset 3px 3px 8px rgba(0,0,0,.55), inset -2px -2px 5px rgba(255,255,255,.05);
 }
 
@@ -84,8 +84,8 @@ include 'includes/header.php';
 .pay-main-grid .pay-card { margin-bottom: 0; height: 100%; box-sizing: border-box; }
 @media(max-width: 860px){ .pay-main-grid { grid-template-columns: 1fr; } }
 
-.pay-page-title { font-size: 24px; font-weight: 700; color: #e2e2e0; margin: 0 0 4px; }
-.pay-page-sub   { font-size: 14px; color: rgba(255,255,255,.38); margin: 0 0 24px; }
+.pay-page-title { font-size: 24px; font-weight: 700; color:var(--ink); margin: 0 0 4px; }
+.pay-page-sub   { font-size: 14px; color:var(--ink-dim); margin: 0 0 24px; }
 
 /* ── Tabs ─────────────────────────────────────────── */
 .pay-tabs {
@@ -97,13 +97,13 @@ include 'includes/header.php';
 }
 .pay-tab {
     padding: 9px 22px; border-radius: 40px; border: none;
-    background: transparent; color: rgba(255,255,255,.42);
+    background: transparent; color:var(--ink-dim);
     font-size: 13px; font-weight: 600; cursor: pointer;
     transition: all .2s; font-family: inherit;
     display: flex; align-items: center; gap: 7px;
 }
 .pay-tab.active {
-    background: #222221; color: #e2e2e0;
+    background:var(--surface); color:var(--ink);
     box-shadow: 4px 4px 10px rgba(0,0,0,.4), -2px -2px 6px rgba(255,255,255,.04);
 }
 .pay-panel { display: none; }
@@ -111,7 +111,7 @@ include 'includes/header.php';
 
 /* ── Card ─────────────────────────────────────────── */
 .pay-card {
-    background: #222221;
+    background:var(--surface);
     border: 1px solid rgba(255,255,255,.07);
     border-radius: 16px;
     box-shadow: 10px 10px 24px rgba(0,0,0,.5), -5px -5px 14px rgba(255,255,255,.04);
@@ -121,10 +121,10 @@ include 'includes/header.php';
 .pay-card-head {
     padding: 16px 22px;
     border-bottom: 1px solid rgba(255,255,255,.07);
-    font-size: 14px; font-weight: 600; color: #e2e2e0;
+    font-size: 14px; font-weight: 600; color:var(--ink);
     display: flex; align-items: center; gap: 8px;
 }
-.pay-card-head i { color: rgba(255,255,255,.35); font-size: 13px; }
+.pay-card-head i { color:var(--ink-dim); font-size: 13px; }
 .pay-card-body { padding: 20px 22px; }
 
 /* ── Package row ──────────────────────────────────── */
@@ -140,8 +140,8 @@ include 'includes/header.php';
     border-radius: 10px; display: flex; align-items: center;
     justify-content: center; font-size: 18px; flex-shrink: 0;
 }
-.pkg-name  { font-weight: 600; color: #e2e2e0; font-size: 14px; }
-.pkg-speed { font-size: 12px; color: rgba(255,255,255,.38); margin-top: 2px; }
+.pkg-name  { font-weight: 600; color:var(--ink); font-size: 14px; }
+.pkg-speed { font-size: 12px; color:var(--ink-dim); margin-top: 2px; }
 .pkg-price { margin-left: auto; font-size: 20px; font-weight: 700; color: var(--green-lt); white-space: nowrap; }
 
 /* ── Summary rows ─────────────────────────────────── */
@@ -149,16 +149,16 @@ include 'includes/header.php';
     display: flex; justify-content: space-between;
     font-size: 13px; padding: 9px 0;
     border-bottom: 1px solid rgba(255,255,255,.05);
-    color: rgba(255,255,255,.48);
+    color:var(--ink-dim);
 }
 .sum-row:last-of-type { border-bottom: none; }
-.sum-row span:last-child { color: #e2e2e0; font-weight: 500; }
+.sum-row span:last-child { color:var(--ink); font-weight: 500; }
 .sum-row.credit span:last-child { color: var(--green-lt); }
 .sum-total {
     display: flex; justify-content: space-between;
     font-size: 20px; font-weight: 800;
     padding: 14px 0 0; margin-top: 6px;
-    border-top: 1px solid rgba(255,255,255,.1); color: #fff;
+    border-top: 1px solid rgba(255,255,255,.1); color:var(--ink);
 }
 
 /* ── Primary buttons ──────────────────────────────── */
@@ -166,7 +166,7 @@ include 'includes/header.php';
     width: 100%; padding: 16px;
     background: linear-gradient(135deg, #059669 0%, #10b981 100%);
     border: none; border-radius: 12px;
-    color: #fff; font-size: 16px; font-weight: 700;
+    color:var(--ink); font-size: 16px; font-weight: 700;
     cursor: pointer; transition: opacity .2s, transform .15s;
     display: flex; align-items: center; justify-content: center;
     gap: 10px; margin-top: 16px;
@@ -214,9 +214,9 @@ include 'includes/header.php';
 .gw-icon.mpesa { background: rgba(16,185,129,.15); color: var(--green-lt); }
 .gw-icon.bank  { background: rgba(59,130,246,.15); color: #93c5fd; }
 .gw-icon.other { background: rgba(99,102,241,.15); color: #a5b4fc; }
-.gw-label { font-size: 14px; font-weight: 600; color: #e2e2e0; }
-.gw-type  { font-size: 11px; color: rgba(255,255,255,.32); margin-top: 1px; }
-.gw-chevron { margin-left: auto; color: rgba(255,255,255,.28); font-size: 12px; transition: transform .2s; }
+.gw-label { font-size: 14px; font-weight: 600; color:var(--ink); }
+.gw-type  { font-size: 11px; color:var(--ink-dim); margin-top: 1px; }
+.gw-chevron { margin-left: auto; color:var(--ink-dim); font-size: 12px; transition: transform .2s; }
 .gw-item.open .gw-chevron { transform: rotate(180deg); }
 .gw-body { display: none; padding: 18px; background: rgba(0,0,0,.2); border-top: 1px solid rgba(255,255,255,.06); }
 .gw-item.open .gw-body { display: block; }
@@ -228,23 +228,23 @@ include 'includes/header.php';
     border-radius: 8px; padding: 12px 16px; margin-bottom: 10px;
 }
 .pb-row:last-child { margin-bottom: 0; }
-.pb-field { font-size: 10px; font-weight: 600; color: rgba(255,255,255,.32); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
-.pb-val   { font-size: 22px; font-weight: 800; color: #e2e2e0; letter-spacing: 2px; }
+.pb-field { font-size: 10px; font-weight: 600; color:var(--ink-dim); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
+.pb-val   { font-size: 22px; font-weight: 800; color:var(--ink); letter-spacing: 2px; }
 .pb-row.highlight { background: rgba(99,102,241,.1); border-color: rgba(99,102,241,.25); }
 .pb-row.highlight .pb-val { color: #a5b4fc; }
 .pb-hint  { font-size: 11px; color: rgba(99,102,241,.7); margin-top: 2px; }
 .copy-btn {
     padding: 6px 12px; background: rgba(255,255,255,.08);
     border: 1px solid rgba(255,255,255,.1); border-radius: 6px;
-    color: rgba(255,255,255,.6); font-size: 12px; cursor: pointer;
+    color:var(--ink-dim); font-size: 12px; cursor: pointer;
     transition: all .18s; white-space: nowrap; flex-shrink: 0; font-family: inherit;
 }
-.copy-btn:hover { background: rgba(255,255,255,.14); color: #fff; }
+.copy-btn:hover { background: rgba(255,255,255,.14); color:var(--ink); }
 .copy-btn.copied { background: rgba(16,185,129,.2); border-color: rgba(16,185,129,.35); color: var(--green-lt); }
 .gw-alert {
     margin-top: 12px; padding: 10px 14px;
     background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.25);
-    border-radius: 8px; font-size: 12px; color: #fcd34d;
+    border-radius: 8px; font-size: 12px; color: var(--warn);
 }
 
 /* ── Manual confirm section ───────────────────────── */
@@ -253,21 +253,21 @@ include 'includes/header.php';
     background: rgba(255,255,255,.03);
     border: 1px dashed rgba(255,255,255,.1); border-radius: 12px;
 }
-.confirm-title { font-size: 13px; font-weight: 600; color: rgba(255,255,255,.6); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
-.confirm-hint  { font-size: 12px; color: rgba(255,255,255,.28); margin-bottom: 12px; }
+.confirm-title { font-size: 13px; font-weight: 600; color:var(--ink-dim); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+.confirm-hint  { font-size: 12px; color:var(--ink-dim); margin-bottom: 12px; }
 .confirm-row   { display: flex; gap: 8px; }
 .confirm-input {
-    flex: 1; padding: 10px 14px; background: #1a1a19;
+    flex: 1; padding: 10px 14px; background:var(--surface);
     border: 1px solid rgba(255,255,255,.1); border-radius: 8px;
-    color: #e2e2e0; font-size: 14px; font-family: monospace;
+    color:var(--ink); font-size: 14px; font-family: monospace;
     box-shadow: var(--neu-inset);
 }
-.confirm-input::placeholder { color: rgba(255,255,255,.2); font-family: inherit; }
+.confirm-input::placeholder { color:var(--ink-dim); font-family: inherit; }
 .confirm-input:focus { outline: none; border-color: rgba(255,255,255,.25); }
 .confirm-btn {
     padding: 10px 18px; background: rgba(255,255,255,.08);
     border: 1px solid rgba(255,255,255,.12); border-radius: 8px;
-    color: #e2e2e0; font-size: 14px; font-weight: 600;
+    color:var(--ink); font-size: 14px; font-weight: 600;
     cursor: pointer; transition: all .18s; white-space: nowrap; font-family: inherit;
 }
 .confirm-btn:hover { background: rgba(255,255,255,.13); }
@@ -277,45 +277,45 @@ include 'includes/header.php';
     display: flex; align-items: center; justify-content: space-between;
     padding: 14px 18px; background: rgba(16,185,129,.08);
     border: 1px solid rgba(16,185,129,.2); border-radius: 10px;
-    margin-bottom: 18px; font-size: 13px; color: rgba(255,255,255,.52);
+    margin-bottom: 18px; font-size: 13px; color:var(--ink-dim);
 }
 .topup-balance-strip .bal-val { font-size: 20px; font-weight: 700; color: var(--green-lt); }
 .topup-amount-row { margin-bottom: 14px; }
 .topup-input {
-    width: 100%; padding: 14px 18px; background: #1a1a19;
+    width: 100%; padding: 14px 18px; background:var(--surface);
     border: 1px solid rgba(255,255,255,.1); border-radius: 10px;
-    color: #e2e2e0; font-size: 22px; font-weight: 700;
+    color:var(--ink); font-size: 22px; font-weight: 700;
     box-shadow: var(--neu-inset); font-family: inherit;
 }
-.topup-input::placeholder { color: rgba(255,255,255,.2); font-size: 15px; font-weight: 400; }
+.topup-input::placeholder { color:var(--ink-dim); font-size: 15px; font-weight: 400; }
 .topup-input:focus { outline: none; border-color: rgba(59,130,246,.5); }
 .topup-preset-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
 .topup-preset {
     padding: 7px 16px; background: rgba(255,255,255,.07);
     border: 1px solid rgba(255,255,255,.1); border-radius: 20px;
-    color: rgba(255,255,255,.62); font-size: 12px; font-weight: 600;
+    color:var(--ink-dim); font-size: 12px; font-weight: 600;
     cursor: pointer; transition: all .18s; font-family: inherit;
 }
-.topup-preset:hover { background: rgba(255,255,255,.13); color: #fff; }
+.topup-preset:hover { background: rgba(255,255,255,.13); color:var(--ink); }
 .topup-preset.selected { background: rgba(59,130,246,.2); border-color: rgba(59,130,246,.4); color: #93c5fd; }
 
-.gw-empty { text-align: center; padding: 36px 20px; color: rgba(255,255,255,.28); }
+.gw-empty { text-align: center; padding: 36px 20px; color:var(--ink-dim); }
 .gw-empty i { font-size: 36px; margin-bottom: 12px; display: block; color: rgba(245,158,11,.45); }
 .gw-empty p { font-size: 14px; }
 
 /* ── STK top-up row ───────────────────────────────── */
 .stk-row { display: flex; gap: 8px; }
 .stk-input {
-    flex: 1; padding: 10px 14px; background: #1a1a19;
+    flex: 1; padding: 10px 14px; background:var(--surface);
     border: 1px solid rgba(255,255,255,.1); border-radius: 8px;
-    color: #e2e2e0; font-size: 14px; box-shadow: var(--neu-inset); font-family: inherit;
+    color:var(--ink); font-size: 14px; box-shadow: var(--neu-inset); font-family: inherit;
 }
-.stk-input::placeholder { color: rgba(255,255,255,.25); }
+.stk-input::placeholder { color:var(--ink-dim); }
 .stk-input:focus { outline: none; border-color: rgba(16,185,129,.5); }
 .stk-btn {
     padding: 10px 18px;
     background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-    border: none; border-radius: 8px; color: #fff;
+    border: none; border-radius: 8px; color:var(--ink);
     font-size: 14px; font-weight: 600; cursor: pointer;
     transition: opacity .2s; white-space: nowrap; font-family: inherit;
 }
@@ -334,7 +334,7 @@ include 'includes/header.php';
 .modal-backdrop.show { display: flex; }
 
 .neu-modal {
-    background: #222221;
+    background:var(--surface);
     border: 1px solid rgba(255,255,255,.1);
     border-radius: 20px;
     box-shadow: 20px 20px 50px rgba(0,0,0,.7), -8px -8px 24px rgba(255,255,255,.04),
@@ -353,16 +353,16 @@ include 'includes/header.php';
     border-bottom: 1px solid rgba(255,255,255,.07);
     display: flex; align-items: flex-start; justify-content: space-between;
 }
-.neu-modal-title { font-size: 17px; font-weight: 700; color: #fff; margin-bottom: 3px; }
-.neu-modal-sub   { font-size: 12px; color: rgba(255,255,255,.38); }
+.neu-modal-title { font-size: 17px; font-weight: 700; color:var(--ink); margin-bottom: 3px; }
+.neu-modal-sub   { font-size: 12px; color:var(--ink-dim); }
 .neu-modal-close {
     background: rgba(255,255,255,.07); border: none;
-    border-radius: 8px; cursor: pointer; color: rgba(255,255,255,.4);
+    border-radius: 8px; cursor: pointer; color:var(--ink-dim);
     font-size: 16px; width: 32px; height: 32px;
     display: flex; align-items: center; justify-content: center;
     transition: all .18s; flex-shrink: 0; margin-left: 12px;
 }
-.neu-modal-close:hover { background: rgba(255,255,255,.14); color: #fff; }
+.neu-modal-close:hover { background: rgba(255,255,255,.14); color:var(--ink); }
 .neu-modal-body { padding: 22px 24px; }
 .neu-modal-foot {
     padding: 16px 24px;
@@ -383,8 +383,8 @@ include 'includes/header.php';
     display: flex; align-items: center; justify-content: center;
     font-size: 15px; flex-shrink: 0;
 }
-.pay-modal-pkg .pm-name  { font-size: 13px; font-weight: 600; color: #e2e2e0; }
-.pay-modal-pkg .pm-speed { font-size: 11px; color: rgba(255,255,255,.38); margin-top: 2px; }
+.pay-modal-pkg .pm-name  { font-size: 13px; font-weight: 600; color:var(--ink); }
+.pay-modal-pkg .pm-speed { font-size: 11px; color:var(--ink-dim); margin-top: 2px; }
 .pay-modal-pkg .pm-price { margin-left: auto; font-size: 15px; font-weight: 700; color: var(--green-lt); }
 
 /* Amount pill */
@@ -394,12 +394,12 @@ include 'includes/header.php';
     background: rgba(16,185,129,.1);
     border: 1px solid rgba(16,185,129,.25); border-radius: 12px;
 }
-.pay-amount-pill .pill-label { font-size: 12px; color: rgba(255,255,255,.45); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.pay-amount-pill .pill-label { font-size: 12px; color:var(--ink-dim); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .pay-amount-pill .pill-amount { font-size: 24px; font-weight: 800; color: var(--green-lt); }
 
 /* Phone field */
 .phone-label {
-    font-size: 12px; font-weight: 600; color: rgba(255,255,255,.45);
+    font-size: 12px; font-weight: 600; color:var(--ink-dim);
     text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px;
     display: block;
 }
@@ -410,12 +410,12 @@ include 'includes/header.php';
 }
 .phone-neu-input {
     width: 100%; padding: 13px 14px 13px 46px;
-    background: #1a1a19;
+    background:var(--surface);
     border: 1px solid rgba(255,255,255,.1); border-radius: 10px;
-    color: #fff; font-size: 17px; font-weight: 600; font-family: inherit;
+    color:var(--ink); font-size: 17px; font-weight: 600; font-family: inherit;
     box-shadow: var(--neu-inset); letter-spacing: .5px; box-sizing: border-box;
 }
-.phone-neu-input::placeholder { color: rgba(255,255,255,.22); font-weight: 400; font-size: 14px; letter-spacing: 0; }
+.phone-neu-input::placeholder { color:var(--ink-dim); font-weight: 400; font-size: 14px; letter-spacing: 0; }
 .phone-neu-input:focus { outline: none; border-color: var(--green); box-shadow: var(--neu-inset), 0 0 0 3px rgba(16,185,129,.2); }
 
 /* Modal buttons */
@@ -423,7 +423,7 @@ include 'includes/header.php';
     flex: 1; padding: 13px;
     background: linear-gradient(135deg, #059669 0%, #10b981 100%);
     border: none; border-radius: 10px;
-    color: #fff; font-size: 15px; font-weight: 700;
+    color:var(--ink); font-size: 15px; font-weight: 700;
     cursor: pointer; transition: opacity .2s, transform .15s;
     display: flex; align-items: center; justify-content: center; gap: 8px;
     box-shadow: 0 4px 18px rgba(16,185,129,.35); font-family: inherit;
@@ -434,10 +434,10 @@ include 'includes/header.php';
 .ghost-btn {
     padding: 13px 20px; background: rgba(255,255,255,.07);
     border: 1px solid rgba(255,255,255,.07); border-radius: 10px;
-    color: rgba(255,255,255,.55); font-size: 14px; font-weight: 600;
+    color:var(--ink-dim); font-size: 14px; font-weight: 600;
     cursor: pointer; transition: all .18s; font-family: inherit;
 }
-.ghost-btn:hover { background: rgba(255,255,255,.12); color: #e2e2e0; }
+.ghost-btn:hover { background: rgba(255,255,255,.12); color:var(--ink); }
 
 /* STK spinner */
 .stk-spinner {
@@ -449,12 +449,12 @@ include 'includes/header.php';
     margin: 0 auto 20px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.stk-status-head { font-size: 18px; font-weight: 700; color: #e2e2e0; margin-bottom: 8px; text-align: center; }
-.stk-status-sub  { font-size: 13px; color: rgba(255,255,255,.42); text-align: center; line-height: 1.55; }
+.stk-status-head { font-size: 18px; font-weight: 700; color:var(--ink); margin-bottom: 8px; text-align: center; }
+.stk-status-sub  { font-size: 13px; color:var(--ink-dim); text-align: center; line-height: 1.55; }
 </style>
 
 <div class="pay-page">
-    <h1 class="pay-page-title"><i class="fas fa-credit-card" style="color:rgba(255,255,255,.35);margin-right:10px;"></i>Payments</h1>
+    <h1 class="pay-page-title"><i class="fas fa-credit-card" style="color:var(--ink-dim);margin-right:10px;"></i>Payments</h1>
     <p class="pay-page-sub">Renew your subscription or top up your account balance</p>
 
     <div class="pay-tabs">
@@ -508,7 +508,7 @@ include 'includes/header.php';
                     </button>
 
                 <?php else: ?>
-                    <div style="margin-top:16px;padding:14px 16px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;font-size:13px;color:#fcd34d;">
+                    <div style="margin-top:16px;padding:14px 16px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;font-size:13px;color:var(--warn);">
                         <i class="fas fa-info-circle" style="margin-right:7px;"></i>
                         Use the payment methods below or contact your ISP.
                     </div>
@@ -544,7 +544,7 @@ include 'includes/header.php';
                         </button>
                         <div class="gw-body">
                             <?php if ($gwType === 'mpesa_api'): ?>
-                                <p style="font-size:13px;color:rgba(255,255,255,.4);margin-bottom:14px;">
+                                <p style="font-size:13px;color:var(--ink-dim);margin-bottom:14px;">
                                     <i class="fas fa-info-circle" style="margin-right:6px;color:rgba(16,185,129,.6);"></i>
                                     Click the green button above to receive an M-Pesa PIN prompt on your phone.
                                 </p>
@@ -617,7 +617,7 @@ include 'includes/header.php';
                         <div>
                             <div class="pb-field">Account Reference (required)</div>
                             <div class="pb-val" style="font-size:18px;"><?= htmlspecialchars($customer['account_number']) ?></div>
-                            <div class="pb-hint" style="color:rgba(255,255,255,.35);margin-top:2px;">Enter exactly as shown when prompted</div>
+                            <div class="pb-hint" style="color:var(--ink-dim);margin-top:2px;">Enter exactly as shown when prompted</div>
                         </div>
                         <button class="copy-btn" onclick="copyText('<?= htmlspecialchars($customer['account_number']) ?>', this)"><i class="fas fa-copy"></i> Copy</button>
                     </div>
@@ -633,7 +633,7 @@ include 'includes/header.php';
         <div class="pay-card">
             <div class="pay-card-head"><i class="fas fa-check-double"></i> Already Paid?</div>
             <div class="pay-card-body">
-                <p style="font-size:13px;color:rgba(255,255,255,.38);margin-bottom:14px;">
+                <p style="font-size:13px;color:var(--ink-dim);margin-bottom:14px;">
                     If you paid via Paybill or Bank transfer, enter your M-Pesa / bank reference below to confirm.
                 </p>
                 <form id="verifyPaymentForm" onsubmit="handleVerify(event)">
@@ -657,7 +657,7 @@ include 'includes/header.php';
                     <span>Current Balance</span>
                     <span class="bal-val">KES <?= number_format($accountBalance, 2) ?></span>
                 </div>
-                <div style="font-size:12px;color:rgba(255,255,255,.28);display:flex;flex-direction:column;gap:7px;">
+                <div style="font-size:12px;color:var(--ink-dim);display:flex;flex-direction:column;gap:7px;">
                     <div><i class="fas fa-check-circle" style="color:rgba(16,185,129,.55);margin-right:6px;"></i> Use balance to activate any package instantly</div>
                     <div><i class="fas fa-check-circle" style="color:rgba(16,185,129,.55);margin-right:6px;"></i> Balance carries over — never expires</div>
                     <div><i class="fas fa-check-circle" style="color:rgba(16,185,129,.55);margin-right:6px;"></i> Auto-renew when balance is sufficient</div>
@@ -668,7 +668,7 @@ include 'includes/header.php';
         <div class="pay-card" style="height:auto;">
             <div class="pay-card-head"><i class="fas fa-plus-circle"></i> Add Funds</div>
             <div class="pay-card-body">
-                <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.32);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Amount (KES)</div>
+                <div style="font-size:11px;font-weight:600;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Amount (KES)</div>
                 <div class="topup-amount-row">
                     <input type="number" id="topup_amount" class="topup-input" placeholder="Enter amount" min="1" step="1">
                 </div>
@@ -681,7 +681,7 @@ include 'includes/header.php';
                 <?php if (empty($gateways)): ?>
                 <div class="gw-empty"><i class="fas fa-exclamation-triangle"></i><p>No payment methods configured.</p></div>
                 <?php else: ?>
-                <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.32);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Payment Method</div>
+                <div style="font-size:11px;font-weight:600;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Payment Method</div>
                 <div class="gw-list">
                     <?php foreach ($gateways as $idx => $g):
                         $creds   = json_decode($g['credentials'], true) ?? [];
@@ -700,7 +700,7 @@ include 'includes/header.php';
                         </button>
                         <div class="gw-body">
                             <?php if ($gwType === 'mpesa_api'): ?>
-                                <p style="font-size:13px;color:rgba(255,255,255,.4);margin-bottom:12px;">Enter amount above, then send the STK Push to your phone.</p>
+                                <p style="font-size:13px;color:var(--ink-dim);margin-bottom:12px;">Enter amount above, then send the STK Push to your phone.</p>
                                 <div class="stk-row">
                                     <input type="tel" id="tu_phone_<?= $g['id'] ?>" class="stk-input"
                                            value="<?= htmlspecialchars($customer['phone'] ?? '') ?>" placeholder="07xxxxxxxx">
@@ -778,13 +778,13 @@ include 'includes/header.php';
                 background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.2);border-radius:10px;
                 padding:12px 16px;margin-bottom:4px;cursor:pointer;" onclick="togglePhoneEdit()">
                 <div>
-                    <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Sending STK Push to</div>
-                    <div id="phoneDisplayVal" style="font-size:19px;font-weight:700;color:#e2e2e0;letter-spacing:1px;font-family:monospace;">
+                    <div style="font-size:10px;font-weight:700;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Sending STK Push to</div>
+                    <div id="phoneDisplayVal" style="font-size:19px;font-weight:700;color:var(--ink);letter-spacing:1px;font-family:monospace;">
                         <?= htmlspecialchars($customer['phone'] ?? '—') ?>
                     </div>
                 </div>
                 <button type="button" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);
-                    border-radius:8px;padding:7px 13px;color:rgba(255,255,255,.6);font-size:12px;font-weight:600;
+                    border-radius:8px;padding:7px 13px;color:var(--ink-dim);font-size:12px;font-weight:600;
                     cursor:pointer;white-space:nowrap;font-family:inherit;display:flex;align-items:center;gap:5px;"
                     onclick="togglePhoneEdit(event)">
                     <i class="fas fa-pen" style="font-size:10px;"></i> Change
@@ -801,7 +801,7 @@ include 'includes/header.php';
                            placeholder="07xxxxxxxx or 2547xxxxxxxx"
                            oninput="syncPhoneDisplay(this.value)">
                 </div>
-                <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:5px;">
+                <div style="font-size:11px;color:var(--ink-dim);margin-top:5px;">
                     <i class="fas fa-info-circle" style="margin-right:4px;"></i>
                     Enter any M-Pesa-registered number to receive the PIN prompt on that phone.
                 </div>

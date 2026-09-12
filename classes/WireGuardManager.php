@@ -78,6 +78,10 @@ class WireGuardManager
     public static function addPeer(string $publicKey, string $vpnIp): void
     {
         $allowed = $vpnIp . '/32';
+        // WireGuard silently takes an AllowedIPs route away from its existing
+        // peer when a different key is assigned the same address. Generating a
+        // setup script must not disconnect the router before it runs that script.
+        self::assertPeerAddressAvailable($publicKey, $vpnIp, self::peerStatus());
         // Add to running instance
         $cmd = sprintf(
             'sudo wg set %s peer %s allowed-ips %s persistent-keepalive 25 2>&1',
@@ -95,6 +99,20 @@ class WireGuardManager
         $existing = file_get_contents($confPath) ?: '';
         if (strpos($existing, $publicKey) === false) {
             file_put_contents($confPath, $peerConf, FILE_APPEND | LOCK_EX);
+        }
+    }
+
+    public static function assertPeerAddressAvailable(string $publicKey, string $vpnIp, array $peers): void
+    {
+        foreach ($peers as $key => $peer) {
+            if ($key === $publicKey) continue;
+            $addresses = preg_split('/[\s,]+/', trim((string)($peer['allowed_ips'] ?? '')));
+            if (in_array($vpnIp . '/32', $addresses, true) || in_array($vpnIp, $addresses, true)) {
+                throw new \RuntimeException(
+                    'VPN address ' . $vpnIp . ' already belongs to a different WireGuard key. '
+                    . 'No VPN changes were applied. Verify the public key on this router and reconcile its saved keys before retrying setup.'
+                );
+            }
         }
     }
 

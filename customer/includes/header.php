@@ -34,69 +34,27 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
          in /customer/, and an absolute /customer/... 404s on any install served
          from a subdirectory, leaving the whole portal unstyled with no error. -->
     <link rel="stylesheet" href="css/customer.css?v=<?php echo filemtime(__DIR__.'/../css/customer.css'); ?>">
-    <style>
-        :root {
-            --primary:       <?php echo $tenant_branding['brand_color']; ?>;
-            --primary-light: <?php
-                // Lighten the brand colour by bumping each hex channel +40 (clamped to ff)
-                $hex = ltrim($tenant_branding['brand_color'], '#');
-                if (strlen($hex) === 6) {
-                    $r = min(255, hexdec(substr($hex,0,2)) + 40);
-                    $g = min(255, hexdec(substr($hex,2,2)) + 40);
-                    $b = min(255, hexdec(substr($hex,4,2)) + 40);
-                    echo sprintf('#%02x%02x%02x', $r, $g, $b);
-                } else {
-                    echo $tenant_branding['brand_color'];
-                }
-            ?>;
-            --primary-dark:  <?php
-                $hex = ltrim($tenant_branding['brand_color'], '#');
-                if (strlen($hex) === 6) {
-                    $r = max(0, hexdec(substr($hex,0,2)) - 40);
-                    $g = max(0, hexdec(substr($hex,2,2)) - 40);
-                    $b = max(0, hexdec(substr($hex,4,2)) - 40);
-                    echo sprintf('#%02x%02x%02x', $r, $g, $b);
-                } else {
-                    echo $tenant_branding['brand_color'];
-                }
-            ?>;
-            --primary-glow:  <?php echo $tenant_branding['brand_color']; ?>40;
-        }
-        .sidebar-menu a.active {
-            border-left-color: var(--primary-light);
-            background: linear-gradient(90deg, var(--primary)1a 0%, transparent 100%);
-            /* Fallback for browsers that don't interpolate hex+alpha correctly */
-            background: linear-gradient(90deg, <?php echo $tenant_branding['brand_color']; ?>1a 0%, transparent 100%);
-        }
-        .user-avatar, .package-icon {
-            background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-light) 100%);
-        }
-        .btn-primary:hover {
-            opacity: 0.9;
-            transform: translateY(-1px);
-        }
-        .topbar {
-            border-bottom: none;
-        }
-    </style>
+    <?php
+    require_once __DIR__ . '/theme.php';
+    customerThemeHead($pdo, (int)($_SESSION['customer_data']['tenant_id'] ?? 0));
+    $portalLogo = customerThemeData($pdo, (int)($_SESSION['customer_data']['tenant_id'] ?? 0))['logo'];
+    ?>
 </head>
 <body>
+    <a class="skip-link" href="#customer-content">Skip to content</a>
     <div class="portal-wrapper">
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <?php if(!empty($tenant_branding['system_logo'])): ?>
-                        <img src="../../<?php echo htmlspecialchars($tenant_branding['system_logo']); ?>" alt="Logo" style="height: 32px; border-radius: 4px;">
+                    <?php if($portalLogo !== '' || !empty($tenant_branding['system_logo'])): ?>
+                        <img src="<?php echo htmlspecialchars($portalLogo ?: '../' . ltrim($tenant_branding['system_logo'], '/'), ENT_QUOTES); ?>" alt="Logo" style="height: 32px; border-radius: 4px;">
                     <?php else: ?>
                         <i class="fas fa-wifi"></i>
                     <?php endif; ?>
                     <span><?php echo htmlspecialchars($tenant_branding['company_name']); ?></span>
                 </div>
-                <button class="sidebar-toggle" onclick="toggleSidebarDesk()">
+                <button class="sidebar-toggle" aria-label="Collapse navigation" onclick="toggleSidebarDesk()">
                     <i class="fas fa-bars"></i>
                 </button>
             </div>
@@ -173,7 +131,7 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
         <main class="main-content" id="mainContent">
             <div class="topbar">
                 <div class="topbar-left">
-                    <button class="menu-toggle" onclick="toggleSidebarMobile()">
+                    <button class="menu-toggle" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false" onclick="toggleSidebarMobile()">
                         <i class="fas fa-bars"></i>
                     </button>
                     <span class="page-title" id="topbar-page-title"></span>
@@ -182,6 +140,7 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
             </div>
 
             <script>
+                document.addEventListener('keydown', function(e) { if(e.key === 'Escape') { closeSidebarMobile(); document.querySelector('.menu-toggle').focus(); } });
                 const CUST_SIDEBAR_KEY = 'customer-sidebar-collapsed';
 
                 function toggleSidebarDesk() {
@@ -189,7 +148,7 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
                     const mainContent = document.getElementById('mainContent');
                     const collapsed = sidebar.classList.toggle('collapsed');
                     mainContent.classList.toggle('expanded', collapsed);
-                    localStorage.setItem(CUST_SIDEBAR_KEY, collapsed ? '1' : '0');
+                    try { localStorage.setItem(CUST_SIDEBAR_KEY, collapsed ? '1' : '0'); } catch (_) {}
                 }
 
                 function toggleSidebarMobile() {
@@ -197,6 +156,8 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
                     const overlay = document.getElementById('sidebarOverlay');
                     const open = sidebar.classList.toggle('active');
                     if (overlay) overlay.classList.toggle('active', open);
+                    document.querySelector('.menu-toggle').setAttribute('aria-expanded', String(open));
+                    if (open) sidebar.querySelector('a').focus();
                 }
 
                 function closeSidebarMobile() {
@@ -204,12 +165,13 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
                     const overlay = document.getElementById('sidebarOverlay');
                     sidebar.classList.remove('active');
                     if (overlay) overlay.classList.remove('active');
+                    document.querySelector('.menu-toggle').setAttribute('aria-expanded', 'false');
                 }
 
                 // Restore sidebar collapsed state on desktop
                 document.addEventListener('DOMContentLoaded', function() {
                     if (window.innerWidth > 768) {
-                        const stored = localStorage.getItem(CUST_SIDEBAR_KEY);
+                        let stored = null; try { stored = localStorage.getItem(CUST_SIDEBAR_KEY); } catch (_) {}
                         if (stored === '1') {
                             document.getElementById('sidebar').classList.add('collapsed');
                             document.getElementById('mainContent').classList.add('expanded');
@@ -218,6 +180,7 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
                     // Set topbar page title from active sidebar link
                     const activeLink = document.querySelector('.sidebar-menu a.active');
                     if (activeLink) {
+                        activeLink.setAttribute('aria-current', 'page');
                         const label = activeLink.querySelector('span');
                         const titleEl = document.getElementById('topbar-page-title');
                         if (label && titleEl) titleEl.textContent = label.textContent.trim();
@@ -225,4 +188,4 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
                 });
             </script>
             
-            <div class="content-wrapper">
+            <div class="content-wrapper" id="customer-content" tabindex="-1">

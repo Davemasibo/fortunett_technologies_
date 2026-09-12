@@ -29,7 +29,7 @@ if (!in_array($subdomain, ['localhost', 'www']) && !filter_var($host, FILTER_VAL
              FROM tenants t
              LEFT JOIN tenant_settings ts ON ts.tenant_id = t.id
              WHERE t.subdomain = ?
-             LIMIT 20"
+             "
         );
         $st->execute([$subdomain]);
         $rows = $st->fetchAll(PDO::FETCH_ASSOC);
@@ -47,4 +47,7 @@ if (!in_array($subdomain, ['localhost', 'www']) && !filter_var($host, FILTER_VAL
     } catch (Exception $e) {}
 }
 
+require_once __DIR__ . '/../../customer/includes/theme.php';
+$branding['theme'] = customerThemeData($pdo, (int)$branding['tenant_id']);
+$branding['brand_color'] = $branding['theme']['accent'];
 echo json_encode($branding);

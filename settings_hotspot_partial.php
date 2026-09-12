@@ -48,8 +48,8 @@ $hsLogoUrl = $hsTheme['logo']     !== '' ? HS_UPLOAD_DIR . '/' . $hsTheme['logo'
 <div class="set-info-banner">
     <i class="fas fa-palette"></i>
     <div>
-        <strong>Captive Portal Appearance</strong><br>
-        These settings are yours alone and are saved against your account. Every router you own
+        <strong>Customer &amp; Captive Portal Appearance</strong><br>
+        Your background, accent, card style and logo apply to both the captive portal and customer pages. Customer pages use saved changes on their next visit. Every router you own
         checks for changes hourly and pulls the new page by itself — <strong>Save</strong> is enough.
         Use <strong>Save &amp; push now</strong> only when you want it live this minute.
     </div>

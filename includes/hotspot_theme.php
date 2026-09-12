@@ -109,7 +109,11 @@ function hotspotThemeLoad(PDO $pdo, int $tenantId): array
     try {
         $st = $pdo->prepare("SELECT setting_key, setting_value FROM tenant_settings WHERE tenant_id = ?");
         $st->execute([$tenantId]);
-        foreach ($st->fetchAll(PDO::FETCH_KEY_PAIR) as $k => $v) {
+        $saved = $st->fetchAll(PDO::FETCH_KEY_PAIR);
+        if (!isset($saved['hs_accent']) && !empty($saved['brand_color'])) {
+            $theme['accent'] = hsNormaliseHex($saved['brand_color'], $theme['accent']);
+        }
+        foreach ($saved as $k => $v) {
             if (strpos($k, HS_SETTING_PREFIX) !== 0) continue;
             $short = substr($k, strlen(HS_SETTING_PREFIX));
             if (array_key_exists($short, $theme)) {

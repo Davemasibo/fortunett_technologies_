@@ -63,10 +63,9 @@ try {
         $isVpn = str_starts_with($ip, '10.200.200.');
         if ($isVpn) {
             $msg = "TCP port $port unreachable on $ip (WireGuard VPN). "
-                 . "The WireGuard tunnel is likely down. On the VPS run: "
-                 . "sudo wg show && ping -c3 $ip — then restart with: sudo systemctl restart wg-quick@wg0. "
-                 . "If the tunnel is up but port is blocked, on the router run: "
-                 . "/ip firewall filter print where comment~\"Fortunett-API\" and verify it accepts src-address=10.200.200.1.";
+                 . "This alone does not prove the tunnel is down. Open VPN diagnostics and check the peer public key, address mapping and latest handshake. "
+                 . "If the handshake is recent, check the router API service and firewall for access from 10.200.200.1. "
+                 . "If there is no handshake, verify the router's WireGuard key and VPS endpoint in WinBox. Avoid restarting the shared VPS VPN while other routers are connected.";
         } else {
             $serverIp = $_SERVER['SERVER_ADDR'] ?? 'unknown';
             $msg = "TCP port $port unreachable on $ip (direct IP). "

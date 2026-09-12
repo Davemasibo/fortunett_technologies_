@@ -15,12 +15,12 @@ include 'includes/header.php';
 <style>
 /* ── Page ──────────────────────────────────────────── */
 .acct-page { padding: 28px 32px; max-width: 1100px; }
-.acct-page-title { font-size: 26px; font-weight: 700; color: #e2e2e0; margin: 0 0 4px; }
-.acct-page-sub   { font-size: 14px; color: rgba(255,255,255,.4); margin: 0 0 28px; }
+.acct-page-title { font-size: 26px; font-weight: 700; color:var(--ink); margin: 0 0 4px; }
+.acct-page-sub   { font-size: 14px; color:var(--ink-dim); margin: 0 0 28px; }
 
 /* ── Dark card ─────────────────────────────────────── */
 .acct-card {
-    background: #222221;
+    background:var(--surface);
     border: 1px solid rgba(255,255,255,.07);
     border-radius: 14px;
     box-shadow: 8px 8px 20px rgba(0,0,0,.4), -4px -4px 10px rgba(255,255,255,.03);
@@ -32,12 +32,12 @@ include 'includes/header.php';
     border-bottom: 1px solid rgba(255,255,255,.07);
     font-size: 15px;
     font-weight: 600;
-    color: #e2e2e0;
+    color:var(--ink);
     display: flex;
     align-items: center;
     gap: 8px;
 }
-.acct-card-head i { color: rgba(255,255,255,.4); font-size: 14px; }
+.acct-card-head i { color:var(--ink-dim); font-size: 14px; }
 .acct-card-body  { padding: 6px 0; }
 
 /* ── Info rows ─────────────────────────────────────── */
@@ -52,7 +52,7 @@ include 'includes/header.php';
 .info-label {
     font-size: 12px;
     font-weight: 600;
-    color: rgba(255,255,255,.35);
+    color:var(--ink-dim);
     text-transform: uppercase;
     letter-spacing: .04em;
     flex-shrink: 0;
@@ -60,7 +60,7 @@ include 'includes/header.php';
 .info-value {
     font-size: 14px;
     font-weight: 500;
-    color: #e2e2e0;
+    color:var(--ink);
     text-align: right;
 }
 .mono {
@@ -75,7 +75,7 @@ include 'includes/header.php';
 /* ── Status badges ─────────────────────────────────── */
 .sb { padding: 3px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
 .sb.active    { background: rgba(16,185,129,.15);  color: #6ee7b7; border: 1px solid rgba(16,185,129,.3); }
-.sb.inactive  { background: rgba(107,114,128,.12); color: rgba(255,255,255,.45); border: 1px solid rgba(107,114,128,.25); }
+.sb.inactive  { background: rgba(107,114,128,.12); color:var(--ink-dim); border: 1px solid rgba(107,114,128,.25); }
 .sb.suspended { background: var(--warn-bg);  color: #fcd34d; border: 1px solid rgba(251,191,36,.25); }
 .sb.expired   { background: rgba(239,68,68,.12);   color: #fca5a5; border: 1px solid rgba(239,68,68,.25); }
 .text-ok  { color: #6ee7b7; }
@@ -112,14 +112,14 @@ include 'includes/header.php';
     flex-shrink: 0;
 }
 .bal-info { flex: 1; }
-.bal-label  { font-size: 12px; color: rgba(255,255,255,.45); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
-.bal-amount { font-size: 30px; font-weight: 800; color: #fff; }
+.bal-label  { font-size: 12px; color:var(--ink-dim); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
+.bal-amount { font-size: 30px; font-weight: 800; color:var(--ink); }
 .bal-topup {
     padding: 11px 22px;
     background: rgba(255,255,255,.15);
     border: 1px solid rgba(255,255,255,.2);
     border-radius: 10px;
-    color: #fff;
+    color:var(--ink);
     font-size: 14px;
     font-weight: 600;
     text-decoration: none;
@@ -129,11 +129,11 @@ include 'includes/header.php';
     transition: all .2s;
     white-space: nowrap;
 }
-.bal-topup:hover { background: rgba(255,255,255,.22); transform: translateY(-1px); color: #fff; }
+.bal-topup:hover { background: rgba(255,255,255,.22); transform: translateY(-1px); color:var(--ink); }
 @media(max-width:560px){ .balance-strip{ flex-direction:column; text-align:center; } }
 
 /* ── Empty state ───────────────────────────────────── */
-.acct-empty { text-align:center; padding:40px 20px; color:rgba(255,255,255,.25); }
+.acct-empty { text-align:center; padding:40px 20px; color:var(--ink-dim); }
 .acct-empty i { font-size:40px; margin-bottom:10px; display:block; }
 
 /* ── Form inputs ───────────────────────────────────── */
@@ -148,22 +148,22 @@ include 'includes/header.php';
 .fg label {
     font-size: 12px;
     font-weight: 600;
-    color: rgba(255,255,255,.4);
+    color:var(--ink-dim);
     text-transform: uppercase;
     letter-spacing: .04em;
 }
 .fc {
     padding: 10px 14px;
-    background: #1a1a19;
+    background:var(--surface);
     border: 1px solid rgba(255,255,255,.1);
     border-radius: 8px;
-    color: #e2e2e0;
+    color:var(--ink);
     font-size: 14px;
     font-family: inherit;
     box-shadow: inset 3px 3px 7px rgba(0,0,0,.35), inset -1px -1px 3px rgba(255,255,255,.03);
     transition: border-color .18s, box-shadow .18s;
 }
-.fc::placeholder { color: rgba(255,255,255,.2); }
+.fc::placeholder { color:var(--ink-dim); }
 .fc:focus {
     outline: none;
     border-color: rgba(59,130,246,.5);
@@ -176,7 +176,7 @@ include 'includes/header.php';
     background: linear-gradient(135deg, var(--primary-dark, #1e3a5f) 0%, var(--primary, #2C5282) 100%);
     border: none;
     border-radius: 9px;
-    color: #fff;
+    color:var(--ink);
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
@@ -209,7 +209,7 @@ include 'includes/header.php';
 </style>
 
 <div class="acct-page">
-    <h1 class="acct-page-title"><i class="fas fa-user-circle" style="color:rgba(255,255,255,.4);margin-right:10px;"></i>My Account</h1>
+    <h1 class="acct-page-title"><i class="fas fa-user-circle" style="color:var(--ink-dim);margin-right:10px;"></i>My Account</h1>
     <p class="acct-page-sub">Manage your profile, subscription and security settings</p>
 
     <!-- ── Balance Strip ── -->
