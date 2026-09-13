@@ -25,9 +25,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     $qp = [$tenant_id, $exp_from, $exp_to];
 
     if ($exp_search) {
-        $q  .= " AND (c.full_name LIKE ? OR c.phone LIKE ? OR p.transaction_id LIKE ?)";
+        $q  .= " AND (c.full_name LIKE ? OR c.phone LIKE ? OR p.transaction_id LIKE ? OR p.checkout_request_id LIKE ?)";
         $t   = "%$exp_search%";
-        $qp  = array_merge($qp, [$t, $t, $t]);
+        $qp  = array_merge($qp, [$t, $t, $t, $t]);
     }
     if ($exp_method && $exp_method !== 'All Methods') {
         $mv  = strtolower($exp_method) === 'm-pesa' ? 'mpesa' : strtolower($exp_method);
@@ -170,15 +170,15 @@ $query = "
            " . manuallyRecordedSql('p') . " AS is_manual
     FROM payments p
     LEFT JOIN clients c ON p.client_id = c.id
-    LEFT JOIN mpesa_transactions mt ON mt.checkout_request_id = p.transaction_id
+    LEFT JOIN mpesa_transactions mt ON mt.id = (SELECT MAX(mx.id) FROM mpesa_transactions mx WHERE mx.tenant_id=p.tenant_id AND mx.client_id=p.client_id AND (mx.checkout_request_id=p.transaction_id OR mx.checkout_request_id=p.checkout_request_id OR mx.mpesa_receipt_number=p.transaction_id))
     WHERE p.tenant_id = ? AND DATE(p.payment_date) BETWEEN ? AND ?
 ";
 $params = [$tenant_id, $date_from, $date_to];
 
 if ($search) {
-    $query .= " AND (c.full_name LIKE ? OR c.phone LIKE ? OR p.transaction_id LIKE ?)";
+    $query .= " AND (c.full_name LIKE ? OR c.phone LIKE ? OR p.transaction_id LIKE ? OR p.checkout_request_id LIKE ?)";
     $term = "%$search%";
-    $params = array_merge($params, [$term, $term, $term]);
+    $params = array_merge($params, [$term, $term, $term, $term]);
 }
 
 if ($filter_method && $filter_method !== 'All Methods') {
@@ -676,7 +676,7 @@ include 'includes/sidebar.php';
                         <td>
                             <span class="payment-method <?php echo str_starts_with($method, 'mpesa') ? 'mpesa' : 'cash'; ?>">
                                 <i class="fas fa-<?php echo str_starts_with($method, 'mpesa') ? 'mobile-alt' : 'money-bill'; ?>"></i>
-                                <?php echo $method === 'mpesa_stk' ? 'M-Pesa (phone prompt)' : (str_starts_with($method, 'mpesa') ? 'M-Pesa' : htmlspecialchars(ucfirst($method))); ?>
+                                <?php echo (!empty($tx['is_manual']) ? 'Manual entry / ' : '') . ($method === 'mpesa_stk' && empty($tx['is_manual']) ? 'M-Pesa (phone prompt)' : (str_starts_with($method, 'mpesa') ? 'M-Pesa' : htmlspecialchars(ucfirst(str_replace('_', ' ', $method))))); ?>
                             </span>
                         </td>
                         <td>
@@ -692,7 +692,7 @@ include 'includes/sidebar.php';
                                     $reason = $tx['mpesa_result_desc'] ?? '';
                                     echo '<span style="font-style:italic;color:#fca5a5;">' . htmlspecialchars($reason ?: 'Failed') . '</span>';
                                 } else {
-                                    echo '<span class="transaction-id">' . htmlspecialchars($displayId) . '</span>';
+                                    echo '<span class="transaction-id" title="' . htmlspecialchars($tx['checkout_request_id'] ?? '') . '">' . htmlspecialchars($displayId) . '</span>';
                                 }
                             ?>
                         </td>
@@ -1380,7 +1380,9 @@ function openViewModal(tx) {
     const content = document.getElementById('viewModalContent');
     const recordedMethod = String(tx.payment_method || tx.method || '').toLowerCase();
     const methodLabels = {mpesa_stk:'M-Pesa (phone prompt)', mpesa:'M-Pesa', mpesa_paybill:'M-Pesa Paybill', mpesa_c2b:'M-Pesa Paybill', cash:'Cash', bank_transfer:'Bank transfer', card:'Card'};
-    const method = methodLabels[recordedMethod] || (recordedMethod ? escapeHtmlPay(recordedMethod) : 'Not recorded');
+    const manualEntry = Number(tx.is_manual) === 1;
+    const displayMethod = manualEntry && recordedMethod === 'mpesa_stk' ? 'mpesa' : recordedMethod;
+    const method = (manualEntry ? 'Manual entry / ' : '') + (methodLabels[displayMethod] || (displayMethod ? escapeHtmlPay(displayMethod) : 'Not recorded'));
 
     // Determine status based on result_code for M-Pesa or 'status' for recorded transactions
     let status = 'pending';

@@ -41,6 +41,11 @@ $package_id        = (int)($_POST['package_id']       ?? 0);
 $address           = trim($_POST['address']           ?? '');
 $connection_type   = $_POST['connection_type']        ?? 'pppoe';
 
+$routerOwnership = $_POST['router_ownership'] ?? 'unknown';
+if (!in_array($routerOwnership, ['unknown','isp','customer'], true)) {
+    ob_clean(); echo json_encode(['success'=>false,'message'=>'Invalid router ownership']); exit;
+}
+
 // Auto-generate username if not provided (from phone number or name slug)
 $autoGenUsername = false;
 if (empty($mikrotik_username)) {
@@ -144,12 +149,12 @@ try {
     $stmt = $pdo->prepare("INSERT INTO clients
         (tenant_id, full_name, name, email, phone, address, username, auth_password,
          mikrotik_username, mikrotik_password, package_id, subscription_plan,
-         expiry_date, status, connection_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+         expiry_date, status, connection_type, router_ownership)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     $stmt->execute([
         $tenant_id, $name, $name, $email, $phone, $address,
         $username, $hashed_password, $mikrotik_username, $mikrotik_password,
-        $package_id, $package['name'], $expiry_date, $initialStatus, $connection_type
+        $package_id, $package['name'], $expiry_date, $initialStatus, $connection_type, $routerOwnership
     ]);
     $client_id = $pdo->lastInsertId();
 

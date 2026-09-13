@@ -39,6 +39,12 @@ function stkGateway(PDO $pdo, int $tenant, string $checkout): MpesaAPI {
 function reconcileCustomerStk(PDO $pdo, array $tx, bool $allowQuery = true): string {
     require_once __DIR__ . '/schema_guard.php';
     ensurePaymentStatusEnums($pdo);
+    if (paymentIsManualTransaction($tx)) return $tx['status'] === 'completed' ? 'completed' : 'pending';
+    // Refresh after queueing/polling: a callback may already have supplied the receipt.
+    $fresh=$pdo->prepare('SELECT * FROM mpesa_transactions WHERE id=? AND tenant_id=? AND client_id=?');
+    $fresh->execute([$tx['id'],$tx['tenant_id'],$tx['client_id']]);
+    $tx=$fresh->fetch(PDO::FETCH_ASSOC) ?: $tx;
+    if (paymentIsManualTransaction($tx)) return $tx['status'] === 'completed' ? 'completed' : 'pending';
     $checkout = (string)$tx['checkout_request_id'];
     $tenant = (int)$tx['tenant_id'];
     $client = (int)$tx['client_id'];
@@ -94,7 +100,7 @@ function reconcileCustomerStk(PDO $pdo, array $tx, bool $allowQuery = true): str
 }
 
 function recoverCustomerPayments(PDO $pdo, int $client, int $tenant): bool {
-    $stmt = $pdo->prepare("SELECT * FROM mpesa_transactions WHERE client_id=? AND tenant_id=? AND checkout_request_id IS NOT NULL AND (status IN ('pending','completed') OR result_desc LIKE '%15 minutes%') ORDER BY created_at DESC LIMIT 3");
+    $stmt = $pdo->prepare("SELECT * FROM mpesa_transactions WHERE client_id=? AND tenant_id=? AND checkout_request_id IS NOT NULL AND COALESCE(merchant_request_id,'') NOT LIKE 'MANUAL-%' AND COALESCE(result_desc,'') NOT LIKE 'Manual:%' AND (status IN ('pending','completed') OR result_desc LIKE '%15 minutes%') ORDER BY created_at DESC LIMIT 3");
     $stmt->execute([$client, $tenant]);
     $pending = false;
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $tx) {

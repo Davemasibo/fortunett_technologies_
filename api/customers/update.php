@@ -105,6 +105,10 @@ if (empty($id) || empty($name)) {
         $mikrotik_username, $status, $connection_type
     ];
     
+    if (isset($_POST['router_ownership'])) {
+        if (!in_array($_POST['router_ownership'], ['unknown','isp','customer'], true)) throw new Exception('Invalid router ownership');
+        $fields[] = 'router_ownership = ?'; $values[] = $_POST['router_ownership'];
+    }
     // Add logic for optional fields
     if ($package_id) {
         $fields[] = 'package_id = ?';

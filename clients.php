@@ -19,6 +19,8 @@ $customerSmsTemplates = smsAvailableTemplates($db, (int)$tenant_id);
 // Lazy-add last_seen column (silent if already exists)
 try { $db->exec("ALTER TABLE clients ADD COLUMN last_seen DATETIME NULL DEFAULT NULL"); } catch (Exception $_e) {}
 
+$ownershipFilter = in_array($_GET['router_ownership'] ?? '', ['isp','customer','unknown'], true) ? $_GET['router_ownership'] : '';
+
 // Export CSV Logic
 if (isset($_GET['export']) && $_GET['export'] == 'csv') {
     $database = new Database();
@@ -52,6 +54,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
         $params[] = $package;
     }
     
+    if ($ownershipFilter !== '') { $query .= " AND c.connection_type='pppoe' AND c.router_ownership=?"; $params[]=$ownershipFilter; }
     $query .= " ORDER BY c.created_at DESC";
     
     $stmt = $db->prepare($query);
@@ -62,7 +65,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
     header('Content-Disposition: attachment; filename="customers_export_' . date('Y-m-d') . '.csv"');
     
     $output = fopen('php://output', 'w');
-    fputcsv($output, ['ID', 'Account Number', 'Name', 'Phone', 'Email', 'Address', 'Package', 'Price', 'Connection Type', 'Username', 'Status', 'Expiry Date']);
+    fputcsv($output, ['ID', 'Account Number', 'Name', 'Phone', 'Email', 'Address', 'Package', 'Price', 'Connection Type', 'Router Ownership', 'Username', 'Status', 'Expiry Date']);
     
     foreach ($rows as $row) {
         fputcsv($output, [
@@ -75,6 +78,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
             $row['package_name'],
             $row['package_price'],
             $row['connection_type'],
+            ['isp'=>'ISP-issued','customer'=>'Customer-owned','unknown'=>'Not recorded'][$row['router_ownership'] ?? 'unknown'] ?? 'Not recorded',
             $row['mikrotik_username'],
             $row['status'],
             $row['expiry_date']
@@ -152,6 +156,7 @@ try {
         $params[] = $type_filter;
     }
 
+    if ($ownershipFilter !== '') { $query .= " AND c.connection_type='pppoe' AND c.router_ownership=?"; $params[]=$ownershipFilter; }
     $query .= " ORDER BY c.created_at DESC";
               
     $stmt = $db->prepare($query);
@@ -443,7 +448,7 @@ include 'includes/sidebar.php';
         <!-- Connection Type Tabs -->
         <div class="conn-tabs">
             <?php
-            $baseParams = array_filter(['search' => $search, 'status' => $status_filter, 'package' => $package_filter]);
+            $baseParams = array_filter(['search' => $search, 'status' => $status_filter, 'package' => $package_filter, 'router_ownership'=>$ownershipFilter]);
             $mkTabUrl = fn($t) => 'clients.php?' . http_build_query(array_merge($baseParams, $t ? ['type' => $t] : []));
             ?>
             <a href="<?php echo htmlspecialchars($mkTabUrl('')); ?>" class="conn-tab <?php echo $type_filter === '' ? 'active' : ''; ?>">
@@ -482,6 +487,15 @@ include 'includes/sidebar.php';
                         <option value="active" <?php echo (isset($_GET['status']) && $_GET['status'] == 'active') ? 'selected' : ''; ?>>Active</option>
                         <option value="expired" <?php echo (isset($_GET['status']) && $_GET['status'] == 'expired') ? 'selected' : ''; ?>>Expired</option>
                         <option value="inactive" <?php echo (isset($_GET['status']) && $_GET['status'] == 'inactive') ? 'selected' : ''; ?>>Inactive</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label" for="ownershipFilter">PPPoE router ownership</label>
+                    <select id="ownershipFilter" name="router_ownership" class="filter-select" onchange="this.form.submit()">
+                        <option value="">All owners</option>
+                        <?php foreach (['isp'=>'ISP-issued','customer'=>'Customer-owned','unknown'=>'Not recorded'] as $owner=>$ownerLabel): ?>
+                        <option value="<?php echo $owner; ?>" <?php echo $ownershipFilter===$owner?'selected':''; ?>><?php echo $ownerLabel; ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 <?php if ($type_filter): ?><input type="hidden" name="type" value="<?php echo htmlspecialchars($type_filter); ?>"><?php endif; ?>
@@ -606,6 +620,7 @@ include 'includes/sidebar.php';
                             <span class="conn-type <?php echo in_array($connType, ['pppoe','hotspot']) ? $connType : 'unknown'; ?>">
                                 <i class="fas fa-<?php echo $connType === 'pppoe' ? 'plug' : 'wifi'; ?>" style="font-size:8px;"></i>
                                 <?php echo strtoupper($connType); ?>
+                                <?php if ($connType === 'pppoe') echo ' / ' . htmlspecialchars(['isp'=>'ISP-issued router','customer'=>'Customer-owned router','unknown'=>'Ownership not recorded'][$customer['router_ownership'] ?? 'unknown'] ?? 'Ownership not recorded'); ?>
                             </span>
                         </td>
                         <!-- ONLINE column — filled by JS after MikroTik fetch -->
@@ -1043,6 +1058,14 @@ include 'includes/sidebar.php';
                         <option value="pppoe">PPPoE</option>
                         <option value="hotspot">Hotspot</option>
                         <option value="static">Static IP</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="formRouterOwnership" style="display:block;margin-bottom:5px;">Router ownership (PPPoE)</label>
+                    <select name="router_ownership" id="formRouterOwnership" style="width:100%;padding:9px;border-radius:8px;">
+                        <option value="unknown">Not recorded</option>
+                        <option value="isp">ISP-issued</option>
+                        <option value="customer">Customer-owned</option>
                     </select>
                 </div>
                 <div>
@@ -1570,6 +1593,7 @@ function openEditModal(customer) {
     // Set connection type first, then filter packages, then select the customer's package
     const connType = (customer.connection_type || 'pppoe').toLowerCase();
     document.getElementById('formConnectionType').value = connType;
+    document.getElementById('formRouterOwnership').value = customer.router_ownership || 'unknown';
     filterPackagesByType(connType);
     // Set package AFTER filtering (so the reset-if-hidden logic doesn't clear it)
     if (customer.package_id) {

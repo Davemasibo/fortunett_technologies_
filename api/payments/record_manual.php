@@ -1,9 +1,11 @@
 <?php
 header('Content-Type: application/json');
-require_once '../../includes/db_master.php';
-require_once '../../includes/auth.php';
-require_once '../../includes/payment_pipeline.php';
-require_once '../../includes/payment_admin.php';
+require_once __DIR__ . '/../../includes/db_master.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/payment_pipeline.php';
+require_once __DIR__ . '/../../includes/payment_admin.php';
+
+/** @var PDO $pdo Database connection initialized by db_master.php. */
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $user_id = $_SESSION['user_id'] ?? 0;
@@ -36,7 +38,7 @@ $transaction_date = trim($_POST['transaction_date'] ?? date('Y-m-d H:i:s'));
 $is_verified      = (int)($_POST['is_verified'] ?? 1);
 $notes            = trim($_POST['notes'] ?? '');
 
-if (!$client_id || !$amount || !$reference_code) {
+if (!$client_id || $amount <= 0 || !$reference_code) {
     echo json_encode(['success' => false, 'message' => 'Customer, reference code, and amount are required']);
     exit;
 }
@@ -58,6 +60,7 @@ try {
     // checks match the wrong row -- the second payment silently writes no
     // ledger entries, and its invoice number collides with the first. Nothing
     // stopped it, so the same M-Pesa code could be banked twice.
+    $pdo->beginTransaction();
     $conflict = paymentReferenceConflict($pdo, (int)$tenant_id, $reference_code);
     if ($conflict) {
         throw new Exception('Reference ' . $reference_code . ' is ' . paymentConflictSummary($conflict));
@@ -75,8 +78,8 @@ try {
     }
     $txDate = date('Y-m-d H:i:s', $parsedTs);
 
-    // result_code: '0' = verified/success, 'MANUAL' = unverified manual entry
-    $result_code = $is_verified ? '0' : 'MANUAL';
+    // Gateway result_code is numeric: 0 for verified, NULL for unverified.
+    $result_code = $is_verified ? 0 : null;
     $result_desc = 'Manual:' . $method . ($notes ? ' | ' . substr($notes, 0, 200) : '');
 
     // Insert into mpesa_transactions — include tenant_id and status to satisfy NOT NULL constraints
@@ -142,6 +145,7 @@ try {
     // SMS. Idempotent on the reference, so re-recording the same receipt is
     // safe. platformCollected is explicitly false — see the collection_type
     // note above.
+    $pdo->commit();
     $activation = ['attempted' => false];
     if ($payStatus === 'completed') {
         try {
@@ -185,5 +189,6 @@ try {
     ]);
 
 } catch (Exception $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }

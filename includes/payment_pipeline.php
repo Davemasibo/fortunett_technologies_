@@ -30,6 +30,7 @@ require_once __DIR__ . '/payment_routing.php';
 require_once __DIR__ . '/validity.php';
 require_once __DIR__ . '/payment_activation.php';
 require_once __DIR__ . '/payment_terms.php';
+require_once __DIR__ . '/payment_identity.php';
 
 /**
  * @param PDO    $pdo
@@ -77,6 +78,11 @@ function process_payment_success(
     $lock->execute([$lockName]);
     if ((int)$lock->fetchColumn() !== 1) throw new RuntimeException('Payment activation is busy; retry required');
     try {
+    $identity = resolvePaymentIdentity($pdo, $tenantId, $clientId, $receipt, $activationKey ?: $receipt);
+    if (!empty($identity['manual']) && $paymentMethod === 'mpesa_stk') throw new RuntimeException('A manual payment cannot be converted into an STK payment');
+    $receipt = $identity['receipt'];
+    $activationKey = $identity['key'];
+    $checkoutIdentity = $identity['checkout'];
     // ── 1. Load client + package ───────────────────────────────────────────────
     $cSt = $pdo->prepare("
         SELECT c.id, c.full_name, c.name, c.phone, c.status,
@@ -119,24 +125,21 @@ function process_payment_success(
     $results['phone']        = $client['phone'] ?? '';
     $results['package_name'] = $package['name'] ?? 'Subscription';
 
-    // ── 2. Extend subscription ─────────────────────────────────────────────────
-    $activation = activatePaidSubscription(
-        $pdo, $clientId, $tenantId, $activationKey ?: $receipt, $receipt, $package
-    );
-    $expiryDate = $activation['expiry_date'];
-    $results['expiry_date'] = $expiryDate;
 
-    // ── 3. Mark payment as completed ───────────────────────────────────────────
+    // Reserve the payment identity before granting access; duplicates must fail first.
     $paymentId = null;
     try {
         // Try to find an existing pending row by checkout_request_id / receipt
         $pSt = $pdo->prepare("
-            SELECT id, collection_type FROM payments
-            WHERE (transaction_id = ? OR transaction_id = ?) AND client_id = ? AND tenant_id = ?
+            SELECT id, collection_type, transaction_id, amount FROM payments
+            WHERE (transaction_id = ? OR transaction_id = ? OR checkout_request_id = ?) AND client_id = ? AND tenant_id = ?
             LIMIT 1
         ");
-        $pSt->execute([$receipt, $activationKey ?: $receipt, $clientId, $tenantId]);
+        $pSt->execute([$receipt, $activationKey ?: $receipt, $checkoutIdentity, $clientId, $tenantId]);
         $pendingRow = $pSt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if ($pendingRow && abs((float)$pendingRow['amount'] - $amount) > 0.001) throw new RuntimeException('Payment amount conflicts with existing record');
+        if ($pendingRow && $checkoutIdentity && $pendingRow['transaction_id'] !== $checkoutIdentity && $receipt !== $checkoutIdentity && $receipt !== $pendingRow['transaction_id']) throw new RuntimeException('Checkout already has a different receipt');
+        if ($pendingRow && $checkoutIdentity && $receipt === $checkoutIdentity && $pendingRow['transaction_id'] !== $checkoutIdentity) $receipt = $pendingRow['transaction_id'];
         $paymentId  = $pendingRow ? (int)$pendingRow['id'] : null;
 
         // collection_type says WHOSE BANK THE MONEY IS IN, and nothing else.
@@ -167,23 +170,31 @@ function process_payment_success(
 
         if ($paymentId) {
             $pdo->prepare("
-                UPDATE payments SET status = 'completed', transaction_id = ?,
-                       collection_type = ?, payment_method = ?, updated_at = NOW()
+                UPDATE payments SET transaction_id = ?,
+                       collection_type = ?, payment_method = ?, checkout_request_id = COALESCE(checkout_request_id, ?), updated_at = NOW()
                 WHERE id = ?
-            ")->execute([$receipt, $collectionType, $paymentMethod, $paymentId]);
+            ")->execute([$receipt, $collectionType, $paymentMethod, $checkoutIdentity, $paymentId]);
         } else {
             $pdo->prepare("
                 INSERT INTO payments
-                    (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date, collection_type)
-                VALUES (?, ?, ?, ?, ?, 'completed', NOW(), ?)
-            ")->execute([$clientId, $tenantId, $amount, $paymentMethod, $receipt, $collectionType]);
+                    (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date, collection_type, checkout_request_id)
+                VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)
+            ")->execute([$clientId, $tenantId, $amount, $paymentMethod, $receipt, $collectionType, $checkoutIdentity]);
             $paymentId = (int)$pdo->lastInsertId();
         }
         $results['steps']['payment'] = true;
     } catch (Throwable $e) {
         error_log("pipeline payment record [$receipt]: " . $e->getMessage());
-        $results['steps']['payment'] = false;
+        throw new RuntimeException('Payment ledger recording failed; retry required', 0, $e);
     }
+
+    // Keep newly recorded payments pending until their activation succeeds.
+    $activation = activatePaidSubscription(
+        $pdo, $clientId, $tenantId, $activationKey ?: $receipt, $receipt, $package
+    );
+    $expiryDate = $activation['expiry_date'];
+    $results['expiry_date'] = $expiryDate;
+    $pdo->prepare("UPDATE payments SET status='completed' WHERE id=? AND tenant_id=?")->execute([$paymentId,$tenantId]);
 
     if (!$activation['already_applied']) {
     // ── 4. Client invoice ──────────────────────────────────────────────────────
