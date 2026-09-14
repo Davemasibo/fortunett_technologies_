@@ -14,17 +14,18 @@ use RouterOS\Config;
 use RouterOS\Query;
 
 // Get all routers from database
-$stmt = $pdo->query("SELECT * FROM mikrotik_routers");
+$stmt = $pdo->query("SELECT * FROM mikrotik_routers WHERE status IN ('active','online','inactive','offline')");
 $routers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 foreach ($routers as $router) {
     // Use 'active'/'inactive' — consistent with test_connection.php and all API queries
     $status   = 'inactive';
-    $lastSeen = null;
+    $lastSeen = $router['last_seen'] ?? null;
+    $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
 
     try {
         // Simple TCP reachability check on the RouterOS API port
-        $fp = @fsockopen($router['ip_address'], $router['api_port'] ?? 8728, $errno, $errstr, 2);
+        $fp = @fsockopen($connectIp, (int)($router['api_port'] ?: 8728), $errno, $errstr, 2);
 
         if ($fp) {
             $status   = 'active';
@@ -37,12 +38,14 @@ foreach ($routers as $router) {
 
     // Update router status — skip routers that are 'pending' (never been test-connected)
     // so they stay in pending until an admin explicitly tests them
-    if ($router['status'] !== 'pending') {
-        $updateStmt = $pdo->prepare("UPDATE mikrotik_routers SET status = ?, last_seen = ? WHERE id = ?");
-        $updateStmt->execute([$status, $lastSeen, $router['id']]);
+    if ($status === 'active') {
+        $pdo->prepare("UPDATE mikrotik_routers SET status='active',last_seen=NOW() WHERE id=? AND status IN ('active','online','inactive','offline')")->execute([$router['id']]);
+    } else {
+        // Do not erase the last success or overwrite a newer successful live test.
+        $pdo->prepare("UPDATE mikrotik_routers SET status='inactive' WHERE id=? AND last_seen <=> ? AND status IN ('active','online','inactive','offline')")->execute([$router['id'],$router['last_seen'] ?? null]);
     }
 
-    echo "Router {$router['name']} ({$router['ip_address']}): {$status}\n";
+    echo "Router {$router['name']} ({$connectIp}): {$status}\n";
 }
 
 echo "Router status check completed at " . date('Y-m-d H:i:s') . "\n";

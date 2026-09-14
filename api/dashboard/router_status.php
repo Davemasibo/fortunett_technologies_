@@ -20,7 +20,9 @@ $st->execute([$user_id]);
 $tenant_id = $st->fetchColumn();
 if (!$tenant_id) { echo json_encode(['success' => false, 'message' => 'No tenant']); exit; }
 
-$rSt = $pdo->prepare("SELECT id, name, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
+session_write_close();
+
+$rSt = $pdo->prepare("SELECT id, name, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online','inactive','offline') AND tenant_id = ?");
 $rSt->execute([$tenant_id]);
 $routerRows = $rSt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -73,6 +75,10 @@ foreach ($routerRows as $router) {
             $anyRouterOnline = true;
             $routersOnline++;
         }
+    }
+    // An inactive observation must be recoverable without an administrator's test.
+    if ($rs['online']) {
+        $pdo->prepare("UPDATE mikrotik_routers SET status='active',last_seen=NOW() WHERE id=? AND tenant_id=? AND status IN ('active','online','inactive','offline')")->execute([$router['id'],$tenant_id]);
     }
     $routerStatus[] = $rs;
 }

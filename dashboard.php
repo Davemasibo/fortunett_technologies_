@@ -585,7 +585,7 @@ include 'includes/sidebar.php';
                     <?php
                     // Fetch configured routers
                     try {
-                        $r_stmt = $db->prepare("SELECT * FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
+                        $r_stmt = $db->prepare("SELECT * FROM mikrotik_routers WHERE status IN ('active','online','inactive','offline') AND tenant_id = ?");
                         $r_stmt->execute([$tenant_id]);
                         $routers = $r_stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -1054,34 +1054,9 @@ function updateStatCards(s) {
     set('stat-daily',   'KES ' + (s.daily_revenue   || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
     set('stat-monthly', 'KES ' + (s.monthly_revenue || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
     set('stat-yearly',  'KES ' + (s.yearly_revenue  || 0).toLocaleString('en-KE', {minimumFractionDigits:0}));
-    // Live Connections = actual MikroTik online sessions (PPPoE + Hotspot)
-    const liveTotal = s.active_users || 0;
-    set('stat-active', liveTotal.toLocaleString());
-    const lbl = document.getElementById('stat-active-label');
-    if (lbl) {
-        if (s.router_online && liveTotal > 0) {
-            const pppoe   = s.pppoe_online   || 0;
-            const hotspot = s.hotspot_online || 0;
-            lbl.textContent = `${pppoe} PPPoE · ${hotspot} Hotspot`;
-            lbl.style.color = '#34d399';
-        } else if (s.router_online === false) {
-            lbl.textContent = 'router offline';
-            lbl.style.color = '#f87171';
-        } else {
-            lbl.textContent = (s.subscribed_users || 0).toLocaleString() + ' active subscriptions';
-            lbl.style.color = '';
-        }
-    }
+    // Live router cards are owned by refreshRouterStatus, not chart responses.
     set('stat-expired', (s.expired_accounts   || 0).toLocaleString());
     set('stat-newreg',  (s.new_registrations  || 0).toLocaleString());
-    // Routers online card
-    set('stat-routers-online', (s.routers_online ?? '—').toString());
-    const routerLbl = document.getElementById('stat-routers-label');
-    if (routerLbl && s.routers_total !== undefined) {
-        routerLbl.textContent = `of ${s.routers_total} configured`;
-        routerLbl.style.color = (s.routers_online > 0) ? '#34d399' : '#f87171';
-    }
-
     // System Alerts
     if (s.alerts && s.alerts.length) {
         const alertsList = document.querySelector('.alerts-list');
@@ -1164,8 +1139,8 @@ function refreshDashboard() {
             buildCharts(s);
             applyRangeLabels(s);
             if (typeof window.__patchChartsDark === 'function') window.__patchChartsDark();
-            // Also apply any router_status the stats API returned (may be stale/offline stubs)
-            if (s.router_status && s.router_status.length) updateRouterStatus(s.router_status);
+            // Router status is updated only by the independent live request.
+
         })
         .catch(err => console.error('Dashboard refresh error:', err))
         .finally(() => {
@@ -1196,7 +1171,10 @@ function applyRangeLabels(s) {
 }
 
 // ── Fetch live router status independently (MikroTik may be slow) ─────────────
+let routerRefreshPending = false;
 function refreshRouterStatus() {
+    if (routerRefreshPending) return;
+    routerRefreshPending = true;
     fetch('api/dashboard/router_status.php')
         .then(r => r.json())
         .then(s => {
@@ -1208,7 +1186,7 @@ function refreshRouterStatus() {
             set('stat-active', liveTotal.toLocaleString());
             const al = document.getElementById('stat-active-label');
             if (al) {
-                if (s.router_online && liveTotal > 0) {
+                if (s.router_online) {
                     const pppoe   = s.pppoe_online   || 0;
                     const hotspot = s.hotspot_online || 0;
                     al.textContent = `${pppoe} PPPoE · ${hotspot} Hotspot`;
@@ -1225,7 +1203,8 @@ function refreshRouterStatus() {
                 lbl.style.color = (s.routers_online > 0) ? '#34d399' : '#f87171';
             }
         })
-        .catch(err => console.warn('Router status fetch error:', err));
+        .catch(err => console.warn('Router status fetch error:', err))
+        .finally(() => { routerRefreshPending = false; });
 }
 
 // Initial load — stats first, then router status (independent)

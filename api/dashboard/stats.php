@@ -20,6 +20,9 @@ $st->execute([$user_id]);
 $tenant_id = $st->fetchColumn();
 if (!$tenant_id) { echo json_encode(['success'=>false,'message'=>'No tenant']); exit; }
 
+// Release the session so the independent live router poll is not blocked by analytics.
+session_write_close();
+
 $data = [];
 
 // The period every chart on the page is drawn over. Previously there was none:
@@ -113,7 +116,7 @@ try {
 
     try {
         require_once '../../classes/MikrotikAPI.php';
-        $rSt = $pdo->prepare("SELECT id, name, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
+        $rSt = $pdo->prepare("SELECT id, name, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online','inactive','offline') AND tenant_id = ?");
         $rSt->execute([$tenant_id]);
         $routerRows = $rSt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -189,7 +192,7 @@ try {
     } catch (Exception $routerSectionEx) {
         // MikroTik section failed — return offline stubs so the JS can at least show "Offline"
         try {
-            $rFallback = $pdo->prepare("SELECT id, name, ip_address FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
+            $rFallback = $pdo->prepare("SELECT id, name, ip_address FROM mikrotik_routers WHERE status IN ('active','online','inactive','offline') AND tenant_id = ?");
             $rFallback->execute([$tenant_id]);
             foreach ($rFallback->fetchAll(PDO::FETCH_ASSOC) as $rf) {
                 $routerStatus[] = ['id' => $rf['id'], 'name' => $rf['name'], 'ip' => $rf['ip_address'], 'online' => false, 'active_clients' => 0, 'pppoe_clients' => 0, 'hotspot_clients' => 0];
