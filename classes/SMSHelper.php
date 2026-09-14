@@ -83,8 +83,9 @@ class SMSHelper {
                     // the cause.
                     $this->config         = $ownCfg;
                     $this->using_platform = false;
-                    $response['message']  = ($response['message'] ?? 'SMS failed.')
-                        . ' The platform key was tried as a fallback and was also rejected.';
+                    // Preserve the fallback's actual failure: a sender/credit
+                    // rejection does not mean the platform token was rejected.
+                    $response = smsFallbackFailure($retry);
                     if (!empty($retry['uncertain'])) {
                         $response['uncertain'] = true;
                         $response['message'] = 'The tenant key was rejected and the platform fallback delivery could not be confirmed.';
