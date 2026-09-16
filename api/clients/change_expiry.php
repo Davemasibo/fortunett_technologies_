@@ -9,13 +9,15 @@ require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
 require_once '../../classes/MikrotikAPI.php';
 require_once __DIR__ . '/../../includes/validity.php';
+require_once __DIR__ . '/../../includes/admin_hotspot_access.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user_id'])) { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
 
-$st = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$st = $pdo->prepare("SELECT * FROM users WHERE id = ?");
 $st->execute([$_SESSION['user_id']]);
-$tenant_id = $st->fetchColumn();
+$actor = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+$tenant_id = $actor['tenant_id'] ?? null;
 if (!$tenant_id) { echo json_encode(['success'=>false,'message'=>'No tenant']); exit; }
 
 $client_id = (int)($_POST['client_id'] ?? 0);
@@ -29,6 +31,15 @@ require_once __DIR__ . '/../../includes/dashboard_sync.php';
 $lockName = 'payment-client-' . $tenant_id . '-' . $client_id;
 $locked = false;
 try {
+    if ($action === 'admin_grant') {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_SESSION['dashboard_sync_csrf'])
+            || !hash_equals($_SESSION['dashboard_sync_csrf'], (string)($_POST['csrf_token'] ?? ''))) {
+            throw new RuntimeException('Session expired. Reload the dashboard.');
+        }
+        // Validate authority before creating any schema.
+        adminHotspotGrantExpiry($actor, ['tenant_id'=>$tenant_id, 'connection_type'=>'hotspot'], (string)($_POST['expiry_date'] ?? ''));
+        adminHotspotGrantSchema($pdo);
+    }
     dashboardSyncSchema($pdo);
     $lock = $pdo->prepare('SELECT GET_LOCK(?,30)');
     $lock->execute([$lockName]);
@@ -41,7 +52,13 @@ try {
     if (!$client) throw new RuntimeException('Customer not found');
     if ((int)($_POST['grace_hours'] ?? 0) !== 0) throw new RuntimeException('Grace period is zero. Extra access requires payment.');
     $newExpiry = $client['expiry_date'];
-    if ($action === 'set_date') {
+    if ($action === 'admin_grant') {
+        $newExpiry = adminHotspotGrantExpiry($actor, $client, (string)($_POST['expiry_date'] ?? ''));
+        $pdo->prepare('INSERT INTO hotspot_admin_grants (tenant_id,client_id,granted_by,old_expiry,expires_at) VALUES (?,?,?,?,?)')
+            ->execute([$tenant_id,$client_id,$_SESSION['user_id'],$client['expiry_date'],$newExpiry]);
+        $pdo->prepare("UPDATE clients SET expiry_date=?,status='active' WHERE id=? AND tenant_id=?")
+            ->execute([$newExpiry,$client_id,$tenant_id]);
+    } elseif ($action === 'set_date') {
         $requested = strtotime($_POST['expiry_date'] ?? '');
         if (!$requested || !$newExpiry || $requested > strtotime($newExpiry)) throw new RuntimeException('Access time can only be extended through a successful payment.');
         $newExpiry = date('Y-m-d H:i:s', $requested);
@@ -57,7 +74,7 @@ try {
     }
     dashboardQueueCustomer($pdo, (int)$tenant_id, $client_id);
     $pdo->commit();
-    echo json_encode(['success'=>true, 'sync_pending'=>true, 'message'=>'Saved. Applying access settings; no extra time added.', 'new_expiry'=>$newExpiry]);
+    echo json_encode(['success'=>true, 'sync_pending'=>true, 'message'=>$action === 'admin_grant' ? 'Owner access granted without payment. Applying router settings.' : 'Saved. Applying access settings; no extra time added.', 'new_expiry'=>$newExpiry]);
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     echo json_encode(['success'=>false, 'message'=>$e->getMessage()]);

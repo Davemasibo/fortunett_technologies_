@@ -29,7 +29,10 @@ require_once __DIR__ . '/../includes/stk_reconciliation.php';
 $transactions = $pdo->query("SELECT mt.* FROM mpesa_transactions mt
     WHERE mt.client_id IS NOT NULL AND mt.checkout_request_id IS NOT NULL
       AND mt.created_at < NOW() - INTERVAL 15 SECOND
-      AND (mt.status='pending' OR (mt.status='completed' AND mt.created_at > NOW()-INTERVAL 1 DAY)
+      AND (mt.status='pending' OR (mt.status='completed' AND (mt.created_at > NOW()-INTERVAL 1 DAY
+            OR NOT EXISTS (SELECT 1 FROM payments p WHERE p.tenant_id=mt.tenant_id AND p.client_id=mt.client_id
+                AND p.status='completed' AND (p.transaction_id=mt.checkout_request_id
+                    OR p.transaction_id=mt.mpesa_receipt_number OR p.checkout_request_id=mt.checkout_request_id))))
            OR (mt.result_desc LIKE '%15 minutes%' AND mt.created_at > NOW()-INTERVAL 7 DAY))
     ORDER BY mt.updated_at ASC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
 foreach ($transactions as $tx) {

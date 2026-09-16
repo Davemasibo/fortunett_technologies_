@@ -112,11 +112,16 @@ function smsApiUrlIsStale(?string $url): bool
  * `is_active` is checked by the caller's query; this is the separate question
  * of whether the row has anything in it worth sending with.
  */
-function smsFallbackFailure(array $fallback): array
+function smsSenderRejected(string $message): bool
+{
+    return (bool)preg_match('/(?:sender[ _-]?id|sender|originator).*(?:not authori[sz]ed|unauthori[sz]ed|not approved|unapproved|invalid|not registered|not allowed)|(?:invalid|unapproved|unauthori[sz]ed).*?(?:sender|originator)/i', $message);
+}
+
+function smsFallbackFailure(array $fallback, bool $senderFailure = false): array
 {
     $fallback['success'] = false;
-    $fallback['tenant_auth_failure'] = true;
-    $fallback['message'] = 'The tenant SMS token was rejected. Platform fallback: '
+    $fallback[$senderFailure ? 'tenant_sender_failure' : 'tenant_auth_failure'] = true;
+    $fallback['message'] = ($senderFailure ? 'The tenant SMS sender ID was rejected. Platform fallback: ' : 'The tenant SMS token was rejected. Platform fallback: ')
         . ($fallback['message'] ?? 'the provider did not confirm the message.');
     return $fallback;
 }

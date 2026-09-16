@@ -53,7 +53,10 @@ function reconcileCustomerStk(PDO $pdo, array $tx, bool $allowQuery = true): str
     $confirmed = $tx['status'] === 'completed' && (string)($tx['result_code'] ?? '') === '0';
     $query = ['result_code' => 0, 'raw' => [], 'result_desc' => $tx['result_desc'] ?? 'Confirmed'];
     if (!$confirmed) {
-        if ($tx['status'] === 'failed' && !str_contains($tx['result_desc'] ?? '', '15 minutes')) return 'failed';
+        if ($tx['status'] === 'failed' && !str_contains($tx['result_desc'] ?? '', '15 minutes')) {
+            stkFailPendingPayment($pdo, $tx);
+            return 'failed';
+        }
         if (!$allowQuery || strtotime($tx['created_at']) > time() - 15) return 'pending';
         // Persist throttling across browser requests, login attempts and cron workers.
         $pdo->exec('CREATE TABLE IF NOT EXISTS stk_reconciliation (checkout_id VARCHAR(150) PRIMARY KEY, next_check_at DATETIME NOT NULL) ENGINE=InnoDB');
@@ -69,6 +72,12 @@ function reconcileCustomerStk(PDO $pdo, array $tx, bool $allowQuery = true): str
             // Only explicit payment outcomes are terminal. API failures are not evidence of non-payment.
             if (!in_array($code, [1, 1019, 1032, 1037, 2001], true)) return 'pending';
             $pdo->prepare("UPDATE mpesa_transactions SET status='failed',result_code=?,result_desc=?,updated_at=NOW() WHERE checkout_request_id=? AND tenant_id=? AND status<>'completed'")->execute([$code, $query['result_desc'] ?? 'Payment not completed', $checkout, $tenant]);
+            // A success callback can win the race with this query. Use persisted
+            // state before changing the ledger or telling the browser it failed.
+            $fresh->execute([$tx['id'], $tenant, $client]);
+            $latest = $fresh->fetch(PDO::FETCH_ASSOC);
+            if ($latest && $latest['status'] === 'completed') return reconcileCustomerStk($pdo, $latest, false);
+            stkFailPendingPayment($pdo, $tx);
             return 'failed';
         }
     }
@@ -97,6 +106,16 @@ function reconcileCustomerStk(PDO $pdo, array $tx, bool $allowQuery = true): str
         $pdo->prepare("UPDATE payments SET payment_method='mpesa_stk' WHERE tenant_id=? AND client_id=? AND transaction_id IN (?,?)")->execute([$tenant, $client, $checkout, $terms['receipt']]);
     }
     return 'completed';
+}
+
+/** Only a persisted failure may fail a pending ledger row; completed money is immutable here. */
+function stkFailPendingPayment(PDO $pdo, array $tx): void {
+    $pdo->prepare("UPDATE payments p JOIN mpesa_transactions mt
+        ON mt.tenant_id=p.tenant_id AND mt.client_id=p.client_id
+        AND (p.transaction_id=mt.checkout_request_id OR p.checkout_request_id=mt.checkout_request_id)
+        SET p.status='failed'
+        WHERE mt.id=? AND mt.tenant_id=? AND mt.client_id=? AND mt.status='failed' AND p.status='pending'")
+        ->execute([$tx['id'], $tx['tenant_id'], $tx['client_id']]);
 }
 
 function recoverCustomerPayments(PDO $pdo, int $client, int $tenant): bool {

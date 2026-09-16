@@ -64,7 +64,9 @@ class SMSHelper {
         // nothing in the admin UI reports a send failure. The platform key is
         // the whole point of a platform fallback -- use it rather than let the
         // customer go untold that their payment landed.
-        if (empty($response['success']) && !empty($response['auth_failure']) && !$this->using_platform) {
+        if (empty($response['success']) && empty($response['uncertain'])
+            && (!empty($response['auth_failure']) || !empty($response['sender_failure'])) && !$this->using_platform) {
+            $senderFailure = !empty($response['sender_failure']);
             $platform = smsPlatformConfig($this->pdo);
             if ($platform) {
                 $ownCfg = $this->config;
@@ -73,7 +75,7 @@ class SMSHelper {
 
                 $retry = $this->sendViaTalkSasa($phone, $message);
                 if (!empty($retry['success'])) {
-                    error_log('[sms] tenant ' . $this->tenant_id . ' key rejected; sent on the platform key instead');
+                    error_log('[sms] tenant ' . $this->tenant_id . ' SMS configuration rejected; accepted using platform configuration');
                     $retry['fell_back'] = true;
                     $response = $retry;
                 } else {
@@ -85,10 +87,10 @@ class SMSHelper {
                     $this->using_platform = false;
                     // Preserve the fallback's actual failure: a sender/credit
                     // rejection does not mean the platform token was rejected.
-                    $response = smsFallbackFailure($retry);
+                    $response = smsFallbackFailure($retry, $senderFailure);
                     if (!empty($retry['uncertain'])) {
                         $response['uncertain'] = true;
-                        $response['message'] = 'The tenant key was rejected and the platform fallback delivery could not be confirmed.';
+                        $response['message'] = 'The tenant SMS configuration was rejected and the platform fallback delivery could not be confirmed.';
                     }
                 }
             }
@@ -126,7 +128,7 @@ class SMSHelper {
         return $phone;
     }
 
-    private function sendViaTalkSasa($phone, $message) {
+    protected function sendViaTalkSasa($phone, $message) {
         $url      = smsNormalizeApiUrl($this->config['api_url'] ?? null);
         // Trimmed because a token pasted from a dashboard very often carries a
         // trailing newline or space, and a bearer header with one is rejected
@@ -143,6 +145,10 @@ class SMSHelper {
         if ($apiKey === 'TEST_KEY') {
             $via = $this->using_platform ? ' (platform)' : '';
             return ['success' => true, 'message' => 'Simulated sent to ' . $phone . $via];
+        }
+
+        if ($senderId === '') {
+            return ['success' => false, 'sender_failure' => true, 'message' => 'SMS sender ID is missing. Configure a sender ID approved for this provider account.'];
         }
 
         // Both field spellings are sent because TalkSasa renamed 'phone' to
@@ -227,19 +233,25 @@ class SMSHelper {
                     return ['success' => false, 'auth_failure' => true, 'message' => $this->authFailureHint(200)];
                 }
 
-                return ['success' => false, 'message' => 'Provider rejected it: ' . $why];
+                return ['success' => false, 'sender_failure' => smsSenderRejected($why), 'message' => 'Provider rejected it: ' . $why];
             }
 
             $via = $this->using_platform ? ' (via platform SMS)' : '';
             return ['success' => true, 'response' => $result, 'message' => 'Sent' . $via];
         }
 
+        $providerDetail = is_array($json) ? ($json['message'] ?? $json['error'] ?? '') : '';
+        $providerDetail = is_string($providerDetail) ? $providerDetail : json_encode($providerDetail);
+        if (smsSenderRejected($providerDetail)) {
+            return ['success' => false, 'sender_failure' => true, 'message' => 'Provider rejected it: ' . $providerDetail];
+        }
         if ($httpCode === 401 || $httpCode === 403) {
             return ['success' => false, 'auth_failure' => true, 'message' => $this->authFailureHint($httpCode)];
         }
 
         $detail = is_array($json) ? ($json['message'] ?? json_encode($json)) : substr((string)$result, 0, 300);
-        return ['success' => false, 'message' => 'Provider error (HTTP ' . $httpCode . ') from ' . $finalUrl . ': ' . $detail];
+        $detail = is_string($detail) ? $detail : json_encode($detail);
+        return ['success' => false, 'sender_failure' => smsSenderRejected($detail), 'message' => 'Provider error (HTTP ' . $httpCode . ') from ' . $finalUrl . ': ' . $detail];
     }
 
     private function logMessage($clientId, $phone, $message, $response) {

@@ -53,11 +53,11 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     foreach ($rows as $r) {
         $rColl = $r['collection_type'] ?? 'direct';
         $rRel  = $r['released_at'] ?? null;
-        $rSettle = ($r['status'] ?? '') === 'failed'
+        $rSettle = in_array(($r['status'] ?? ''), ['failed','cancelled'], true)
             ? 'No funds moved'
-            : ($rColl === 'platform'
+            : (($r['status'] ?? '') !== 'completed' ? 'Not yet received' : ($rColl === 'platform'
                 ? ($rRel ? 'Disbursed to you' : 'Awaiting disbursement')
-                : 'Paid to you directly');
+                : 'Paid to you directly'));
         fputcsv($out, [
             $r['id'],
             $r['full_name']     ?? 'Unknown',
@@ -621,9 +621,9 @@ include 'includes/sidebar.php';
                     <?php foreach ($transactions as $tx):
                         $status = $tx['status'] ?? 'pending';
                         $method = strtolower($tx['payment_method'] ?? 'cash');
-                        // Determine display status: only "Confirmed" when result_code='0' in mpesa_transactions
+                        // Use the same completed ledger state as dashboard totals.
                         $mpesaCode = (string)($tx['mpesa_result_code'] ?? '');
-                        if ($mpesaCode === '0' || $status === 'completed') {
+                        if ($status === 'completed') {
                             $badgeClass = 'completed'; $badgeLabel = 'Confirmed';
                         } elseif ($mpesaCode === '1032') {
                             $badgeClass = 'failed'; $badgeLabel = 'Cancelled';
@@ -1384,15 +1384,8 @@ function openViewModal(tx) {
     const displayMethod = manualEntry && recordedMethod === 'mpesa_stk' ? 'mpesa' : recordedMethod;
     const method = (manualEntry ? 'Manual entry / ' : '') + (methodLabels[displayMethod] || (displayMethod ? escapeHtmlPay(displayMethod) : 'Not recorded'));
 
-    // Determine status based on result_code for M-Pesa or 'status' for recorded transactions
-    let status = 'pending';
-    if (tx.result_code === '0') {
-        status = 'completed';
-    } else if (tx.result_code && tx.result_code !== '0') {
-        status = 'failed';
-    } else if (tx.status) { // For manually recorded transactions
-        status = tx.status;
-    }
+    // Match the payment ledger and dashboard; a prompt response is not payment.
+    const status = tx.status || 'pending';
 
     const statusClass = status === 'completed' ? 'color: #059669; background: #D1FAE5;' : 
                         (status === 'failed' ? 'color: #DC2626; background: #FEE2E2;' : 'color: #D97706; background: #FEF3C7;');
@@ -1865,19 +1858,20 @@ function openPaymentStatus(tx) {
     const content = document.getElementById('payStatusContent');
     const status  = tx.status || 'pending';
     const method  = (tx.payment_method || '').toLowerCase();
-    const mpesaCode = String(tx.mpesa_result_code || '');
+    const mpesaCode = String(tx.mpesa_result_code ?? '');
     const collType  = tx.collection_type || null;
 
     // Effective status (mirrors PHP badge logic)
     let eff = status;
-    if (mpesaCode === '0') eff = 'completed';
-    else if (mpesaCode === '1032') eff = 'cancelled';
-    else if (mpesaCode === '1037') eff = 'timeout';
-    else if (mpesaCode && mpesaCode !== '0' && mpesaCode !== '') eff = 'failed';
+    if (status !== 'completed') {
+        if (mpesaCode === '1032') eff = 'cancelled';
+        else if (mpesaCode === '1037') eff = 'timeout';
+        else if (mpesaCode && mpesaCode !== '0') eff = 'failed';
+    }
 
     // Delivery text
     let deliveryIcon, deliveryColor, deliveryText, deliverySub;
-    if (method !== 'mpesa') {
+    if (!method.startsWith('mpesa')) {
         deliveryIcon  = 'fa-money-bill-wave';
         deliveryColor = '#93c5fd';
         deliveryText  = 'Cash / Manual';

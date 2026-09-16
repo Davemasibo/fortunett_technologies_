@@ -3,6 +3,11 @@ require_once __DIR__ . '/includes/db_master.php';
 require_once 'includes/auth.php';
 redirectIfNotLoggedIn();
 $_SESSION['dashboard_sync_csrf'] ??= bin2hex(random_bytes(32));
+$ownerAccessQuery = $pdo->prepare('SELECT role,is_super_admin FROM users WHERE id=?');
+$ownerAccessQuery->execute([$_SESSION['user_id']]);
+$ownerAccessUser = $ownerAccessQuery->fetch(PDO::FETCH_ASSOC) ?: [];
+$canGrantOwnerAccess = in_array($ownerAccessUser['role'] ?? '', ['admin','superadmin'], true) || !empty($ownerAccessUser['is_super_admin']);
+$_SESSION['dashboard_sync_csrf'] ??= bin2hex(random_bytes(32));
 $_SESSION['sms_retry_csrf'] ??= bin2hex(random_bytes(32));
 
 $database = new Database();
@@ -973,7 +978,15 @@ include 'includes/sidebar.php';
         <button onclick="closeExpiryModal()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:7px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#9ca3af;display:flex;align-items:center;justify-content:center;line-height:1;">&times;</button>
     </div>
     <div style="padding:20px;">
-        <p style="color:#e2e2e0">Access ends at the paid expiry, with zero grace. Additional time requires a successful payment. Changing packages preserves the paid expiry.</p>
+        <p style="color:#e2e2e0">Access ends at the paid expiry, with zero grace. Additional time requires a successful payment or an explicit owner access grant. Changing packages preserves the paid expiry.</p>
+        <?php if ($canGrantOwnerAccess): ?>
+        <div style="margin-bottom:16px;padding:12px;border:1px solid #64748b;border-radius:8px;color:#e2e2e0;">
+            <strong>Owner hotspot access</strong>
+            <p>Activate your hotspot credentials without payment until the selected date (up to 10 years). Package speed and device limits still apply. You can revoke access by suspending the account.</p>
+            <input type="datetime-local" id="ownerAccessExpiry" aria-label="Owner access expiry">
+            <button type="button" onclick="applyOwnerAccess()">Grant owner access</button>
+        </div>
+        <?php endif; ?>
         <!-- Set specific date -->
         <div style="margin-bottom:16px;">
             <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Set Specific Date</div>
@@ -1371,11 +1384,28 @@ function openExpiryModal() {
     if (expEl) expEl.textContent = currentCustomer.expiry_date ? formatDate(currentCustomer.expiry_date) : 'Not set';
     filterExpiryPackagesByType(currentCustomer.connection_type || 'pppoe');
     updatePauseBtn(currentCustomer.status);
+    const ownerExpiry = document.getElementById('ownerAccessExpiry');
+    if (ownerExpiry) {
+        const end = new Date();
+        end.setFullYear(end.getFullYear() + 10);
+        end.setMinutes(end.getMinutes() - end.getTimezoneOffset());
+        ownerExpiry.value = end.toISOString().slice(0,16);
+    }
     document.getElementById('expiryModal').style.display = 'flex';
 }
 
 function closeExpiryModal() {
     document.getElementById('expiryModal').style.display = 'none';
+}
+
+function applyOwnerAccess() {
+    if (!currentCustomer) return;
+    const fd = new FormData();
+    fd.append('client_id', currentCustomer.id);
+    fd.append('action', 'admin_grant');
+    fd.append('expiry_date', document.getElementById('ownerAccessExpiry').value);
+    fd.append('csrf_token', <?php echo json_encode($_SESSION['dashboard_sync_csrf']); ?>);
+    submitExpiryChange(fd, 'owner access');
 }
 
 function applySetDate() {

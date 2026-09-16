@@ -189,6 +189,22 @@ try {
             // stk_push.php routes on.
             $platformCollected = null;
 
+            // Preserve provider confirmation before activation can fail. The
+            // reconciler can then repair access even if the callback is not retried.
+            if (paymentIsManualTransaction($tx)) {
+                throw new RuntimeException('A manual payment cannot be converted into an STK payment');
+            }
+            if (isset($tx['amount']) && abs((float)$tx['amount'] - $amount) > 0.001) {
+                throw new RuntimeException('Callback amount conflicts with checkout');
+            }
+            if (!empty($tx['mpesa_receipt_number']) && $tx['mpesa_receipt_number'] !== $receipt) {
+                throw new RuntimeException('Checkout already has a different receipt');
+            }
+            $pdo->prepare("UPDATE mpesa_transactions SET status='completed',result_code=0,
+                result_desc=?,mpesa_receipt_number=?,raw_callback=?,updated_at=NOW()
+                WHERE checkout_request_id=? AND tenant_id=? AND client_id=?")
+                ->execute([$resultDesc, $receipt, $content, $checkoutRequestId, $resolvedTenantId, $clientId]);
+
             $activationResult = process_payment_success(
                 $pdo,
                 $clientId,

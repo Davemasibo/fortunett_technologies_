@@ -47,6 +47,12 @@ function hotspotConfirmedLedgerEvents(array $events): array {
 }
 
 function hotspotPurchaseEvidence(PDO $pdo,int $tenant,int $client,array $historicalTerms=[],array $tariff=[]): array {
+    // Paid-history repairs must never erase an explicit administrator grant.
+    try {
+        $grant = $pdo->prepare('SELECT id FROM hotspot_admin_grants WHERE tenant_id=? AND client_id=? LIMIT 1');
+        $grant->execute([$tenant,$client]);
+        if ($grant->fetchColumn()) return ['repairable'=>false,'reason'=>'Administrator access grant exists; review manually'];
+    } catch (PDOException $e) { if (($e->errorInfo[1] ?? 0)!==1146) throw $e; }
     $st=$pdo->prepare("SELECT id,transaction_id,payment_date,amount FROM payments WHERE tenant_id=? AND client_id=? AND status='completed' ORDER BY payment_date,id");
     $st->execute([$tenant,$client]);$payments=$st->fetchAll(PDO::FETCH_ASSOC);$events=[];
     foreach ($payments as $payment) {
