@@ -315,7 +315,7 @@ try {
     $alerts = [];
     $st = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE expiry_date < NOW() AND status='active' AND tenant_id=?");
     $st->execute([$tenant_id]); $expiredNow = (int)$st->fetchColumn();
-    if ($expiredNow > 0) $alerts[] = ['type'=>'warning','title'=>"$expiredNow expired account(s) still active",'message'=>'These accounts have passed their expiry date but are still marked active. Click to view and run expiry check.','time'=>'Now','link'=>'/clients.php?status=active'];
+    if ($expiredNow > 0) $alerts[] = ['type'=>'warning','title'=>"$expiredNow expired account(s) still active",'message'=>'These accounts have passed their expiry date but are still marked active. Click to view and run expiry check.','time'=>'Now','link'=>'clients.php?expiry=overdue_active'];
     $st = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE expiry_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 3 DAY) AND status='active' AND tenant_id=?");
     $st->execute([$tenant_id]); $soonExp = (int)$st->fetchColumn();
     if ($soonExp > 0) $alerts[] = ['type'=>'warning','title'=>"$soonExp account(s) expiring within 3 days",'message'=>'Consider sending renewal SMS reminders to keep these customers active. Click to view them.','time'=>'Next 3 days','link'=>'/clients.php?status=active'];

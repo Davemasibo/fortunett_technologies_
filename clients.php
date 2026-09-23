@@ -24,6 +24,7 @@ $customerSmsTemplates = smsAvailableTemplates($db, (int)$tenant_id);
 // Lazy-add last_seen column (silent if already exists)
 try { $db->exec("ALTER TABLE clients ADD COLUMN last_seen DATETIME NULL DEFAULT NULL"); } catch (Exception $_e) {}
 
+$expiredActiveFilter = ($_GET['expiry'] ?? '') === 'overdue_active';
 $ownershipFilter = in_array($_GET['router_ownership'] ?? '', ['isp','customer','unknown'], true) ? $_GET['router_ownership'] : '';
 
 // Export CSV Logic
@@ -41,6 +42,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
               COALESCE((SELECT price FROM packages WHERE id = c.package_id LIMIT 1), 0) AS package_price
               FROM clients c WHERE c.tenant_id = ?";
     $params = [$tenant_id];
+    if ($expiredActiveFilter) $query .= " AND c.status='active' AND c.expiry_date<NOW()";
     
     
     if (!empty($search)) {
@@ -139,6 +141,7 @@ try {
               FROM clients c WHERE c.tenant_id = ?";
 
     $params = [$tenant_id];
+    if ($expiredActiveFilter) $query .= " AND c.status='active' AND c.expiry_date<NOW()";
 
     if (!empty($search)) {
         $query .= " AND (c.full_name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.account_number LIKE ?)";
@@ -453,7 +456,7 @@ include 'includes/sidebar.php';
         <!-- Connection Type Tabs -->
         <div class="conn-tabs">
             <?php
-            $baseParams = array_filter(['search' => $search, 'status' => $status_filter, 'package' => $package_filter, 'router_ownership'=>$ownershipFilter]);
+            $baseParams = array_filter(['search' => $search, 'status' => $status_filter, 'package' => $package_filter, 'router_ownership'=>$ownershipFilter, 'expiry'=>$expiredActiveFilter ? 'overdue_active' : '']);
             $mkTabUrl = fn($t) => 'clients.php?' . http_build_query(array_merge($baseParams, $t ? ['type' => $t] : []));
             ?>
             <a href="<?php echo htmlspecialchars($mkTabUrl('')); ?>" class="conn-tab <?php echo $type_filter === '' ? 'active' : ''; ?>">
@@ -468,8 +471,18 @@ include 'includes/sidebar.php';
         </div>
 
         <!-- Filters Bar -->
+        <?php if ($expiredActiveFilter): ?>
+        <div class="filters-bar" style="border-left:4px solid #f59e0b">
+            <h3 style="margin-top:0">Expired accounts still marked active</h3>
+            <p>Review these accounts below. Run the expiry check to mark overdue accounts inactive and disconnect their router sessions. Accounts renewed in the meantime will be kept active.</p>
+            <?php if ($canGrantOwnerAccess): ?><button type="button" id="runExpiryCheck" style="padding:11px 16px;border:0;border-radius:8px;background:#2563eb;color:white;font-weight:600;cursor:pointer" onclick="runOverdueExpiryCheck()">Run expiry check</button><?php endif; ?>
+            <a href="clients.php" style="margin-left:12px">View all customers</a>
+            <p id="expiryCheckResult" role="status" aria-live="polite"></p>
+        </div>
+        <?php endif; ?>
         <div class="filters-bar">
             <form id="filterForm" method="GET" action="clients.php" class="filters-grid">
+                <?php if ($expiredActiveFilter): ?><input type="hidden" name="expiry" value="overdue_active"><?php endif; ?>
                 <div class="filter-group">
                     <label class="filter-label">Search by name, phone, email, or customer ID...</label>
                     <input type="text" name="search" class="filter-input" placeholder="Type to search..." value="<?php echo htmlspecialchars($search ?? ''); ?>">
@@ -965,56 +978,7 @@ include 'includes/sidebar.php';
 <!-- ═══════════════════════════════════════════════════════════════
      CHANGE EXPIRY MODAL
 ════════════════════════════════════════════════════════════════ -->
-<div id="expiryModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:1050;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
-<div style="background:#1e1e1d;width:100%;max-width:500px;border-radius:16px;padding:0;box-shadow:0 32px 80px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.07);overflow:hidden;">
-    <!-- Header -->
-    <div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;justify-content:space-between;align-items:center;background:#222221;">
-        <div style="display:flex;align-items:center;gap:10px;">
-            <div style="width:32px;height:32px;border-radius:8px;background:rgba(251,191,36,.12);display:flex;align-items:center;justify-content:center;">
-                <i class="fas fa-calendar-alt" style="color:#fbbf24;font-size:14px;"></i>
-            </div>
-            <div style="font-size:15px;font-weight:700;color:#e2e2e0;">Change Expiry</div>
-        </div>
-        <button onclick="closeExpiryModal()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:7px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#9ca3af;display:flex;align-items:center;justify-content:center;line-height:1;">&times;</button>
-    </div>
-    <div style="padding:20px;">
-        <p style="color:#e2e2e0">Access ends at the paid expiry, with zero grace. Additional time requires a successful payment or an explicit owner access grant. Changing packages preserves the paid expiry.</p>
-        <?php if ($canGrantOwnerAccess): ?>
-        <div style="margin-bottom:16px;padding:12px;border:1px solid #64748b;border-radius:8px;color:#e2e2e0;">
-            <strong>Owner hotspot access</strong>
-            <p>Activate your hotspot credentials without payment until the selected date (up to 10 years). Package speed and device limits still apply. You can revoke access by suspending the account.</p>
-            <input type="datetime-local" id="ownerAccessExpiry" aria-label="Owner access expiry">
-            <button type="button" onclick="applyOwnerAccess()">Grant owner access</button>
-        </div>
-        <?php endif; ?>
-        <!-- Set specific date -->
-        <div style="margin-bottom:16px;">
-            <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Set Specific Date</div>
-            <div style="display:flex;gap:8px;">
-                <input type="datetime-local" id="expiryDateInput" style="flex:1;padding:8px 10px;background:#1c1c1b;border:1px solid rgba(255,255,255,.15);border-radius:7px;font-size:13px;color:#e2e2e0;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;box-sizing:border-box;color-scheme:dark;">
-                <button onclick="applySetDate()" style="padding:8px 14px;background:var(--primary-color,#3B6EA5);color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Set Date</button>
-            </div>
-        </div>
-        <!-- Change package -->
-        <div style="margin-bottom:16px;">
-            <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Change Package</div>
-            <div style="display:flex;gap:8px;">
-                <select id="expiryPackageSelect" style="flex:1;padding:8px 10px;background:#1c1c1b;border:1px solid rgba(255,255,255,.08);border-radius:7px;font-size:13px;color:#e2e2e0;box-shadow:inset 2px 2px 5px rgba(0,0,0,.3);outline:none;">
-                    <option value="" style="background:#1c1c1b;">— Keep current package —</option>
-                    <?php foreach ($packages as $pkg): ?>
-                    <option value="<?php echo $pkg['id']; ?>" data-type="<?php echo htmlspecialchars($pkg['type']); ?>" style="background:#1c1c1b;"><?php echo htmlspecialchars($pkg['name']); ?> — KES <?php echo number_format($pkg['price']); ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <button onclick="applyChangePackage()" style="padding:8px 14px;background:#059669;color:white;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Apply</button>
-            </div>
-        </div>
-        <!-- Current expiry info -->
-        <div style="margin-top:14px;padding:10px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;font-size:12px;color:rgba(255,255,255,.75);">
-            Current expiry: <strong id="currentExpiryDisplay" style="color:#e2e2e0;font-size:13px;"></strong>
-        </div>
-    </div>
-</div>
-</div>
+<?php require __DIR__ . '/includes/customer_expiry_modal.php'; ?>
 
 <!-- Add/Edit form Modal -->
 <div id="customerFormModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1001;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
@@ -1378,23 +1342,34 @@ function toggleActionsMenu() {
 }
 
 /* ── Expiry modal ──────────────────────────────────────────── */
+async function runOverdueExpiryCheck() {
+    const button = document.getElementById('runExpiryCheck');
+    const result = document.getElementById('expiryCheckResult');
+    button.disabled = true; button.textContent = 'Checking accounts...';
+    result.textContent = '';
+    try {
+        const body = new FormData();
+        body.append('csrf_token', <?php echo json_encode($_SESSION['dashboard_sync_csrf']); ?>);
+        const response = await fetch('api/clients/check_expiry.php', {method:'POST',body});
+        const data = await response.json();
+        result.textContent = data.message;
+        if (data.success) await DashboardSync.saved(data);
+    } catch (_) { result.textContent = 'Connection failed. Refresh the list before retrying.'; }
+    finally { button.disabled = false; button.textContent = 'Run expiry check'; }
+}
+
 function openExpiryModal() {
     if (!currentCustomer) return;
     const expEl = document.getElementById('currentExpiryDisplay');
     if (expEl) expEl.textContent = currentCustomer.expiry_date ? formatDate(currentCustomer.expiry_date) : 'Not set';
     filterExpiryPackagesByType(currentCustomer.connection_type || 'pppoe');
     updatePauseBtn(currentCustomer.status);
-    const ownerExpiry = document.getElementById('ownerAccessExpiry');
-    if (ownerExpiry) {
-        const end = new Date();
-        end.setFullYear(end.getFullYear() + 10);
-        end.setMinutes(end.getMinutes() - end.getTimezoneOffset());
-        ownerExpiry.value = end.toISOString().slice(0,16);
-    }
     document.getElementById('expiryModal').style.display = 'flex';
+    ExpiryModal.open(currentCustomer);
 }
 
 function closeExpiryModal() {
+    if (!ExpiryModal.close()) return;
     document.getElementById('expiryModal').style.display = 'none';
 }
 
@@ -1431,11 +1406,15 @@ function applyChangePackage() {
 }
 
 function submitExpiryChange(fd, label) {
+    ExpiryModal.pending(true);
+    ExpiryModal.feedback('Saving changes...');
     fetch('api/clients/change_expiry.php', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(d => {
             if (d.success) {
                 DashboardSync.saved(d);
+                ExpiryModal.feedback(d.message || 'Changes saved.');
+                if (fd.get('action') === 'admin_grant') currentCustomer.status = 'active';
                 currentCustomer.expiry_date = d.new_expiry;
                 document.getElementById('currentExpiryDisplay').textContent = formatDate(d.new_expiry);
                 // Refresh time display in general tab
@@ -1451,10 +1430,11 @@ function submitExpiryChange(fd, label) {
                     ' · Expires: ' + formatDate(d.new_expiry);
                 setTimeout(() => closeExpiryModal(), 1200);
             } else {
-                showToast('Error: ' + d.message, 'error');
+                ExpiryModal.feedback(d.message || 'Could not save changes.');
             }
         })
-        .catch(() => showToast('Network error.', 'error'));
+        .catch(() => ExpiryModal.feedback('Connection failed. Try again.'))
+        .finally(() => ExpiryModal.pending(false));
 }
 
 function togglePwd() {

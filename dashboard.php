@@ -327,6 +327,8 @@ include 'includes/sidebar.php';
         gap: 12px;
         border-left: 4px solid;
     }
+    a.alert-item:hover { outline:1px solid #60a5fa; }
+    a.alert-item:focus-visible { outline:3px solid #60a5fa; outline-offset:3px; }
     .alert-item:last-child { margin-bottom:0; }
     .alert-item.warning {
         background: rgba(251,191,36,.08);
@@ -1058,20 +1060,30 @@ function updateStatCards(s) {
     set('stat-expired', (s.expired_accounts   || 0).toLocaleString());
     set('stat-newreg',  (s.new_registrations  || 0).toLocaleString());
     // System Alerts
-    if (s.alerts && s.alerts.length) {
+    if (Array.isArray(s.alerts)) {
         const alertsList = document.querySelector('.alerts-list');
         if (alertsList) {
-            alertsList.innerHTML = s.alerts.map(a => `
-                <div class="alert-item ${a.type}">
-                    <div class="alert-icon">
-                        <i class="fas fa-${a.type === 'warning' ? 'exclamation-triangle' : 'check-circle'}"></i>
-                    </div>
-                    <div class="alert-content">
-                        <div class="alert-title">${a.title}</div>
-                        <div class="alert-message">${a.message}</div>
-                        <div class="alert-time">${a.time}</div>
-                    </div>
-                </div>`).join('');
+            alertsList.replaceChildren();
+            for (const alert of s.alerts) {
+                let href = '';
+                if (alert.link) {
+                    const url = new URL(alert.link, location.href);
+                    if (url.origin === location.origin) href = url.href;
+                }
+                const item = document.createElement(href ? 'a' : 'div');
+                item.className = 'alert-item ' + (alert.type === 'warning' ? 'warning' : 'info');
+                if (href) { item.href = href; item.style.textDecoration = 'none'; item.style.color = 'inherit'; }
+                const icon = document.createElement('div'); icon.className = 'alert-icon';
+                const glyph = document.createElement('i'); glyph.className = 'fas fa-' + (alert.type === 'warning' ? 'exclamation-triangle' : 'check-circle');
+                icon.append(glyph); item.append(icon);
+                const content = document.createElement('div'); content.className = 'alert-content';
+                for (const [key, style] of [['title','alert-title'],['message','alert-message'],['time','alert-time']]) {
+                    const node = document.createElement('div'); node.className = style; node.textContent = alert[key] || ''; content.append(node);
+                }
+                if (href) { const action = document.createElement('div'); action.textContent = 'Review details'; action.style.marginTop = '8px'; content.append(action); }
+                item.append(content); alertsList.append(item);
+            }
+            if (!s.alerts.length) { const empty = document.createElement('p'); empty.textContent = 'No new alerts.'; alertsList.append(empty); }
         }
     }
 
