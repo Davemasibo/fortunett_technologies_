@@ -408,8 +408,8 @@ table a:hover{color:#93c5fd;}
         <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:14px 18px;font-size:13px;color:#92400e;display:flex;gap:10px;align-items:flex-start;">
             <i class="fas fa-info-circle" style="margin-top:1px;flex-shrink:0;"></i>
             <span>
-                <strong>Pricing changes take effect on the next billing cycle.</strong>
-                Existing invoices already generated will not be recalculated.
+                <strong>Pricing changes apply to new invoices and the current unpaid invoice when the tenant opens billing.</strong>
+                Paid, part-paid, cancelled, waived, and previous-month invoices are not recalculated.
                 Max clients / routers of <strong>0</strong> or blank is treated as unlimited.
                 The hotspot commission rate is stored internally as a decimal fraction (e.g. 3% is stored as 0.0300).
             </span>

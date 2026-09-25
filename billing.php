@@ -54,9 +54,10 @@ try {
 // Fetch rates from the tenant's assigned subscription plan
 $pppoeRate   = 25.00;
 $hotspotRate = 0.03;
+$baseMonthlyFee = 0.00;
 try {
     $rateStmt = $pdo->prepare("
-        SELECT p.pppoe_fee_per_user, p.hotspot_commission_rate
+        SELECT p.pppoe_fee_per_user, p.hotspot_commission_rate, p.base_monthly_fee
         FROM platform_subscription_plans p
         JOIN tenants t ON t.subscription_plan_id = p.id
         WHERE t.id = ? LIMIT 1
@@ -66,13 +67,14 @@ try {
     if ($rateRow) {
         $pppoeRate   = (float)$rateRow['pppoe_fee_per_user'];
         $hotspotRate = (float)$rateRow['hotspot_commission_rate'];
+        $baseMonthlyFee = (float)$rateRow['base_monthly_fee'];
     }
 } catch (Exception $e) {}
 
 $pppoeSubtotal = $pppoeCount * $pppoeRate;
 $hotspotFee    = $currentRevenue * $hotspotRate;
 
-$serviceSubtotal = $pppoeSubtotal + $hotspotFee;
+$serviceSubtotal = $baseMonthlyFee + $pppoeSubtotal + $hotspotFee;
 $totalDue        = $serviceSubtotal;
 
 // Invoice number
@@ -96,7 +98,11 @@ $billsStmt = $pdo->prepare("
            invoice_number,
            billing_period,
            hotspot_collections            AS total_collections,
-           pppoe_subtotal                 AS base_fee,
+           base_fee,
+           pppoe_subtotal,
+           pppoe_user_count AS pppoe_count,
+           pppoe_fee_per_user AS pppoe_rate,
+           due_date,
            hotspot_commission_rate        AS commission_rate,
            hotspot_commission             AS commission_amount,
            total_due,
@@ -129,12 +135,15 @@ foreach ($bills as $b) {
 // tenant is actually charged and what the suspension engine enforces — showing
 // anything else means the amount on screen can drift from the amount owed.
 if ($currentBill) {
-    $pppoeSubtotal = (float)$currentBill['base_fee'];
+    $baseMonthlyFee = (float)$currentBill['base_fee'];
+    $pppoeSubtotal = (float)$currentBill['pppoe_subtotal'];
+    $pppoeRate = (float)$currentBill['pppoe_rate'];
+    $serviceSubtotal = (float)$currentBill['total_due'];
     $hotspotFee    = (float)$currentBill['commission_amount'];
     $currentRevenue = (float)$currentBill['total_collections'];
     $hotspotRate   = (float)$currentBill['commission_rate'];
     $totalDue      = (float)$currentBill['balance_due'];   // what is still owed
-    $pppoeCount    = (int)($currentBill['pppoe_user_count'] ?? $pppoeCount);
+    $pppoeCount    = (int)$currentBill['pppoe_count'];
 }
 
 require_once __DIR__ . '/includes/credential_helper.php';
@@ -592,8 +601,11 @@ include 'includes/sidebar.php';
             'invoice_number'    => $currentBill['invoice_number'] ?? '',
             'billing_period'    => $currentMonthStart,
             'total_collections' => $currentRevenue,
-            'base_fee'          => $pppoeSubtotal,
-            'commission_rate'   => round($hotspotRate * 100, 4),
+            'base_fee'          => $baseMonthlyFee,
+            'pppoe_subtotal'    => $pppoeSubtotal,
+            'total_due'         => $serviceSubtotal,
+            'due_date'          => $currentBill['due_date'] ?? null,
+            'commission_rate'   => $hotspotRate,
             'commission_amount' => $hotspotFee,
             'pppoe_count'       => $pppoeCount,
             'pppoe_rate'        => $pppoeRate,
@@ -618,6 +630,7 @@ include 'includes/sidebar.php';
                         <th>Period</th>
                         <th class="text-end">Revenue Collected</th>
                         <th class="text-end">PPPoE Fee</th>
+                        <th class="text-end">Base Monthly Fee</th>
                         <th class="text-end">Hotspot Commission</th>
                         <th class="text-end">Total Due</th>
                         <th class="text-center">Status</th>
@@ -626,12 +639,13 @@ include 'includes/sidebar.php';
                 </thead>
                 <tbody>
                     <?php foreach ($bills as $bill):
-                        $bTotal = $bill['base_fee'] + $bill['commission_amount'];
+                        $bTotal = $bill['total_due'];
                         $isPaid = $bill['status'] === 'paid';
                     ?>
                     <tr>
                         <td style="font-weight:600; color:#e2e2e0;"><?php echo date('F Y', strtotime($bill['billing_period'])); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['total_collections'], 2); ?></td>
+                        <td class="text-end">KES <?php echo number_format($bill['pppoe_subtotal'], 2); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['base_fee'], 2); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['commission_amount'], 2); ?></td>
                         <td class="text-end" style="font-weight:700; color:#e2e2e0;">KES <?php echo number_format($bTotal, 2); ?></td>
@@ -728,6 +742,12 @@ include 'includes/sidebar.php';
             </thead>
             <tbody>
                 <tr>
+                    <td><div class="desc-main">Base Monthly Fee</div><div class="desc-sub">Fixed monthly subscription fee</div></td>
+                    <td id="invMonthlyRate">KES <?php echo number_format($baseMonthlyFee, 2); ?></td>
+                    <td>1</td>
+                    <td id="invMonthlyFee">KES <?php echo number_format($baseMonthlyFee, 2); ?></td>
+                </tr>
+                <tr>
                     <td>
                         <div class="desc-main">Platform Fee</div>
                         <div class="desc-sub">Monthly ISP management fee — per active user</div>
@@ -749,7 +769,11 @@ include 'includes/sidebar.php';
             <tfoot>
                 <tr class="subtotal-row">
                     <td colspan="3" style="text-align:right;">Service Subtotal</td>
-                    <td id="invServiceSubtotal">KES <?php echo number_format($totalDue, 2); ?></td>
+                    <td id="invServiceSubtotal">KES <?php echo number_format($serviceSubtotal, 2); ?></td>
+                </tr>
+                <tr class="subtotal-row">
+                    <td colspan="3" style="text-align:right;">Amount Paid</td>
+                    <td id="invAmountPaid">KES <?php echo number_format((float)($currentBill['amount_paid'] ?? 0), 2); ?></td>
                 </tr>
                 <tr class="total-row">
                     <td colspan="3" style="text-align:right; font-weight:800;">Total Due</td>
@@ -925,21 +949,27 @@ const isSandbox          = <?php echo MPESA_ENV === 'sandbox' ? 'true' : 'false'
 // ════════════════════════════════════════
 function openInvoiceModal(bill) {
     const base       = parseFloat(bill.base_fee || 0);
+    const pppoe      = parseFloat(bill.pppoe_subtotal || 0);
     const comm       = parseFloat(bill.commission_amount || 0);
-    const total      = base + comm;
-    const rate       = parseFloat(bill.commission_rate || 3);
-    const pppoeRate  = parseFloat(bill.pppoe_rate || 25);
+    const total      = Number(bill.total_due ?? (base + pppoe + comm));
+    const paid       = Number(bill.amount_paid ?? 0);
+    const balance    = Number(bill.balance_due ?? Math.max(total - paid, 0));
+    const rate       = Number(bill.commission_rate ?? 0.03) * 100;
+    const pppoeRate  = Number(bill.pppoe_rate ?? 25);
     const pppoeCount = parseInt(bill.pppoe_count || 0);
 
     document.getElementById('invPppoeRate').textContent       = 'KES ' + fmt(pppoeRate) + '/user';
     document.getElementById('invPppoeQty').textContent        = pppoeCount + ' user' + (pppoeCount !== 1 ? 's' : '');
-    document.getElementById('invBaseFee').textContent         = 'KES ' + fmt(base);
+    document.getElementById('invBaseFee').textContent         = 'KES ' + fmt(pppoe);
+    document.getElementById('invMonthlyRate').textContent     = 'KES ' + fmt(base);
+    document.getElementById('invMonthlyFee').textContent      = 'KES ' + fmt(base);
+    document.getElementById('invAmountPaid').textContent      = 'KES ' + fmt(paid);
     document.getElementById('invCommRate').textContent        = rate.toFixed(2) + '%';
     document.getElementById('invCommAmt').textContent         = 'KES ' + fmt(comm);
     document.getElementById('invServiceSubtotal').textContent = 'KES ' + fmt(total);
-    document.getElementById('invTotalDue').textContent        = 'KES ' + fmt(total);
-    document.getElementById('invPayBarAmt').textContent       = 'KES ' + fmt(total);
-    currentInvoiceAmount = total;
+    document.getElementById('invTotalDue').textContent        = 'KES ' + fmt(balance);
+    document.getElementById('invPayBarAmt').textContent       = 'KES ' + fmt(balance);
+    currentInvoiceAmount = balance;
     currentBillId        = parseInt(bill.id || 0);
 
     // Period + due date + invoice number
@@ -947,13 +977,14 @@ function openInvoiceModal(bill) {
         const d = new Date(bill.billing_period + 'T00:00:00');
         document.getElementById('invDate').textContent = d.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
         const due = new Date(d); due.setDate(due.getDate() + 14);
+        if (bill.due_date) due.setTime(new Date(bill.due_date + 'T00:00:00').getTime());
         document.getElementById('invDue').textContent = due.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
 
         // Reconstruct invoice number from billing period (format: INV-ORGSLUG/YYYYMMDD)
         const y   = d.getFullYear();
         const mo  = String(d.getMonth() + 1).padStart(2, '0');
         const day = String(d.getDate()).padStart(2, '0');
-        document.getElementById('invNumber').textContent = 'INV-<?php echo htmlspecialchars($orgSlug); ?>/' + y + mo + day;
+        document.getElementById('invNumber').textContent = bill.invoice_number || ('INV-<?php echo htmlspecialchars($orgSlug); ?>/' + y + mo + day);
 
         // Header subtitle
         const sub = document.getElementById('invHeaderSub');

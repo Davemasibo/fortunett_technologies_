@@ -256,7 +256,7 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId): ?array
 
         // Never recalculate a settled or part-paid invoice — the amount owed is
         // fixed once money has been applied to it.
-        if ($existing && ($existing['status'] === 'paid' || (float)($existing['amount_paid'] ?? 0) > 0)) {
+        if ($existing && (!in_array($existing['status'], ['pending', 'overdue'], true) || (float)($existing['amount_paid'] ?? 0) > 0)) {
             return $existing;
         }
 
@@ -264,13 +264,14 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId): ?array
         $rate = $pdo->prepare("
             SELECT COALESCE(p.pppoe_fee_per_user, 25) AS pppoe_fee,
                    COALESCE(p.hotspot_commission_rate, 0.03) AS hotspot_rate,
+                   COALESCE(p.base_monthly_fee, 0) AS base_fee,
                    p.id AS plan_id
             FROM tenants t
             LEFT JOIN platform_subscription_plans p ON p.id = t.subscription_plan_id
             WHERE t.id = ? LIMIT 1
         ");
         $rate->execute([$tenantId]);
-        $r = $rate->fetch(PDO::FETCH_ASSOC) ?: ['pppoe_fee' => 25, 'hotspot_rate' => 0.03, 'plan_id' => null];
+        $r = $rate->fetch(PDO::FETCH_ASSOC) ?: ['pppoe_fee' => 25, 'hotspot_rate' => 0.03, 'base_fee' => 0, 'plan_id' => null];
 
         // Active PPPoE users
         $pc = $pdo->prepare("
@@ -304,12 +305,12 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId): ?array
                 UPDATE platform_invoices
                 SET pppoe_user_count = ?, pppoe_fee_per_user = ?,
                     hotspot_collections = ?, hotspot_commission_rate = ?,
-                    plan_id = ?
-                WHERE id = ? AND status <> 'paid'
+                    base_fee = ?, plan_id = ?
+                WHERE id = ? AND status IN ('pending', 'overdue') AND COALESCE(amount_paid, 0) = 0
             ")->execute([
                 $pppoeCount, $r['pppoe_fee'],
                 $hotspotCollections, $r['hotspot_rate'],
-                $r['plan_id'], $existing['id'],
+                $r['base_fee'], $r['plan_id'], $existing['id'],
             ]);
         } else {
             $pdo->prepare("
@@ -318,12 +319,12 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId): ?array
                      pppoe_user_count, pppoe_fee_per_user,
                      hotspot_collections, hotspot_commission_rate,
                      base_fee, status, due_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
             ")->execute([
                 $invoiceNumber, $tenantId, $periodStart, $r['plan_id'],
                 $pppoeCount, $r['pppoe_fee'],
                 $hotspotCollections, $r['hotspot_rate'],
-                $dueDate,
+                $r['base_fee'], $dueDate,
             ]);
         }
 

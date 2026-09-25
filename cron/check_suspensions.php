@@ -66,12 +66,17 @@ foreach ($expiredTrials as $t) {
             $dueDate = date('Y-m-d', strtotime('+15 days'));
             $pdo->prepare("
                 INSERT INTO platform_invoices
-                    (invoice_number, tenant_id, billing_period,
+                    (invoice_number, tenant_id, billing_period, plan_id,
                      pppoe_user_count, pppoe_fee_per_user,
                      hotspot_collections, hotspot_commission_rate,
                      base_fee, due_date, status)
-                VALUES (?, ?, ?, 0, 25.00, 0, 0.03, 0, ?, 'pending')
-            ")->execute([$invNum, $t['tenant_id'], $period, $dueDate]);
+                SELECT ?, t.id, ?, p.id, 0, COALESCE(p.pppoe_fee_per_user, 25.00),
+                       0, COALESCE(p.hotspot_commission_rate, 0.03),
+                       COALESCE(p.base_monthly_fee, 0), ?, 'pending'
+                FROM tenants t
+                LEFT JOIN platform_subscription_plans p ON p.id = t.subscription_plan_id
+                WHERE t.id = ?
+            ")->execute([$invNum, $period, $dueDate, $t['tenant_id']]);
             $log("INVOICE $invNum generated for trial-expired tenant #{$t['tenant_id']}");
         }
 
