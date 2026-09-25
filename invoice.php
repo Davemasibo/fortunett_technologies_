@@ -54,7 +54,7 @@ include 'includes/sidebar.php';
             <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                 <div>
                     <h3 style="margin:0;color:#06b6d4;">Fortunett Technologies Ltd.</h3>
-                    <div style="color:#666;font-size:13px;">sales@fortunett.com<br>+254 700 000 000<br>Upper Hill, Nairobi, Kenya</div>
+                    <div style="color:#666;font-size:13px;">fortunettech1@gmail.com<br>0729909387<br>Thika Kiambu County<br><em>Your Trusted ISP Management Platform</em></div>
                 </div>
                 <div style="text-align:right;">
                     <h4 style="margin:0;">INVOICE</h4>

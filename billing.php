@@ -698,9 +698,9 @@ include 'includes/sidebar.php';
                 <h2>FortuNett Technologies Ltd.</h2>
                 <div class="inv-brand-details">
                     fortunettech1@gmail.com<br>
-                    +254 700 000 000<br>
-                    Upper Hill, Nairobi, Kenya<br>
-                    <em style="font-size:11px; color:#9CA3AF;">Your ISP Management Platform</em>
+                    0729909387<br>
+                    Thika Kiambu County<br>
+                    <em style="font-size:11px; color:#9CA3AF;">Your Trusted ISP Management Platform</em>
                 </div>
             </div>
             <div class="inv-number-block">
