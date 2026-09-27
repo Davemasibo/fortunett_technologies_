@@ -54,6 +54,14 @@ try {
         $loginPhone254 = '254' . substr($username, 1);
     }
 
+    require_once __DIR__ . '/../../includes/hotspot_login_guard.php';
+    try { $guardIdentity = hotspotPhoneUsername($username); $loginPhone254 = $guardIdentity; } catch (InvalidArgumentException $_) { $guardIdentity = strtolower($username); }
+    if (!hotspotLoginGuard($pdo, $tenantId, $guardIdentity, $_SERVER['REMOTE_ADDR'] ?? 'unknown')) {
+        http_response_code(429);
+        echo json_encode(['success'=>false,'code'=>'too_many_attempts','message'=>'Too many login attempts. Please wait five minutes, or reconnect using your M-Pesa code.']);
+        exit;
+    }
+
     // ── Find hotspot client by username, phone (both formats), account_number, or mikrotik_username ─
     // COALESCE guard accepts NULL connection_type (legacy rows) as hotspot.
     // Excluding PPPoE clients prevents returning PPPoE MikroTik credentials to a
@@ -66,10 +74,10 @@ try {
         WHERE c.tenant_id = ?
           AND COALESCE(NULLIF(c.connection_type,''), 'hotspot') = 'hotspot'
           AND (c.username = ? OR c.phone = ? OR c.phone = ?
-               OR c.account_number = ? OR c.mikrotik_username = ?)
+               OR c.account_number = ? OR c.mikrotik_username = ? OR c.mikrotik_username = ?)
         LIMIT 1
     ");
-    $clSt->execute([$tenantId, $username, $username, $loginPhone254, $username, $username]);
+    $clSt->execute([$tenantId, $username, $username, $loginPhone254, $username, $username, $loginPhone254]);
     $client = $clSt->fetch(PDO::FETCH_ASSOC);
 
     if (!$client) {
@@ -137,9 +145,9 @@ try {
     }
 
     // ── Resolve MikroTik credentials — provision if missing ──────────────────
-    $provision = autoProvisionClient($pdo, (int)$client['id'], $tenantId, 0, false);
+    $provision = autoProvisionClient($pdo, (int)$client['id'], $tenantId, 0, false, $macAddress);
     if (!($provision['success'] ?? false)) {
-        echo json_encode(['success' => false, 'processing' => true, 'message' => 'Payment received. Your connection is being retried. Do not pay again.']);
+        echo json_encode($provision);
         exit;
     }
     $mkUsername = $provision['username'] ?? '';
@@ -159,6 +167,7 @@ try {
 
     echo json_encode([
         'success'           => true,
+        'device_connected'  => !empty($provision['device_connected']),
         'mikrotik_username' => $mkUsername,
         'mikrotik_password' => $mkPassword,
         'portal_token'      => $portalToken,
@@ -167,5 +176,5 @@ try {
 
 } catch (Throwable $e) {
     error_log('[hotspot_login] ' . $e->getMessage());
-    echo json_encode(['success' => false, 'message' => 'Sign-in error: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Sign-in could not be completed. Please retry or contact support.']);
 }

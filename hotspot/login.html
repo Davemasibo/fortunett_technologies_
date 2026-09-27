@@ -210,7 +210,7 @@ dialog{border:0;border-radius:10px;padding:24px 20px;width:calc(100% - 28px);max
     $(if error)
     <div class="error-box">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      <span>$(error)</span>
+      <span id="router-login-error">$(error)</span>
     </div>
     $(endif)
 
@@ -359,6 +359,17 @@ function switchTab(name) {
 }
 
 /* If RouterOS injected a login error, that's the tab the user needs. */
+var routerError = document.getElementById('router-login-error');
+if (routerError) {
+  var rawRouterError = routerError.textContent.toLowerCase();
+  if (/no more sessions|simultaneous session|shared.users/.test(rawRouterError)) {
+    routerError.textContent = 'All device sessions for your package are in use. Disconnect another device, then try again.';
+  } else if (/uptime limit|session time limit|session timeout/.test(rawRouterError)) {
+    routerError.textContent = 'Your package time or session has ended. Reconnect with your payment code to check remaining time, or buy a new package if it has expired.';
+  } else if (/queue/.test(rawRouterError) && /already have|failed to add/.test(rawRouterError)) {
+    routerError.textContent = 'The router could not start your connection because of a queue conflict. Contact support with your payment code. Do not pay again.';
+  }
+}
 var _hasRosError = !!document.querySelector('#tab-login .error-box:not([style*="none"])');
 switchTab(_hasRosError ? 'login' : 'buy');
 window.addEventListener('resize', function () {
@@ -607,6 +618,7 @@ if (_loginForm) _loginForm.addEventListener('submit', function (e) {
       document.getElementById('hs-pass').value = d.mikrotik_password;
       var dst = document.getElementById('hs-dst');
       dst.value = dst.value + '&user=' + encodeURIComponent(d.mikrotik_username);
+      if (d.device_connected === true) { window.location.assign(dst.value); return; }
       form.submit();
       return;
     }
@@ -670,7 +682,7 @@ function doReconnect() {
     if (d.success) {
       document.getElementById('rc-st-1').className = 'step done';
       document.getElementById('rc-st-2').className = 'step active';
-      autoConnect(d.username, d.password, 'rc-result', 'Account reconnected');
+      autoConnect(d.username, d.password, 'rc-result', 'Account reconnected', d.device_connected === true);
       return;
     }
     document.getElementById('rc-status').style.display = 'none';
@@ -934,7 +946,7 @@ function cancelBuy() {
 }
 
 /* ── Shared: hand credentials to RouterOS and submit ───────────── */
-function autoConnect(username, password, resultId, title) {
+function autoConnect(username, password, resultId, title, deviceConnected) {
   try { sessionStorage.removeItem('fortunett-draft-' + TID); } catch (_) {}
   document.getElementById('auto-user').value = username;
   document.getElementById('auto-pass').value = password;
@@ -943,24 +955,27 @@ function autoConnect(username, password, resultId, title) {
   var reconnectStatus = document.getElementById('rc-status');
   if (reconnectStatus) reconnectStatus.style.display = 'none';
 
-  showResult(resultId, true, title,
-    'Connecting you to the internet…',
+  showResult(resultId, null, 'Connecting...',
+    'Your account is ready. Waiting for the router to accept your login.',
     '<div class="creds"><div><span>Username</span> ' + escHtml(username) + '</div>' +
     '<div><span>Password</span> ' + escHtml(password) + '</div></div>' +
     '<div class="result-sub" style="margin-top:9px">Save these — you can sign in with them next time.</div>');
 
   /* Give the customer a moment to read the credentials before RouterOS
      redirects the browser away from this page. */
-  setTimeout(function () { document.getElementById('hs-auto-form').submit(); }, 300);
+  setTimeout(function () {
+    if (deviceConnected === true) { window.location.assign(document.getElementById('auto-dst').value); return; }
+    document.getElementById('hs-auto-form').submit();
+  }, 300);
 }
 
 function showResult(id, ok, title, sub, extraHtml) {
   var el = document.getElementById(id);
   if (!el) return;
-  var mark = ok ? '&#10003;' : '&#10007;';
+  var mark = ok === null ? '&#8230;' : (ok ? '&#10003;' : '&#10007;');
   el.style.display = 'block';
   el.innerHTML =
-    '<div class="' + (ok ? 'result-ok' : 'result-fail') + '">' +
+    '<div class="' + (ok === null ? 'result-pending' : (ok ? 'result-ok' : 'result-fail')) + '">' +
       '<div class="result-title">' + mark + ' ' + escHtml(title) + '</div>' +
       '<div class="result-sub">' + sub + '</div>' +
     '</div>' + (extraHtml || '');

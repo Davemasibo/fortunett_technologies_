@@ -1406,6 +1406,7 @@ function applyChangePackage() {
 }
 
 function submitExpiryChange(fd, label) {
+    fd.set('csrf_token', <?php echo json_encode($_SESSION['dashboard_sync_csrf']); ?>);
     ExpiryModal.pending(true);
     ExpiryModal.feedback('Saving changes...');
     fetch('api/clients/change_expiry.php', { method: 'POST', body: fd })
@@ -1414,7 +1415,7 @@ function submitExpiryChange(fd, label) {
             if (d.success) {
                 DashboardSync.saved(d);
                 ExpiryModal.feedback(d.message || 'Changes saved.');
-                if (fd.get('action') === 'admin_grant') currentCustomer.status = 'active';
+                if (d.status) currentCustomer.status = d.status;
                 currentCustomer.expiry_date = d.new_expiry;
                 document.getElementById('currentExpiryDisplay').textContent = formatDate(d.new_expiry);
                 // Refresh time display in general tab

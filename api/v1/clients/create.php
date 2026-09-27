@@ -54,7 +54,8 @@ $username = trim($body['username'] ?? '');
 if ($username === '') {
     if ($phone !== '') {
         $digits   = preg_replace('/\D/', '', $phone);
-        $username = 'u' . substr($digits, -8);
+        try { $username = $connType === 'hotspot' ? hotspotPhoneUsername($phone) : 'u' . substr($digits, -8); }
+        catch (InvalidArgumentException $e) { http_response_code(422); echo json_encode(['success'=>false,'error'=>$e->getMessage(),'message'=>$e->getMessage()]); exit; }
     } else {
         $slug     = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', strtok($name, ' ')));
         $username = substr($slug ?: 'user', 0, 8) . rand(100, 999);
@@ -71,9 +72,13 @@ if ($username === '') {
 // Build password
 $plainPassword = trim($body['password'] ?? '');
 if ($plainPassword === '') {
-    $chars = 'abcdefghjkmnpqrstuvwxyz23456789';
-    $plainPassword = '';
-    for ($i = 0; $i < 8; $i++) $plainPassword .= $chars[random_int(0, strlen($chars) - 1)];
+    if ($connType === 'hotspot') {
+        $plainPassword = hotspotGeneratePin();
+    } else {
+        $chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+        $plainPassword = '';
+        for ($i = 0; $i < 8; $i++) $plainPassword .= $chars[random_int(0, strlen($chars) - 1)];
+    }
 }
 
 // Duplicate checks

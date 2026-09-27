@@ -30,3 +30,10 @@ foreach(['expired','suspended','blocked','inactive','missing_expiry','pppoe','bo
 $db=new ReceiptPDO();
 receiptCheck(!reconnectReceiptClient($db,1,9,'',fn()=>['success'=>false])['success'],'Router failure never reports successful connection');
 receiptCheck(!reconnectReceiptClient($db,1,9,'',function()use($db){$db->client['status']='suspended';return ['success'=>true];})['success'],'Concurrent suspension prevents credential handoff');
+$db=new ReceiptPDO();
+$full=reconnectReceiptClient($db,1,9,'',fn()=>['success'=>false,'code'=>'session_limit','message'=>'All device sessions are in use.']);
+receiptCheck($full['code']==='session_limit' && $full['message']==='All device sessions are in use.','Receipt reconnect preserves the actionable session limit message');
+$active=reconnectReceiptClient($db,1,9,'',fn()=>['success'=>true,'device_connected'=>true]);
+receiptCheck($active['device_connected']===true,'Receipt reconnect tells the portal to skip duplicate login for an active device');
+$db->client['expiry_date']=date('Y-m-d H:i:s',time()-1);
+receiptCheck(reconnectReceiptClient($db,1,9,'',$provision)['code']==='time_exhausted','Expired time has a distinct customer-facing reason');

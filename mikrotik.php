@@ -378,6 +378,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="routers-title-section">
                 <h1 style="font-size:28px; font-weight:600; color:#e2e2e0; margin:0 0 4px 0;">Router Management</h1>
                 <p class="routers-subtitle">Monitor and manage MikroTik routers, servers, and network locations</p>
+                <a href="hotspot_locations.php">View hotspot location traffic</a>
             </div>
             <div class="header-actions">
                 <button class="sync-btn" onclick="location.reload()">

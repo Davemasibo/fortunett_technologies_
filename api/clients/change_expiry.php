@@ -31,6 +31,14 @@ require_once __DIR__ . '/../../includes/dashboard_sync.php';
 $lockName = 'payment-client-' . $tenant_id . '-' . $client_id;
 $locked = false;
 try {
+    if ($action === 'set_date') {
+        adminCustomerExpiry($actor, (string)($_POST['expiry_date'] ?? ''));
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_SESSION['dashboard_sync_csrf'])
+            || !hash_equals($_SESSION['dashboard_sync_csrf'], (string)($_POST['csrf_token'] ?? ''))) {
+            throw new RuntimeException('Session expired. Reload the dashboard.');
+        }
+        adminHotspotGrantSchema($pdo);
+    }
     if ($action === 'admin_grant') {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_SESSION['dashboard_sync_csrf'])
             || !hash_equals($_SESSION['dashboard_sync_csrf'], (string)($_POST['csrf_token'] ?? ''))) {
@@ -59,10 +67,14 @@ try {
         $pdo->prepare("UPDATE clients SET expiry_date=?,status='active' WHERE id=? AND tenant_id=?")
             ->execute([$newExpiry,$client_id,$tenant_id]);
     } elseif ($action === 'set_date') {
-        $requested = strtotime($_POST['expiry_date'] ?? '');
-        if (!$requested || !$newExpiry || $requested > strtotime($newExpiry)) throw new RuntimeException('Access time can only be extended through a successful payment.');
-        $newExpiry = date('Y-m-d H:i:s', $requested);
-        $pdo->prepare('UPDATE clients SET expiry_date=? WHERE id=? AND tenant_id=?')->execute([$newExpiry, $client_id, $tenant_id]);
+        $newExpiry = adminCustomerExpiry($actor, (string)($_POST['expiry_date'] ?? ''));
+        // Preserve the explicit adjustment when reconciling hotspot purchase history.
+        if ($client['connection_type'] === 'hotspot') {
+            $pdo->prepare('INSERT INTO hotspot_admin_grants (tenant_id,client_id,granted_by,old_expiry,expires_at) VALUES (?,?,?,?,?)')
+                ->execute([$tenant_id,$client_id,$_SESSION['user_id'],$client['expiry_date'],$newExpiry]);
+        }
+        $client['status'] = strtotime($newExpiry) > time() ? 'active' : 'inactive';
+        $pdo->prepare('UPDATE clients SET expiry_date=?,status=? WHERE id=? AND tenant_id=?')->execute([$newExpiry, $client['status'], $client_id, $tenant_id]);
     } elseif ($action === 'change_package') {
         $pkg = $pdo->prepare('SELECT * FROM packages WHERE id=? AND tenant_id=?');
         $pkg->execute([(int)($_POST['package_id'] ?? 0), $tenant_id]);
@@ -74,7 +86,7 @@ try {
     }
     dashboardQueueCustomer($pdo, (int)$tenant_id, $client_id);
     $pdo->commit();
-    echo json_encode(['success'=>true, 'sync_pending'=>true, 'message'=>$action === 'admin_grant' ? 'Owner access granted without payment. Applying router settings.' : 'Saved. Applying access settings; no extra time added.', 'new_expiry'=>$newExpiry]);
+    echo json_encode(['success'=>true, 'sync_pending'=>true, 'message'=>$action === 'admin_grant' ? 'Owner access granted without payment. Applying router settings.' : 'Saved. Applying updated access settings.', 'new_expiry'=>$newExpiry, 'status'=>$action === 'admin_grant' ? 'active' : $client['status']]);
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     echo json_encode(['success'=>false, 'message'=>$e->getMessage()]);

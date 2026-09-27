@@ -13,23 +13,40 @@ window.ExpiryModal = (() => {
         const date = new Date(); date.setFullYear(date.getFullYear() + years); date.setDate(date.getDate() + days);
         setDate(localValue(date));
     }
+    function addTime(minutes) {
+        const selected = el('expiryCalendar').value + 'T' + el('expiryClock').value;
+        const date = new Date(Math.max(new Date(selected).getTime() || 0, Date.now()));
+        date.setMinutes(date.getMinutes() + minutes);
+        setDate(localValue(date));
+    }
+    function addMonths(months) {
+        const selected = el('expiryCalendar').value + 'T' + el('expiryClock').value;
+        const date = new Date(Math.max(new Date(selected).getTime() || 0, Date.now()));
+        const day = date.getDate();
+        date.setDate(1);
+        date.setMonth(date.getMonth() + months);
+        // Keep month-end extensions inside the intended month (Jan 31 -> Feb 28).
+        date.setDate(Math.min(day, new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()));
+        setDate(localValue(date));
+    }
     function selectAction() {
         const action = el('expiryAction').value;
         el('expiryDateSection').hidden = action === 'package';
         el('expiryPackageSection').hidden = action !== 'package';
         el('expiryPresets').hidden = action !== 'owner';
+        el('expiryExtensions').hidden = action !== 'date';
         el('expiryFeedback').textContent = '';
-        el('expiryActionHelp').textContent = action === 'owner' ? 'Activate this hotspot account without payment for up to 10 years. Package speed and device limits still apply.' : 'Choose an earlier expiry. To add access without payment, use an owner grant for a hotspot account.';
+        el('expiryActionHelp').textContent = action === 'owner' ? 'Activate this hotspot account without payment for up to 10 years. Package speed and device limits still apply.' : 'Set an earlier or later expiry, or add time below. Added time starts from the selected expiry or now, whichever is later.';
         el('expirySave').textContent = action === 'owner' ? 'Grant owner access' : action === 'date' ? 'Save expiry' : 'Change package';
         if (action === 'owner') preset(1);
-        else setDate((customer.expiry_date || '').replace(' ','T'));
+        else setDate(customer.expiry_date ? customer.expiry_date.replace(' ','T') : localValue(new Date()));
     }
     function open(value) {
         customer = value; previousFocus = document.activeElement;
         el('expiryCustomerName').textContent = value.full_name || value.name || value.username || 'Customer';
         const owner = el('expiryOwnerOption');
         if (owner) owner.disabled = owner.hidden = value.connection_type !== 'hotspot';
-        el('expiryAction').value = owner && !owner.disabled ? 'owner' : 'date';
+        el('expiryAction').value = 'date';
         el('expiryPackageSelect').value = '';
         selectAction(); el('expiryAction').focus();
     }
@@ -42,7 +59,7 @@ window.ExpiryModal = (() => {
         preview();
         const date = new Date(el('expiryDateInput').value), now = new Date(), max = new Date(); max.setFullYear(max.getFullYear()+10);
         if (action === 'owner' && (date <= now || date > max)) { feedback('Choose a future date within 10 years.'); return; }
-        if (action === 'date' && (!customer.expiry_date || date > new Date(customer.expiry_date.replace(' ','T')))) { feedback('Choose a date no later than the current expiry.'); return; }
+        if (isNaN(date.getTime())) { feedback('Choose a valid date and time.'); return; }
         action === 'owner' ? applyOwnerAccess() : applySetDate();
     }
     function pending(value) { busy = value; el('expiryModal').querySelectorAll('button,input,select').forEach(node => node.disabled = value); if (!value && el('expiryOwnerOption')) el('expiryOwnerOption').disabled = customer.connection_type !== 'hotspot'; }
@@ -57,5 +74,5 @@ window.ExpiryModal = (() => {
             else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
         }
     });
-    return {open, close, save, preset, selectAction, pending, feedback};
+    return {open, close, save, preset, addTime, addMonths, selectAction, pending, feedback};
 })();

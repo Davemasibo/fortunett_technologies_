@@ -84,89 +84,23 @@ try {
         exit;
     }
     
-    // Generate username and password
-    $username = $client['mikrotik_username'] ?: strtolower($client['account_number'] ?: substr($client['name'], 0, 10));
-    $password = bin2hex(random_bytes(4)); // 8 character password
-    
-    // Connect to MikroTik
-    $api = new RouterOSAPI();
-    if (!$api->connect($router['ip_address'], $router['username'], $router['password'])) {
-        http_response_code(503);
-        echo json_encode([
-            'status' => 'error',
-            'message' => 'Failed to connect to router'
-        ]);
+    if (($client['connection_type'] ?? '') !== 'hotspot' || (int)$client['package_id'] !== (int)$packageId) {
+        http_response_code(422);
+        echo json_encode(['status'=>'error','message'=>'Select the active hotspot package assigned to this customer.']);
         exit;
     }
-    
-    // Create Hotspot User Profile
-    $profileName = "profile_" . $username;
-    
-    // Check if profile exists
-    $api->write('/ip/hotspot/user/profile/print', false);
-    $api->write('?name=' . $profileName, false);
-    $existingProfiles = $api->read(false);
-    
-    if (empty($existingProfiles)) {
-        // Create new profile
-        $api->write('/ip/hotspot/user/profile/add', false);
-        $api->write('=name=' . $profileName, false);
-        $api->write('=rate-limit=' . $package['download_speed'] . 'M/' . $package['upload_speed'] . 'M', false);
-        $api->read();
+    $result = autoProvisionClient($db, (int)$clientId, (int)$tenantId, (int)$routerId);
+    if (empty($result['success'])) {
+        http_response_code(422);
+        echo json_encode(['status'=>'error','message'=>$result['message'] ?? 'Hotspot provisioning failed.']);
+        exit;
     }
-    
-    // Create or update Hotspot User
-    $api->write('/ip/hotspot/user/print', false);
-    $api->write('?name=' . $username, false);
-    $existingUsers = $api->read(false);
-    
-    if (!empty($existingUsers)) {
-        // Update existing user
-        $userId = $existingUsers[0]['.id'];
-        $api->write('/ip/hotspot/user/set', false);
-        $api->write('=.id=' . $userId, false);
-        $api->write('=password=' . $password, false);
-        $api->write('=profile=' . $profileName, false);
-        $api->read();
-    } else {
-        // Create new user
-        $api->write('/ip/hotspot/user/add', false);
-        $api->write('=name=' . $username, false);
-        $api->write('=password=' . $password, false);
-        $api->write('=profile=' . $profileName, false);
-        $api->write('=comment=' . $client['full_name'], false);
-        $api->read();
-    }
-    
-    $api->disconnect();
-
-    // Update client record
-    $updateStmt = $db->prepare("
-        UPDATE clients
-        SET mikrotik_username = ?, mikrotik_password = ?, status = 'active'
-        WHERE id = ?
-    ");
-    $updateStmt->execute([$username, $password, $clientId]);
-
-    // Record deployment in router_services table
-    $stmt = $db->prepare("
-        INSERT INTO router_services (
-            tenant_id, router_id, client_id, service_type, package_id,
-            username, password, status
-        ) VALUES (?, ?, ?, 'hotspot', ?, ?, ?, 'active')
-        ON DUPLICATE KEY UPDATE
-            password = VALUES(password),
-            status = VALUES(status),
-            deployed_at = CURRENT_TIMESTAMP
-    ");
-    $stmt->execute([$tenantId, $routerId, $clientId, $packageId, $username, $password]);
-
-    // Upload branded hotspot login page to router via FTP
-    _uploadHotspotLoginPage($db, $router, (int)$tenantId);
+    $username = $result['username'];
+    $password = $result['password'];
 
     echo json_encode([
         'status' => 'success',
-        'message' => 'Hotspot service deployed and login page uploaded successfully',
+        'message' => 'Hotspot service deployed with package speed and expiry enforcement',
         'credentials' => [
             'username' => $username,
             'password' => $password,

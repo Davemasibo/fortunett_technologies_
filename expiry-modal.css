@@ -1,5 +1,38 @@
 .expiry-overlay{position:fixed;inset:0;background:#0009;backdrop-filter:blur(6px);z-index:1050;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
-.expiry-card{--ex-bg:#fff;--ex-input:#f8fafc;--ex-border:#dbe2ea;--ex-text:#172033;--ex-muted:#526075;background:var(--ex-bg);color:var(--ex-text);width:100%;max-width:560px;max-height:92dvh;overflow:auto;border:1px solid var(--ex-border);border-radius:18px;box-shadow:0 24px 80px #0005;font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:light}
+.expiry-card{--ex-bg:#222221;--ex-input:#1c1c1b;--ex-border:rgba(255,255,255,.12);--ex-text:#e2e2e0;--ex-muted:#aaa;background:var(--ex-bg);color:var(--ex-text);width:100%;max-width:560px;max-height:92dvh;overflow:auto;border:1px solid var(--ex-border);border-radius:18px;box-shadow:0 24px 80px #0005;font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:dark}
 [data-theme="dark"] .expiry-card,body.dark-mode .expiry-card{--ex-bg:#202329;--ex-input:#171a20;--ex-border:#3b4350;--ex-text:#edf2fa;--ex-muted:#b3bfd0;color-scheme:dark}
 .expiry-header,.expiry-footer{display:flex;justify-content:space-between;gap:16px;padding:20px 24px;align-items:center}.expiry-header{border-bottom:1px solid var(--ex-border)}.expiry-header h2{font-size:21px;margin:5px 0}.expiry-header p{margin:0;color:var(--ex-muted)}.expiry-eyebrow{font-size:10px;letter-spacing:1.5px;font-weight:700}.expiry-body{padding:20px 24px}.expiry-current{display:flex;justify-content:space-between;gap:12px;background:var(--ex-input);border-radius:10px;padding:14px;margin-bottom:20px;flex-wrap:wrap}.expiry-current span{color:var(--ex-muted)}
 .expiry-card label{display:block;font-weight:600;margin:0 0 8px}.expiry-card select,.expiry-card input:not([type=hidden]){width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--ex-border);border-radius:9px;background:var(--ex-input);color:var(--ex-text);padding:12px;font:inherit;min-height:46px}.expiry-card button{font:inherit;cursor:pointer;border-radius:8px;padding:10px 14px;min-height:42px}.expiry-card button:disabled{opacity:.55;cursor:wait}.expiry-card :focus-visible{outline:3px solid #60a5fa;outline-offset:3px}.expiry-close{border:0;background:var(--ex-input);color:var(--ex-text);font-size:24px!important}.expiry-help{color:var(--ex-muted);line-height:1.6;margin:14px 0}.expiry-date-grid{display:grid;grid-template-columns:1.5fr 1fr;gap:14px}.expiry-presets{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.expiry-presets button,.expiry-secondary{background:var(--ex-input);color:var(--ex-text);border:1px solid var(--ex-border)}.expiry-preview{padding:12px;background:var(--ex-input);border-radius:8px;line-height:1.5}.expiry-feedback{color:#c2410c;line-height:1.5;margin-bottom:0}.expiry-footer{border-top:1px solid var(--ex-border);justify-content:flex-end}.expiry-primary{background:#2563eb;color:white;border:1px solid #2563eb;font-weight:600!important}.expiry-card [hidden]{display:none!important}@media(max-width:420px){.expiry-header,.expiry-body,.expiry-footer{padding:16px}.expiry-date-grid{grid-template-columns:1fr}.expiry-footer button{flex:1}}
+/* The Clients page uses its dark surface palette independently of app_theme. */
+#expiryModal .expiry-card{--ex-bg:var(--neu-s2,#222221);--ex-input:var(--neu-surf,#1c1c1b);--ex-border:rgba(255,255,255,.12);--ex-text:#e2e2e0;--ex-muted:#aaa;color-scheme:dark;border-radius:12px;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+#expiryModal .expiry-header h2,#expiryModal label,#expiryModal .expiry-current strong,#expiryModal .expiry-preview{color:var(--ex-text)!important}
+#expiryModal .expiry-help,#expiryModal .expiry-header p{color:var(--ex-muted)!important}
+#expiryModal input:not([type=hidden]),#expiryModal select{background:var(--ex-input)!important;color:var(--ex-text)!important;border-color:var(--ex-border)!important}
+#expiryModal .expiry-primary{background:var(--primary-color,#3B6EA5);border-color:var(--primary-color,#3B6EA5);color:#fff!important}
+#expiryModal .expiry-feedback{color:#fbbf24!important}
+#expiryModal .expiry-presets button:hover,#expiryModal .expiry-secondary:hover{border-color:var(--primary-color,#3B6EA5);background:#2a2a29}
+
+/* Match the Clients page controls, including browser-rendered date/time parts. */
+#expiryModal .expiry-card{max-width:500px;font-size:13px;box-shadow:0 24px 80px #0008}
+#expiryModal .expiry-header,#expiryModal .expiry-body,#expiryModal .expiry-footer{padding:18px 20px;background:var(--ex-bg)}
+#expiryModal .expiry-heading{display:flex;align-items:center;gap:10px;min-width:0}
+#expiryModal .expiry-header h2{font-size:16px;font-weight:700;line-height:1.4;margin:0}
+#expiryModal .expiry-header p{font-size:12px;margin-top:3px;overflow-wrap:anywhere}
+#expiryModal .expiry-header p:empty{display:none}
+#expiryModal .expiry-icon{display:grid;place-items:center;flex:0 0 32px;height:32px;border-radius:8px;color:#eab308;background:rgba(234,179,8,.12)}
+#expiryModal .expiry-icon svg{width:18px;height:18px}
+#expiryModal .expiry-close{display:grid;place-items:center;flex:0 0 28px;min-height:28px;height:28px;padding:0;border:1px solid var(--ex-border);background:#2a2a29;color:var(--ex-muted);font-size:18px!important}
+#expiryModal .expiry-section-label{flex-basis:100%;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--ex-muted);margin-bottom:0}
+#expiryModal .expiry-presets{gap:7px}
+#expiryModal .expiry-presets button{background:var(--ex-bg);border:1px solid var(--ex-border);color:var(--ex-muted);border-radius:6px;padding:6px 10px;min-height:32px;font-size:12px;font-weight:600}
+#expiryModal input:not([type=hidden]),#expiryModal select{color-scheme:dark;min-height:42px;border-radius:8px;padding:10px 12px;box-shadow:inset 3px 3px 7px #0005,inset -2px -2px 5px #ffffff08;accent-color:var(--primary-color,#3B6EA5)}
+#expiryModal select option{background:var(--ex-input);color:var(--ex-text)}
+#expiryModal input::-webkit-datetime-edit,#expiryModal input::-webkit-datetime-edit-fields-wrapper{background:transparent;color:var(--ex-text)}
+#expiryModal input::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.75}
+#expiryModal input::-webkit-calendar-picker-indicator:hover{opacity:1}
+#expiryModal input:focus,#expiryModal select:focus{border-color:var(--primary-color,#3B6EA5)}
+#expiryModal .expiry-secondary{background:var(--ex-input);border-color:var(--ex-border);color:var(--ex-text)}
+#expiryModal .expiry-current{padding:12px;font-size:12px}
+#expiryModal .expiry-help{font-size:12px}
+#expiryModal .expiry-date-grid{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px}
+@media(max-width:420px){#expiryModal .expiry-header,#expiryModal .expiry-body,#expiryModal .expiry-footer{padding:16px}#expiryModal .expiry-date-grid{grid-template-columns:1fr}#expiryModal .expiry-presets button{min-height:40px}}

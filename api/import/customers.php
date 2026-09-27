@@ -13,6 +13,7 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../includes/schema_guard.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/hotspot_connection.php';
 
 redirectIfNotLoggedIn();
 ensurePaymentStatusEnums($pdo);
@@ -144,10 +145,10 @@ while (($row = fgetcsv($fh)) !== false) {
             // Auto-generate username / password if not provided
             if (!$username) {
                 $base     = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $fullName));
-                $username = substr($base, 0, 10) . rand(10, 99);
+                $username = $connType === 'hotspot' && $phone ? hotspotPhoneUsername($phone) : substr($base, 0, 10) . rand(10, 99);
             }
             if (!$password) {
-                $password = substr(str_shuffle('abcdefghijklmnopqrstuvwxyz0123456789'), 0, 8);
+                $password = $connType === 'hotspot' ? hotspotGeneratePin() : bin2hex(random_bytes(4));
             }
 
             $expiryVal = $connType==='hotspot' ? null : ($expiryDate ?: date('Y-m-d', strtotime('+30 days')));
@@ -158,14 +159,14 @@ while (($row = fgetcsv($fh)) !== false) {
                     (tenant_id, full_name, name, phone, email, address,
                      account_number, package_id, subscription_plan,
                      connection_type, status, expiry_date,
-                     username, mikrotik_username, auth_password,
+                     username, mikrotik_username, auth_password, mikrotik_password,
                      created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
             ")->execute([
                 $tenantId, $fullName, $fullName, $phone, $email, $address,
                 $accountNum, $packageId, $planName ?: ($pkgName ?: 'Standard'),
                 $connType, $status, $expiryVal,
-                $username, $username, password_hash($password, PASSWORD_DEFAULT),
+                $username, $username, password_hash($password, PASSWORD_DEFAULT), $password,
             ]);
             $imported++;
         }

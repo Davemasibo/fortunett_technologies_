@@ -129,7 +129,7 @@ function installPaidExpiryWatchdog($api): void
 
 /** Keep the account disabled until its independently enforced deadline is verified. */
 function provisionRouterPaidUser($api, string $service, string $username, string $password,
-    string $profile, string $comment, string $expiry, string $server = 'all', string $boundMac = ''): void
+    string $profile, string $comment, string $expiry, string $server = 'all', string $boundMac = '', bool $preserveSessions = false, int $deviceLimit = 1): void
 {
     if ($boundMac) {
         require_once __DIR__ . '/hotspot_device.php';
@@ -147,8 +147,8 @@ function provisionRouterPaidUser($api, string $service, string $username, string
     }
     if ($id !== null) {
         routerCheckedCommand($api, $base . '/set', ['=.id=' . $id, '=disabled=yes']);
-        if ($service === 'hotspot') $api->kickHotspotSession($username);
-        else $api->kickPPPoESession($username);
+        if ($service === 'hotspot' && !$preserveSessions) $api->kickHotspotSession($username);
+        elseif ($service !== 'hotspot') $api->kickPPPoESession($username);
     }
     try {
         $params = ['=password=' . $password, '=profile=' . $profile, '=disabled=yes'];
@@ -177,8 +177,10 @@ function provisionRouterPaidUser($api, string $service, string $username, string
         $params = ['=.id=' . $id, '=comment=' . $tag . 'FNSTART:' . $deadline['start'] . '|' . $comment];
         if ($service === 'hotspot') {
             // Never reset counters on login/retry. Only the remaining paid wall
-            // time can be added to the already-consumed uptime counter.
-            $params[] = '=limit-uptime=' . (routerUptimeSeconds($user['uptime'] ?? '0s') + $deadline['remaining']) . 's';
+            // time can be added to the already-consumed uptime counter. Shared
+            // devices consume aggregate uptime; the absolute deadline still ends
+            // every device together, without shortening multi-device purchases.
+            $params[] = '=limit-uptime=' . (routerUptimeSeconds($user['uptime'] ?? '0s') + $deadline['remaining'] * max(1, $deviceLimit)) . 's';
         }
         routerCheckedCommand($api, $base . '/set', $params);
 
@@ -212,7 +214,7 @@ function provisionRouterPaidUser($api, string $service, string $username, string
                 && ($row['disabled'] ?? '') === 'true';
             if ($service === 'hotspot') {
                 $userVerified = $userVerified && (!$boundMac || strtoupper($row['mac-address'] ?? '') === $boundMac) && routerUptimeSeconds($row['limit-uptime'] ?? '0s')
-                    === routerUptimeSeconds($user['uptime'] ?? '0s') + $deadline['remaining'];
+                    === routerUptimeSeconds($user['uptime'] ?? '0s') + $deadline['remaining'] * max(1, $deviceLimit);
             }
         }
         if (!$verified || !$userVerified || strtotime($expiry) <= time()) throw new RuntimeException('Paid deadline could not be verified before expiry');
@@ -222,6 +224,9 @@ function provisionRouterPaidUser($api, string $service, string $username, string
     } catch (Throwable $e) {
         if ($id !== null) {
             try { routerCheckedCommand($api, $base . '/set', ['=.id=' . $id, '=disabled=yes']); } catch (Throwable $_) {}
+            if ($preserveSessions) {
+                try { $api->kickHotspotSession($username); } catch (Throwable $_) {}
+            }
         }
         throw $e;
     }

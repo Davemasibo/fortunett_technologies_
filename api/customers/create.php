@@ -52,7 +52,8 @@ if (empty($mikrotik_username)) {
     $autoGenUsername = true;
     if (!empty($phone)) {
         $digits = preg_replace('/\D/', '', $phone);
-        $mikrotik_username = 'u' . substr($digits, -8);
+        try { $mikrotik_username = $connection_type === 'hotspot' ? hotspotPhoneUsername($phone) : 'u' . substr($digits, -8); }
+        catch (InvalidArgumentException $e) { http_response_code(422); echo json_encode(['success'=>false,'error'=>$e->getMessage(),'message'=>$e->getMessage()]); exit; }
     } else {
         $slug = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', strtok($name, ' ')));
         $mikrotik_username = substr($slug ?: 'user', 0, 8) . rand(100, 999);
@@ -71,10 +72,14 @@ if (empty($mikrotik_username)) {
 $autoGenPassword = false;
 if (empty($mikrotik_password)) {
     $autoGenPassword = true;
-    $chars = 'abcdefghjkmnpqrstuvwxyz23456789'; // no confusable chars (0/O, 1/I/l)
-    $mikrotik_password = '';
-    for ($i = 0; $i < 8; $i++) {
-        $mikrotik_password .= $chars[random_int(0, strlen($chars) - 1)];
+    if ($connection_type === 'hotspot') {
+        $mikrotik_password = hotspotGeneratePin();
+    } else {
+        $chars = 'abcdefghjkmnpqrstuvwxyz23456789'; // no confusable chars (0/O, 1/I/l)
+        $mikrotik_password = '';
+        for ($i = 0; $i < 8; $i++) {
+            $mikrotik_password .= $chars[random_int(0, strlen($chars) - 1)];
+        }
     }
 }
 

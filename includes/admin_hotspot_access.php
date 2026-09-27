@@ -1,4 +1,16 @@
 <?php
+/** Manual expiry edits support both connection types and either date direction. */
+function adminCustomerExpiry(array $actor, string $input): string {
+    if (!in_array($actor['role'] ?? '', ['admin', 'superadmin'], true) && empty($actor['is_super_admin'])) {
+        throw new InvalidArgumentException('Only an administrator can change customer expiry.');
+    }
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $input);
+    if (!$date || $date->format('Y-m-d\TH:i') !== $input || (int)$date->format('Y') < 1000) {
+        throw new InvalidArgumentException('Choose a valid expiry date and time.');
+    }
+    return $date->format('Y-m-d H:i:s');
+}
+
 /** Explicit owner grants keep the normal paid hotspot policy intact. */
 function adminHotspotGrantExpiry(array $user, array $client, string $requested, ?DateTimeImmutable $now = null): string {
     if (!in_array($user['role'] ?? '', ['admin', 'superadmin'], true) && empty($user['is_super_admin'])) {

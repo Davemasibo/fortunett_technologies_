@@ -15,6 +15,7 @@ require_once __DIR__ . '/../classes/MikrotikAPI.php';
 require_once __DIR__ . '/radius_client.php';
 require_once __DIR__ . '/package_profile.php';
 require_once __DIR__ . '/hotspot_sync.php';
+require_once __DIR__ . '/hotspot_connection.php';
 
 /**
  * Provision a newly activated client on their tenant's first active router.
@@ -24,7 +25,7 @@ require_once __DIR__ . '/hotspot_sync.php';
  * @param int $tenantId
  * @return array
  */
-function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $routerId = 0, bool $uploadPortal = true): array
+function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $routerId = 0, bool $uploadPortal = true, ?string $reconnectMac = null): array
 {
     $lockName = 'payment-client-' . $tenantId . '-' . $clientId;
     $locked = false;
@@ -76,11 +77,15 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
         // ── Determine service type ────────────────────────────────────────────
         $connType = $client['connection_type'] ?? ($package['type'] ?? 'hotspot');
         $connType = ($connType === 'pppoe') ? 'pppoe' : 'hotspot';
+        if ($reconnectMac !== null && !empty($client['bound_mac_address'])
+            && hotspotDeviceMac($reconnectMac) !== hotspotDeviceMac($client['bound_mac_address'])) {
+            throw new HotspotConnectionException('device_bound', 'This package belongs to your TV or device. Reconnect that device to this Wi-Fi.');
+        }
 
         // ── Resolve credentials ───────────────────────────────────────────────
         $username = $client['mikrotik_username']
-            ?: ('user_' . substr(preg_replace('/\D/', '', $client['phone'] ?? ''), -8));
-        $password = $client['mikrotik_password'] ?: bin2hex(random_bytes(4));
+            ?: ($connType === 'hotspot' ? hotspotPhoneUsername($client['phone'] ?? '') : ('user_' . substr(preg_replace('/\D/', '', $client['phone'] ?? ''), -8)));
+        $password = $client['mikrotik_password'] ?: ($connType === 'hotspot' ? hotspotGeneratePin() : bin2hex(random_bytes(4)));
 
         packageProfileSettings($package, $connType);
         $rateLimit = packageRateLimit($package);
@@ -108,6 +113,9 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
         }
 
         $api->connect();
+        if ($connType === 'hotspot' && $reconnectMac !== null) {
+            assertHotspotSessionCapacity($api, $username, $reconnectMac, (int)($package['device_limit'] ?? 1));
+        }
 
         // ── Pre-flight: detect bridge + running service (ADVISORY ONLY) ─────────
         // Never block provisioning here. Hotspots/PPPoE legitimately run on a plain
@@ -151,17 +159,18 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
                 error_log('RADIUS sync on provision: ' . $_e->getMessage());
             }
         } else {
-            _provisionHotspot($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '', $sharedUsers, $hotspotServer, $package, $client['expiry_date'], $client['bound_mac_address'] ?? '');
+            _provisionHotspot($api, $username, $password, $profileName, $rateLimit, $client['full_name'] ?? '', $sharedUsers, $hotspotServer, $package, $client['expiry_date'], $client['bound_mac_address'] ?? '', $reconnectMac !== null);
             try {
                 require_once __DIR__ . '/hotspot_device.php';
                 $device = $pdo->prepare('SELECT mac_address FROM hotspot_device_context WHERE tenant_id=? AND client_id=? AND updated_at>NOW()-INTERVAL 1 DAY');
                 $device->execute([$tenantId,$clientId]);
-                $mac = ($client['bound_mac_address'] ?? '') ?: $device->fetchColumn();
+                $mac = ($client['bound_mac_address'] ?? '') ?: ($reconnectMac ?? $device->fetchColumn());
                 if ($mac) $deviceConnected = connectKnownHotspotDevice($api, $mac, $username, $password, $client['expiry_date']);
                 if ($deviceConnected) $pdo->prepare('UPDATE clients SET last_seen=NOW() WHERE id=? AND tenant_id=?')->execute([$clientId,$tenantId]);
             } catch (Throwable $e) {
                 // Portal credential handoff remains available on older RouterOS.
                 error_log('Hotspot device login: ' . $e->getMessage());
+                if ($reconnectMac !== null && !preg_match('/no such command|bad command name/i', $e->getMessage())) throw $e;
             }
         }
 
@@ -217,8 +226,9 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
 
     } catch (Throwable $e) {
         error_log("autoProvisionClient($clientId, $tenantId): " . $e->getMessage());
-        return ['success' => false, 'message' => 'Provisioning error: ' . $e->getMessage()];
+        return hotspotConnectionFailure($e);
     } finally {
+        if (isset($api)) { try { $api->disconnect(); } catch (Throwable $_) {} }
         if ($locked) $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]);
     }
 }
@@ -274,7 +284,7 @@ function _provisionPPPoE(MikrotikAPI $api, string $username, string $password, s
 }
 
 /** Shared package caps, individual purchased deadline; no counter reset on retry. */
-function _provisionHotspot(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment, string $sharedUsers, string $hotspotServer, array $package, string $expiry, string $boundMac = ''): void
+function _provisionHotspot(MikrotikAPI $api, string $username, string $password, string $profileName, string $rateLimit, string $comment, string $sharedUsers, string $hotspotServer, array $package, string $expiry, string $boundMac = '', bool $preserveSessions = false): void
 {
     // The portal posts a password. Verify the matching server accepts that
     // login method without downloading/redeploying the portal on every payment.
@@ -307,7 +317,7 @@ function _provisionHotspot(MikrotikAPI $api, string $username, string $password,
             if (($binding['type'] ?? '') === 'bypassed' && isset($binding['.id'])) routerCheckedCommand($api, '/ip/hotspot/ip-binding/remove', ['=.id=' . $binding['.id']]);
         }
     }
-    provisionRouterPaidUser($api, 'hotspot', $username, $password, $profileName, $comment, $expiry, $hotspotServer, $boundMac);
+    provisionRouterPaidUser($api, 'hotspot', $username, $password, $profileName, $comment, $expiry, $hotspotServer, $boundMac, $preserveSessions, (int)$sharedUsers);
 }
 
 /**

@@ -62,8 +62,8 @@ try {
     }
 
     // ── Generate credentials ──────────────────────────────────────────────────
-    $username       = 'user_' . substr(preg_replace('/\D/', '', $phone), -8);
-    $randomPassword = bin2hex(random_bytes(4));
+    $username       = $package['type'] === 'pppoe' ? 'user_' . substr(preg_replace('/\D/', '', $phone), -8) : hotspotPhoneUsername($phone);
+    $randomPassword = $package['type'] === 'pppoe' ? bin2hex(random_bytes(4)) : hotspotGeneratePin();
     $hashedPassword = password_hash($randomPassword, PASSWORD_DEFAULT);
 
     // Unpaid registrations have no time to carry forward on first payment.

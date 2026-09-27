@@ -18,6 +18,7 @@ require_once __DIR__ . '/../../includes/auto_provision.php';
 require_once __DIR__ . '/../../includes/credential_helper.php';
 require_once __DIR__ . '/../../includes/schema_guard.php';
 require_once __DIR__ . '/../../includes/validity.php';
+require_once __DIR__ . '/../../includes/hotspot_location_sales.php';
 
 // This endpoint writes clients.status='pending' and payments/mpesa_transactions
 // status='pending'. On a strict-mode server missing the enum migration those
@@ -134,8 +135,8 @@ try {
         // Generate account and MikroTik credentials
         $gen           = new AccountNumberGenerator($pdo);
         $accountNumber = $gen->generateAccountNumber($tenantId);
-        $mikUsername   = 'hs' . substr(preg_replace('/\D/', '', $phone), -8);
-        $mikPassword   = bin2hex(random_bytes(4));
+        $mikUsername   = hotspotPhoneUsername($phone);
+        $mikPassword   = hotspotGeneratePin();
         $username      = $mikUsername;
 
         // Calculate expiry
@@ -220,8 +221,8 @@ try {
 
         $gen           = new AccountNumberGenerator($pdo);
         $accountNumber = $gen->generateAccountNumber($tenantId);
-        $mikUsername   = $deviceOnly ? 'tv' . $tenantId . str_replace(':','',$macAddress) : 'hs' . substr(preg_replace('/\D/', '', $phone), -8);
-        $mikPassword   = bin2hex(random_bytes(4));
+        $mikUsername   = $deviceOnly ? 'tv' . $tenantId . str_replace(':','',$macAddress) : hotspotPhoneUsername($phone);
+        $mikPassword   = hotspotGeneratePin();
 
         if ($existClient) {
             $clientId = (int)$existClient['id'];
@@ -289,6 +290,7 @@ try {
         $acctNo = $acctSt->fetchColumn() ?: ('C' . str_pad($clientId, 4, '0', STR_PAD_LEFT));
         $accountRef = substr($acctNo, 0, 12);
 
+        $purchaseLocation = captureHotspotPurchaseLocation($pdo, $tenantId, $clientId, $macAddress);
         $response = $mpesa->stkPush($phone, $amount, $accountRef);
 
         if (!$response || ($response->ResponseCode ?? null) !== '0' && ($response->ResponseCode ?? null) !== 0) {
@@ -300,6 +302,7 @@ try {
         // Log the transaction linked to this client
         $checkoutId = $response->CheckoutRequestID ?? ('STK-' . time());
         recordPaymentTerms($pdo, $checkoutId, $clientId, $tenantId, $purchaseTerms);
+        recordHotspotPurchaseLocation($pdo, $checkoutId, $tenantId, $clientId, $purchaseLocation);
         try {
             $pdo->prepare("INSERT INTO mpesa_transactions
                 (client_id, tenant_id, phone_number, amount, merchant_request_id, checkout_request_id, status, result_code, result_desc, created_at, updated_at)
@@ -387,6 +390,7 @@ try {
         }
 
         $acctNo = $renewClient['account_number'] ?: ('C' . str_pad($clientId, 4, '0', STR_PAD_LEFT));
+        $purchaseLocation = captureHotspotPurchaseLocation($pdo, $tenantId, $clientId, $macAddress);
         $response = $mpesa->stkPush($renewPhone, $amount, substr($acctNo, 0, 12));
         if (!$response || (($response->ResponseCode ?? null) !== '0' && ($response->ResponseCode ?? null) !== 0)) {
             $msg = $response->errorMessage ?? $response->ResultDesc ?? $response->ResponseDescription ?? 'STK push failed';
@@ -395,6 +399,7 @@ try {
         }
         $checkoutId = $response->CheckoutRequestID ?? ('STK-' . time());
         recordPaymentTerms($pdo, $checkoutId, $clientId, $tenantId, $purchaseTerms);
+        recordHotspotPurchaseLocation($pdo, $checkoutId, $tenantId, $clientId, $purchaseLocation);
         try {
             $pdo->prepare("INSERT INTO mpesa_transactions (client_id, tenant_id, phone_number, amount, merchant_request_id, checkout_request_id, status, result_code, result_desc, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, 'Renewal STK Push', NOW(), NOW())")
                 ->execute([$clientId, $tenantId, $renewPhone, $amount, $response->MerchantRequestID ?? 'N/A', $checkoutId]);
