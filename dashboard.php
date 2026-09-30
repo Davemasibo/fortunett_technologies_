@@ -72,6 +72,21 @@ try {
     $reg_data_json = '[]';
 }
 
+// Settlement balances are separate from earned revenue and include prior months.
+$payoutBalances = null;
+try {
+    require_once __DIR__ . '/includes/disbursements.php';
+    ensureDisbursementBalance($db);
+    $stmt = $db->prepare("SELECT
+        COALESCE(SUM(CASE WHEN released_at IS NULL THEN amount - disbursed_amount ELSE 0 END),0) AS awaiting,
+        COALESCE(SUM(CASE WHEN released_at IS NOT NULL THEN amount ELSE disbursed_amount END),0) AS disbursed
+        FROM payments WHERE tenant_id = ? AND status = 'completed' AND collection_type = 'platform'");
+    $stmt->execute([$tenant_id]);
+    $payoutBalances = $stmt->fetch(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    error_log('Dashboard payout balances: ' . $e->getMessage());
+}
+
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
@@ -471,6 +486,19 @@ include 'includes/sidebar.php';
                 </a>
             </div>
         </div>
+
+        <section class="quick-actions" aria-label="Collection settlement">
+            <h2 class="section-title">Collections &amp; payouts</h2>
+            <?php if ($payoutBalances !== null): ?>
+            <div class="actions-grid">
+                <a class="action-btn" href="billing.php">Awaiting disbursement: <strong>KES <?= number_format((float)$payoutBalances['awaiting'], 2) ?></strong></a>
+                <a class="action-btn" href="billing.php">Disbursed to you: <strong>KES <?= number_format((float)$payoutBalances['disbursed'], 2) ?></strong></a>
+            </div>
+            <p class="dashboard-subtitle">Includes previous months. Collections after a payout cutoff await the next payout. <a href="billing.php">View payout history</a></p>
+            <?php else: ?>
+            <p class="dashboard-subtitle">Payout balances are currently unavailable. <a href="billing.php">View billing</a></p>
+            <?php endif; ?>
+        </section>
 
         <!-- Revenue Analytics -->
         <div class="metrics-section">

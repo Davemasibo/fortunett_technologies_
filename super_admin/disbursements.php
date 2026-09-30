@@ -10,10 +10,11 @@ $st->execute([$tenantId]);
 $name = $st->fetchColumn();
 if (!$name) { http_response_code(404); exit('Tenant not found.'); }
 $today = (new DateTimeImmutable('now', new DateTimeZone('Africa/Nairobi')))->format('Y-m-d');
-$form = array_merge(['cutoff_date'=>$today, 'disbursed_at'=>$today, 'cash_amount'=>'',
+$nowLocal = (new DateTimeImmutable('now', new DateTimeZone('Africa/Nairobi')))->format('Y-m-d\TH:i');
+$form = array_merge(['cutoff_date'=>$nowLocal, 'disbursed_at'=>$nowLocal, 'cash_amount'=>'',
     'fees_amount'=>'0', 'platform_cost'=>'0', 'reference'=>'', 'notes'=>''], $_POST);
 $error = ''; $success = ''; $schemaReady = false; $rows = []; $history = []; $gross = 0;
-$cutoff = disbursementDate($today, 'Collections through');
+$cutoff = disbursementDate($nowLocal, 'Collections through');
 try {
     ensureDisbursementSchema($pdo);
     $schemaReady = true;
@@ -25,8 +26,8 @@ try {
         if (($_POST['action'] ?? '') === 'record') {
             if (empty($_POST['confirmed'])) throw new InvalidArgumentException('Confirm that the tenant has already received this money.');
             $snapshot = disbursementDate((string)($_POST['preview_cutoff'] ?? ''), 'Preview date');
-            if (substr($snapshot, 0, 10) !== $form['cutoff_date']) {
-                throw new InvalidArgumentException('Update the collections preview for your selected date before saving.');
+            if ($snapshot !== $cutoff) {
+                throw new InvalidArgumentException('Update the collections preview for your selected date and time before saving.');
             }
             $input = $_POST;
             $input['cutoff'] = $snapshot;

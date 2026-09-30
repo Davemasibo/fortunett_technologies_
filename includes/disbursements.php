@@ -74,7 +74,7 @@ function disbursementPayments(PDO $pdo, int $tenantId, string $cutoff, bool $loc
     $st = $pdo->prepare("SELECT id, amount AS original_amount, amount - disbursed_amount AS amount FROM payments
         WHERE tenant_id = ? AND collection_type = 'platform' AND status = 'completed'
           AND released_at IS NULL AND amount > disbursed_amount AND payment_date <= ? AND created_at <= ?
-        ORDER BY id" . ($lock ? ' FOR UPDATE' : ''));
+        ORDER BY payment_date, id" . ($lock ? ' FOR UPDATE' : ''));
     $st->execute([$tenantId, $cutoff, $cutoff]);
     return $st->fetchAll(PDO::FETCH_ASSOC);
 }
@@ -85,7 +85,7 @@ function recordDisbursement(PDO $pdo, int $tenantId, int $actorId, array $input)
     $notes = trim($input['notes'] ?? '');
     $cutoff = disbursementDate((string)($input['cutoff'] ?? ''), 'Collections through');
     $paidAt = disbursementDate((string)($input['disbursed_at'] ?? ''), 'Transfer date');
-    if (substr($cutoff, 0, 10) > substr($paidAt, 0, 10)) throw new InvalidArgumentException('Collections through must be on or before the transfer date.');
+    if ($cutoff > $paidAt) throw new InvalidArgumentException('Collections through must be on or before the transfer date and time.');
     if ($tenantId <= 0 || $actorId <= 0 || $reference === '' || strlen($reference) > 100 || strlen($notes) > 255) {
         throw new InvalidArgumentException('A tenant and transfer reference are required (reference: 100 characters; notes: 255).');
     }

@@ -90,5 +90,23 @@ try {
         }
     }
     checkDisbursement($pdo->query('SELECT COUNT(*) FROM tenant_disbursement_items')->fetchColumn() === $ledgerBefore, 'SQL migration is repeatable and preserves existing payout history');
+    // Exact payout-time boundary: no later same-day collection may be released.
+    $pdo->exec("INSERT INTO payments(id,tenant_id,amount,collection_type,status,payment_date,created_at) VALUES
+        (10,1,100,'platform','completed','2026-09-30 11:16:59','2026-09-30 11:16:59'),
+        (11,1,200,'platform','completed','2026-09-30 11:17:00','2026-09-30 11:17:00'),
+        (12,1,854,'platform','completed','2026-09-30 11:17:01','2026-09-30 11:17:01')");
+    $timed = array_merge($input, ['reference'=>'TIMED-PAYOUT','cutoff'=>'2026-09-30T11:17',
+        'disbursed_at'=>'2026-09-30T11:17','cash_amount'=>'300','fees_amount'=>'0','expected_gross'=>'300','expected_count'=>2]);
+    checkDisbursement(rejectDisbursement(fn()=>recordDisbursement($pdo,1,9,array_merge($timed,['cutoff'=>'2026-09-30T11:18']))), 'cutoff later than transfer on the same day rejected');
+    recordDisbursement($pdo,1,9,$timed);
+    checkDisbursement($pdo->query("SELECT COUNT(*) FROM payments WHERE id IN (10,11) AND released_at='2026-09-30 11:17:00'")->fetchColumn() == 2, 'collections through 11:17 are marked disbursed at the exact transfer time');
+    checkDisbursement($pdo->query('SELECT released_at FROM payments WHERE id=12')->fetchColumn() === null, 'collection one second after cutoff awaits next payout');
+    $balanceQuery->execute([1]);
+    checkDisbursement((float)$balanceQuery->fetchColumn() === 854.0, 'tenant billing retains later same-day collections');
+    $dashboard = file_get_contents(__DIR__ . '/../dashboard.php');
+    preg_match('/prepare\("(SELECT\s+COALESCE\(SUM\(CASE WHEN released_at IS NULL.*?collection_type = \'platform\')"\)/s', $dashboard, $dashboardSql);
+    $dashboardQuery = $pdo->prepare($dashboardSql[1]); $dashboardQuery->execute([1]);
+    $balances = $dashboardQuery->fetch(PDO::FETCH_ASSOC);
+    checkDisbursement((float)$balances['awaiting'] === 854.0 && (float)$balances['disbursed'] === 1400.0, 'tenant dashboard agrees with payout and billing balances');
     echo "$checks checks passed.\n";
 } finally { $pdo->exec("DROP DATABASE `$schema`"); }
