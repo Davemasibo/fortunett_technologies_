@@ -288,9 +288,9 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId): ?array
             JOIN clients c ON c.id = p.client_id
             WHERE p.tenant_id = ? AND p.status = 'completed'
               AND c.connection_type = 'hotspot'
-              AND p.payment_date >= ?
+              AND p.payment_date >= ? AND p.payment_date < ?
         ");
-        $hc->execute([$tenantId, $periodStart]);
+        $hc->execute([$tenantId, $periodStart, date('Y-m-01', strtotime($periodStart . ' +1 month'))]);
         $hotspotCollections = (float)$hc->fetchColumn();
 
         // pppoe_subtotal, hotspot_commission and total_due are STORED GENERATED

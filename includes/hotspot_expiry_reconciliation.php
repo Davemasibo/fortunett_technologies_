@@ -67,6 +67,17 @@ function hotspotPurchaseEvidence(PDO $pdo,int $tenant,int $client,array $histori
                 $st->execute([$tenant,$client,$matches[0]]);$event=array_merge($event,$st->fetch(PDO::FETCH_ASSOC) ?: []);
             } catch (PDOException $e) { if (($e->errorInfo[1] ?? 0)!==1146) throw $e; }
         }
+        // Amount-based grants override single-package checkout terms. A credit
+        // deposit that purchased no period must not appear as granted access.
+        try {
+            $grantSt = $pdo->prepare('SELECT periods, validity_value, validity_unit, created_at AS confirmed_at FROM payment_subscription_grants WHERE tenant_id=? AND client_id=? AND (activation_key IN (?, ?) OR receipt=?) LIMIT 1');
+            $grantSt->execute([$tenant, $client, $payment['transaction_id'], $event['identity'], $payment['transaction_id']]);
+            $grant = $grantSt->fetch(PDO::FETCH_ASSOC);
+            if ($grant) {
+                if ((int)$grant['periods'] === 0) continue;
+                $event = array_merge($event, $grant);
+            }
+        } catch (PDOException $e) { if (($e->errorInfo[1] ?? 0) !== 1146) throw $e; }
         // Optional reviewed historical terms are keyed by tenant and immutable payment ID.
         $override=$historicalTerms[$tenant . ':' . $payment['id']] ?? null;
         if ($override && !empty($override['source'])) {

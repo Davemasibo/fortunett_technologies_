@@ -435,16 +435,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
             <div class="card-head">
                 <h3><i class="fas fa-exchange-alt" style="color:#f59e0b;"></i> Pending Settlements by Tenant</h3>
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                    <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:4px 10px;font-size:12px;">
-                        <label style="color:#94a3b8;white-space:nowrap;">Auto-release &gt;</label>
-                        <input type="number" id="autoReleaseHours" value="48" min="1" max="720"
-                               style="width:52px;background:transparent;border:none;color:#e2e8f0;font-size:12px;text-align:center;outline:none;">
-                        <span style="color:#94a3b8;">hrs</span>
-                        <button onclick="autoRelease()" style="padding:2px 8px;border:none;background:#6366f1;color:#fff;border-radius:4px;font-size:11px;cursor:pointer;font-weight:600;">Run</button>
-                    </div>
-                    <button class="btn-test" onclick="releaseAll()" style="background:#ef4444;">
-                        <i class="fas fa-bolt" style="margin-right:6px;"></i>Release All
-                    </button>
+                    <a class="btn-test" href="collections.php?tab=held">Record disbursements</a>
                     <button class="btn-test" onclick="loadSettlements()" style="background:#f59e0b;">
                         <i class="fas fa-sync" id="settleRefreshIcon" style="margin-right:6px;"></i>Refresh
                     </button>
@@ -635,7 +626,7 @@ function loadSettlements() {
                         ${unrelAmt > 0
                             ? `<button onclick="releaseTenant(${s.tenant_id}, ${unrelAmt})"
                                 style="padding:4px 10px;border:none;background:#f59e0b;color:#000;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;">
-                                <i class="fas fa-paper-plane" style="margin-right:4px;"></i>Release KSh ${fmt(unrelAmt)}
+                                <i class="fas fa-paper-plane" style="margin-right:4px;"></i>Record disbursement
                                </button>`
                             : '<span style="font-size:11px;color:#6ee7b7;"><i class="fas fa-check-circle" style="margin-right:4px;"></i>All settled</span>'}
                     </td>
@@ -666,54 +657,7 @@ function loadSettlements() {
 }
 
 function releaseTenant(tenantId, amount) {
-    const fmt = v => parseFloat(v).toLocaleString('en-KE', {minimumFractionDigits:2});
-    if (!confirm(`Release KSh ${fmt(amount)} to this tenant?\n\nThis marks the payments as settled and sends the tenant an email notification.`)) return;
-
-    const fd = new FormData();
-    fd.append('action', 'release_tenant');
-    fd.append('tenant_id', tenantId);
-    fd.append('note', 'Released by super admin via settlements panel');
-
-    fetch('../api/super_admin/release_payments.php', { method: 'POST', body: fd })
-        .then(r => r.json())
-        .then(d => {
-            if (d.success) { showToast(d.message, 'success'); loadSettlements(); }
-            else showToast(d.message || 'Release failed', 'error');
-        })
-        .catch(() => showToast('Network error. Please try again.', 'error'));
-}
-
-function releaseAll() {
-    if (!confirm('Release ALL pending platform payments across every tenant?\n\nThis sends email notifications to each tenant admin.')) return;
-
-    const fd = new FormData();
-    fd.append('action', 'release_all');
-    fd.append('note', 'Bulk release by super admin');
-
-    fetch('../api/super_admin/release_payments.php', { method: 'POST', body: fd })
-        .then(r => r.json())
-        .then(d => {
-            if (d.success) { showToast(d.message, 'success'); loadSettlements(); }
-            else showToast(d.message || 'Release failed', 'error');
-        })
-        .catch(() => showToast('Network error. Please try again.', 'error'));
-}
-
-function autoRelease() {
-    const hours = parseInt(document.getElementById('autoReleaseHours').value) || 48;
-    if (!confirm(`Auto-release all platform payments older than ${hours} hours?\n\nAffected tenants will receive email notifications.`)) return;
-
-    const fd = new FormData();
-    fd.append('action', 'auto_release');
-    fd.append('threshold_hours', hours);
-
-    fetch('../api/super_admin/release_payments.php', { method: 'POST', body: fd })
-        .then(r => r.json())
-        .then(d => {
-            if (d.success) { showToast(d.message, 'success'); loadSettlements(); }
-            else showToast(d.message || 'Auto-release failed', 'error');
-        })
-        .catch(() => showToast('Network error. Please try again.', 'error'));
+    window.location.href = 'disbursements.php?tenant_id=' + encodeURIComponent(tenantId);
 }
 
 function sendTestStk() {

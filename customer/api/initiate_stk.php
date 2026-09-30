@@ -107,7 +107,16 @@ try {
     }
 
     require_once __DIR__ . '/../../includes/payment_terms.php';
-    $purchaseTerms = $type === 'topup' ? null : preparePaymentTerms($pdo, (int)$customer['package_id'], $tenantId);
+    $selectedPackageId = (int)($_POST['package_id'] ?? $customer['package_id']);
+    $purchaseTerms = $type === 'topup' ? null : preparePaymentTerms($pdo, $selectedPackageId, $tenantId);
+    if ($purchaseTerms && isset($_POST['periods'])) {
+        $periods = filter_var($_POST['periods'], FILTER_VALIDATE_INT);
+        if (!$periods || $periods < 1 || $periods > 24) throw new RuntimeException('Choose between 1 and 24 package periods.');
+        $balance = $pdo->prepare('SELECT account_balance FROM clients WHERE id = ? AND tenant_id = ?');
+        $balance->execute([$clientId, $tenantId]);
+        $amount = max(0, round((float)$purchaseTerms['price'] * $periods - (float)$balance->fetchColumn(), 2));
+        if ($amount <= 0) throw new RuntimeException('Your balance covers this purchase. Use Activate Now.');
+    }
     $isSandbox = $mpesa->getEnvironment() !== 'production';
     $response  = $mpesa->stkPush($phone, $amount, $accountRef);
 

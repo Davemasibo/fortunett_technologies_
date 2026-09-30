@@ -33,7 +33,12 @@ if (!$customer) {
 
 $clientId  = (int)$customer['id'];
 $tenantId  = (int)$customer['tenant_id'];
-$packageId = (int)($customer['package_id'] ?? 0);
+$packageId = (int)($_POST['package_id'] ?? $customer['package_id'] ?? 0);
+$periods = filter_var($_POST['periods'] ?? 1, FILTER_VALIDATE_INT);
+if (!$periods || $periods < 1 || $periods > 24) {
+    echo json_encode(['success' => false, 'message' => 'Choose between 1 and 24 package periods.']);
+    exit;
+}
 
 if (!$packageId) {
     echo json_encode(['success' => false, 'message' => 'No package selected. Please choose a package first.']);
@@ -60,7 +65,11 @@ if (!$client) {
     exit;
 }
 
-$packagePrice   = (float)$package['price'];
+$packagePrice   = round((float)$package['price'] * $periods, 2);
+if ($packagePrice <= 0) {
+    echo json_encode(['success' => false, 'message' => 'Package price must be positive.']);
+    exit;
+}
 $accountBalance = (float)($client['account_balance'] ?? 0);
 
 if ($accountBalance < $packagePrice) {
@@ -74,13 +83,16 @@ if ($accountBalance < $packagePrice) {
 
 try {
     $pdo->beginTransaction();
-    $locked = $pdo->prepare('SELECT account_balance FROM clients WHERE id = ? AND tenant_id = ? FOR UPDATE');
+    $locked = $pdo->prepare('SELECT account_balance, expiry_date, status FROM clients WHERE id = ? AND tenant_id = ? FOR UPDATE');
     $locked->execute([$clientId, $tenantId]);
-    $accountBalance = (float)$locked->fetchColumn();
+    $currentClient = $locked->fetch(PDO::FETCH_ASSOC);
+    if (!$currentClient) throw new RuntimeException('Customer no longer exists');
+    $accountBalance = (float)$currentClient['account_balance'];
     if ($accountBalance < $packagePrice) throw new RuntimeException('Insufficient current balance');
 
-    $newBalance    = $accountBalance - $packagePrice;
-    $expiryDate    = packageExpiryFrom($package['validity_value'] ?? 30, $package['validity_unit'] ?? 'days');
+    $newBalance    = round($accountBalance - $packagePrice, 2);
+    $expiryDate    = packageExtendExpiry($currentClient['status'] === 'active' ? $currentClient['expiry_date'] : null,
+        (int)$package['validity_value'] * $periods, $package['validity_unit']);
 
     // Activate client and deduct balance atomically
     $pdo->prepare(

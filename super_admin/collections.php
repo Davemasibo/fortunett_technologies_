@@ -325,7 +325,7 @@ tr:hover td{background:rgba(255,255,255,.03);}
                     <td class="muted"><?= (int)$h['unreleased_count'] ?></td>
                     <td class="muted"><?= $h['oldest_unreleased'] ? date('d M Y', strtotime($h['oldest_unreleased'])) : '—' ?></td>
                     <td class="pos">KSH <?= number_format((float)$h['released'], 2) ?></td>
-                    <td><a href="tenants.php?id=<?= (int)$h['id'] ?>" class="tab" style="padding:4px 12px;font-size:12px;">View</a></td>
+                    <td><a href="disbursements.php?tenant_id=<?= (int)$h['id'] ?>" class="tab" style="padding:4px 12px;font-size:12px;">Record / view disbursements</a></td>
                 </tr>
                 <?php endforeach; ?>
                 <?php if (!$held): ?>
@@ -335,9 +335,8 @@ tr:hover td{background:rgba(255,255,255,.03);}
             </table>
             </div>
             <div class="note">
-                <strong>Releasing</strong> marks the money as settled with the ISP — it does not move funds.
-                <code>cron/auto_release_settlements.php</code> releases anything older than 48 hours; the actual
-                transfer is made by you, manually or by B2C.
+                <strong>Mark as disbursed</strong> after sending the money. Record the transfer reference,
+                cash sent and fees withheld. The tenant can see the record and their reduced outstanding balance.
             </div>
         </div>
 

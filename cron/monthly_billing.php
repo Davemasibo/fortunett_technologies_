@@ -89,7 +89,7 @@ foreach ($tenants as $tenant) {
               AND c.connection_type = 'hotspot'
               AND pay.status = 'completed'
               AND pay.payment_date >= ?
-              AND pay.payment_date <= LAST_DAY(?)
+              AND pay.payment_date < DATE_ADD(?, INTERVAL 1 MONTH)
         ");
         $hotspotStmt->execute([$tenantId, $billingPeriod, $billingPeriod]);
         $hotspotCollections = (float)$hotspotStmt->fetchColumn();

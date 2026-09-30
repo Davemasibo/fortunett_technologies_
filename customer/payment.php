@@ -13,14 +13,15 @@ if (!$tenantId) {
 $selectedPackageId = $_GET['package_id'] ?? $customer['package_id'];
 $package = null;
 if ($selectedPackageId) {
-    $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ?");
-    $stmt->execute([$selectedPackageId]);
+    $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND tenant_id = ?");
+    $stmt->execute([$selectedPackageId, $customer['tenant_id']]);
     $package = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
 $packagePrice   = $package ? (float)$package['price'] : 0;
 $accountBalance = (float)($customer['account_balance'] ?? 0);
-$amountToPay    = max(0, $packagePrice - $accountBalance);
+$purchasePeriods = max(1, min(24, (int)($_GET['periods'] ?? 1)));
+$amountToPay    = max(0, round($packagePrice * $purchasePeriods - $accountBalance, 2));
 
 $gatewaysStmt = $pdo->prepare("SELECT * FROM payment_gateways WHERE tenant_id = ? AND is_active = 1 ORDER BY is_default DESC");
 $gatewaysStmt->execute([$tenantId]);
@@ -485,7 +486,19 @@ include 'includes/header.php';
                 </div>
                 <?php endif; ?>
 
-                <div class="sum-row"><span>Package Price</span><span>KES <?= number_format($packagePrice, 2) ?></span></div>
+                <?php if ($package): ?>
+                <form method="get" style="margin:16px 0;">
+                    <input type="hidden" name="package_id" value="<?= (int)$selectedPackageId ?>">
+                    <label for="purchasePeriods">Pay ahead</label>
+                    <select id="purchasePeriods" name="periods" onchange="this.form.submit()" style="padding:10px;margin:8px;">
+                    <?php for ($period = 1; $period <= 24; $period++): ?>
+                        <option value="<?= $period ?>" <?= $purchasePeriods === $period ? 'selected' : '' ?>><?= $period ?> period<?= $period === 1 ? '' : 's' ?> - <?= htmlspecialchars(packageValidityLabel((int)$package['validity_value'] * $period, $package['validity_unit'])) ?></option>
+                    <?php endfor; ?>
+                    </select>
+                    <p style="font-size:13px;">Unused active time is preserved. Each period adds your package's full duration.</p>
+                </form>
+                <?php endif; ?>
+                <div class="sum-row"><span>Package Price (<?= $purchasePeriods ?> period<?= $purchasePeriods === 1 ? '' : 's' ?>)</span><span>KES <?= number_format($packagePrice * $purchasePeriods, 2) ?></span></div>
                 <div class="sum-row credit"><span>Account Balance</span><span>− KES <?= number_format($accountBalance, 2) ?></span></div>
                 <div class="sum-total"><span>Amount to Pay</span><span>KES <?= number_format($amountToPay, 2) ?></span></div>
 
@@ -922,6 +935,8 @@ function submitPayModal() {
     fd.append('gateway_id', _gwId);
     fd.append('phone', phone);
     fd.append('amount', _amountDue);
+    fd.append('periods', <?= $purchasePeriods ?>);
+    fd.append('package_id', <?= (int)$selectedPackageId ?>);
 
     fetch(_base + '/customer/api/initiate_stk.php', { method: 'POST', body: fd })
     .then(r => r.json())
@@ -1089,7 +1104,10 @@ function setTopupAmount(amt, btn) {
 
 /* ── Activate with balance ────────────────────────── */
 function activateWithBalance() {
-    fetch(_base + '/customer/api/activate.php', { method: 'POST' })
+    const purchase = new FormData();
+    purchase.append('periods', <?= $purchasePeriods ?>);
+    purchase.append('package_id', <?= (int)$selectedPackageId ?>);
+    fetch(_base + '/customer/api/activate.php', { method: 'POST', body: purchase })
     .then(r => r.json())
     .then(data => {
         if (data.success) window.location.href = 'dashboard.php?activation=success';

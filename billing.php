@@ -45,7 +45,7 @@ try {
 
 // --- Revenue ---
 try {
-    $revStmt = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE tenant_id = ? AND payment_date BETWEEN ? AND ?");
+$revStmt = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE tenant_id = ? AND status = 'completed' AND payment_date BETWEEN ? AND ?");
     $revStmt->execute([$tenant_id, $currentMonthStart . ' 00:00:00', $currentMonthEnd . ' 23:59:59']);
     $currentRevenue = (float)$revStmt->fetchColumn();
 } catch (Exception $e) { $currentRevenue = 0; }
@@ -90,6 +90,37 @@ $issueDate     = date('d M Y');
 // platform_invoices row they were never shown. One table now, one truth.
 require_once __DIR__ . '/includes/platform_billing.php';
 ensureCurrentPlatformInvoice($pdo, $tenant_id);
+
+// Live collections are independent of an invoice's frozen billing snapshot.
+require_once __DIR__ . '/includes/disbursements.php';
+$collectionMonths = [];
+$outstandingPayout = null;
+$disbursementHistory = [];
+$monthlyDisbursed = 0;
+$collectionError = false;
+try {
+    ensureDisbursementSchema($pdo);
+    $st = $pdo->prepare("SELECT DATE_FORMAT(payment_date, '%Y-%m-01') AS month,
+        SUM(amount) AS collected,
+        SUM(CASE WHEN collection_type = 'platform' THEN amount ELSE 0 END) AS platform_collected
+        FROM payments WHERE tenant_id = ? AND status = 'completed'
+        GROUP BY DATE_FORMAT(payment_date, '%Y-%m-01')");
+    $st->execute([$tenant_id]);
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) $collectionMonths[$row['month']] = $row;
+    $st = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM payments
+        WHERE tenant_id = ? AND status = 'completed' AND collection_type = 'platform' AND released_at IS NULL");
+    $st->execute([$tenant_id]);
+    $outstandingPayout = (float)$st->fetchColumn();
+    $st = $pdo->prepare('SELECT * FROM tenant_disbursements WHERE tenant_id = ? ORDER BY disbursed_at DESC, id DESC LIMIT 100');
+    $st->execute([$tenant_id]);
+    $disbursementHistory = $st->fetchAll(PDO::FETCH_ASSOC);
+    $st = $pdo->prepare('SELECT COALESCE(SUM(cash_amount),0) FROM tenant_disbursements WHERE tenant_id = ? AND disbursed_at >= ? AND disbursed_at < ?');
+    $st->execute([$tenant_id, $currentMonthStart, date('Y-m-01', strtotime($currentMonthStart . ' +1 month'))]);
+    $monthlyDisbursed = (float)$st->fetchColumn();
+} catch (Throwable $e) {
+    error_log('Billing collections: ' . $e->getMessage());
+    $collectionError = true;
+}
 
 // Aliased to the column names this page's markup already expects, so the
 // existing UI keeps working against the new source.
@@ -621,6 +652,27 @@ include 'includes/sidebar.php';
     </div>
 
     <!-- Invoice History -->
+    <div class="history-card" style="margin-bottom:24px;">
+        <div class="history-card-header">Collections &amp; disbursements - <?php echo date('F Y'); ?></div>
+        <div style="padding:20px;color:#d4d4d2;line-height:1.8;">
+        <?php if ($collectionError): ?>
+            Collections are temporarily unavailable. Please refresh later.
+        <?php else: ?>
+            <div>Revenue collected this month: <strong>KES <?php echo number_format($collectionMonths[$currentMonthStart]['collected'] ?? 0, 2); ?></strong></div>
+            <div>Collected through the platform this month: <strong>KES <?php echo number_format($collectionMonths[$currentMonthStart]['platform_collected'] ?? 0, 2); ?></strong></div>
+            <div>Awaiting disbursement (including previous months, before fees): <strong>KES <?php echo number_format($outstandingPayout, 2); ?></strong></div>
+            <div>Manually disbursed this month: <strong>KES <?php echo number_format($monthlyDisbursed, 2); ?></strong></div>
+            <p style="color:#9a9a95;">Monthly collections start fresh on the first of each month. Outstanding payouts carry forward until settled. Paying a platform invoice does not mark a payout as disbursed.</p>
+        <?php endif; ?>
+        </div>
+        <div class="history-card-header">Manual disbursement history (KES)</div>
+        <div style="overflow-x:auto;"><table class="billing-history-table"><thead><tr><th>Date</th><th>Transfer reference</th><th>Collections settled</th><th>Cash received</th><th>Fees withheld</th><th>Notes</th></tr></thead><tbody>
+        <?php foreach ($disbursementHistory as $disbursement): ?>
+            <tr><td><?php echo htmlspecialchars($disbursement['disbursed_at']); ?></td><td><?php echo htmlspecialchars($disbursement['reference']); ?></td><td><?php echo number_format($disbursement['gross_amount'], 2); ?></td><td><?php echo number_format($disbursement['cash_amount'], 2); ?></td><td><?php echo number_format($disbursement['fees_amount'], 2); ?></td><td><?php echo htmlspecialchars($disbursement['notes']); ?></td></tr>
+        <?php endforeach; ?>
+        <?php if (!$disbursementHistory): ?><tr><td colspan="6">No manual disbursements recorded yet.</td></tr><?php endif; ?>
+        </tbody></table></div>
+    </div>
     <div class="history-card">
         <div class="history-card-header">Invoice History</div>
         <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
@@ -644,7 +696,7 @@ include 'includes/sidebar.php';
                     ?>
                     <tr>
                         <td style="font-weight:600; color:#e2e2e0;"><?php echo date('F Y', strtotime($bill['billing_period'])); ?></td>
-                        <td class="text-end">KES <?php echo number_format($bill['total_collections'], 2); ?></td>
+                        <td class="text-end"><?php echo $collectionError ? 'Unavailable' : 'KES ' . number_format($collectionMonths[$bill['billing_period']]['collected'] ?? 0, 2); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['pppoe_subtotal'], 2); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['base_fee'], 2); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['commission_amount'], 2); ?></td>

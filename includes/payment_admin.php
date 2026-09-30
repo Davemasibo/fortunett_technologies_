@@ -525,6 +525,29 @@ function paymentPlanRevocation(PDO $pdo, int $tenantId, array $payment): array
         return ['applied' => false, 'reason' => 'could not confirm later payments, so the expiry was left alone'];
     }
 
+    // New grants remember exactly how much time was purchased. Never infer
+    // a single period from today's package price for a multi-period payment.
+    try {
+        $grantSt = $pdo->prepare('SELECT * FROM payment_subscription_grants WHERE tenant_id = ? AND client_id = ? AND (activation_key = ? OR receipt = ?) LIMIT 1');
+        $grantSt->execute([$tenantId, $clientId, $payment['transaction_id'], $payment['transaction_id']]);
+        $grant = $grantSt->fetch(PDO::FETCH_ASSOC);
+        if ($grant) {
+            if ($grant['previous_balance'] !== $grant['balance_after'] || (int)$grant['periods'] === 0) {
+                return ['applied' => false, 'reason' => 'this payment used or added account credit; reconcile its credit and time together manually'];
+            }
+            if ($payment['expiry_date'] !== $grant['expiry_date']) {
+                return ['applied' => false, 'reason' => 'the expiry has changed since this payment; review manually'];
+            }
+            $prior = $grant['previous_status'] === 'active' && $grant['previous_expiry']
+                ? $grant['previous_expiry'] : $grant['created_at'];
+            return ['applied' => true, 'new_expiry' => $prior,
+                'period' => packageValidityLabel($grant['validity_value'], $grant['validity_unit']),
+                'package' => 'Purchased package', 'now_past' => strtotime($prior) < time()];
+        }
+    } catch (PDOException $e) {
+        if (($e->errorInfo[1] ?? 0) !== 1146) return ['applied' => false, 'reason' => 'could not verify the purchased time'];
+    }
+
     $pkg = null;
     if (!empty($payment['package_id'])) {
         try {

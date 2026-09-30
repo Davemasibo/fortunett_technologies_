@@ -107,7 +107,7 @@ function process_payment_success(
     $package = null;
     if ($resolvedPackageId) {
         $pkgSt = $pdo->prepare("
-            SELECT id, name, validity_value, validity_unit,
+            SELECT id, name, price, validity_value, validity_unit,
                    download_speed, upload_speed, mikrotik_profile,
                    COALESCE(NULLIF(type,''), connection_type, 'hotspot') AS conn_type
             FROM packages WHERE id = ? AND tenant_id = ?
@@ -119,6 +119,7 @@ function process_payment_success(
     if ($package && $purchaseTerms) {
         $package['validity_value'] = $purchaseTerms['validity_value'];
         $package['validity_unit'] = $purchaseTerms['validity_unit'];
+        $package['price'] = $purchaseTerms['package_price'] ?? $package['price'];
     }
 
     $results['client_name']  = $client['full_name'] ?: ($client['name'] ?? '');
@@ -190,10 +191,13 @@ function process_payment_success(
 
     // Keep newly recorded payments pending until their activation succeeds.
     $activation = activatePaidSubscription(
-        $pdo, $clientId, $tenantId, $activationKey ?: $receipt, $receipt, $package
+        $pdo, $clientId, $tenantId, $activationKey ?: $receipt, $receipt, $package, $amount
     );
     $expiryDate = $activation['expiry_date'];
     $results['expiry_date'] = $expiryDate;
+    $results['periods'] = (int)($activation['periods'] ?? 1);
+    $results['account_balance'] = $activation['balance'] ?? null;
+    if ($package && !empty($activation['validity_value'])) $package['validity_value'] = $activation['validity_value'];
     $pdo->prepare("UPDATE payments SET status='completed' WHERE id=? AND tenant_id=?")->execute([$paymentId,$tenantId]);
 
     if (!$activation['already_applied']) {
@@ -209,7 +213,8 @@ function process_payment_success(
                        . '-' . $tenantId;
         $invSt->execute([$invoiceNumber]);
         if (!$invSt->fetchColumn()) {
-            $desc = ($package['name'] ?? 'Internet') . ' — '
+            $desc = $results['periods'] === 0 ? 'Account credit - awaiting enough funds for a package'
+                : ($package['name'] ?? 'Internet') . ' — ' . $results['periods'] . ' period(s), '
                   . ($expiryDate ? 'valid to ' . date('d M Y', strtotime($expiryDate)) : date('d M Y'));
             $pdo->prepare("
                 INSERT INTO client_invoices
@@ -360,6 +365,9 @@ function process_payment_success(
     }
 
     // ── 9. Auto-provision on MikroTik ──────────────────────────────────────────
+    // Part-payments remain credit and must not be advertised as new access.
+    if ($results['periods'] === 0) return $results;
+
     // Runs BEFORE the customer is notified: the SMS and email carry their login
     // credentials, and those are only final once the router has been programmed.
     try {

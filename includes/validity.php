@@ -75,7 +75,17 @@ function packageExpiryFrom($value, $unit, $base = 'now'): string
     $val    = (int)$value;
     $u      = packageValidityUnit($unit, true);
 
-    $expiry = strtotime('+' . $val . ' ' . $u, $baseTs);
+    // Calendar months end on the last valid day, rather than overflowing
+    // January 31 + one month into March.
+    if ($u === 'months') {
+        $monthStart = strtotime(date('Y-m-01 H:i:s', $baseTs));
+        $targetMonth = strtotime('+' . $val . ' months', $monthStart);
+        if ($targetMonth === false) throw new InvalidArgumentException('Package expiry is invalid');
+        $day = min((int)date('j', $baseTs), (int)date('t', $targetMonth));
+        $expiry = strtotime(date('Y-m-', $targetMonth) . sprintf('%02d', $day) . date(' H:i:s', $baseTs));
+    } else {
+        $expiry = strtotime('+' . $val . ' ' . $u, $baseTs);
+    }
     if ($expiry === false || $expiry <= $baseTs) throw new InvalidArgumentException('Package expiry is invalid');
     return date('Y-m-d H:i:s', $expiry);
 }

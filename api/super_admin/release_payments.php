@@ -1,12 +1,7 @@
 <?php
 /**
- * POST /api/super_admin/release_payments.php
- * Mark platform-collected payments as released to tenant(s).
- *
- * Actions:
- *   release_tenant  — release all unreleased platform payments for one tenant
- *   release_all     — release all unreleased platform payments across all tenants
- *   auto_release    — release payments completed more than $threshold_hours ago
+ * Read-only legacy settlement summary. Mutations require a completed-transfer
+ * record in super_admin/disbursements.php; age-based release is disabled.
  */
 header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
@@ -20,76 +15,11 @@ try { $pdo->exec("ALTER TABLE payments ADD COLUMN released_at DATETIME DEFAULT N
 try { $pdo->exec("ALTER TABLE payments ADD COLUMN release_note VARCHAR(255) DEFAULT NULL"); } catch (Exception $e) {}
 
 $action     = $_POST['action']     ?? '';
-$tenant_id  = (int)($_POST['tenant_id'] ?? 0);
-$note       = trim($_POST['note'] ?? 'Released by super admin');
-$threshold  = max(1, (int)($_POST['threshold_hours'] ?? 48)); // hours before auto-release
 
 try {
-    $now = date('Y-m-d H:i:s');
-
-    if ($action === 'release_tenant') {
-        if (!$tenant_id) throw new Exception('tenant_id required');
-
-        $stmt = $pdo->prepare("
-            UPDATE payments
-            SET released_at = ?, release_note = ?
-            WHERE tenant_id = ?
-              AND collection_type = 'platform'
-              AND status = 'completed'
-              AND released_at IS NULL
-        ");
-        $stmt->execute([$now, $note, $tenant_id]);
-        $affected = $stmt->rowCount();
-
-        // Fetch tenant name for response
-        $tStmt = $pdo->prepare("SELECT company_name FROM tenants WHERE id = ?");
-        $tStmt->execute([$tenant_id]);
-        $tName = $tStmt->fetchColumn() ?: "Tenant #$tenant_id";
-
-        echo json_encode([
-            'success'  => true,
-            'released' => $affected,
-            'message'  => "Released $affected payment(s) for $tName",
-        ]);
-        exit;
-    }
-
-    if ($action === 'release_all') {
-        $stmt = $pdo->prepare("
-            UPDATE payments
-            SET released_at = ?, release_note = ?
-            WHERE collection_type = 'platform'
-              AND status = 'completed'
-              AND released_at IS NULL
-        ");
-        $stmt->execute([$now, $note]);
-        $affected = $stmt->rowCount();
-        echo json_encode([
-            'success'  => true,
-            'released' => $affected,
-            'message'  => "Released $affected payment(s) across all tenants",
-        ]);
-        exit;
-    }
-
-    if ($action === 'auto_release') {
-        $cutoff = date('Y-m-d H:i:s', strtotime("-{$threshold} hours"));
-        $stmt = $pdo->prepare("
-            UPDATE payments
-            SET released_at = ?, release_note = 'Auto-released'
-            WHERE collection_type = 'platform'
-              AND status = 'completed'
-              AND released_at IS NULL
-              AND payment_date <= ?
-        ");
-        $stmt->execute([$now, $cutoff]);
-        $affected = $stmt->rowCount();
-        echo json_encode([
-            'success'   => true,
-            'released'  => $affected,
-            'threshold' => $threshold,
-            'message'   => "Auto-released $affected payment(s) older than {$threshold}h",
-        ]);
+    if (in_array($action, ['release_tenant', 'release_all', 'auto_release'], true)) {
+        http_response_code(409);
+        echo json_encode(['success' => false, 'message' => 'Record the completed transfer in Collections > Held for ISPs > Record / view disbursements. Automatic age-based release is disabled.']);
         exit;
     }
 
