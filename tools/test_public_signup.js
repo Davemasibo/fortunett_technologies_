@@ -1,0 +1,46 @@
+const {chromium}=require('playwright');
+const assert=require('assert');
+(async()=>{
+ const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+ const page=await browser.newPage({viewport:{width:1440,height:1000}}),base='http://127.0.0.1:8766';
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.route('https://fonts.googleapis.com/**', route=>route.abort());
+ try {
+  await page.goto(base+'/signup.php');
+  assert(await page.locator('#signup-form').isVisible());
+  assert(await page.locator('.google-unavailable').isDisabled());
+  await page.screenshot({path:'artifacts/fortunett-signup-desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.screenshot({path:'artifacts/fortunett-signup-mobile.png',fullPage:true});
+  await page.locator('#username').fill('test-owner');await page.locator('#email').fill('test@example.test');
+  await page.locator('#password').fill('Local-test-only-42!');await page.locator('#confirm_password').fill('Different-password');
+  await Promise.all([page.waitForNavigation(),page.locator('[type=submit]').click()]);
+  assert.match(await page.locator('[role=alert]').textContent(),/Passwords do not match/);
+  assert.equal(await page.locator('#username').inputValue(),'test-owner');
+  await page.goto(base+'/__test/close');await page.goto(base+'/signup.php');
+  assert.equal(await page.locator('#signup-form').count(),0);
+  const closed=await page.request.post(base+'/signup.php',{form:{username:'closed-owner',email:'closed@example.test',password:'Password123',confirm_password:'Password123'}});
+  assert.match(await closed.text(),/New registrations are currently closed/);
+  await page.goto(base+'/__test/open');
+  await page.goto(base+'/__test/google-link');await page.goto(base+'/login.php?tenant=ghettohlink&signin=1');
+  assert.match(await page.locator('.auth-notice').textContent(),/Confirm your existing password/);
+  assert.equal(await page.locator('#username').inputValue(),'ghetto@example.test');
+  await page.locator('#password').fill('Local-test-only-42!');
+  await Promise.all([page.waitForNavigation(),page.locator('[type=submit]').click()]);
+  assert(page.url().endsWith('/dashboard.php'));
+  assert.equal(await (await page.request.get(base+'/__test/linked')).text(),'1');
+  await page.goto(base+'/logout.php');
+  await page.goto(base+'/__test/google-signup');await page.goto(base+'/signup.php?google=1');
+  assert.equal(await page.locator('#password').count(),0);
+  assert.match(await page.locator('.auth-notice').textContent(),/new-owner@gmail.com/);
+  await page.locator('#username').fill('google-network');
+  await Promise.all([page.waitForNavigation(),page.locator('[type=submit]').click()]);
+  assert.match(await page.locator('[role=status]').textContent(),/Workspace created/);
+  assert.equal(await page.locator('[role=status] a').getAttribute('href'),'https://google-network.fortunetttech.site/login.php?signin=1');
+  const session=await (await page.request.get(base+'/dashboard.php')).json();
+  assert.equal(session.user,null);
+  assert.deepEqual(errors,[]);
+  console.log('PASS matching signup UI, responsive layout, validation, retained input, registration gate, password-confirmed Google linking and Google workspace creation');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exit(1)});

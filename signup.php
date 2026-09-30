@@ -1,5 +1,10 @@
 <?php
 require_once __DIR__ . '/includes/db_master.php';
+require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/google_auth.php';
+if (isLoggedIn()) { header('Location: dashboard.php'); exit; }
+$_SESSION['signup_csrf'] ??= bin2hex(random_bytes(32));
+$googleSignup = (isset($_GET['google']) || !empty($_POST['use_google'])) ? googlePending('google_signup') : null;
 require_once __DIR__ . '/includes/email_helper.php';
 
 $error = '';
@@ -21,67 +26,25 @@ if ($signupEnabled === '0' && $_SERVER['REQUEST_METHOD'] !== 'GET') {
     $error = "New registrations are currently closed. Please contact support.";
 }
 
-// Get tenant branding based on subdomain or request
-$branding = [
-    'name' => 'FortuNNet Technologies',
-    'color' => '#0f3460',
-    'logo' => '',
-    'background' => 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
-];
-
-$host = $_SERVER['HTTP_HOST'];
-$hostParts = explode('.', $host);
-$subdomain = $hostParts[0];
-
-if (isset($_GET['tenant'])) {
-    $subdomain = $_GET['tenant'];
-}
-
+$branding = ['name'=>'FortuNett Technologies','logo'=>''];
+$business_name = $branding['name'];
 $tenant_id = null;
-if ($subdomain && $subdomain !== 'localhost' && !filter_var($host, FILTER_VALIDATE_IP)) {
-    try {
-        $stmt = $pdo->prepare("SELECT id, company_name FROM tenants WHERE subdomain = ? LIMIT 1");
-        $stmt->execute([$subdomain]);
-        $tenant = $stmt->fetch();
-        
-        if ($tenant) {
-            $tenant_id = $tenant['id'];
-            $branding['name'] = $tenant['company_name'];
-            
-            $stmt = $pdo->prepare("SELECT setting_key, setting_value FROM tenant_settings WHERE tenant_id = ?");
-            $stmt->execute([$tenant_id]);
-            $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
-            
-            if (!empty($settings['brand_color'])) {
-                $branding['color'] = $settings['brand_color'];
-                $branding['background'] = "linear-gradient(135deg, {$settings['brand_color']} 0%, {$settings['brand_color']}99 100%)";
-            }
-            if (!empty($settings['system_logo'])) {
-                $branding['logo'] = $settings['system_logo'];
-            }
-        }
-    } catch (Exception $e) {}
-}
 
-if (!$tenant_id) {
-    try {
-        $stmt = $pdo->query("SELECT business_name FROM isp_profile LIMIT 1");
-        $profile = $stmt->fetch();
-        if ($profile && !empty($profile['business_name'])) {
-            $branding['name'] = $profile['business_name'];
-        }
-    } catch (Exception $e) {}
-}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
+    $username = trim($_POST['username'] ?? '');
+    $email = $googleSignup ? $googleSignup['email'] : trim($_POST['email'] ?? '');
+    $password = $googleSignup ? bin2hex(random_bytes(32)) : (string)($_POST['password'] ?? '');
+    $confirm = $googleSignup ? $password : (string)($_POST['confirm_password'] ?? '');
 
-$business_name = $branding['name']; // Backwards compatibility for rest of file
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username']);
-    $email    = trim($_POST['email']);
-    $password = trim($_POST['password']);
-    $confirm  = trim($_POST['confirm_password']);
-
-    if ($username === '' || $email === '' || $password === '' || $confirm === '') {
+    if (!hash_equals($_SESSION['signup_csrf'], (string)($_POST['csrf'] ?? ''))) {
+        $error = 'Your session expired. Please try again.';
+    } elseif (!empty($_POST['use_google']) && !$googleSignup) {
+        $error = 'Google verification expired. Continue with Google again.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = 'Enter a valid email address.';
+    } elseif (!preg_match('/^[a-zA-Z0-9][a-zA-Z0-9._-]{2,79}$/D', $username) || strlen($password) < 8) {
+        $error = 'Use a username of 3-80 letters, numbers, dots, underscores or hyphens, and a password of at least 8 characters.';
+    } elseif ($username === '' || $email === '' || $password === '' || $confirm === '') {
         $error = "All fields are required.";
     } elseif ($password !== $confirm) {
         $error = "Passwords do not match.";
@@ -93,6 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($stmt->fetch()) {
                 $error = "Username or email already exists.";
             } else {
+                if ($googleSignup) ensureGoogleIdentitySchema($pdo);
+                $pdo->beginTransaction();
                 $hash  = password_hash($password, PASSWORD_DEFAULT);
                 $token = bin2hex(random_bytes(32));
 
@@ -153,6 +118,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $pdo->prepare("UPDATE tenants SET subscription_plan_id = ? WHERE id = ?")
                             ->execute([$starterPlan, $tenantId]);
                     }
+
+                    if ($googleSignup) {
+                        googleLinkIdentity($pdo, $user_id, $googleSignup);
+                        if ($googleSignup['authoritative']) {
+                            $pdo->prepare('UPDATE users SET is_verified=1,email_verified=1,verification_token=NULL WHERE id=?')->execute([$user_id]);
+                        }
+                    }
+                    $pdo->commit();
+                    if ($googleSignup && $googleSignup['authoritative']) {
+                        unset($_SESSION['google_signup']);
+                        $workspaceUrl = googleTenantLoginUrl($pdo, $tenantId);
+                        $success = 'Workspace created! <a href="' . htmlspecialchars($workspaceUrl, ENT_QUOTES, 'UTF-8') . '">Sign in with Google on your workspace</a>.';
+                        $showSignup = true; $showLogin = true; $publicHome = 'login.php';
+                        require __DIR__ . '/includes/public_landing.php'; exit;
+                    }
+                    unset($_SESSION['google_signup']);
 
                     // Use platform domain from settings, fallback to hardcoded
                     $platformDomain = getPlatformSetting($pdo, 'platform_domain', 'fortunetttech.site');
@@ -219,127 +200,20 @@ HTML;
                     }
                 } else {
                     // Roll back the user record if tenant creation failed
-                    $pdo->prepare("DELETE FROM users WHERE id = ?")->execute([$user_id]);
+                    if ($pdo->inTransaction()) $pdo->rollBack();
                     $error = "Failed to provision your workspace. Please try again or contact support.";
                 }
             }
-        } catch (PDOException $e) {
-            $error = "Database error: " . $e->getMessage();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            error_log("Signup: " . $e->getMessage());
+            $error = "Could not create your workspace. Please try again.";
         }
     }
 }
-?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign Up — <?php echo htmlspecialchars($business_name); ?></title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/auth.css?v=3">
-    <?php
-        $hex = ltrim($branding['color'], '#');
-        if (strlen($hex) === 3) $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
-        $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr($hex,4,2));
-    ?>
-    <style>
-        :root {
-            --brand:          <?php echo $branding['color']; ?>;
-            --brand-glow:     rgba(<?php echo "$r,$g,$b"; ?>, 0.38);
-            --brand-gradient: <?php echo $branding['background']; ?>;
-        }
-    </style>
-</head>
-<body class="auth-page">
-    <div class="auth-container">
-        <div class="auth-header">
-            <div class="auth-icon-wrap">
-                <i class="fas fa-user-plus"></i>
-            </div>
-            <h1><?php echo htmlspecialchars($business_name); ?></h1>
-            <p>Create your ISP workspace</p>
-        </div>
 
-        <div class="auth-body">
-            <div class="auth-subtitle">
-                <h2>Get Started</h2>
-                <p>Enter your details to create an account</p>
-            </div>
-
-            <?php if ($error): ?>
-                <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-circle"></i>
-                    <span><?php echo htmlspecialchars($error); ?></span>
-                </div>
-            <?php endif; ?>
-
-            <?php if ($success): ?>
-                <div class="alert alert-success">
-                    <i class="fas fa-check-circle"></i>
-                    <span><?php echo $success; ?></span>
-                </div>
-                <div class="auth-link">
-                    <a href="login.php">Proceed to Login &rarr;</a>
-                </div>
-            <?php else: ?>
-                <form method="POST">
-                    <div class="form-group">
-                        <label>Username <span class="required">*</span></label>
-                        <input type="text" name="username" class="form-control-auth" required
-                               placeholder="Choose a username"
-                               value="<?php echo isset($_POST['username']) ? htmlspecialchars($_POST['username']) : ''; ?>">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Email Address <span class="required">*</span></label>
-                        <input type="email" name="email" class="form-control-auth" required
-                               placeholder="Enter your email"
-                               value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Password <span class="required">*</span></label>
-                        <div class="input-wrapper">
-                            <input type="password" name="password" id="password" class="form-control-auth"
-                                   required placeholder="Create a password" style="padding-right:44px;">
-                            <i class="fas fa-eye password-toggle" onclick="togglePw('password',this)"></i>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Confirm Password <span class="required">*</span></label>
-                        <div class="input-wrapper">
-                            <input type="password" name="confirm_password" id="confirm_password"
-                                   class="form-control-auth" required placeholder="Confirm your password"
-                                   style="padding-right:44px;">
-                            <i class="fas fa-eye password-toggle" onclick="togglePw('confirm_password',this)"></i>
-                        </div>
-                    </div>
-
-                    <button type="submit" class="btn-auth">
-                        <span>Create Account</span>
-                        <i class="fas fa-arrow-right"></i>
-                    </button>
-                </form>
-
-                <div class="auth-link">
-                    Already have an account? <a href="login.php">Sign in here</a>
-                </div>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <script>
-        function togglePw(id, icon) {
-            const inp = document.getElementById(id);
-            const show = inp.type === 'password';
-            inp.type = show ? 'text' : 'password';
-            icon.classList.toggle('fa-eye', !show);
-            icon.classList.toggle('fa-eye-slash', show);
-        }
-    </script>
-</body>
-</html>
+$showSignup = true;
+$showLogin = true;
+$publicHome = 'login.php';
+function landingEscape($value) { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }
+require __DIR__ . '/includes/public_landing.php';

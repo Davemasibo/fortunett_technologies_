@@ -26,13 +26,16 @@
             toggle.setAttribute('aria-pressed', String(show));
         });
     }
-    document.getElementById('login-form')?.addEventListener('submit', e => {
+    document.querySelector('#login-form, #signup-form')?.addEventListener('submit', e => {
         const submit = e.currentTarget.querySelector('[type=submit]');
         submit.disabled = true;
-        submit.textContent = 'Signing in…';
+        submit.textContent = e.currentTarget.id === 'signup-form' ? 'Creating workspace…' : 'Signing in…';
     });
     window.addEventListener('pageshow', () => {
-        const submit = document.querySelector('#login-form [type=submit]');
-        if (submit) { submit.disabled = false; submit.textContent = 'Sign in to workspace →'; }
+        const submit = document.querySelector('#login-form [type=submit], #signup-form [type=submit]');
+        if (submit) {
+            submit.disabled = false;
+            submit.textContent = submit.form.id === 'signup-form' ? 'Create your workspace ↗' : 'Sign in to workspace →';
+        }
     });
 })();

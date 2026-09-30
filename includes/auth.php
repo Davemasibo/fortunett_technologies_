@@ -4,7 +4,15 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 function isLoggedIn() {
-    return isset($_SESSION['user_id']) || isset($_SESSION['user']);
+    $loggedIn = isset($_SESSION['user_id']) || isset($_SESSION['user']);
+    if (!$loggedIn || !empty($_SESSION['is_super_admin'])) return $loggedIn;
+    $host = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? '')[0]);
+    if ($host === 'fortunetttech.site' || $host === 'www.fortunetttech.site') return false;
+    if (preg_match('/^([a-z0-9-]+)\.fortunetttech\.site$/D', $host, $match)) {
+        return !empty($_SESSION['tenant_id']) && !empty($_SESSION['tenant_subdomain'])
+            && hash_equals(strtolower((string)$_SESSION['tenant_subdomain']), $match[1]);
+    }
+    return $loggedIn;
 }
 
 function redirectIfNotLoggedIn() {

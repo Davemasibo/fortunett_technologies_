@@ -1,7 +1,9 @@
 <?php
 require_once __DIR__ . '/includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
-if (isLoggedIn()) { header('Location: dashboard.php'); exit; }
+require_once __DIR__ . '/includes/google_auth.php';
+$pendingGoogleLink = googlePending('google_link');
+
 $_SESSION['login_csrf'] ??= bin2hex(random_bytes(32));
 $branding = ['name'=>'FortuNett Technologies', 'logo'=>''];
 $tenant_id = null;
@@ -24,6 +26,7 @@ if ($subdomain !== null) {
         if (is_string($logo) && preg_match('~^(?:https://|/?uploads/)~i', $logo)) $branding['logo'] = $logo;
     } catch (PDOException $e) { /* Branding is optional. */ }
 }
+if (isLoggedIn()) { header('Location: dashboard.php'); exit; }
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -46,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = "Please verify your email address before logging in. <br><a href='resend_verification.php?email={$encodedEmail}' style='color: #EF4444; text-decoration: underline; margin-top: 5px; display: inline-block;'>Resend verification email</a>";
                 } elseif (!empty($user['is_super_admin'])) {
                     // Super admin: redirect to dedicated portal
+                    completeGooglePasswordLink($pdo, $user);
                     session_regenerate_id(true);
                         loginUser($user['id'], $user['username'], $user['role']);
                     $_SESSION['is_super_admin'] = true;
@@ -53,12 +57,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     exit;
                 } else {
                     // Tenant user: enforce tenant isolation
-                    if ($tenant_id && $user['tenant_id'] != $tenant_id) {
+                    if (!$tenant_id) {
+                        $workspaceUrl = googleTenantLoginUrl($pdo, (int)$user['tenant_id']);
+                        $error = 'Sign in on your own workspace: <a href="' . htmlspecialchars($workspaceUrl, ENT_QUOTES, 'UTF-8') . '">Open your workspace</a>.';
+                    } elseif ($user['tenant_id'] != $tenant_id) {
                         $error = "This account does not belong to this workspace.";
                     } elseif (!$user['tenant_id'] && $tenant_id) {
                         $error = "Account not associated with a tenant. Contact support.";
                     } else {
-                        session_regenerate_id(true);
+                        completeGooglePasswordLink($pdo, $user);
+                    session_regenerate_id(true);
                         loginUser($user['id'], $user['username'], $user['role']);
                         // Set tenant context in session
                         $activeTenantId = $user['tenant_id'] ?? $tenant_id;
@@ -77,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $error = "Invalid username or password";
             }
-        } catch (PDOException $e) {
+        } catch (Throwable $e) {
             $error = "Login error. Please try again.";
         }
     } else {
@@ -87,7 +95,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 }
 
-$publicHome = $tenant_id !== null ? 'https://www.fortunetttech.site/login.php' : 'login.php';
-$showLogin = $tenant_id !== null || isset($_GET['signin']) || $_SERVER['REQUEST_METHOD'] === 'POST';
+$publicHome = 'login.php';
+$signInUrl = 'login.php?signin=1';
+$signupUrl = $tenant_id !== null ? 'https://www.fortunetttech.site/signup.php' : 'signup.php';
+if ($tenant_id !== null && in_array($host, ['localhost','127.0.0.1'], true)) {
+    $publicHome .= '?tenant=' . rawurlencode($subdomain);
+    $signInUrl .= '&tenant=' . rawurlencode($subdomain);
+}
+$showLogin = isset($_GET['signin']) || $_SERVER['REQUEST_METHOD'] === 'POST';
 function landingEscape($value) { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }
 require __DIR__ . '/includes/public_landing.php';

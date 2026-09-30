@@ -1,0 +1,72 @@
+FortuNett Google sign-in setup
+
+The backend and both buttons are implemented. Real Google sign-in stays
+unavailable until GOOGLE_CLIENT_ID is configured. No client secret is required
+for this Google Identity Services ID-token flow.
+
+1. In Google Cloud Console, select or create a project. Open Google Auth Platform
+   and configure Branding (FortuNett Technologies, support email and contact),
+   Audience, and a Web application client. Use the basic identity scopes only:
+   openid, email, profile. Supply real published policy URLs where requested.
+
+2. Add these Authorized JavaScript origins (origins only, no /login.php path):
+   https://www.fortunetttech.site
+   https://fortunetttech.site
+
+   To enable Google directly on a tenant login, also register its exact origin:
+   https://ghettohlink.fortunetttech.site
+   https://ecolandattic.fortunetttech.site
+   Add other tenant origins as needed. Do not use wildcard origins.
+   For local development, register the exact localhost origin and port.
+   This implementation uses the JavaScript credential callback; it does not
+   require an OAuth authorization-code redirect URI.
+
+3. Copy the Web client ID, ending in .apps.googleusercontent.com, into the server
+   environment or the existing private .env file:
+   GOOGLE_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
+
+4. Deploy the application files and composer.json/composer.lock. Run:
+   composer install --no-dev --prefer-dist --optimize-autoloader
+   The locked Google dependencies require PHP 8.1 or newer. The local checks ran
+   on PHP 8.2. Enable OpenSSL and allow outbound HTTPS to www.googleapis.com.
+   The server creates google_identities on first use; alternatively apply
+   sql/migrations/2026-09-30-google-identities.sql before serving requests.
+
+5. If the Google app is in Testing, add your Google account as a test user in
+   Audience. Test sign-in on the main domain and each configured tenant origin.
+   Publish the Google app when its branding/audience setup is ready for users.
+
+Behavior
+- Google renders the official button and logo after configuration.
+- Google signatures, audience, issuer, expiry, verified email and a session-bound
+  nonce are checked server-side; the callback also checks a session CSRF token.
+- An existing account must confirm its password once before Google is linked.
+  Matching email alone never grants access to an existing account.
+- Google identities are stored using Google's stable sub identifier.
+- A new Google user completes workspace setup by choosing a username. The normal
+  tenant creation, plan assignment and signup-enabled gate apply.
+- Gmail/Google Workspace-owned addresses can complete signup immediately;
+  other Google-account email addresses still use application email verification.
+- Google login respects the tenant selected by the request hostname. It does
+  not allow a user to join another tenant or acquire another tenant's role.
+- Password sign-in and password recovery remain available.
+- Sessions remain on the domain where login was initiated, matching the existing
+  password-login behavior. No cross-subdomain cookie sharing is introduced.
+
+Local validation used signed test tokens and isolated test accounts. A real
+Google consent/login exchange still needs validation with your client ID.
+
+Official references:
+https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid
+https://developers.google.com/identity/gsi/web/guides/display-button
+https://developers.google.com/identity/gsi/web/guides/verify-google-id-token
+
+Workspace-only login update:
+Tenant subdomains show the public landing page first; Sign in opens ?signin=1
+on the same subdomain. Tenant accounts cannot sign in on the main domain or
+another tenant subdomain, including with Google. The main domain directs an
+identified tenant to its assigned workspace. New Google signups finish with a
+link to sign in on the newly created workspace; no tenant session is created
+on the main domain. Register each tenant origin in Google Cloud before enabling
+Google login there. Existing tenant sessions are also checked against the
+workspace hostname by the shared page authentication guard.
