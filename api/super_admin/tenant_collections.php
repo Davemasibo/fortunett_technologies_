@@ -74,6 +74,8 @@ function _tcAgo(?string $ts): string
 }
 
 try {
+    require_once __DIR__ . '/../../includes/disbursements.php';
+    ensureDisbursementBalance($pdo);
     $out = ['success' => true, 'server_time' => date('H:i:s'), 'tenant_id' => $tenantId];
 
     // ── Windows ──────────────────────────────────────────────────────────────
@@ -86,9 +88,9 @@ try {
 
     // ── Float: collected through the platform paybill, not yet paid out ──────
     $st = $pdo->prepare("
-        SELECT COALESCE(SUM(CASE WHEN released_at IS NULL     THEN amount END), 0) unreleased,
+        SELECT COALESCE(SUM(CASE WHEN released_at IS NULL     THEN amount - disbursed_amount END), 0) unreleased,
                COUNT(CASE WHEN released_at IS NULL THEN 1 END)                     unreleased_count,
-               COALESCE(SUM(CASE WHEN released_at IS NOT NULL THEN amount END), 0) released,
+               COALESCE(SUM(CASE WHEN released_at IS NOT NULL THEN amount ELSE disbursed_amount END), 0) released,
                MIN(CASE WHEN released_at IS NULL THEN created_at END)              oldest_unreleased
         FROM payments
         WHERE tenant_id = ? AND status = 'completed' AND collection_type = 'platform'

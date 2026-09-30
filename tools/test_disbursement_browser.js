@@ -1,0 +1,71 @@
+const {chromium} = require('playwright');
+const assert = require('assert');
+const fs = require('fs');
+(async () => {
+    const browser = await chromium.launch({executablePath:process.env.PORTAL_BROWSER || 'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+    const errors = [];
+    const page = await browser.newPage({viewport:{width:1440,height:1000}});
+    page.on('pageerror', e=>errors.push(e.message));
+    const base = 'http://127.0.0.1:8765';
+    fs.mkdirSync('artifacts', {recursive:true});
+    try {
+        await page.goto(base+'/super_admin/disbursements.php?tenant_id=9');
+        assert(page.url().includes('login.php'));
+        await page.screenshot({path:'artifacts/super-admin-login-desktop.png',fullPage:true,animations:"disabled"});
+        await page.locator('#su-user').fill('browser-admin');
+        await page.locator('#su-pass').fill('Browser-test-only-42!');
+        await page.locator('#sa-show-password').click();
+        assert.equal(await page.locator('#su-pass').getAttribute('type'),'text');
+        await page.locator('#sa-show-password').click();
+        await Promise.all([page.waitForURL('**/disbursements.php?tenant_id=9'),page.locator('#sa-login-submit').click()]);
+        assert(await page.locator('#record-heading').isVisible());
+        await page.locator('#cash_amount').fill('12,306');
+        await page.locator('#platform_cost').fill('50');
+        await page.locator('#reference').fill('TEST-GHETTO-12306');
+        assert.equal(await page.locator('#summary-reduction').textContent(),'KES 12,306.00');
+        assert.equal(await page.locator('#summary-remaining').textContent(),'KES 2,694.00');
+        assert.equal(await page.locator('#summary-platform').textContent(),'KES 50.00');
+        await page.screenshot({path:'artifacts/super-admin-disbursement-desktop.png',fullPage:true,animations:"disabled"});
+        await page.locator('#fees_amount').fill('4000');
+        assert(await page.locator('#record-disbursement').isDisabled());
+        assert(await page.locator('#amount-feedback').isVisible());
+        await page.locator('#fees_amount').fill('0');
+        // Server-side validation preserves entries, including expenses and reference.
+        await Promise.all([page.waitForNavigation(), page.evaluate(()=>{
+            const form=document.getElementById('disbursement-form');
+            form.querySelector('[name=csrf]').value='expired-test-token';
+            const action=document.createElement('input');action.name='action';action.value='record';form.appendChild(action);
+            form.submit();
+        })]);
+        await page.locator('#disbursement-error').waitFor({state:'visible'});
+        assert(await page.locator('#disbursement-error').isVisible());
+        assert.equal(await page.locator('#cash_amount').inputValue(),'12,306');
+        assert.equal(await page.locator('#platform_cost').inputValue(),'50');
+        assert.equal(await page.locator('#reference').inputValue(),'TEST-GHETTO-12306');
+        await page.setViewportSize({width:390,height:844});
+        await page.waitForFunction(()=>document.querySelector('.sa-menu-toggle').getAttribute('aria-expanded') === 'false');
+        assert.equal(await page.locator('.sa-menu-toggle').getAttribute('aria-expanded'),'false');
+        await page.locator('.sa-menu-toggle').click();
+        assert.equal(await page.locator('.sa-menu-toggle').getAttribute('aria-expanded'),'true');
+        await page.locator('.sa-drawer-close').click();
+        assert.equal(await page.locator('.sa-menu-toggle').getAttribute('aria-expanded'),'false');
+        await page.waitForFunction(()=>document.documentElement.scrollWidth <= innerWidth+1);
+        await page.screenshot({path:'artifacts/super-admin-disbursement-mobile.png',fullPage:true,animations:"disabled"});
+        await page.locator('[name=confirmed]').check();
+        await Promise.all([page.waitForNavigation(),page.locator('#record-disbursement').click()]);
+        assert(await page.locator('.sa-alert-success').isVisible());
+        assert.match(await page.locator('tbody').textContent(),/TEST-GHETTO-12306/);
+        assert.match(await page.locator('.sa-summary-amount').textContent(),/2,694.00/);
+        // Re-recording the same transfer is rejected even though a balance remains.
+        await page.locator('#cash_amount').fill('100');
+        await page.locator('#reference').fill('TEST-GHETTO-12306');
+        await page.locator('[name=confirmed]').check();
+        await Promise.all([page.waitForNavigation(),page.locator('#record-disbursement').click()]);
+        assert.match(await page.locator('#disbursement-error').textContent(),/already recorded/);
+        await page.goto(base+'/super_admin/logout.php');
+        assert(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth+1));
+        await page.screenshot({path:'artifacts/super-admin-login-mobile.png',fullPage:true,animations:"disabled"});
+        assert.deepEqual(errors,[]);
+        console.log('PASS login return, password visibility, payout math, retained errors, partial settlement, duplicates and mobile navigation');
+    } finally { await browser.close(); }
+})().catch(e=>{console.error(e);process.exit(1);});

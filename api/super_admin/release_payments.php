@@ -9,6 +9,8 @@ require_once '../../super_admin/includes/auth.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 superAdminGuard();
+require_once __DIR__ . '/../../includes/disbursements.php';
+ensureDisbursementBalance($pdo);
 
 // Ensure released_at column exists (one-time migration)
 try { $pdo->exec("ALTER TABLE payments ADD COLUMN released_at DATETIME DEFAULT NULL"); } catch (Exception $e) {}
@@ -31,9 +33,9 @@ try {
                 t.company_name,
                 t.subdomain,
                 COUNT(CASE WHEN p.released_at IS NULL THEN 1 END)                          AS unreleased_count,
-                COALESCE(SUM(CASE WHEN p.released_at IS NULL THEN p.amount END), 0)        AS unreleased_amount,
-                COUNT(CASE WHEN p.released_at IS NOT NULL THEN 1 END)                      AS released_count,
-                COALESCE(SUM(CASE WHEN p.released_at IS NOT NULL THEN p.amount END), 0)    AS released_amount,
+                COALESCE(SUM(CASE WHEN p.released_at IS NULL THEN p.amount - p.disbursed_amount END), 0)        AS unreleased_amount,
+                COUNT(CASE WHEN p.released_at IS NOT NULL OR p.disbursed_amount > 0 THEN 1 END) AS released_count,
+                COALESCE(SUM(CASE WHEN p.released_at IS NOT NULL THEN p.amount ELSE p.disbursed_amount END), 0)    AS released_amount,
                 MAX(CASE WHEN p.released_at IS NOT NULL THEN p.released_at END)            AS last_released_at
             FROM payments p
             JOIN tenants t ON t.id = p.tenant_id

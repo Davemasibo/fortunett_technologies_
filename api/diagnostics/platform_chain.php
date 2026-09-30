@@ -343,6 +343,8 @@ try {
 
 try {
     require_once __DIR__ . '/../../includes/payouts.php';
+    require_once __DIR__ . '/../../includes/disbursements.php';
+    ensureDisbursementBalance($pdo);
     $pre = disbursementPreflight($pdo);
     $blocked = $pre['reasons'] ?? [];
     if (!empty($pre['ok'])) {
@@ -359,7 +361,7 @@ try {
 
 try {
     $owed = $pdo->query("
-        SELECT COUNT(DISTINCT p.tenant_id) AS tenants, COALESCE(SUM(p.amount),0) AS amount
+        SELECT COUNT(DISTINCT p.tenant_id) AS tenants, COALESCE(SUM(p.amount - p.disbursed_amount),0) AS amount
         FROM payments p
         WHERE p.status = 'completed' AND p.collection_type = 'platform' AND p.released_at IS NULL
     ")->fetch(PDO::FETCH_ASSOC) ?: ['tenants' => 0, 'amount' => 0];

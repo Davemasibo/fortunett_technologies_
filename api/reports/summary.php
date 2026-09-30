@@ -31,6 +31,8 @@ if (!$tenantId) {
 }
 
 $range = analyticsRange($_GET['range'] ?? '6m');
+require_once __DIR__ . '/../../includes/disbursements.php';
+ensureDisbursementBalance($pdo);
 $from  = $range['start'];
 $to    = $range['end_exclusive'];
 
@@ -107,15 +109,17 @@ $out['by_method'] = $q("
 // Whose bank the money is in. Reported because "we collected X" means something
 // different when part of X is still held by FortuNett awaiting disbursement.
 $out['by_route'] = $q("
-    SELECT
-        CASE
-            WHEN collection_type = 'platform' AND released_at IS NOT NULL THEN 'disbursed'
-            WHEN collection_type = 'platform'                             THEN 'awaiting_disbursement'
-            ELSE 'paid_to_you'
-        END AS name,
-        COUNT(*) AS n, COALESCE(SUM(amount),0) AS total
-    FROM payments
-    WHERE tenant_id = ? AND payment_date >= ? AND payment_date < ? AND status = 'completed'
+    SELECT name, COUNT(*) AS n, SUM(route_amount) AS total FROM (
+        SELECT routes.name,
+            CASE routes.name
+                WHEN 'disbursed' THEN CASE WHEN collection_type = 'platform' THEN CASE WHEN released_at IS NOT NULL THEN amount ELSE disbursed_amount END ELSE 0 END
+                WHEN 'awaiting_disbursement' THEN CASE WHEN collection_type = 'platform' AND released_at IS NULL THEN amount - disbursed_amount ELSE 0 END
+                ELSE CASE WHEN collection_type <> 'platform' THEN amount ELSE 0 END
+            END AS route_amount
+        FROM payments
+        CROSS JOIN (SELECT 'disbursed' AS name UNION ALL SELECT 'awaiting_disbursement' UNION ALL SELECT 'paid_to_you') routes
+        WHERE tenant_id = ? AND payment_date >= ? AND payment_date < ? AND status = 'completed'
+    ) split_payments WHERE route_amount > 0
     GROUP BY name ORDER BY total DESC
 ");
 

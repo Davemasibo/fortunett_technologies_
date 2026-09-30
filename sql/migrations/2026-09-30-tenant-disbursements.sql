@@ -11,6 +11,6 @@ CREATE TABLE IF NOT EXISTS tenant_disbursements (
 
 CREATE TABLE IF NOT EXISTS tenant_disbursement_items (
         disbursement_id INT NOT NULL, payment_id INT NOT NULL,
-        amount DECIMAL(12,2) NOT NULL, PRIMARY KEY(payment_id),
-        KEY disbursement_id (disbursement_id)
+        amount DECIMAL(12,2) NOT NULL, PRIMARY KEY(disbursement_id, payment_id),
+        KEY payment_id (payment_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

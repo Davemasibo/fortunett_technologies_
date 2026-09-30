@@ -107,7 +107,7 @@ try {
         GROUP BY DATE_FORMAT(payment_date, '%Y-%m-01')");
     $st->execute([$tenant_id]);
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) $collectionMonths[$row['month']] = $row;
-    $st = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM payments
+    $st = $pdo->prepare("SELECT COALESCE(SUM(amount - disbursed_amount),0) FROM payments
         WHERE tenant_id = ? AND status = 'completed' AND collection_type = 'platform' AND released_at IS NULL");
     $st->execute([$tenant_id]);
     $outstandingPayout = (float)$st->fetchColumn();

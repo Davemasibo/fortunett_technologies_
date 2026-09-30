@@ -90,8 +90,9 @@ $totalTenants = array_sum(array_column($plans, 'tenant_count'));
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 <link href="css/dark.css?v=2" rel="stylesheet">
-<link href="css/shell.css?v=1" rel="stylesheet">
-<script src="js/shell.js?v=1" defer></script>
+<link href="css/shell.css?v=2" rel="stylesheet">
+<link href="css/admin.css?v=1" rel="stylesheet">
+<script src="js/shell.js?v=2" defer></script>
 <style>
 :root{--sa-dark:#0f3460;--sa-mid:#16213e;--sa-accent:#e94560;--sidebar-w:240px;
       --neu-bg:#141414;--neu-surf:#1c1c1b;--neu-s2:#222221;--neu-border:rgba(255,255,255,.06);--neu-text:#e2e2e0;--neu-muted:#9a9a95;}
@@ -181,28 +182,10 @@ table a:hover{color:#93c5fd;}
 @media(max-width:700px){.form-grid{grid-template-columns:1fr;}}
 </style>
 </head>
-<body>
+<body class="sa-shell">
 
 <!-- Sidebar -->
-<div class="sidebar">
-    <div class="sidebar-brand">
-        <div class="badge-sa">SUPER ADMIN</div>
-        <h2><i class="fas fa-shield-alt me-2"></i>FortuNett</h2>
-        <p>Platform Administration</p>
-    </div>
-    <ul class="sidebar-menu">
-        <li><a href="index.php"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a></li>
-        <li><a href="tenants.php"><i class="fas fa-building"></i><span>Tenants</span></a></li>
-        <li><a href="billing.php"><i class="fas fa-file-invoice-dollar"></i><span>Platform Billing</span></a></li>
-        <li><a href="collections.php"><i class="fas fa-hand-holding-dollar"></i><span>Collections</span></a></li>
-        <li><a href="plans.php" class="active"><i class="fas fa-layer-group"></i><span>Subscription Plans</span></a></li>
-        <li><a href="mpesa.php"><i class="fas fa-mobile-alt"></i><span>Platform M-Pesa</span></a></li>
-        <li><a href="diagnostics.php"><i class="fas fa-heart-pulse"></i><span>Diagnostics</span></a></li>
-        <li><a href="settings.php"><i class="fas fa-cogs"></i><span>System Settings</span></a></li>
-        <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i><span>Logout</span></a></li>
-    </ul>
-    <div class="sidebar-footer">Logged in as <strong><?= htmlspecialchars($_SESSION['username'] ?? 'Super Admin') ?></strong></div>
-</div>
+<?php include __DIR__ . '/includes/navigation.php'; ?>
 
 <!-- Main -->
 <div class="main">
@@ -214,7 +197,7 @@ table a:hover{color:#93c5fd;}
         </div>
     </div>
 
-    <div class="content">
+    <div class="content" id="sa-main-content">
 
         <?php if ($successMsg): ?>
         <div class="alert-success"><i class="fas fa-check-circle"></i> <?= $successMsg ?></div>

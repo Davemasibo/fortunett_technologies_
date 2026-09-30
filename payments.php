@@ -126,14 +126,16 @@ $settlement = [
 try { $pdo->exec("ALTER TABLE payments ADD COLUMN released_at DATETIME DEFAULT NULL"); } catch (Exception $e) {}
 
 try {
+    require_once __DIR__ . '/includes/disbursements.php';
+    ensureDisbursementBalance($pdo);
     $sSt = $pdo->prepare("
         SELECT
             COALESCE(SUM(CASE WHEN collection_type <> 'platform' THEN amount END), 0)                          AS direct_amount,
             COUNT(CASE WHEN collection_type <> 'platform' THEN 1 END)                                          AS direct_count,
-            COALESCE(SUM(CASE WHEN collection_type = 'platform' AND released_at IS NULL THEN amount END), 0)    AS awaiting_amount,
+            COALESCE(SUM(CASE WHEN collection_type = 'platform' AND released_at IS NULL THEN amount - disbursed_amount END), 0)    AS awaiting_amount,
             COUNT(CASE WHEN collection_type = 'platform' AND released_at IS NULL THEN 1 END)                    AS awaiting_count,
-            COALESCE(SUM(CASE WHEN collection_type = 'platform' AND released_at IS NOT NULL THEN amount END), 0) AS disbursed_amount,
-            COUNT(CASE WHEN collection_type = 'platform' AND released_at IS NOT NULL THEN 1 END)                 AS disbursed_count
+            COALESCE(SUM(CASE WHEN collection_type = 'platform' THEN CASE WHEN released_at IS NOT NULL THEN amount ELSE disbursed_amount END END), 0) AS disbursed_amount,
+            COUNT(CASE WHEN collection_type = 'platform' AND (released_at IS NOT NULL OR disbursed_amount > 0) THEN 1 END) AS disbursed_count
         FROM payments
         WHERE tenant_id = ? AND status = 'completed'
     ");

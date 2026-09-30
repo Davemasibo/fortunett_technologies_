@@ -16,6 +16,8 @@
 require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
 superAdminGuard();
+require_once __DIR__ . '/../includes/disbursements.php';
+ensureDisbursementBalance($pdo);
 require_once __DIR__ . '/../includes/platform_billing.php';
 
 $tab   = $_GET['tab'] ?? 'in';
@@ -58,9 +60,9 @@ $heldTotals = ['unreleased' => 0.0, 'released' => 0.0, 'commission' => 0.0];
 try {
     $st = $pdo->query("
         SELECT t.id, t.company_name, t.subdomain,
-               COALESCE(SUM(CASE WHEN p.released_at IS NULL THEN p.amount END), 0) AS unreleased,
+               COALESCE(SUM(CASE WHEN p.released_at IS NULL THEN p.amount - p.disbursed_amount END), 0) AS unreleased,
                COUNT(CASE WHEN p.released_at IS NULL THEN 1 END)                   AS unreleased_count,
-               COALESCE(SUM(CASE WHEN p.released_at IS NOT NULL THEN p.amount END), 0) AS released,
+               COALESCE(SUM(CASE WHEN p.released_at IS NOT NULL THEN p.amount ELSE p.disbursed_amount END), 0) AS released,
                MIN(CASE WHEN p.released_at IS NULL THEN p.payment_date END)        AS oldest_unreleased
         FROM tenants t
         JOIN payments p ON p.tenant_id = t.id
@@ -147,8 +149,9 @@ if (is_readable($logFile)) {
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 <link href="css/dark.css?v=2" rel="stylesheet">
-<link href="css/shell.css?v=1" rel="stylesheet">
-<script src="js/shell.js?v=1" defer></script>
+<link href="css/shell.css?v=2" rel="stylesheet">
+<link href="css/admin.css?v=1" rel="stylesheet">
+<script src="js/shell.js?v=2" defer></script>
 <style>
 :root{--sa-dark:#0f3460;--sa-mid:#16213e;--sa-accent:#e94560;--sidebar-w:240px;
       --neu-bg:#141414;--neu-surf:#1c1c1b;--neu-s2:#222221;--neu-border:rgba(255,255,255,.06);--neu-text:#e2e2e0;--neu-muted:#9a9a95;}
@@ -198,30 +201,12 @@ tr:hover td{background:rgba(255,255,255,.03);}
 .logline{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#fca5a5;padding:6px 20px;border-bottom:1px solid rgba(255,255,255,.04);word-break:break-all;}
 </style>
 </head>
-<body>
-<div class="sidebar">
-    <div class="sidebar-brand">
-        <span class="badge-sa">SUPER ADMIN</span>
-        <h2>FortuNett</h2>
-        <p>Platform Administration</p>
-    </div>
-    <ul class="sidebar-menu">
-        <li><a href="index.php"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a></li>
-        <li><a href="tenants.php"><i class="fas fa-building"></i><span>Tenants</span></a></li>
-        <li><a href="billing.php"><i class="fas fa-file-invoice-dollar"></i><span>Platform Billing</span></a></li>
-        <li><a href="collections.php" class="active"><i class="fas fa-hand-holding-dollar"></i><span>Collections</span></a></li>
-        <li><a href="plans.php"><i class="fas fa-layer-group"></i><span>Subscription Plans</span></a></li>
-        <li><a href="mpesa.php"><i class="fas fa-mobile-alt"></i><span>Platform M-Pesa</span></a></li>
-        <li><a href="diagnostics.php"><i class="fas fa-heart-pulse"></i><span>Diagnostics</span></a></li>
-        <li><a href="settings.php"><i class="fas fa-cogs"></i><span>System Settings</span></a></li>
-        <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i><span>Logout</span></a></li>
-    </ul>
-    <div class="sidebar-footer">Logged in as <strong><?= htmlspecialchars($_SESSION['username'] ?? 'Super Admin') ?></strong></div>
-</div>
+<body class="sa-shell">
+<?php include __DIR__ . '/includes/navigation.php'; ?>
 
 <div class="main">
     <div class="topbar"><h1>Collections</h1></div>
-    <div class="content">
+    <div class="content" id="sa-main-content">
 
         <div class="stats-grid">
             <div class="stat-card">
