@@ -162,6 +162,8 @@ try {
             $activation = [
                 'attempted'   => true,
                 'expiry_date' => $res['expiry_date'] ?? null,
+                'periods' => $res['periods'] ?? null,
+                'account_balance' => $res['account_balance'] ?? null,
                 'steps'       => $res['steps'] ?? [],
             ];
         } catch (Throwable $pipeErr) {
@@ -173,12 +175,18 @@ try {
         }
     }
 
-    $msg = 'Transaction recorded successfully';
-    if (!empty($activation['expiry_date'])) {
-        $msg = 'Payment recorded — customer reconnected until '
-             . date('d M Y H:i', strtotime($activation['expiry_date']));
+    $msg = 'Payment recorded. Subscription activation needs review.';
+    if (!empty($activation['error'])) {
+        $msg = 'Payment recorded, but automatic activation could not complete. Review this payment before adding time or recording it again.';
     } elseif ($payStatus !== 'completed') {
-        $msg = 'Payment recorded as unverified — the customer is NOT reconnected until you verify it';
+        $msg = 'Payment recorded as unverified. Subscription time has not been added.';
+    } elseif (isset($activation['periods']) && (int)$activation['periods'] === 0) {
+        $msg = 'Payment recorded as credit. Balance: KES ' . number_format((float)$activation['account_balance'], 2)
+            . '. No period added yet; the balance must cover a full package period.';
+    } elseif (!empty($activation['expiry_date'])) {
+        $msg = 'Payment recorded. ' . (int)($activation['periods'] ?? 1) . ' package period(s) added; expiry: '
+            . date('d M Y H:i', strtotime($activation['expiry_date'])) . '.';
+        if ((float)($activation['account_balance'] ?? 0) > 0) $msg .= ' Remaining credit: KES ' . number_format((float)$activation['account_balance'], 2) . '.';
     }
 
     echo json_encode([

@@ -14,4 +14,9 @@ $pdo->exec("CREATE TABLE payments(id INT PRIMARY KEY, tenant_id INT, amount DECI
 $pdo->exec("INSERT INTO payments(id,tenant_id,amount,collection_type,status,payment_date,created_at) VALUES(1,9,15000,'platform','completed','2026-09-29 10:00:00','2026-09-29 10:00:00')");
 $pdo->exec("CREATE TABLE isp_payout_queue(id INT PRIMARY KEY,tenant_id INT,payment_id INT,status VARCHAR(20),processed_at DATETIME NULL,notes TEXT) ENGINE=InnoDB");
 $pdo->exec("INSERT INTO isp_payout_queue(id,tenant_id,payment_id,status) VALUES(1,9,1,'pending')");
+$pdo->exec("ALTER TABLE tenants ADD subdomain VARCHAR(100), ADD admin_user_id INT, ADD status VARCHAR(20) DEFAULT 'active', ADD suspended_at DATETIME NULL, ADD suspended_reason VARCHAR(255) NULL");
+$install = file_get_contents(__DIR__ . '/../sql/install.sql');
+preg_match('/CREATE TABLE IF NOT EXISTS `platform_invoices`.*?ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;/s', $install, $invoiceSchema);
+$pdo->exec($invoiceSchema[0]);
+$pdo->exec("INSERT INTO platform_invoices(id,invoice_number,tenant_id,billing_period,base_fee,status,due_date,paid_at,payment_method,transaction_ref) VALUES(9,'INV-2026-09-0009',9,'2026-09-01',637.48,'paid','2026-09-25','2026-09-25','manual','MANUAL-6B863B')");
 echo "Isolated browser fixture ready.\n";

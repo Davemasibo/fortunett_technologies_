@@ -28,6 +28,33 @@ if ($invoiceId) {
     $invoiceDetail = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
+// Explicit invoice offsets share the payment allocation ledger with payouts.
+$_SESSION['invoice_offset_csrf'] ??= bin2hex(random_bytes(32));
+$offsetError = ''; $offsetAvailable = 0; $offsetRows = []; $offsetReady = false;
+$offsetCutoff = (new DateTimeImmutable('now', new DateTimeZone('Africa/Nairobi')))->format('Y-m-d H:i:s');
+if ($invoiceDetail) {
+    try {
+        require_once __DIR__ . '/../includes/disbursements.php';
+        ensureDisbursementSchema($pdo);
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'invoice_offset') {
+            if (!hash_equals($_SESSION['invoice_offset_csrf'], (string)($_POST['csrf'] ?? ''))) throw new InvalidArgumentException('Session expired. Reload and try again.');
+            if (empty($_POST['confirm_offset'])) throw new InvalidArgumentException('Confirm the invoice deduction first.');
+            $offsetId = recordDisbursement($pdo, (int)$invoiceDetail['tenant_id'], (int)$_SESSION['user_id'], [
+                'cutoff'=>$_POST['cutoff'] ?? '', 'disbursed_at'=>$offsetCutoff,
+                'cash_amount'=>'0', 'fees_amount'=>(string)$invoiceDetail['total_due'], 'platform_cost'=>'0',
+                'notes'=>'Invoice settlement from collections', 'replace_manual'=>!empty($_POST['replace_manual']),
+                'expected_gross'=>$_POST['expected_gross'] ?? '', 'expected_count'=>$_POST['expected_count'] ?? 0,
+            ], $invoiceId);
+            $_SESSION['invoice_offset_success'] = $invoiceId;
+            header('Location: billing.php?invoice=' . $invoiceId); exit;
+        }
+        $offsetRows = disbursementPayments($pdo, (int)$invoiceDetail['tenant_id'], $offsetCutoff);
+        $offsetAvailable = array_sum(array_map(fn($r)=>disbursementMoney((string)$r['amount']), $offsetRows)) / 100;
+        $offsetReady = true;
+    } catch (InvalidArgumentException $e) { $offsetError = $e->getMessage(); }
+    catch (Throwable $e) { error_log('Invoice offset: ' . $e->getMessage()); $offsetError = 'Could not prepare or save the deduction. Reload to review the current balance.'; }
+}
+
 // Build invoice list query
 $where  = [];
 $params = [];
@@ -208,6 +235,33 @@ table a:hover{color:#93c5fd;}
                 <div class="detail-item"><label>Transaction Ref</label><span><?= htmlspecialchars($invoiceDetail['transaction_ref'] ?? '—') ?></span></div>
                 <div class="detail-item"><label>Admin Email</label><span><?= htmlspecialchars($invoiceDetail['admin_email'] ?? '—') ?></span></div>
             </div>
+
+            <?php if ($offsetError): ?><p role="alert"><?= htmlspecialchars($offsetError) ?></p><?php endif; ?>
+            <?php if (($_SESSION['invoice_offset_success'] ?? 0) === $invoiceId): unset($_SESSION['invoice_offset_success']); ?>
+                <p role="status">Invoice settled from collections. The tenant's awaiting balance and payout history have been updated.</p>
+            <?php endif; ?>
+            <?php if ($invoiceDetail['payment_method'] === 'collections_offset'): ?>
+                <p>Settled by deduction from collections; no separate cash payment was received.</p>
+            <?php elseif ($offsetReady && (in_array($invoiceDetail['status'], ['pending','overdue'], true) || ($invoiceDetail['status'] === 'paid' && $invoiceDetail['payment_method'] === 'manual'))): ?>
+            <form method="post" class="inv-actions" style="display:block;">
+                <h3>Deduct invoice from collections</h3>
+                <p>Awaiting payout: <strong>KSH <?= number_format($offsetAvailable, 2) ?></strong>.
+                Invoice deduction: <strong>KSH <?= number_format($invoiceDetail['total_due'], 2) ?></strong>.
+                Remaining after deduction: <strong>KSH <?= number_format($offsetAvailable - (float)$invoiceDetail['total_due'], 2) ?></strong>.</p>
+                <p>This settles this invoice once using currently undistributed collections. It does not send money.</p>
+                <input type="hidden" name="action" value="invoice_offset">
+                <input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['invoice_offset_csrf']) ?>">
+                <input type="hidden" name="cutoff" value="<?= htmlspecialchars($offsetCutoff) ?>">
+                <input type="hidden" name="expected_gross" value="<?= number_format($offsetAvailable, 2, '.', '') ?>">
+                <input type="hidden" name="expected_count" value="<?= count($offsetRows) ?>">
+                <?php if ($invoiceDetail['status'] === 'paid'): ?>
+                <p><label><input type="checkbox" name="replace_manual" value="1" required> The manual Paid entry was only a placeholder to prevent suspension. No separate payment was received for this invoice.</label></p>
+                <?php endif; ?>
+                <p><label><input type="checkbox" name="confirm_offset" value="1" required> Deduct KSH <?= number_format($invoiceDetail['total_due'], 2) ?> from this tenant's awaiting payout balance.</label></p>
+                <button type="submit" class="btn-paid" <?= $offsetAvailable < (float)$invoiceDetail['total_due'] ? 'disabled' : '' ?>>Deduct invoice from collections</button>
+                <?php if ($offsetAvailable < (float)$invoiceDetail['total_due']): ?><p>Insufficient undistributed collections to settle this invoice.</p><?php endif; ?>
+            </form>
+            <?php endif; ?>
 
             <?php if ($invoiceDetail['status'] !== 'paid'): ?>
             <div class="inv-actions">

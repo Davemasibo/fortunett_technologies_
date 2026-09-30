@@ -108,5 +108,34 @@ try {
     $dashboardQuery = $pdo->prepare($dashboardSql[1]); $dashboardQuery->execute([1]);
     $balances = $dashboardQuery->fetch(PDO::FETCH_ASSOC);
     checkDisbursement((float)$balances['awaiting'] === 854.0 && (float)$balances['disbursed'] === 1400.0, 'tenant dashboard agrees with payout and billing balances');
+    $pdo->exec("ALTER TABLE tenants ADD status VARCHAR(20) DEFAULT 'active', ADD suspended_at DATETIME NULL, ADD suspended_reason VARCHAR(255) NULL");
+    $pdo->exec("CREATE TABLE platform_invoices(id INT PRIMARY KEY, tenant_id INT, invoice_number VARCHAR(30), total_due DECIMAL(15,2), status VARCHAR(20), paid_at DATETIME NULL, payment_method VARCHAR(50), transaction_ref VARCHAR(100), notes TEXT) ENGINE=InnoDB");
+    $pdo->exec("INSERT INTO platform_invoices VALUES(9,1,'INV-2026-09-0009',637.48,'paid','2026-09-25','manual','MANUAL-6B863B',NULL),
+        (10,1,'PAID-MPESA',20,'paid','2026-09-25','mpesa','REAL-PAYMENT',NULL),
+        (11,2,'OTHER-TENANT',20,'pending',NULL,NULL,NULL,NULL),
+        (12,1,'TOO-LARGE',900,'pending',NULL,NULL,NULL,NULL),
+        (13,1,'OPEN-INVOICE',16.52,'pending',NULL,NULL,NULL,NULL)");
+    $offset = ['cutoff'=>'2026-09-30T12:00','disbursed_at'=>'2026-09-30T12:00','cash_amount'=>'0','fees_amount'=>'637.48',
+        'platform_cost'=>'0','notes'=>'Invoice deduction','expected_gross'=>'854','expected_count'=>1];
+    checkDisbursement(rejectDisbursement(fn()=>recordDisbursement($pdo,1,9,$offset,9)), 'manual paid placeholder requires explicit no-cash confirmation');
+    $offset['replace_manual'] = true;
+    checkDisbursement(rejectDisbursement(fn()=>recordDisbursement($pdo,1,9,$offset,10)), 'separately paid invoice cannot be deducted again');
+    checkDisbursement(rejectDisbursement(fn()=>recordDisbursement($pdo,1,9,$offset,11)), 'invoice belonging to another tenant rejected');
+    checkDisbursement(rejectDisbursement(fn()=>recordDisbursement($pdo,1,9,array_merge($offset,['fees_amount'=>'900']),12)), 'invoice exceeding available collections rejected');
+    checkDisbursement(rejectDisbursement(fn()=>recordDisbursement($pdo,1,9,array_merge($offset,['fees_amount'=>'637']),9)), 'invoice deduction cannot be rounded or tampered');
+    $offsetId = recordDisbursement($pdo,1,9,$offset,9);
+    $balanceQuery->execute([1]);
+    checkDisbursement((float)$balanceQuery->fetchColumn() === 216.52, '637.48 invoice deduction leaves tenant exactly 216.52');
+    $inv = $pdo->query('SELECT * FROM platform_invoices WHERE id=9')->fetch(PDO::FETCH_ASSOC);
+    checkDisbursement($inv['status'] === 'paid' && $inv['payment_method'] === 'collections_offset' && str_contains($inv['notes'],'MANUAL-6B863B'), 'invoice stays paid and preserves original manual reference');
+    $ledger = $pdo->query('SELECT * FROM tenant_disbursements WHERE id=' . $offsetId)->fetch(PDO::FETCH_ASSOC);
+    checkDisbursement($ledger['cash_amount'] === '0.00' && $ledger['fees_amount'] === '637.48', 'invoice deduction does not invent a cash payout');
+    checkDisbursement(rejectDisbursement(fn()=>recordDisbursement($pdo,1,9,$offset,9)), 'repeat invoice deduction blocked');
+    $dashboardQuery->execute([1]);
+    checkDisbursement((float)$dashboardQuery->fetch(PDO::FETCH_ASSOC)['awaiting'] === 216.52, 'tenant dashboard reflects invoice deduction');
+    $pdo->exec("UPDATE tenants SET status='suspended' WHERE id=1");
+    recordDisbursement($pdo,1,9,array_merge($offset,['fees_amount'=>'16.52','expected_gross'=>'216.52']),13);
+    checkDisbursement($pdo->query('SELECT status FROM platform_invoices WHERE id=13')->fetchColumn() === 'paid', 'unpaid invoice can also be settled from collections');
+    checkDisbursement($pdo->query('SELECT status FROM tenants WHERE id=1')->fetchColumn() === 'suspended', 'other open invoice prevents reactivation');
     echo "$checks checks passed.\n";
 } finally { $pdo->exec("DROP DATABASE `$schema`"); }

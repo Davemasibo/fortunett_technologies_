@@ -1,5 +1,5 @@
 <?php
-// Manual confirmations of money already transferred, never a money-transfer API.
+// Ledger for confirmed transfers and explicit invoice offsets; never a money-transfer API.
 function ensureDisbursementBalance(PDO $pdo): void
 {
     require_once __DIR__ . '/schema_guard.php';
@@ -79,9 +79,9 @@ function disbursementPayments(PDO $pdo, int $tenantId, string $cutoff, bool $loc
     return $st->fetchAll(PDO::FETCH_ASSOC);
 }
 
-function recordDisbursement(PDO $pdo, int $tenantId, int $actorId, array $input): int
+function recordDisbursement(PDO $pdo, int $tenantId, int $actorId, array $input, ?int $invoiceId = null): int
 {
-    $reference = trim($input['reference'] ?? '');
+    $reference = $invoiceId !== null ? 'COLLECTIONS-INVOICE-' . $invoiceId : trim($input['reference'] ?? '');
     $notes = trim($input['notes'] ?? '');
     $cutoff = disbursementDate((string)($input['cutoff'] ?? ''), 'Collections through');
     $paidAt = disbursementDate((string)($input['disbursed_at'] ?? ''), 'Transfer date');
@@ -93,7 +93,7 @@ function recordDisbursement(PDO $pdo, int $tenantId, int $actorId, array $input)
     $fees = disbursementMoney(trim((string)($input['fees_amount'] ?? '')) ?: '0');
     $platformCost = disbursementMoney(trim((string)($input['platform_cost'] ?? '')) ?: '0');
     $expected = disbursementMoney((string)($input['expected_gross'] ?? ''));
-    if ($cash <= 0 || ($fees > 0 && $notes === '')) {
+    if (($invoiceId === null ? $cash <= 0 : ($cash !== 0 || $fees <= 0 || $platformCost !== 0)) || ($fees > 0 && $notes === '')) {
         throw new InvalidArgumentException('Enter the cash sent and explain any fees withheld in the notes.');
     }
     $pdo->beginTransaction();
@@ -101,6 +101,23 @@ function recordDisbursement(PDO $pdo, int $tenantId, int $actorId, array $input)
         $tenant = $pdo->prepare('SELECT id FROM tenants WHERE id = ? FOR UPDATE');
         $tenant->execute([$tenantId]);
         if (!$tenant->fetchColumn()) throw new InvalidArgumentException('Tenant not found.');
+        $invoice = null;
+        if ($invoiceId !== null) {
+            $st = $pdo->prepare('SELECT * FROM platform_invoices WHERE id = ? AND tenant_id = ? FOR UPDATE');
+            $st->execute([$invoiceId, $tenantId]);
+            $invoice = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$invoice || !in_array($invoice['status'], ['pending', 'overdue', 'paid'], true)) {
+                throw new InvalidArgumentException('This invoice cannot be settled from collections.');
+            }
+            if ($invoice['status'] === 'paid' && ($invoice['payment_method'] !== 'manual' || empty($input['replace_manual']))) {
+                throw new InvalidArgumentException('Invoice is already paid. A manual placeholder requires explicit confirmation that no separate payment was received.');
+            }
+            if (disbursementMoney((string)$invoice['total_due']) !== $fees) {
+                throw new InvalidArgumentException('Invoice amount changed. Reload before deducting it.');
+            }
+            $notes = 'Invoice ' . $invoice['invoice_number'] . ' settled from collections.';
+            if ($invoice['status'] === 'paid') $notes .= ' Replaces manual placeholder ' . $invoice['transaction_ref'];
+        }
         $dup = $pdo->prepare('SELECT id FROM tenant_disbursements WHERE tenant_id = ? AND reference = ?');
         $dup->execute([$tenantId, $reference]);
         if ($dup->fetchColumn()) throw new InvalidArgumentException('This transfer reference is already recorded.');
@@ -153,6 +170,17 @@ function recordDisbursement(PDO $pdo, int $tenantId, int $actorId, array $input)
             $release->execute([$row['amount'] / 100, $row['full'] ? $paidAt : null, $note, $row['id'], $tenantId]);
             $settle->execute([$row['full'] ? 'paid' : 'cancelled', $row['full'] ? $paidAt : null,
                 $note . ($row['full'] ? '' : ' - remaining balance requires manual disbursement'), $row['id'], $tenantId]);
+        }
+        if ($invoice !== null) {
+            $audit = $notes . ' Previous paid date: ' . ($invoice['paid_at'] ?? 'none');
+            $pdo->prepare("UPDATE platform_invoices SET status='paid', paid_at=?, payment_method='collections_offset',
+                transaction_ref=?, notes=CONCAT(COALESCE(notes,''), CHAR(10), ?) WHERE id=? AND tenant_id=?")
+                ->execute([$paidAt, $reference, $audit, $invoiceId, $tenantId]);
+            $open = $pdo->prepare("SELECT COUNT(*) FROM platform_invoices WHERE tenant_id=? AND status IN ('pending','overdue')");
+            $open->execute([$tenantId]);
+            if ((int)$open->fetchColumn() === 0) {
+                $pdo->prepare("UPDATE tenants SET status='active', suspended_at=NULL, suspended_reason=NULL WHERE id=? AND status='suspended'")->execute([$tenantId]);
+            }
         }
         $pdo->commit();
         return $id;

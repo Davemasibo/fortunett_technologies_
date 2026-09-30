@@ -56,7 +56,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         $rSettle = in_array(($r['status'] ?? ''), ['failed','cancelled'], true)
             ? 'No funds moved'
             : (($r['status'] ?? '') !== 'completed' ? 'Not yet received' : ($rColl === 'platform'
-                ? ($rRel ? 'Disbursed to you' : 'Awaiting disbursement')
+                ? ($rRel ? 'Settled (payouts / deductions)' : 'Awaiting disbursement')
                 : 'Paid to you directly'));
         fputcsv($out, [
             $r['id'],
@@ -512,9 +512,9 @@ include 'includes/sidebar.php';
                 <div class="settle-sub"><?php echo (int)$settlement['awaiting_count']; ?> payment(s) — collected by the FortuNett till, owed to you</div>
             </div>
             <div class="settle-card disbursed">
-                <div class="settle-label"><i class="fas fa-check-circle"></i> Disbursed to you</div>
+                <div class="settle-label"><i class="fas fa-check-circle"></i> Settled (payouts / deductions)</div>
                 <div class="settle-value">KES <?php echo number_format((float)$settlement['disbursed_amount'], 2); ?></div>
-                <div class="settle-sub"><?php echo (int)$settlement['disbursed_count']; ?> payment(s) — already remitted to your account</div>
+                <div class="settle-sub"><?php echo (int)$settlement['disbursed_count']; ?> payment(s) — settled through payouts or deductions</div>
             </div>
         </div>
 
@@ -599,7 +599,7 @@ include 'includes/sidebar.php';
                 <span class="tx-tab-sep"></span>
                 <button class="tx-tab" onclick="filterTxRoute('direct',this)"><span style="color:#6ee7b7;font-size:8px;">●</span> Paid to you <span class="tc" id="tcDirect">0</span></button>
                 <button class="tx-tab" onclick="filterTxRoute('awaiting',this)"><span style="color:#fcd34d;font-size:8px;">●</span> Awaiting disbursement <span class="tc" id="tcAwaiting">0</span></button>
-                <button class="tx-tab" onclick="filterTxRoute('disbursed',this)"><span style="color:#93c5fd;font-size:8px;">●</span> Disbursed <span class="tc" id="tcDisbursed">0</span></button>
+                <button class="tx-tab" onclick="filterTxRoute('disbursed',this)"><span style="color:#93c5fd;font-size:8px;">●</span> Settled <span class="tc" id="tcDisbursed">0</span></button>
             </div>
 
           <div class="table-scroll" style="margin-top:14px;">
@@ -656,9 +656,9 @@ include 'includes/sidebar.php';
                             $routeSub = $collType === 'platform' ? 'Will settle via FortuNett till' : 'Will settle to you directly';
                         } elseif ($collType === 'platform') {
                             $routeKey   = $released ? 'disbursed' : 'awaiting';
-                            $routeLabel = $released ? 'Disbursed' : 'Awaiting disbursement';
+                            $routeLabel = $released ? 'Settled' : 'Awaiting disbursement';
                             $routeSub   = $released
-                                ? 'Sent ' . date('d M Y', strtotime($tx['released_at']))
+                                ? 'Settled ' . date('d M Y', strtotime($tx['released_at']))
                                 : 'Held by FortuNett till';
                         } else {
                             $routeKey = 'direct'; $routeLabel = 'Paid to you directly';
@@ -1887,7 +1887,7 @@ function openPaymentStatus(tx) {
         // a payout they have already received.
         deliverySub   = collType === 'platform'
             ? (tx.released_at
-                ? 'Collected by the FortuNett till and disbursed to you on ' + tx.released_at.substring(0, 10) + '.'
+                ? 'Collected by the FortuNett till and settled through payout or deduction on ' + tx.released_at.substring(0, 10) + '.'
                 : 'Collected by the FortuNett shared till — awaiting disbursement to your account.')
             : 'Paid straight into your own M-Pesa account. Nothing is owed to you for this one.';
     } else if (eff === 'cancelled') {

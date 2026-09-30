@@ -836,6 +836,7 @@ include 'includes/sidebar.php';
             </div>
             <div id="recordPaymentForm" style="display:none;background:#222221;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:14px;margin-bottom:12px;">
                 <div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.55);margin-bottom:10px;">Record a Payment</div>
+                <p style="font-size:12px;color:#a8b4c4;">Confirmed payments automatically buy full periods of the customer's assigned package. Existing active time is retained; extra money stays as credit. No duration entry is needed.</p>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
                     <div>
                         <label style="display:block;font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;">Amount (KES) *</label>
@@ -1959,7 +1960,14 @@ function submitRecordPayment() {
         .then(r => r.json())
         .then(d => {
             if (d.success) {
-                showToast('Payment recorded.', 'success');
+                showToast(d.message || 'Payment recorded.', d.activation?.error ? 'warning' : 'success');
+                if (d.activation?.expiry_date && Number(d.activation.periods) > 0) {
+                    currentCustomer.expiry_date = d.activation.expiry_date;
+                    currentCustomer.status = 'active';
+                    const expiryEl = document.getElementById('infoTime');
+                    if (expiryEl) expiryEl.textContent = formatDate(d.activation.expiry_date) + ' (' + calculateTimeLeft(d.activation.expiry_date) + ')';
+                }
+                if (d.activation?.account_balance != null) currentCustomer.account_balance = d.activation.account_balance;
                 document.getElementById('recordPaymentForm').style.display = 'none';
                 document.getElementById('rpAmount').value = '';
                 document.getElementById('rpReference').value = '';

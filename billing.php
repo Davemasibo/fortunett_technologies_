@@ -662,11 +662,11 @@ include 'includes/sidebar.php';
             <div>Collected through the platform this month: <strong>KES <?php echo number_format($collectionMonths[$currentMonthStart]['platform_collected'] ?? 0, 2); ?></strong></div>
             <div>Awaiting disbursement (including previous months, before fees): <strong>KES <?php echo number_format($outstandingPayout, 2); ?></strong></div>
             <div>Manually disbursed this month: <strong>KES <?php echo number_format($monthlyDisbursed, 2); ?></strong></div>
-            <p style="color:#9a9a95;">Monthly collections start fresh on the first of each month. Outstanding payouts carry forward until settled. Paying a platform invoice does not mark a payout as disbursed.</p>
+            <p style="color:#9a9a95;">Monthly collections start fresh on the first of each month. Outstanding payouts carry forward until settled. Invoices explicitly settled from collections reduce the awaiting payout balance; separately paid invoices do not.</p>
         <?php endif; ?>
         </div>
-        <div class="history-card-header">Manual disbursement history (KES)</div>
-        <div style="overflow-x:auto;"><table class="billing-history-table"><thead><tr><th>Date</th><th>Transfer reference</th><th>Collections settled</th><th>Cash received</th><th>Fees withheld</th><th>Notes</th></tr></thead><tbody>
+        <div class="history-card-header">Payout and invoice deduction history (KES)</div>
+        <div style="overflow-x:auto;"><table class="billing-history-table"><thead><tr><th>Date</th><th>Transfer reference</th><th>Collections settled</th><th>Cash received</th><th>Fees / invoice deduction</th><th>Notes</th></tr></thead><tbody>
         <?php foreach ($disbursementHistory as $disbursement): ?>
             <tr><td><?php echo htmlspecialchars($disbursement['disbursed_at']); ?></td><td><?php echo htmlspecialchars($disbursement['reference']); ?></td><td><?php echo number_format($disbursement['gross_amount'], 2); ?></td><td><?php echo number_format($disbursement['cash_amount'], 2); ?></td><td><?php echo number_format($disbursement['fees_amount'], 2); ?></td><td><?php echo htmlspecialchars($disbursement['notes']); ?></td></tr>
         <?php endforeach; ?>

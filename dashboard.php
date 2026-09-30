@@ -492,7 +492,7 @@ include 'includes/sidebar.php';
             <?php if ($payoutBalances !== null): ?>
             <div class="actions-grid">
                 <a class="action-btn" href="billing.php">Awaiting disbursement: <strong>KES <?= number_format((float)$payoutBalances['awaiting'], 2) ?></strong></a>
-                <a class="action-btn" href="billing.php">Disbursed to you: <strong>KES <?= number_format((float)$payoutBalances['disbursed'], 2) ?></strong></a>
+                <a class="action-btn" href="billing.php">Settled (payouts and deductions): <strong>KES <?= number_format((float)$payoutBalances['disbursed'], 2) ?></strong></a>
             </div>
             <p class="dashboard-subtitle">Includes previous months. Collections after a payout cutoff await the next payout. <a href="billing.php">View payout history</a></p>
             <?php else: ?>
