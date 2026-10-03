@@ -19,6 +19,7 @@ chdir(dirname(__DIR__)); // Set working dir to project root
 
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../includes/db_master.php';
+require_once __DIR__ . '/../includes/platform_billing.php';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 $billingPeriod = date('Y-m-01');          // First day of current month
@@ -61,68 +62,29 @@ foreach ($tenants as $tenant) {
     $tenantId = (int)$tenant['id'];
 
     try {
-        // Skip if invoice already exists for this period
-        $existsStmt = $pdo->prepare("SELECT id FROM platform_invoices WHERE tenant_id = ? AND billing_period = ?");
-        $existsStmt->execute([$tenantId, $billingPeriod]);
-        if ($existsStmt->fetchColumn()) {
-            $log("SKIP tenant #{$tenantId} ({$tenant['company_name']}) — invoice already exists for $billingPeriod");
+        $exists = $pdo->prepare('SELECT id FROM platform_invoices WHERE tenant_id=? AND billing_period=?');
+        $exists->execute([$tenantId, $billingPeriod]);
+        $alreadyExists = (bool)$exists->fetchColumn();
+        $invoice = ensureCurrentPlatformInvoice($pdo, $tenantId);
+        if (!$invoice || (float)$invoice['total_due'] <= 0) {
+            $log("SKIP tenant #{$tenantId} - no billable collections");
             $skipped++;
             continue;
         }
-
-        // ── Count active PPPoE users ──────────────────────────────────────────
-        $pppoeStmt = $pdo->prepare("
-            SELECT COUNT(*) FROM clients
-            WHERE tenant_id = ?
-              AND connection_type = 'pppoe'
-              AND status = 'active'
-        ");
-        $pppoeStmt->execute([$tenantId]);
-        $pppoeCount = (int)$pppoeStmt->fetchColumn();
-
-        // ── Hotspot collections for the billing period ────────────────────────
-        $hotspotStmt = $pdo->prepare("
-            SELECT COALESCE(SUM(pay.amount), 0)
-            FROM payments pay
-            JOIN clients c ON c.id = pay.client_id
-            WHERE pay.tenant_id = ?
-              AND c.connection_type = 'hotspot'
-              AND pay.status = 'completed'
-              AND pay.payment_date >= ?
-              AND pay.payment_date < DATE_ADD(?, INTERVAL 1 MONTH)
-        ");
-        $hotspotStmt->execute([$tenantId, $billingPeriod, $billingPeriod]);
-        $hotspotCollections = (float)$hotspotStmt->fetchColumn();
-
-        // ── Derived amounts ───────────────────────────────────────────────────
-        $pppoeSubtotal       = round($pppoeCount * $tenant['pppoe_fee'], 2);
-        $hotspotCommission   = round($hotspotCollections * $tenant['commission_rate'], 2);
-        $totalDue            = $pppoeSubtotal + $hotspotCommission + $tenant['base_fee'];
-
-        // ── Invoice number: INV-YYYY-MM-TENANTID (padded) ────────────────────
-        $invoiceNumber = sprintf('INV-%s-%04d', date('Y-m', strtotime($billingPeriod)), $tenantId);
-
-        // ── Insert invoice ────────────────────────────────────────────────────
-        $insertStmt = $pdo->prepare("
-            INSERT INTO platform_invoices
-                (invoice_number, tenant_id, billing_period, plan_id,
-                 pppoe_user_count, pppoe_fee_per_user,
-                 hotspot_collections, hotspot_commission_rate,
-                 base_fee, due_date, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-        ");
-        $insertStmt->execute([
-            $invoiceNumber,
-            $tenantId,
-            $billingPeriod,
-            $tenant['plan_id'],
-            $pppoeCount,
-            $tenant['pppoe_fee'],
-            $hotspotCollections,
-            $tenant['commission_rate'],
-            $tenant['base_fee'],
-            $dueDate,
-        ]);
+        // Page views and cron share one calculation and one invoice.
+        // Only notify for invoices created by this run, not every cron replay.
+        if ($alreadyExists) {
+            $skipped++;
+            continue;
+        }
+        $invoiceNumber = $invoice['invoice_number'];
+        $dueDate = $invoice['due_date'];
+        $pppoeCount = (int)$invoice['pppoe_user_count'];
+        $hotspotCollections = (float)$invoice['hotspot_collections'];
+        $tenant['base_fee'] = (float)$invoice['base_fee'];
+        $tenant['pppoe_fee'] = (float)$invoice['pppoe_fee_per_user'];
+        $tenant['commission_rate'] = (float)$invoice['hotspot_commission_rate'];
+        $totalDue = (float)$invoice['total_due'];
 
         $generated++;
         $log("GENERATED $invoiceNumber — {$tenant['company_name']} | PPPoE: $pppoeCount users | Hotspot: KSH " . number_format($hotspotCollections,2) . " | Total: KSH " . number_format($totalDue,2));

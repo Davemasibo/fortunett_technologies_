@@ -8,6 +8,7 @@ header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../super_admin/includes/auth.php';
+require_once __DIR__ . '/../../includes/platform_billing.php';
 
 if (!isSuperAdmin()) {
     http_response_code(403);
@@ -26,7 +27,7 @@ if ($action !== 'generate_month') {
 }
 
 // Validate month format
-if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D', $month)) {
     echo json_encode(['success' => false, 'message' => 'Invalid month format (YYYY-MM)']);
     exit;
 }
@@ -55,45 +56,14 @@ try {
     foreach ($tenants as $tenant) {
         $tenantId = (int)$tenant['id'];
 
-        // Skip if invoice already exists for this period
-        $exists = $pdo->prepare("SELECT id FROM platform_invoices WHERE tenant_id = ? AND billing_period = ?");
+        $exists = $pdo->prepare('SELECT id FROM platform_invoices WHERE tenant_id=? AND billing_period=?');
         $exists->execute([$tenantId, $billingPeriod]);
-        if ($exists->fetchColumn()) { $skipped++; continue; }
-
-        // PPPoE user count
-        $pppoeStmt = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE tenant_id = ? AND connection_type = 'pppoe' AND status = 'active'");
-        $pppoeStmt->execute([$tenantId]);
-        $pppoeCount = (int)$pppoeStmt->fetchColumn();
-
-        // Hotspot collections this period
-        $hotspotStmt = $pdo->prepare("
-            SELECT COALESCE(SUM(p.amount),0)
-            FROM payments p
-            JOIN clients c ON c.id = p.client_id
-            WHERE p.tenant_id = ?
-              AND c.connection_type = 'hotspot'
-              AND p.status = 'completed'
-              AND p.payment_date BETWEEN ? AND LAST_DAY(?)
-        ");
-        $hotspotStmt->execute([$tenantId, $billingPeriod, $billingPeriod]);
-        $hotspotCollections = (float)$hotspotStmt->fetchColumn();
-
-        // Generate invoice number: INV-YYYY-MM-TENANTID
-        $invoiceNumber = sprintf('INV-%s-%04d', date('Y-m', strtotime($billingPeriod)), $tenantId);
-
-        $pdo->prepare("
-            INSERT INTO platform_invoices
-                (invoice_number, tenant_id, billing_period, plan_id,
-                 pppoe_user_count, pppoe_fee_per_user,
-                 hotspot_collections, hotspot_commission_rate,
-                 base_fee, due_date, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-        ")->execute([
-            $invoiceNumber, $tenantId, $billingPeriod, $tenant['plan_id'],
-            $pppoeCount, $tenant['pppoe_fee'],
-            $hotspotCollections, $tenant['commission_rate'],
-            $tenant['base_fee'], $dueDate
-        ]);
+        $alreadyExists = (bool)$exists->fetchColumn();
+        $invoice = ensureCurrentPlatformInvoice($pdo, $tenantId, $billingPeriod);
+        if (!$invoice || $alreadyExists || (float)$invoice['total_due'] <= 0) {
+            $skipped++;
+            continue;
+        }
 
         $generated++;
     }

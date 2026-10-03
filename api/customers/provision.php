@@ -50,5 +50,15 @@ if (!$st->fetchColumn()) {
     exit;
 }
 
-$result = autoProvisionClient($pdo, $client_id, $tenant_id);
+$router_id = (int)($_POST['router_id'] ?? 0);
+if ($router_id) {
+    $st = $pdo->prepare('SELECT id FROM mikrotik_routers WHERE id=? AND tenant_id=?');
+    $st->execute([$router_id, $tenant_id]);
+    if (!$st->fetchColumn()) {
+        http_response_code(404);
+        echo json_encode(['success'=>false,'message'=>'Router not found in your account']);
+        exit;
+    }
+}
+$result = autoProvisionClient($pdo, $client_id, $tenant_id, $router_id);
 echo json_encode($result);

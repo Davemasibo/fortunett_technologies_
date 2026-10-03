@@ -3,8 +3,10 @@ require_once __DIR__ . '/env.php';
 
 function googleClientId(): string { return trim((string)get_env_var('GOOGLE_CLIENT_ID', '')); }
 function googleAuthReady(): bool {
-    return (bool)preg_match('/^[a-zA-Z0-9._-]+\.apps\.googleusercontent\.com$/D', googleClientId())
-        && is_file(__DIR__ . '/../vendor/autoload.php');
+    if (!preg_match('/^[a-zA-Z0-9._-]+\.apps\.googleusercontent\.com$/D', googleClientId())
+        || !is_file(__DIR__ . '/../vendor/autoload.php')) return false;
+    require_once __DIR__ . '/../vendor/autoload.php';
+    return class_exists(Google\Auth\OAuth2::class) && class_exists(Firebase\JWT\JWK::class);
 }
 function ensureGoogleIdentitySchema(PDO $pdo): void {
     $pdo->exec("CREATE TABLE IF NOT EXISTS google_identities (

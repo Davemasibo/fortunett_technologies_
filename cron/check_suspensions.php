@@ -19,6 +19,11 @@ require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/../includes/cron_heartbeat.php';
 require_once __DIR__ . '/../includes/schema_guard.php';
+require_once __DIR__ . '/../includes/platform_billing.php';
+ensurePlatformBillingSchema($pdo);
+foreach ($pdo->query("SELECT id FROM tenants WHERE status='trial'")->fetchAll(PDO::FETCH_COLUMN) as $trialId) {
+    repairUnpaidTrialInvoices($pdo, (int)$trialId);
+}
 
 cron_heartbeat($pdo, 'check_suspensions');
 
@@ -56,29 +61,6 @@ foreach ($expiredTrials as $t) {
             WHERE id = ?
         ")->execute([$t['tenant_id']]);
         $log("TRIAL EXPIRED tenant #{$t['tenant_id']} ({$t['company_name']}) — suspended");
-
-        // Generate a pending invoice for the current month if none exists
-        $period = date('Y-m-01');
-        $checkInv = $pdo->prepare("SELECT id FROM platform_invoices WHERE tenant_id = ? AND billing_period = ?");
-        $checkInv->execute([$t['tenant_id'], $period]);
-        if (!$checkInv->fetchColumn()) {
-            $invNum  = sprintf('INV-%s-%04d', date('Y-m'), $t['tenant_id']);
-            $dueDate = date('Y-m-d', strtotime('+15 days'));
-            $pdo->prepare("
-                INSERT INTO platform_invoices
-                    (invoice_number, tenant_id, billing_period, plan_id,
-                     pppoe_user_count, pppoe_fee_per_user,
-                     hotspot_collections, hotspot_commission_rate,
-                     base_fee, due_date, status)
-                SELECT ?, t.id, ?, p.id, 0, COALESCE(p.pppoe_fee_per_user, 25.00),
-                       0, COALESCE(p.hotspot_commission_rate, 0.03),
-                       COALESCE(p.base_monthly_fee, 0), ?, 'pending'
-                FROM tenants t
-                LEFT JOIN platform_subscription_plans p ON p.id = t.subscription_plan_id
-                WHERE t.id = ?
-            ")->execute([$invNum, $period, $dueDate, $t['tenant_id']]);
-            $log("INVOICE $invNum generated for trial-expired tenant #{$t['tenant_id']}");
-        }
 
         if (!empty($t['admin_email'])) {
             $tenantUrl = "https://{$t['subdomain']}.fortunetttech.site";

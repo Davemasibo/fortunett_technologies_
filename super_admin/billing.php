@@ -2,6 +2,11 @@
 require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
 superAdminGuard();
+require_once __DIR__ . '/../includes/platform_billing.php';
+ensurePlatformBillingSchema($pdo);
+foreach ($pdo->query("SELECT id FROM tenants WHERE status='trial'")->fetchAll(PDO::FETCH_COLUMN) as $trialId) {
+    repairUnpaidTrialInvoices($pdo, (int)$trialId);
+}
 
 $statusFilter = $_GET['status'] ?? '';
 $monthFilter  = $_GET['month']  ?? date('Y-m');

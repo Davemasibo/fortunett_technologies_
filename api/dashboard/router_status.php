@@ -22,7 +22,7 @@ if (!$tenant_id) { echo json_encode(['success' => false, 'message' => 'No tenant
 
 session_write_close();
 
-$rSt = $pdo->prepare("SELECT id, name, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online','inactive','offline') AND tenant_id = ?");
+$rSt = $pdo->prepare("SELECT id, name, ip_address, vpn_ip, username, password, api_port FROM mikrotik_routers WHERE status IN ('active','online','inactive','offline','pending') AND tenant_id = ?");
 $rSt->execute([$tenant_id]);
 $routerRows = $rSt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -71,14 +71,14 @@ foreach ($routerRows as $router) {
 
             $mk->disconnect();
         } catch (Exception $e) {
-            $rs['online'] = true;
-            $anyRouterOnline = true;
-            $routersOnline++;
+            $rs['online'] = false;
+            $rs['metrics_available'] = false;
+            error_log("router_status API error router {$router['id']}: " . $e->getMessage());
         }
     }
     // An inactive observation must be recoverable without an administrator's test.
     if ($rs['online']) {
-        $pdo->prepare("UPDATE mikrotik_routers SET status='active',last_seen=NOW() WHERE id=? AND tenant_id=? AND status IN ('active','online','inactive','offline')")->execute([$router['id'],$tenant_id]);
+        $pdo->prepare("UPDATE mikrotik_routers SET status='active',last_seen=NOW() WHERE id=? AND tenant_id=? AND status IN ('active','online','inactive','offline','pending')")->execute([$router['id'],$tenant_id]);
     }
     $routerStatus[] = $rs;
 }

@@ -90,6 +90,13 @@ $issueDate     = date('d M Y');
 // platform_invoices row they were never shown. One table now, one truth.
 require_once __DIR__ . '/includes/platform_billing.php';
 ensureCurrentPlatformInvoice($pdo, $tenant_id);
+if (($tenant['status'] ?? '') === 'trial') {
+    $baseMonthlyFee = 0;
+    $pppoeSubtotal = 0;
+    $hotspotFee = 0;
+    $serviceSubtotal = 0;
+    $totalDue = 0;
+}
 
 // Live collections are independent of an invoice's frozen billing snapshot.
 require_once __DIR__ . '/includes/disbursements.php';

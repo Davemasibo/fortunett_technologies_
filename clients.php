@@ -18,6 +18,9 @@ $user_id = $_SESSION['user_id'];
 $stmt = $db->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
 $tenant_id = $stmt->fetchColumn();
+$routerChoicesQuery = $db->prepare('SELECT id,name FROM mikrotik_routers WHERE tenant_id=? ORDER BY name,id');
+$routerChoicesQuery->execute([$tenant_id]);
+$provisionRouterChoices = $routerChoicesQuery->fetchAll(PDO::FETCH_ASSOC);
 require_once __DIR__ . '/includes/sms_templates.php';
 $customerSmsTemplates = smsAvailableTemplates($db, (int)$tenant_id);
 
@@ -1741,12 +1744,18 @@ function confirmDelete(id, name) {
     }
 }
 
-function provisionToRouter() {
+async function provisionToRouter() {
     if (!currentCustomer) return;
     const name = currentCustomer.full_name || currentCustomer.name || 'this customer';
     if (!confirm('Provision "' + name + '" to the router?\n\nThis creates/updates their PPPoE secret or hotspot user and uploads the branded login page.')) return;
     const fd = new FormData();
     fd.append('client_id', currentCustomer.id);
+    const routers = <?= json_encode($provisionRouterChoices, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    if (routers.length > 1) {
+        const routerId = await chooseProvisionRouter(routers);
+        if (!routerId) return;
+        fd.append('router_id',routerId);
+    }
     showToast('Provisioning…', 'info');
     fetch('api/customers/provision.php', { method: 'POST', body: fd })
         .then(r => r.json())
@@ -1758,6 +1767,21 @@ function provisionToRouter() {
             }
         })
         .catch(e => showToast('Provisioning request failed: ' + e.message, 'error'));
+}
+
+function chooseProvisionRouter(routers) {
+    return new Promise(resolve => {
+        const dialog=document.createElement('dialog');
+        const heading=document.createElement('h3'); heading.textContent='Choose the customer’s MikroTik';
+        const select=document.createElement('select');
+        routers.forEach(router=>{ const option=document.createElement('option'); option.value=router.id; option.textContent=router.name; select.append(option); });
+        const save=document.createElement('button'); save.textContent='Provision on this device';
+        const cancel=document.createElement('button'); cancel.textContent='Cancel';
+        dialog.append(heading,select,save,cancel); document.body.append(dialog);
+        save.onclick=()=>dialog.close(select.value); cancel.onclick=()=>dialog.close('');
+        dialog.addEventListener('close',()=>{resolve(dialog.returnValue);dialog.remove();},{once:true});
+        dialog.showModal();
+    });
 }
 
 function verifyOnRouter() {

@@ -57,6 +57,11 @@ if (isLoggedIn()) {
             </a>
         </li>
         <li>
+            <a href="hotspot_locations.php" class="<?php echo isActivePage('hotspot_locations.php'); ?>">
+                <i class="fas fa-map-marker-alt"></i> <span>Hotspot Locations</span>
+            </a>
+        </li>
+        <li>
             <a href="packages.php" class="<?php echo isActivePage('packages.php'); ?>">
                 <i class="fas fa-cube"></i> <span>Packages</span>
             </a>

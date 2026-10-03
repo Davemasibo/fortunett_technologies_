@@ -1227,7 +1227,9 @@ window.onclick = function(event) {
       <button onclick="closeProvision()" style="background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;">✕</button>
     </div>
     <p id="provRouterLabel" style="font-size:12px;color:rgba(255,255,255,.4);margin:0 0 14px;"></p>
-    <p style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:14px;">Select the services this router runs, then copy the one-line script and paste it once into the RouterOS terminal (WinBox → New Terminal).</p>
+    <p style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:14px;">Select the services to configure now. To add PPPoE later, select only PPPoE and keep the existing Hotspot configuration. Copy the script into WinBox → New Terminal.</p>
+    <label for="provBridgeName" style="display:block;color:#e2e2e0;font-size:13px;">LAN bridge name</label>
+    <input id="provBridgeName" type="text" maxlength="64" placeholder="Leave blank if the router has one bridge" style="width:100%;padding:9px;margin:6px 0 14px;background:#111;color:#e2e2e0;border:1px solid #555;border-radius:6px;">
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
       <div class="prov-svc" id="prov-pppoe" onclick="provToggle('pppoe',this)" style="border:1px solid var(--neu-border);background:var(--neu-surf);padding:14px;border-radius:8px;cursor:pointer;transition:.15s;position:relative;">
@@ -1413,6 +1415,7 @@ function openProvision(id, name) {
     document.getElementById('provNoSharingWrap').style.display = 'none';
     document.getElementById('provNoSharing').checked = false;
     document.getElementById('provOutput').innerHTML = '';
+    document.getElementById('provBridgeName').value = '';
     document.getElementById('provisionModal').style.display = 'flex';
 }
 
@@ -1442,6 +1445,8 @@ function generateProvision() {
 
     const fd = new FormData();
     fd.append('identity', provRouterName);
+    fd.append('router_id', provRouterId);
+    fd.append('bridge_name', document.getElementById('provBridgeName').value.trim());
     fd.append('services', Array.from(provSelected).join(','));
     fd.append('hotspot_no_sharing', document.getElementById('provNoSharing').checked ? '1' : '0');
 

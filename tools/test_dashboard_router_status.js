@@ -22,5 +22,15 @@ async function flush() { await new Promise(resolve=>setImmediate(resolve)); }
  assert.match(document.getElementById('router-badge-19').innerHTML,/Offline/,'real offline result must still be displayed');
  context.refreshRouterStatus();respond({success:true,router_status:[{id:19,online:true}],router_online:true,active_users:1,routers_online:1,routers_total:1});await flush();
  assert.match(document.getElementById('router-badge-19').innerHTML,/Online/,'next successful poll recovers automatically');
+ context.refreshRouterStatus();
+ respond({success:true,router_status:[{id:19,online:true,pppoe_clients:3,hotspot_clients:4},{id:20,online:true,pppoe_clients:5,hotspot_clients:6}],router_online:true,active_users:18,pppoe_online:8,hotspot_online:10,routers_online:2,routers_total:2});await flush();
+ assert.equal(document.getElementById('router-pppoe-19').textContent,3);
+ assert.equal(document.getElementById('router-hs-19').textContent,4);
+ assert.equal(document.getElementById('router-pppoe-20').textContent,5);
+ assert.equal(document.getElementById('router-hs-20').textContent,6);
+ assert.equal(document.getElementById('stat-routers-online').textContent,'2');
+ assert.match(document.getElementById('stat-active-label').textContent,/8 PPPoE/);
+ assert.match(document.getElementById('stat-active-label').textContent,/10 Hotspot/);
+ console.log('PASS: two devices retain separate session metrics and combined dashboard totals');
  console.log('PASS: overlapping polls, stale stats, zero-client online state, genuine outage and automatic recovery');
 })().catch(error=>{console.error(error);process.exitCode=1;});

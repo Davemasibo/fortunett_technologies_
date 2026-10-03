@@ -30,6 +30,7 @@
  */
 
 require_once __DIR__ . '/schema_guard.php';
+require_once __DIR__ . '/trial_billing.php';
 
 /**
  * A tenant's permanent paybill reference, e.g. "FN5".
@@ -240,23 +241,28 @@ function applyPlatformPayment(
  * read the same row. Mirrors cron/monthly_billing.php's calculation so an
  * invoice looks identical whether the cron or a page view created it.
  */
-function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId): ?array
+function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingPeriod = null): ?array
 {
     // billing.php SELECTs amount_paid immediately after calling this, outside
     // any try/catch. Healing the schema here is what stops that query throwing
     // a 1054 and blanking every tenant's billing page with a 500.
     ensurePlatformBillingSchema($pdo);
 
-    $periodStart = date('Y-m-01');
+    $periodStart = $billingPeriod ?? date('Y-m-01');
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])-01$/D', $periodStart)) {
+        throw new InvalidArgumentException('Invalid billing period');
+    }
 
     try {
+        repairUnpaidTrialInvoices($pdo, $tenantId);
         $find = $pdo->prepare("SELECT * FROM platform_invoices WHERE tenant_id = ? AND billing_period = ? LIMIT 1");
         $find->execute([$tenantId, $periodStart]);
         $existing = $find->fetch(PDO::FETCH_ASSOC);
 
         // Never recalculate a settled or part-paid invoice — the amount owed is
         // fixed once money has been applied to it.
-        if ($existing && (!in_array($existing['status'], ['pending', 'overdue'], true) || (float)($existing['amount_paid'] ?? 0) > 0)) {
+        $emptyTrialInvoice = $existing && (float)$existing['total_due'] === 0.0 && (float)($existing['amount_paid'] ?? 0) === 0.0;
+        if ($existing && !$emptyTrialInvoice && (!in_array($existing['status'], ['pending', 'overdue'], true) || (float)($existing['amount_paid'] ?? 0) > 0)) {
             return $existing;
         }
 
@@ -265,7 +271,7 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId): ?array
             SELECT COALESCE(p.pppoe_fee_per_user, 25) AS pppoe_fee,
                    COALESCE(p.hotspot_commission_rate, 0.03) AS hotspot_rate,
                    COALESCE(p.base_monthly_fee, 0) AS base_fee,
-                   p.id AS plan_id
+                   p.id AS plan_id, t.status AS tenant_status
             FROM tenants t
             LEFT JOIN platform_subscription_plans p ON p.id = t.subscription_plan_id
             WHERE t.id = ? LIMIT 1
@@ -285,7 +291,7 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId): ?array
         $hc = $pdo->prepare("
             SELECT COALESCE(SUM(p.amount), 0)
             FROM payments p
-            JOIN clients c ON c.id = p.client_id
+            JOIN clients c ON c.id = p.client_id AND c.tenant_id = p.tenant_id
             WHERE p.tenant_id = ? AND p.status = 'completed'
               AND c.connection_type = 'hotspot'
               AND p.payment_date >= ? AND p.payment_date < ?
@@ -293,24 +299,42 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId): ?array
         $hc->execute([$tenantId, $periodStart, date('Y-m-01', strtotime($periodStart . ' +1 month'))]);
         $hotspotCollections = (float)$hc->fetchColumn();
 
+        $collections = $pdo->prepare("SELECT COALESCE(SUM(p.amount),0) AS collected,
+            COUNT(DISTINCT CASE WHEN c.connection_type='pppoe' THEN c.id END) AS paying_users
+            FROM payments p LEFT JOIN clients c ON c.id=p.client_id AND c.tenant_id=p.tenant_id
+            WHERE p.tenant_id=? AND p.status='completed' AND p.amount>0
+              AND p.payment_date>=? AND p.payment_date<?");
+        $collections->execute([$tenantId, $periodStart, date('Y-m-01', strtotime($periodStart . ' +1 month'))]);
+        $collected = $collections->fetch(PDO::FETCH_ASSOC);
+        $charges = platformTrialCharges($r['tenant_status'] ?? '', (float)$collected['collected'],
+            $pppoeCount, (int)$collected['paying_users'], (float)$r['base_fee']);
+        $pppoeCount = $charges['users'];
+        $r['base_fee'] = $charges['base_fee'];
+        if (!$charges['eligible'] && !$existing) return null;
+
         // pppoe_subtotal, hotspot_commission and total_due are STORED GENERATED
         // columns — the database derives them from the inputs below. Writing to
         // them explicitly is rejected (or silently ignored, which is worse: the
         // invoice then shows a figure nobody intended). Only the inputs are set.
-        $invoiceNumber = 'INV-' . date('Y-m') . '-' . $tenantId;
-        $dueDate       = date('Y-m-d', strtotime($periodStart . ' +14 days'));
+        $invoiceNumber = 'INV-' . date('Y-m', strtotime($periodStart)) . '-' . $tenantId;
+        $dueDate       = ($r['tenant_status'] ?? '') === 'trial'
+            ? date('Y-m-d', strtotime('+14 days'))
+            : date('Y-m-d', strtotime($periodStart . ' +14 days'));
 
         if ($existing) {
             $pdo->prepare("
                 UPDATE platform_invoices
                 SET pppoe_user_count = ?, pppoe_fee_per_user = ?,
                     hotspot_collections = ?, hotspot_commission_rate = ?,
-                    base_fee = ?, plan_id = ?
-                WHERE id = ? AND status IN ('pending', 'overdue') AND COALESCE(amount_paid, 0) = 0
+                    base_fee = ?, plan_id = ?, status = ?
+                WHERE id = ? AND (status IN ('pending', 'overdue') OR total_due=0) AND COALESCE(amount_paid, 0) = 0
             ")->execute([
                 $pppoeCount, $r['pppoe_fee'],
                 $hotspotCollections, $r['hotspot_rate'],
-                $r['base_fee'], $r['plan_id'], $existing['id'],
+                $r['base_fee'], $r['plan_id'],
+                ($pppoeCount * $r['pppoe_fee'] + $hotspotCollections * $r['hotspot_rate'] + $r['base_fee']) > 0
+                    ? ($existing['status'] === 'overdue' ? 'overdue' : 'pending') : 'paid',
+                $existing['id'],
             ]);
         } else {
             $pdo->prepare("

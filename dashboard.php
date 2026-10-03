@@ -453,6 +453,7 @@ include 'includes/sidebar.php';
 
 <div class="main-content-wrapper">
     <div class="dashboard-container">
+        <p><a href="onboarding.php">Tenant setup checklist</a> · <a href="mikrotik.php?open_modal=1">Add another MikroTik to this account</a></p>
         <!-- Header -->
         <div class="dashboard-header">
             <div class="breadcrumb">
@@ -615,7 +616,7 @@ include 'includes/sidebar.php';
                     <?php
                     // Fetch configured routers
                     try {
-                        $r_stmt = $db->prepare("SELECT * FROM mikrotik_routers WHERE status IN ('active','online','inactive','offline') AND tenant_id = ?");
+                        $r_stmt = $db->prepare("SELECT * FROM mikrotik_routers WHERE status IN ('active','online','inactive','offline','pending') AND tenant_id = ?");
                         $r_stmt->execute([$tenant_id]);
                         $routers = $r_stmt->fetchAll(PDO::FETCH_ASSOC);
 

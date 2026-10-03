@@ -58,6 +58,8 @@ try {
     $api = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
     $api->connect();
     $result['api_ok'] = true;
+    $pdo->prepare("UPDATE mikrotik_routers SET status='active',last_seen=NOW() WHERE id=? AND tenant_id=?")
+        ->execute([$routerId,$tenantId]);
     $checks = [];
 
     // ── Bridge ────────────────────────────────────────────────────────────────

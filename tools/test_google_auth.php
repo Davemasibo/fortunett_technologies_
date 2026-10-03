@@ -7,7 +7,10 @@ require __DIR__ . '/../includes/auth.php';
 $checks=0;
 function googleCheck($ok,$message) { global $checks; if (!$ok) throw new RuntimeException($message); $checks++; echo "PASS $message\n"; }
 function googleReject(callable $fn) { try {$fn();return false;} catch(Throwable $e) {return true;} }
-$key=openssl_pkey_new(['private_key_bits'=>2048,'private_key_type'=>OPENSSL_KEYTYPE_RSA,'config'=>'C:/xampp/apache/conf/openssl.cnf']);
+$keyOptions=['private_key_bits'=>2048,'private_key_type'=>OPENSSL_KEYTYPE_RSA];
+if (is_file('C:/xampp/apache/conf/openssl.cnf')) $keyOptions['config']='C:/xampp/apache/conf/openssl.cnf';
+$key=openssl_pkey_new($keyOptions);
+if (!$key) throw new RuntimeException('Could not create the local signing key');
 $details=openssl_pkey_get_details($key);
 $b64=fn($s)=>rtrim(strtr(base64_encode($s),'+/','-_'),'=');
 $certs=json_encode(['keys'=>[['kty'=>'RSA','alg'=>'RS256','kid'=>'local-test','n'=>$b64($details['rsa']['n']),'e'=>$b64($details['rsa']['e'])]]]);
@@ -29,7 +32,8 @@ googleCheck($identity['authoritative'],'Gmail verification recognized');
 googleCheck(!googleValidateClaims(array_merge($claims,['email'=>'person@example.test']),'session-nonce')['authoritative'],'third-party email still requires application verification');
 $_SESSION=['google_signup'=>['expires'=>time()-1]];
 googleCheck(googlePending('google_signup')===null,'expired signup identity removed');
-$pdo=new PDO('mysql:host=127.0.0.1;port=3308;charset=utf8mb4','root','',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+$pdo=new PDO(getenv('GOOGLE_AUTH_TEST_DSN') ?: 'mysql:host=127.0.0.1;port=3306;charset=utf8mb4',
+    getenv('GOOGLE_AUTH_TEST_USER') ?: 'root',getenv('GOOGLE_AUTH_TEST_PASSWORD') ?: '',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
 $schema='fortunett_google_test_'.bin2hex(random_bytes(4));$pdo->exec("CREATE DATABASE `$schema`");$pdo->exec("USE `$schema`");
 try {
     $pdo->exec('CREATE TABLE users(id INT PRIMARY KEY,email VARCHAR(255),tenant_id INT,email_verified TINYINT,is_super_admin TINYINT DEFAULT 0)');
