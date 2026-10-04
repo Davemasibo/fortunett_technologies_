@@ -37,7 +37,8 @@ function googleValidateClaims(array $claims, string $nonce): array {
 }
 function googleVerifyCredential(string $credential, string $nonce): array {
     require_once __DIR__ . '/../vendor/autoload.php';
-    $http = new GuzzleHttp\Client(['timeout'=>10, 'connect_timeout'=>5]);
+    // The origin's IPv6 egress is rejected by Google; use its working IPv4 route.
+    $http = new GuzzleHttp\Client(['timeout'=>10, 'connect_timeout'=>5, 'force_ip_resolve'=>'v4']);
     $response = $http->get('https://www.googleapis.com/oauth2/v3/certs');
     $certs = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
     return googleVerifyWithKeys($credential, $nonce, googleClientId(), $certs);
