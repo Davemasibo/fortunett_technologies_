@@ -12,9 +12,10 @@ include __DIR__.'/includes/sidebar.php';
 <div class="main-content-wrapper"><main class="workspace-page"><div class="page-heading"><h1>Hotspot locations</h1><a class="setup-button" href="mikrotik.php">Manage routers</a></div><section class="setup-card">
 <p>Live traffic and connected customers by router interface. Add a location name to the interface comment in MikroTik. A shared switch uplink combines all APs behind it.</p>
 <label>Router <select id="router"><option value="">Select router</option><?php foreach ($routers as $r): ?><option value="<?= (int)$r['id'] ?>"><?= htmlspecialchars($r['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach ?></select></label><button class="setup-button" id="refresh">Refresh</button>
-<p id="status" role="status"></p><div class="table-wrap"><table><thead><tr><th>Location / interface</th><th>Link</th><th>Customers</th><th>Sessions</th><th>Received Mbps</th><th>Sent Mbps</th><th>Active-session download MB</th></tr></thead><tbody id="locations"></tbody></table></div>
+<p id="status" role="status">Connecting to the selected router...</p>
+<div class="setup-grid" style="margin:20px 0"><div><small>Active Hotspot sessions</small><h2 id="session-total">--</h2></div><div><small>Interfaces up</small><h2 id="interface-total">--</h2></div><div><small>Selected router collections</small><h2 id="sales-total">--</h2></div></div><div class="table-wrap"><table><thead><tr><th>Location / interface</th><th>Link</th><th>Customers</th><th>Sessions</th><th>Received Mbps</th><th>Sent Mbps</th><th>Active-session download MB</th></tr></thead><tbody id="locations"></tbody></table></div>
 <p>Rates appear after two samples, about ten seconds apart, and include all traffic on that interface. Counters restart when the router or interface resets. Session downloads cover currently connected sessions only. Unmapped clients need VLAN, CAPsMAN, or AP-specific telemetry for attribution.</p>
-</section><section class="setup-card"><h2>Location sales</h2>
+</section><section class="setup-card"><div class="page-heading"><h2>Location sales</h2><a class="setup-button" href="dashboard.php#collection-router">View router collection graphs</a></div>
 <label>Date <input id="sales-date" type="date" value="<?= date('Y-m-d') ?>"></label>
 <p id="sales-status" role="status"></p>
 <div class="table-wrap"><table><thead><tr><th>Purchase location</th><th>Completed sales</th><th>Revenue (KES)</th></tr></thead><tbody id="sales"></tbody></table></div>
@@ -38,8 +39,8 @@ async function refresh(){
    for(const value of [(row.location?row.location+' / ':'')+row.interface,row.running?'Up':'Down',row.customers,row.sessions,rate('rx_bytes'),rate('tx_bytes'),(row.session_download_bytes/1e6).toFixed(2)]){const td=document.createElement('td');td.textContent=value;tr.appendChild(td);}
    body.appendChild(tr);
   }
-  previous=data;status.textContent='Updated '+new Date().toLocaleTimeString()+'. Unmapped sessions: '+data.unmapped_sessions;
- }catch(error){previous=null;status.textContent=error.message;}finally{busy=false;}
+  document.getElementById('session-total').textContent=data.locations.reduce((n,r)=>n+Number(r.sessions),0)+Number(data.unmapped_sessions);document.getElementById('interface-total').textContent=data.locations.filter(r=>r.running).length+' / '+data.locations.length;previous=data;status.textContent='Updated '+new Date().toLocaleTimeString()+'. Unmapped sessions: '+data.unmapped_sessions;
+ }catch(error){previous=null;document.getElementById('session-total').textContent='Unavailable';document.getElementById('interface-total').textContent='Unavailable';status.textContent=error.message;}finally{busy=false;}
 }
 async function refreshSales(){
  const id=router.value,date=document.getElementById('sales-date').value;
@@ -55,12 +56,13 @@ async function refreshSales(){
    const label=row.router_id===null?'Unattributed (whole ISP)':(row.location_name?row.location_name+' / ':'')+row.interface_name;
    for(const value of [label,row.sales,Number(row.revenue).toFixed(2)]){const td=document.createElement('td');td.textContent=value;tr.appendChild(td);}body.appendChild(tr);
   }
-  target.textContent=data.sales.length?'Completed payments for '+date:'No completed payments for this date.';
- }catch(error){document.getElementById('sales').replaceChildren();target.textContent=error.message;}
+  document.getElementById('sales-total').textContent='KES '+data.sales.filter(r=>r.router_id!==null).reduce((n,r)=>n+Number(r.revenue),0).toFixed(2);target.textContent=data.sales.length?'Completed payments for '+date:'No completed payments for this date.';
+ }catch(error){document.getElementById('sales').replaceChildren();document.getElementById('sales-total').textContent='Unavailable';target.textContent=error.message;}
 }
-router.addEventListener('change',()=>{previous=null;document.getElementById('locations').replaceChildren();document.getElementById('sales').replaceChildren();refresh();refreshSales();});
+router.addEventListener('change',()=>{previous=null;document.getElementById('locations').replaceChildren();document.getElementById('sales').replaceChildren();for(const key of ['session-total','interface-total','sales-total'])document.getElementById(key).textContent='--';refresh();refreshSales();});
 document.getElementById('refresh').addEventListener('click',()=>{refresh();refreshSales();});
 document.getElementById('sales-date').addEventListener('change',refreshSales);
+if(router.options.length===1)status.textContent='No routers yet. Add a MikroTik from Manage routers.';
 if(router.options.length>1){router.selectedIndex=1;refresh();refreshSales();}
 setInterval(refresh,10000);
 setInterval(refreshSales,60000);

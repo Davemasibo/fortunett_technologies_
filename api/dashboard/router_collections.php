@@ -2,7 +2,7 @@
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
 require_once __DIR__.'/../../includes/auth.php';
-if(empty($_SESSION['user_id'])){http_response_code(401);echo json_encode(['success'=>false]);exit;}
+if(!isLoggedIn() || empty($_SESSION['user_id'])){http_response_code(401);echo json_encode(['success'=>false]);exit;}
 $user=(int)$_SESSION['user_id'];session_write_close();
 require_once __DIR__.'/../../includes/db_master.php';
 require_once __DIR__.'/../../includes/analytics_range.php';
