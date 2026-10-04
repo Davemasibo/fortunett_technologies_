@@ -25,3 +25,7 @@ serviceCheck(strpos($hotspot,'LAN bridge not found: ') < strpos($hotspot,'/ip ho
 serviceCheck(strpos($hotspot,'/system device-mode get hotspot') < strpos($hotspot,'/ip hotspot remove'),'Device-mode prerequisites are checked before service changes');
 serviceCheck(str_contains(routerDeviceModeGuard(true),'scheduler=yes fetch=yes hotspot=yes') && str_contains(routerDeviceModeGuard(true),'physically power-cycle'),'Device-mode restrictions include exact physical recovery instructions');
 serviceCheck(!str_contains(routerDeviceModeGuard(false),'/system device-mode get hotspot'),'Management-only setup does not require Hotspot permission');
+
+$portal=buildRouterServiceCommand(['hotspot'],true,'example.test','https://example.test/login_serve.php','','bridge','Tenant');
+serviceCheck(str_contains($portal,'html-directory]') && str_contains($portal,'dst-path=($portalDir . "/login.html")'),'Portal download follows the actual Hotspot profile directory');
+serviceCheck(str_contains($portal,'/redirect.html') && str_contains($portal,'/alogin.html') && str_contains($portal,'\\$(link-orig)'),'Hotspot setup includes redirect and support pages with preserved template variables');

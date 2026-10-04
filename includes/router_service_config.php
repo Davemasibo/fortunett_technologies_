@@ -115,8 +115,18 @@ function buildRouterServiceCommand(array $services, bool $noSharing, string $por
             $parts[] = '/ip hotspot walled-garden ip add dst-address=' . $portalIp . '/32 action=accept comment="FortuNett-Portal-IP"';
         }
         if ($loginServeUrl) {
-            $parts[] = ':do {/file remove [find name="flash/hotspot/login.html"]} on-error={}';
-            $parts[] = '/tool fetch mode=https url="' . addslashes($loginServeUrl) . '" dst-path=flash/hotspot/login.html check-certificate=no';
+            // Use the directory the profile actually reports on this device.
+            $parts[] = ':local portalDir [/ip hotspot profile get [find name=hsprof1] html-directory]';
+            $parts[] = ':if ([:len [/file find where name=$portalDir]]=0) do={/file add name=$portalDir type=directory}';
+            $parts[] = '/tool fetch url=' . routerServiceString($loginServeUrl) . ' dst-path=($portalDir . "/login.html") check-certificate=no';
+            foreach ([
+                'redirect.html'=>'<meta http-equiv="refresh" content="0;url=/login">',
+                'alogin.html'=>'<meta http-equiv="refresh" content="0;url=$(link-orig)">',
+                'logout.html'=>'<meta http-equiv="refresh" content="0;url=/login">',
+                'error.html'=>'<html><body><h3>$(error)</h3><a href="$(link-login)">Back to login</a></body></html>',
+            ] as $file=>$contents) {
+                $parts[]=':local supportPath ($portalDir . "/'.$file.'"); :local supportFile [/file find where name=$supportPath]; :if ([:len $supportFile]=0) do={/file add name=$supportPath contents='.routerServiceString($contents).'} else={/file set $supportFile contents='.routerServiceString($contents).'}';
+            }
         }
     }
 
