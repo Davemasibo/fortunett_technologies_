@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../includes/auth.php';
-require_once __DIR__ . '/../../includes/google_auth.php';
+require_once __DIR__ . '/../../includes/google_bridge.php';
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
 try {
@@ -14,9 +14,17 @@ try {
     $identity=googleVerifyCredential($credential,$challenge['nonce']);
     unset($_SESSION['google_challenge']);
     ensureGoogleIdentitySchema($pdo);
-    $result=googleResolveIdentity($pdo,$identity,googleRequestTenant($pdo));
+    $bridge=googlePending('google_workspace_request');
+    $tenant=googleRequestTenant($pdo);
+    if ($bridge) $tenant=(int)googleBridgeRequest($pdo,$bridge['token'])['tenant_id'];
+    $result=googleResolveIdentity($pdo,$identity,$tenant);
+    if ($bridge) {
+        $url=googleBridgeFinish($pdo,$bridge['token'],$result,$identity);
+        unset($_SESSION['google_workspace_request']);
+        echo json_encode(['success'=>true,'workspace_url'=>$url]);exit;
+    }
     if ($result['action'] === 'workspace') {
-        echo json_encode(['success'=>false,'message'=>'Please sign in on your own workspace.','workspace_url'=>$result['url']]); exit;
+        echo json_encode(['success'=>false,'message'=>'Please sign in on your own workspace.','workspace_url'=>str_replace('login.php?signin=1','google_start.php',$result['url'])]); exit;
     }
     session_regenerate_id(true);
     unset($_SESSION['google_signup'],$_SESSION['google_link']);

@@ -11,8 +11,13 @@
                 const data=new FormData(); data.set('credential',response.credential);data.set('csrf',target.dataset.csrf);
                 try {
                     const result=await fetch('api/auth/google.php',{method:'POST',body:data,credentials:'same-origin'}).then(r=>r.json());
+                    if (result.success && result.workspace_url) {
+                        const destination = new URL(result.workspace_url);
+                        if (destination.protocol !== 'https:' || !/^[a-z0-9-]+\.fortunetttech\.site$/.test(destination.hostname) || destination.pathname !== '/google_return.php' || !/^[a-f0-9]{64}$/.test(destination.searchParams.get('ticket') || '')) throw new Error('Unexpected workspace destination.');
+                        window.location.assign(destination.href);return;
+                    }
                     if (!result.success) {
-                        if (result.workspace_url && /^https:\/\/[a-z0-9-]+\.fortunetttech\.site\/login\.php\?signin=1$/.test(result.workspace_url)) {
+                        if (result.workspace_url && /^https:\/\/[a-z0-9-]+\.fortunetttech\.site\/google_start\.php$/.test(result.workspace_url)) {
                             feedback.textContent=result.message + ' ';
                             const link=document.createElement('a');link.href=result.workspace_url;link.textContent='Open your workspace';feedback.appendChild(link);return;
                         }

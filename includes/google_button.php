@@ -1,14 +1,17 @@
 <?php
 require_once __DIR__ . '/google_auth.php';
 $googleReady=googleAuthReady();
+$googleCentralOnly = !in_array(strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0]), ['fortunetttech.site','localhost','127.0.0.1'], true);
 if ($googleReady) {
     if (!googlePending('google_challenge')) $_SESSION['google_challenge']=['csrf'=>bin2hex(random_bytes(32)), 'nonce'=>bin2hex(random_bytes(32)), 'expires'=>time()+600];
 }
 ?>
 <div class="google-auth">
-<?php if ($googleReady): ?>
+<?php if ($googleReady && $googleCentralOnly): ?>
+    <a class="button google-central" href="google_start.php">Continue with Google</a>
+<?php elseif ($googleReady): ?>
     <div id="google-button" data-client-id="<?= htmlspecialchars(googleClientId(), ENT_QUOTES) ?>" data-nonce="<?= htmlspecialchars($_SESSION['google_challenge']['nonce'], ENT_QUOTES) ?>" data-csrf="<?= htmlspecialchars($_SESSION['google_challenge']['csrf'], ENT_QUOTES) ?>"></div>
-    <script src="js/google-signin.js?v=1" defer></script>
+    <script src="js/google-signin.js?v=2" defer></script>
     <script src="https://accounts.google.com/gsi/client" async defer onload="window.renderFortunettGoogle?.()"></script>
     <p id="google-feedback" class="muted" role="status">Loading Google sign-in…</p>
 <?php else: ?>

@@ -26,8 +26,8 @@ if ($subdomain !== null) {
         if (is_string($logo) && preg_match('~^(?:https://|/?uploads/)~i', $logo)) $branding['logo'] = $logo;
     } catch (PDOException $e) { /* Branding is optional. */ }
 }
-if (isLoggedIn()) { header('Location: dashboard.php'); exit; }
-$error = '';
+if (isLoggedIn() && !googlePending('google_workspace_request')) { header('Location: dashboard.php'); exit; }
+$error = isset($_GET['google_error']) ? 'Google sign-in expired. Click Continue with Google to try again.' : '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!hash_equals($_SESSION['login_csrf'], (string)($_POST['csrf'] ?? ''))) {
