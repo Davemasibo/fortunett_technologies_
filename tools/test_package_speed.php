@@ -31,3 +31,5 @@ foreach(['wrong_profile','wrong_profile_cap','missing_queue','burst','overlappin
 }
 speedCheck(packageRateLimit(['upload_speed'=>2,'download_speed'=>5])==='2M/5M','Asymmetric package speeds use router upload/download order');
 speedCheck(packageSpeedBits('5000000')===packageSpeedBits('5M'),'Queue bit rates are compared numerically');
+
+speedCheck(str_contains(routerExpiryLoginScript('hotspot'),'action=fasttrack-connection') && str_contains(routerExpiryLoginScript('pppoe'),'action=fasttrack-connection'),'Hotspot and PPPoE reconnect guards preserve queue enforcement');

@@ -65,7 +65,10 @@ function routerExpiryLoginScript(string $service): string
     $base = $service === 'hotspot' ? '/ip hotspot user' : '/ppp secret';
     $active = $service === 'hotspot' ? '/ip hotspot active' : '/ppp active';
     $field = $service === 'hotspot' ? 'user' : 'name';
-    $script = ':local u $user; :local ids [' . $base . ' find where name=$u]; ';
+    // Reconnects must keep paid traffic on the queue path as well.
+    $script = '/ip firewall filter set [find where action=fasttrack-connection] disabled=yes; ';
+    $script .= '/ip firewall connection remove [find where fasttrack=yes]; ';
+    $script .= ':local u $user; :local ids [' . $base . ' find where name=$u]; ';
     $script .= ':local allowed false; :foreach id in=$ids do={ :local c [' . $base . ' get $id comment]; ';
     $script .= ':if (([:pick $c 0 6] = "FNEXP:") && ([:pick $c 20 21] = "|")) do={ ';
     $script .= routerClockKeyScript();
