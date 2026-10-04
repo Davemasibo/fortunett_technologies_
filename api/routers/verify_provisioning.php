@@ -16,6 +16,7 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../classes/MikrotikAPI.php';
 require_once __DIR__ . '/../../includes/hotspot_wireless.php';
+require_once __DIR__ . '/../../includes/package_speed.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user_id'])) { ob_clean(); echo json_encode(['success' => false, 'error' => 'Unauthorized']); exit; }
@@ -62,6 +63,10 @@ try {
     $pdo->prepare("UPDATE mikrotik_routers SET status='active',last_seen=NOW() WHERE id=? AND tenant_id=?")
         ->execute([$routerId,$tenantId]);
     $checks = [];
+    $fasttrackSafe=true;
+    foreach (routerCheckedCommand($api,'/ip/firewall/filter/print',['?action=fasttrack-connection']) as $rule) if (isset($rule['.id']) && ($rule['disabled']??'false')!=='true') $fasttrackSafe=false;
+    $checks[]=['label'=>'Package queue enforcement','ok'=>$fasttrackSafe,'detail'=>$fasttrackSafe ? 'FastTrack bypass disabled' : 'FastTrack bypasses paid speed limits; reapply service provisioning'];
+
     $deviceMode=$api->comm('/system/device-mode/print');
     foreach ($deviceMode as $mode) {
         if (!isset($mode['!re'])) continue;

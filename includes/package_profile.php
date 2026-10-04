@@ -39,6 +39,7 @@
  */
 require_once __DIR__ . '/validity.php';
 require_once __DIR__ . '/router_expiry.php';
+require_once __DIR__ . '/package_speed.php';
 
 function packageProfileName(array $package): string
 {
@@ -154,6 +155,7 @@ function syncPackageProfileToRouter($api, string $connectionType, string $profil
     $base = ($connectionType === 'hotspot') ? '/ip/hotspot/user/profile' : '/ppp/profile';
 
     try {
+        ensurePackageQueuePath($api);
         $settings = $package !== null ? packageProfileSettings($package, $connectionType) : ['rate-limit' => $rateLimit];
         $params = [];
         foreach ($settings as $key => $value) $params[] = '=' . $key . '=' . $value;

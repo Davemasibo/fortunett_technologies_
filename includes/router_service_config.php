@@ -32,6 +32,8 @@ function buildRouterServiceCommand(array $services, bool $noSharing, string $por
 {
     $sharedUsers = $noSharing ? '1' : 'unlimited';
     $parts = [routerDeviceModeGuard(in_array('hotspot',$services,true))];
+    $parts[] = '/ip firewall filter set [find where action=fasttrack-connection] disabled=yes';
+    $parts[] = '/ip firewall connection remove [find where fasttrack=yes]';
     $parts[] = ':local bn ""';
     $parts[] = ':local newBridge false';
     if ($bridgeName !== '') {

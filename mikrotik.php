@@ -565,6 +565,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <!-- Primary tools -->
                         <div class="footer-actions-group">
                             <button class="footer-btn test" id="rbtn-test-<?php echo $router['id']; ?>" onclick="testConnection(<?php echo $router['id']; ?>, this)" title="Test connection"><i class="fas fa-plug"></i> Test</button>
+                            <button class="footer-btn test" onclick="verifyPackageSpeeds(<?php echo (int)$router['id']; ?>,this)">Verify speeds</button>
                             <button class="footer-btn terminal" onclick="openTerminal(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars(addslashes($router['name'])); ?>', '<?php echo htmlspecialchars($router['ip_address']); ?>')" title="Open remote terminal"><i class="fas fa-terminal"></i> Terminal</button>
                             <button class="footer-btn provision" onclick="openProvision(<?php echo (int)$router['id']; ?>, '<?php echo htmlspecialchars(addslashes($router['name'])); ?>')" title="Get this router's provisioning script (bridge + PPPoE/hotspot) anytime"><i class="fas fa-scroll"></i> Provision</button>
                         </div>
@@ -1595,6 +1596,20 @@ async function checkSetupConnection(id,button) {
         const response=await fetch('api/routers/test_connection.php',{method:'POST',body}); const result=await response.json();
         output.textContent=result.status==='success' ? 'Management connection verified. Close this window and verify your customer services.' : (result.message || 'Connection not ready. Check the terminal for errors.');
     } catch(e) {output.textContent='Unable to check. Try again.';} finally {button.disabled=false;}
+}
+
+async function verifyPackageSpeeds(id,button) {
+    button.disabled=true;
+    try {
+        const body=new FormData();body.append('router_id',id);
+        const response=await fetch('api/routers/verify_package_speeds.php',{method:'POST',body});const data=await response.json();
+        if(!data.success)throw new Error(data.error || 'Verification failed');
+        let modal=document.getElementById('speedVerificationModal');
+        if(!modal){modal=document.createElement('div');modal.id='speedVerificationModal';modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2100;display:flex;align-items:center;justify-content:center';document.body.appendChild(modal);}
+        modal.style.display='flex';
+        const rows=(data.customers || []).map(customer=>'<p><strong>'+escapeHtml(customer.username)+' ? '+escapeHtml(customer.package)+'</strong><br>Upload/download cap: '+escapeHtml(customer.expected)+'<br>'+(customer.live_verified?'Active session queue verified.':customer.ok?'Profile checked. Connect this customer to verify the live queue.':escapeHtml(customer.issues.join('; ')))+'</p>').join('');
+        modal.innerHTML='<div style="background:#171717;color:#eee;padding:24px;border-radius:12px;max-width:680px;max-height:80vh;overflow:auto"><button onclick="document.getElementById(\'speedVerificationModal\').style.display=\'none\'" style="float:right">Close</button><h3>'+escapeHtml(data.router)+' ? Package speeds</h3><p>'+(data.fasttrack_disabled?'FastTrack bypass is disabled.':'WARNING: FastTrack can bypass speed caps.')+'</p>'+ (rows || '<p>No assigned customers yet.</p>')+'<p>Queue checks verify the configured cap. Run an internet speed test from a customer device for a traffic measurement. Wi-Fi link speed is separate from internet speed.</p></div>';
+    } catch(e){showToast(e.message,'error');}finally{button.disabled=false;}
 }
 
 function testConnection(id, btn) {
