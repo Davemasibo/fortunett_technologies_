@@ -20,3 +20,5 @@ class WirelessCheckDouble {
 }
 $api=new WirelessCheckDouble();$checks=hotspotWirelessReadiness($api,'HomeLink Fiber','bridge');wifiCheck(count($checks)===1 && $checks[0]['ok'],'Verification accepts open branded AP and excludes uplinks and absent drivers');
 foreach(['open','bridged','enabled'] as $property) {$api=new WirelessCheckDouble();$api->$property=false;wifiCheck(!hotspotWirelessReadiness($api,'HomeLink Fiber','bridge')[0]['ok'],"Verification rejects incorrect $property state");}
+
+wifiCheck(!str_contains($command,'Radios {}') && str_contains($command,'Radios [:toarray ""]'),'Radio discovery uses valid RouterOS empty-array initialization');

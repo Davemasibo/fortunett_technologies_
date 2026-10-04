@@ -13,12 +13,12 @@ function hotspotTenantSsid(string $company): string {
 /** $bridgeVariable is a RouterOS variable holding the Hotspot LAN bridge. */
 function hotspotWirelessCommand(string $company): string {
     $ssid=routerServiceString(hotspotTenantSsid($company));
-    $parts=[':local customerSsid '.$ssid, ':local wirelessCount 0', ':local legacyRadios {}'];
+    $parts=[':local customerSsid '.$ssid, ':local wirelessCount 0', ':local legacyRadios [:toarray ""]'];
     // Missing driver menus are normal on routers without a wireless radio.
     $parts[]=':do {:set legacyRadios [/interface wireless find]} on-error={}';
     $parts[]=':if ([:len $legacyRadios]>0) do={:local openProfile [/interface wireless security-profiles find where name="FortuNett-Customer-Open"]; :if ([:len $openProfile]=0) do={/interface wireless security-profiles add name="FortuNett-Customer-Open" mode=none} else={/interface wireless security-profiles set $openProfile mode=none}; :foreach radio in=$legacyRadios do={:local oldMode [/interface wireless get $radio mode]; :if ([:pick $oldMode 0 7]!="station") do={:local radioName [/interface wireless get $radio name]; /interface wireless set $radio mode=ap-bridge ssid=$customerSsid hide-ssid=no security-profile="FortuNett-Customer-Open" default-authentication=yes disabled=no; :local ports [/interface bridge port find where interface=$radioName]; :if ([:len $ports]=0) do={/interface bridge port add bridge=$bn interface=$radioName} else={/interface bridge port set $ports bridge=$bn disabled=no}; :set wirelessCount ($wirelessCount+1)} else={:put "Wireless uplink preserved; use a separate customer radio"}}}';
     foreach (['wifi','wifiwave2'] as $menu) {
-        $parts[]=':local modernRadios {}';
+        $parts[]=':local modernRadios [:toarray ""]';
         $parts[]=':do {:set modernRadios [/interface '.$menu.' find]} on-error={}';
         $parts[]=':foreach radio in=$modernRadios do={:local oldMode [/interface '.$menu.' get $radio configuration.mode]; :if ([:pick $oldMode 0 7]!="station") do={/interface '.$menu.' set $radio configuration.mode=ap configuration.ssid=$customerSsid configuration.hide-ssid=no security.authentication-types="" security.passphrase="" datapath.bridge=$bn disabled=no; :set wirelessCount ($wirelessCount+1)} else={:put "Wireless uplink preserved; use a separate customer radio"}}';
     }
