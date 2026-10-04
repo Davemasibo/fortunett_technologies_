@@ -11,139 +11,18 @@
  */
 if (session_status() === PHP_SESSION_NONE) session_start();
 
-// If already logged in, go straight to dashboard
-if (!empty($_SESSION['customer_token'])) {
-    header('Location: dashboard.php');
-    exit;
+header('Cache-Control: no-store');
+header('Referrer-Policy: no-referrer');
+require_once __DIR__.'/includes/auth.php';
+// A server-issued token proves payment/credential authentication. URL usernames
+// and MAC addresses alone must never establish a customer account session.
+if(!empty($_GET['token'])){
+    header('Location: auto_login.php?token='.rawurlencode((string)$_GET['token']));exit;
 }
-
-require_once __DIR__ . '/../includes/db_master.php';
-require_once __DIR__ . '/../classes/CustomerAuth.php';
-require_once __DIR__ . '/../classes/MikrotikAPI.php';
-
-// ── Resolve tenant from subdomain ─────────────────────────────────────────────
-$host      = $_SERVER['HTTP_HOST'] ?? '';
-$subdomain = explode('.', $host)[0];
-$tenantId  = null;
-$branding  = ['name' => 'Customer Portal', 'color' => '#0f3460'];
-
-try {
-    $tSt = $pdo->prepare("SELECT id, company_name, brand_color FROM tenants WHERE subdomain = ? LIMIT 1");
-    $tSt->execute([$subdomain]);
-    $tenant = $tSt->fetch(PDO::FETCH_ASSOC);
-    if ($tenant) {
-        $tenantId        = (int)$tenant['id'];
-        $branding['name']  = $tenant['company_name'] ?: $branding['name'];
-        $branding['color'] = $tenant['brand_color']  ?: $branding['color'];
-    }
-} catch (Exception $_e) {}
-
-$mac      = trim($_GET['mac']  ?? '');
-$username = trim($_GET['user'] ?? '');   // appended by hotspot login.html JS before submit
-
-// ── Attempt auto-login ─────────────────────────────────────────────────────────
-$client    = null;
-$loginDone = false;
-
-// ── Strategy 1: direct DB lookup by mikrotik_username (fast, no router API) ───
-// The hotspot login.html appends &user=<username> to the dst URL via JS just
-// before form submission, so we can resolve the customer without a round-trip
-// to the router's API — which may not be reachable from the web server.
-if ($tenantId && $username) {
-    try {
-        $cSt = $pdo->prepare(
-            "SELECT * FROM clients WHERE mikrotik_username = ? AND tenant_id = ? LIMIT 1"
-        );
-        $cSt->execute([$username, $tenantId]);
-        $client = $cSt->fetch(PDO::FETCH_ASSOC) ?: null;
-    } catch (Exception $_e) {
-        error_log('[hotspot_landing] username lookup: ' . $_e->getMessage());
-    }
-}
-
-// ── Strategy 2: fallback — MAC lookup via router API ──────────────────────────
-// Used when the username wasn't passed (e.g. old login.html still on router)
-// or wasn't found in the DB. Requires the router API to be reachable.
-if (!$client && $tenantId && $mac) {
-    try {
-        $rSt = $pdo->prepare(
-            "SELECT id, ip_address, vpn_ip, username, password, api_port
-             FROM mikrotik_routers
-             WHERE tenant_id = ? AND status IN ('active','online')
-             ORDER BY id ASC"
-        );
-        $rSt->execute([$tenantId]);
-        $routers = $rSt->fetchAll(PDO::FETCH_ASSOC);
-
-        foreach ($routers as $router) {
-            $port      = (int)($router['api_port'] ?: 8728);
-            $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
-
-            $fp = @fsockopen($connectIp, $port, $errno, $errstr, 2);
-            if (!$fp) continue;
-            fclose($fp);
-
-            try {
-                $mk = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
-                $mk->connect();
-                $sessions = $mk->comm('/ip/hotspot/active/print');
-                $mk->disconnect();
-
-                $hotspotUser = null;
-                foreach ($sessions as $sess) {
-                    if (!isset($sess['!re'])) continue;
-                    $sessMac = strtolower(str_replace(['-', ':'], '', $sess['mac-address'] ?? ''));
-                    $reqMac  = strtolower(str_replace(['-', ':', '%3A', '%3a'], '', $mac));
-                    if ($sessMac === $reqMac) {
-                        $hotspotUser = $sess['user'] ?? null;
-                        break;
-                    }
-                }
-
-                if ($hotspotUser) {
-                    $cSt = $pdo->prepare(
-                        "SELECT * FROM clients WHERE mikrotik_username = ? AND tenant_id = ? LIMIT 1"
-                    );
-                    $cSt->execute([$hotspotUser, $tenantId]);
-                    $client = $cSt->fetch(PDO::FETCH_ASSOC) ?: null;
-                    if ($client) break;
-                }
-            } catch (Exception $_apiEx) {
-                error_log('[hotspot_landing] router ' . $router['id'] . ': ' . $_apiEx->getMessage());
-            }
-        }
-    } catch (Exception $_e) {
-        error_log('[hotspot_landing] MAC fallback: ' . $_e->getMessage());
-    }
-}
-
-// ── Build portal session if a client was resolved ─────────────────────────────
-if ($client) {
-    try {
-        $token = bin2hex(random_bytes(16));
-        $pdo->prepare(
-            "INSERT INTO payment_auto_logins (client_id, login_token, expires_at, status)
-             VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 90 SECOND), 'pending')"
-        )->execute([$client['id'], $token]);
-
-        $auth   = new CustomerAuth($pdo);
-        $result = $auth->autoLogin($token, $_SERVER['REMOTE_ADDR'] ?? null, $mac ?: null);
-
-        if ($result['success']) {
-            $_SESSION['customer_token'] = $result['session_token'];
-            $_SESSION['customer_data']  = $result['client'] ?? [];
-            $loginDone = true;
-        }
-    } catch (Exception $_e) {
-        error_log('[hotspot_landing] auto-login: ' . $_e->getMessage());
-    }
-}
-
-// ── Redirect or show fallback ──────────────────────────────────────────────────
-if ($loginDone) {
-    header('Location: dashboard.php');
-    exit;
-}
+if(getCurrentCustomer()){header('Location: dashboard.php');exit;}
+$tenantId=customerHostTenant($pdo);
+$branding=['name'=>'Customer Portal','color'=>'#0f3460'];
+if($tenantId){$st=$pdo->prepare('SELECT company_name FROM tenants WHERE id=?');$st->execute([$tenantId]);$branding['name']=$st->fetchColumn()?:$branding['name'];}
 
 // Auto-login failed — show a friendly page with a manual login link
 require_once __DIR__ . '/includes/theme.php';

@@ -112,6 +112,14 @@ try {
             exit;
         }
 
+        // Create auto-login token for customer portal
+        $portalToken = null;
+        try {
+            $portalToken = bin2hex(random_bytes(16));
+            $pdo->prepare("INSERT INTO payment_auto_logins (client_id, login_token, expires_at, status) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE), 'pending')")
+                ->execute([$resolvedClientId, $portalToken]);
+        } catch (Exception $_e) { $portalToken = null; }
+
         $resolvedTenantId = (int)($client['tenant_id'] ?? $tx['tenant_id'] ?? 0);
         $provisioned = false;
         try {
@@ -145,6 +153,7 @@ try {
             echo json_encode([
                 'status'  => 'processing',
                 'payment_confirmed' => true,
+                'portal_token' => $portalToken,
                 'message' => 'Payment confirmed. Setting up your connection…',
             ]);
             exit;
@@ -158,6 +167,7 @@ try {
             echo json_encode([
                 'status'  => 'processing',
                 'payment_confirmed' => true,
+                'portal_token' => $portalToken,
                 'message' => 'Payment confirmed. Preparing your credentials…',
             ]);
             exit;
@@ -167,18 +177,10 @@ try {
             require_once __DIR__ . '/../../includes/auto_provision.php';
             $tv = $prov ?? autoProvisionClient($pdo, $resolvedClientId, $resolvedTenantId, 0, false);
             echo json_encode(!empty($tv['device_connected'])
-                ? ['status'=>'completed','device_only'=>true,'message'=>'Your TV / device is connected.']
-                : ['status'=>'processing','payment_confirmed'=>true,'message'=>'Payment received. Keep the TV connected to this Wi-Fi; we are retrying its connection.']);
+                ? ['status'=>'completed','device_only'=>true,'portal_token'=>$portalToken,'message'=>'Your TV / device is connected.']
+                : ['status'=>'processing','payment_confirmed'=>true,'portal_token'=>$portalToken,'message'=>'Payment received. Keep the TV connected to this Wi-Fi; we are retrying its connection.']);
             exit;
         }
-
-        // Create auto-login token for customer portal
-        $portalToken = null;
-        try {
-            $portalToken = bin2hex(random_bytes(16));
-            $pdo->prepare("INSERT INTO payment_auto_logins (client_id, login_token, expires_at, status) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE), 'pending')")
-                ->execute([$resolvedClientId, $portalToken]);
-        } catch (Exception $_e) { $portalToken = null; }
 
         echo json_encode([
             'status'       => 'completed',

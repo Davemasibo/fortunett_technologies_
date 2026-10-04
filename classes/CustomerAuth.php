@@ -101,77 +101,50 @@ class CustomerAuth {
     /**
      * Auto-login with payment token
      */
-    public function autoLogin($token, $ipAddress = null, $macAddress = null) {
+    public function autoLogin($token, $ipAddress = null, $macAddress = null, ?int $tenantId = null) {
+        $ownsTransaction = !$this->pdo->inTransaction();
         try {
-            $stmt = $this->pdo->prepare("
-                SELECT * FROM payment_auto_logins 
-                WHERE login_token = ? 
-                AND status = 'pending' 
-                AND expires_at > NOW()
-                LIMIT 1
-            ");
+            if ($ownsTransaction) $this->pdo->beginTransaction();
+            $stmt = $this->pdo->prepare("SELECT a.*,c.tenant_id FROM payment_auto_logins a
+                JOIN clients c ON c.id=a.client_id WHERE a.login_token=? AND a.status='pending'
+                AND a.expires_at>NOW() LIMIT 1 FOR UPDATE");
             $stmt->execute([$token]);
             $autoLogin = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$autoLogin) {
-                return ['success' => false, 'message' => 'Invalid or expired login token'];
+            if (!$autoLogin || ($tenantId !== null && (int)$autoLogin['tenant_id'] !== $tenantId)) {
+                if ($ownsTransaction) $this->pdo->rollBack();
+                return ['success'=>false,'message'=>'Invalid or expired login token'];
             }
-            
-            // Get client
-            $stmt = $this->pdo->prepare("SELECT * FROM clients WHERE id = ?");
-            $stmt->execute([$autoLogin['client_id']]);
-            $client = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$client) {
-                return ['success' => false, 'message' => 'Client not found'];
+            $stmt=$this->pdo->prepare('SELECT * FROM clients WHERE id=? AND tenant_id=?');
+            $stmt->execute([$autoLogin['client_id'],$autoLogin['tenant_id']]);
+            $client=$stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$client || in_array($client['status'],['suspended','blocked'],true)) {
+                if ($ownsTransaction) $this->pdo->rollBack();
+                return ['success'=>false,'message'=>'Account unavailable'];
             }
-            
-            // Mark token as used (mac_address column may not exist on older installs)
-            try {
-                $this->pdo->prepare("
-                    UPDATE payment_auto_logins
-                    SET status = 'used', used_at = NOW(), ip_address = ?, mac_address = ?
-                    WHERE id = ?
-                ")->execute([$ipAddress, $macAddress, $autoLogin['id']]);
-            } catch (Exception $e) {
-                // Fallback: update without mac_address if column is absent
-                $this->pdo->prepare("
-                    UPDATE payment_auto_logins
-                    SET status = 'used', used_at = NOW(), ip_address = ?
-                    WHERE id = ?
-                ")->execute([$ipAddress, $autoLogin['id']]);
+            // Portal sessions do not grant internet access or consume a router device slot.
+            $result=$this->createSession($client);
+            if (!$result['success']) {
+                if ($ownsTransaction) $this->pdo->rollBack();
+                return $result;
             }
-            
-            return $this->createSession($client);
-            
-        } catch (Exception $e) {
-            return ['success' => false, 'message' => 'Auto-login failed: ' . $e->getMessage()];
+            $this->pdo->prepare("UPDATE payment_auto_logins SET status='used',used_at=NOW(),ip_address=? WHERE id=? AND status='pending'")
+                ->execute([$ipAddress,$autoLogin['id']]);
+            if ($ownsTransaction) $this->pdo->commit();
+            return $result;
+        } catch (Throwable $e) {
+            if ($ownsTransaction && $this->pdo->inTransaction()) $this->pdo->rollBack();
+            error_log('Customer auto-login: '.$e->getMessage());
+            return ['success'=>false,'message'=>'Sign-in temporarily unavailable. Please retry.'];
         }
     }
-    
+
     /**
      * Create session for client
      */
     private function createSession($client) {
         try {
-            // Enforce Device Limit
-            $stmt = $this->pdo->prepare("SELECT * FROM packages WHERE id = ?");
-            $stmt->execute([$client['package_id']]);
-            $package = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($package) {
-                // Count active sessions
-                $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM customer_sessions WHERE client_id = ? AND expires_at > NOW()");
-                $stmt->execute([$client['id']]);
-                $activeSessions = (int)$stmt->fetchColumn();
-                
-                $deviceLimit = $package['device_limit'] ?? 1;
-                
-                if ($activeSessions >= $deviceLimit) {
-                    return ['success' => false, 'message' => "Device limit reached. Your plan allows max $deviceLimit device(s)."];
-                }
-            }
-
+            // The MikroTik profile enforces internet device limits. A portal browser
+            // is an account-management session, not another connected internet device.
             $sessionToken = bin2hex(random_bytes(32));
             $expiresAt = date('Y-m-d H:i:s', time() + $this->session_duration);
             
@@ -203,6 +176,8 @@ class CustomerAuth {
                 'session_token' => $sessionToken,
                 'client' => [
                     'id' => $client['id'],
+                    'tenant_id' => $client['tenant_id'],
+                    'username' => $client['username'] ?? $client['mikrotik_username'] ?? '',
                     'name' => $client['full_name'] ?? $client['name'],
                     'email' => $client['email'],
                     'phone' => $client['phone'],

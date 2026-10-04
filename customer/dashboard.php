@@ -3,15 +3,9 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/../includes/validity.php';
 $customer = requireCustomerLogin();
 
-// Redirect expired customers to renewal page (allow re-check after renew)
-if (!isset($_GET['just_renewed'])) {
-    $isSubExpired = ($customer['status'] ?? '') === 'inactive'
-        || (!empty($customer['expiry_date']) && strtotime($customer['expiry_date']) < time());
-    if ($isSubExpired) {
-        header('Location: renew.php?account=' . urlencode($customer['account_number'] ?? $customer['phone'] ?? ''));
-        exit;
-    }
-}
+// The portal stays available for account management after internet access expires.
+$connectionPending=false;
+try{$pending=$pdo->prepare('SELECT COUNT(*) FROM pending_provisions WHERE client_id=? AND tenant_id=?');$pending->execute([$customer['id'],$customer['tenant_id']]);$connectionPending=(int)$pending->fetchColumn()>0;}catch(PDOException $e){error_log('Customer setup status unavailable');}
 
 // Get package details
 $package = null;
@@ -23,7 +17,7 @@ if ($customer['package_id']) {
 
 // Calculate days until expiry
 $daysLeft = getDaysUntilExpiry($customer['expiry_date']);
-$isActive = isSubscriptionActive($customer['expiry_date']);
+$isActive = ($customer['status'] ?? '') === 'active' && isSubscriptionActive($customer['expiry_date']);
 
 $isDemo = isset($_GET['demo']) && $_GET['demo'] === '1'
        && ($customer['username'] ?? '') === '__demo_preview__';
@@ -40,6 +34,11 @@ include 'includes/header.php';
 <?php endif; ?>
 
 <div class="dashboard-container">
+    <?php if (($_GET['payment'] ?? '') === 'success'): ?>
+    <div class="customer-payment-banner" role="status"><i class="fas fa-check-circle" aria-hidden="true"></i><div><strong>Welcome to your customer account</strong><small>You are signed in. Your current subscription and payment history are shown below.</small></div></div>
+    <?php endif; ?>
+    <?php if ($connectionPending): ?><div class="customer-payment-banner" role="status"><div><strong>Your internet connection is being set up</strong><small>Your account is available. Router setup will retry automatically; do not pay again. <?php if (!empty($customer['bound_mac_address'])): ?>Keep your purchased device connected to Wi-Fi.<?php else: ?>Once setup completes, use Connect to Internet below.<?php endif; ?></small></div></div><?php endif; ?>
+    <?php if (($customer['connection_type'] ?? '') === 'hotspot' && empty($customer['bound_mac_address'])): ?><div style="margin-bottom:20px"><a class="btn-primary" style="display:inline-flex;padding:12px 20px;align-items:center;text-decoration:none" href="http://hotspot.fortunett.com/login">Connect to Internet</a></div><?php endif; ?>
     <!-- Welcome Section -->
     <div class="welcome-section">
         <div class="welcome-content">
@@ -52,6 +51,13 @@ include 'includes/header.php';
         </div>
     </div>
     
+    <?php if (!empty($customer['mikrotik_username']) && !empty($customer['mikrotik_password'])): ?>
+    <section class="customer-credentials"><h2>Your internet sign-in</h2><p>Use these credentials to reconnect to the Hotspot or sign in to this customer portal.</p><div class="customer-credentials-grid"><label>Username<input id="customer-network-user" readonly autocomplete="off" value="<?= htmlspecialchars($customer['mikrotik_username'],ENT_QUOTES) ?>"><button type="button" onclick="copyNetworkCredential('customer-network-user')">Copy username</button></label><label>Password<input id="customer-network-password" type="password" readonly autocomplete="off" value="<?= htmlspecialchars($customer['mikrotik_password'],ENT_QUOTES) ?>"><button type="button" aria-pressed="false" onclick="const field=document.getElementById('customer-network-password');const show=field.type==='password';field.type=show?'text':'password';this.textContent=show?'Hide password':'Show password';this.setAttribute('aria-pressed',String(show))">Show password</button> <button type="button" onclick="copyNetworkCredential('customer-network-password')">Copy password</button></label></div><span id="credential-copy-status" role="status"></span></section>
+    <script>
+    async function copyNetworkCredential(id){const field=document.getElementById(id),status=document.getElementById('credential-copy-status');try{await navigator.clipboard.writeText(field.value);status.textContent='Copied. Keep your credentials private.';}catch(e){status.textContent='Copy unavailable. Show the value and select it to copy manually.';}}
+    </script>
+    <?php endif; ?>
+
     <!-- Status Cards -->
     <div class="status-grid">
         <div class="status-card <?php echo $isActive ? 'active' : 'inactive'; ?>">

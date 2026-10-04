@@ -617,7 +617,7 @@ if (_loginForm) _loginForm.addEventListener('submit', function (e) {
       document.getElementById('hs-user').value = d.mikrotik_username;
       document.getElementById('hs-pass').value = d.mikrotik_password;
       var dst = document.getElementById('hs-dst');
-      dst.value = dst.value + '&user=' + encodeURIComponent(d.mikrotik_username);
+      if (d.portal_token) dst.value = customerPortalDestination(d.portal_token);
       if (d.device_connected === true) { window.location.assign(dst.value); return; }
       form.submit();
       return;
@@ -682,7 +682,7 @@ function doReconnect() {
     if (d.success) {
       document.getElementById('rc-st-1').className = 'step done';
       document.getElementById('rc-st-2').className = 'step active';
-      autoConnect(d.username, d.password, 'rc-result', 'Account reconnected', d.device_connected === true);
+      autoConnect(d.username, d.password, 'rc-result', 'Account reconnected', d.device_connected === true, d.portal_token);
       return;
     }
     document.getElementById('rc-status').style.display = 'none';
@@ -805,7 +805,7 @@ function doBuyPlan() {
     /* Free plans come back provisioned — go straight to the router login */
     if (isFree && d.username && d.password) {
       setStep(4);
-      autoConnect(d.username, d.password, 'buy-result', 'You are connected');
+      autoConnect(d.username, d.password, 'buy-result', 'You are connected', false, d.portal_token);
       return;
     }
 
@@ -880,6 +880,12 @@ function pollBuyStatus() {
          bounces the customer back to the sign-in page. */
       if (d.status === 'processing') {
         _paidConfirmed = d.payment_confirmed === true;
+        if (_paidConfirmed && d.portal_token) {
+          clearInterval(_buyTimer);
+          forgetCheckout();
+          window.location.assign(customerPortalDestination(d.portal_token));
+          return;
+        }
         setStep(4);
         var sub = document.querySelector('#st-4 .step-sub');
         if (sub) sub.textContent = d.message || 'Setting up your connection…';
@@ -895,11 +901,12 @@ function pollBuyStatus() {
         if (d.device_only) {
           forgetCheckout();
           document.getElementById('buy-status').style.display = 'none';
-          showResult('buy-result', true, 'TV / device connected', 'Your selected device is connected until its paid expiry. This purchase does not connect this phone.', '');
+          showResult('buy-result', true, 'TV / device connected', 'Your selected device is connected until its paid expiry. Opening your customer account...', '');
+          if (d.portal_token) setTimeout(function(){window.location.assign(customerPortalDestination(d.portal_token));},500);
           return;
         }
         if (d.username && d.password) {
-          autoConnect(d.username, d.password, 'buy-result', 'Payment confirmed');
+          autoConnect(d.username, d.password, 'buy-result', 'Payment confirmed', false, d.portal_token);
         } else {
           /* Paid, but provisioning hasn't caught up — offer the code route */
           document.getElementById('buy-status').style.display = 'none';
@@ -946,7 +953,11 @@ function cancelBuy() {
 }
 
 /* ── Shared: hand credentials to RouterOS and submit ───────────── */
-function autoConnect(username, password, resultId, title, deviceConnected) {
+function customerPortalDestination(token) {
+  return PORTAL + '/customer/auto_login.php?token=' + encodeURIComponent(token);
+}
+function autoConnect(username, password, resultId, title, deviceConnected, portalToken) {
+  if (portalToken) document.getElementById('auto-dst').value = customerPortalDestination(portalToken);
   try { sessionStorage.removeItem('fortunett-draft-' + TID); } catch (_) {}
   document.getElementById('auto-user').value = username;
   document.getElementById('auto-pass').value = password;

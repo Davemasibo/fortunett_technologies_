@@ -81,10 +81,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 FROM clients c
                 LEFT JOIN packages p ON p.id = c.package_id
                 WHERE c.tenant_id = ?
-                  AND (c.username = ? OR c.phone = ? OR c.phone = ? OR c.account_number = ?)
+                  AND (c.username = ? OR c.phone = ? OR c.phone = ? OR c.account_number = ? OR c.mikrotik_username = ?)
                 LIMIT 1
             ");
-            $clSt->execute([$tenantId, $loginId, $loginId, $loginPhone254, $loginId]);
+            $clSt->execute([$tenantId, $loginId, $loginId, $loginPhone254, $loginId, $loginId]);
             $foundClient = $clSt->fetch(PDO::FETCH_ASSOC);
 
             if (!$foundClient) {

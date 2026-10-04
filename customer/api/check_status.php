@@ -45,9 +45,10 @@ $txStmt = $pdo->prepare(
             mt.transaction_id AS mpesa_receipt
      FROM mpesa_transactions mt
      WHERE mt.checkout_request_id = ? AND mt.tenant_id = ?
+       AND (mt.client_id = ? OR (mt.client_id IS NULL AND EXISTS(SELECT 1 FROM payments p WHERE p.tenant_id=mt.tenant_id AND p.client_id=? AND p.transaction_id=mt.checkout_request_id)))
      LIMIT 1"
 );
-$txStmt->execute([$checkoutId, $tenantId]);
+$txStmt->execute([$checkoutId, $tenantId, $clientId, $clientId]);
 $tx = $txStmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$tx) {
@@ -101,7 +102,8 @@ if ($dbStatus === 'completed') {
     // Package activation belongs to the receipt-idempotent payment pipeline.
     // Polling a historical paid receipt must never restart an expired package.
 
-    echo json_encode(['status' => 'paid', 'message' => 'Payment confirmed!']);
+    $_SESSION['customer_data']=getCurrentCustomer() ?: $customer;
+    echo json_encode(['status' => 'paid', 'message' => 'Payment confirmed!', 'redirect_url'=>'dashboard.php?payment=success']);
 
 } elseif ($dbStatus === 'failed') {
     $desc = $tx['result_desc'] ?? 'Payment failed or was cancelled.';

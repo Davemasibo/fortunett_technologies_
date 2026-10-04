@@ -82,7 +82,12 @@ if (!$clientId) {
 }
 
 try {
-    echo json_encode(reconnectReceiptClient($pdo, $clientId, $tenantId, $mac));
+    $result=reconnectReceiptClient($pdo,$clientId,$tenantId,$mac);
+    if(!empty($result['success'])){
+        require_once __DIR__.'/../../classes/CustomerAuth.php';
+        $result['portal_token']=(new CustomerAuth($pdo))->createAutoLoginToken($clientId);
+    }
+    echo json_encode($result);
 } catch (Throwable $e) {
     error_log('Receipt reconnect: ' . $e->getMessage());
     fail('Payment found. Connection setup needs attention; do not pay again.', 'Contact your ISP with the payment code.');

@@ -623,7 +623,9 @@ function startRenewPoll(checkoutId, clientId) {
         fetch('../api/payment/hotspot_payment_status.php?checkout_request_id=' + encodeURIComponent(checkoutId) + '&client_id=' + clientId)
         .then(function(r){ return r.json(); })
         .then(function(d){
-            if (d.status === 'completed') {
+            if (d.status === 'processing' && d.payment_confirmed && d.portal_token) {
+                clearInterval(pollTimer);window.location.assign('auto_login.php?token='+encodeURIComponent(d.portal_token));
+            } else if (d.status === 'completed') {
                 clearInterval(pollTimer);
                 procOk(d.username, d.password, d.portal_token);
             } else if (d.status === 'failed') {
@@ -647,6 +649,9 @@ function procOk(username, password, portalToken) {
         var url = LINK_LOGIN + '?username=' + encodeURIComponent(username) + '&password=' + encodeURIComponent(password);
         if (dst) url += '&dst=' + encodeURIComponent(dst);
         setTimeout(function(){ window.location.href = url; }, 1400);
+    } else if (portalToken) {
+        document.getElementById('proc-msg').textContent = 'Opening your customer account...';
+        setTimeout(function(){ window.location.assign('auto_login.php?token='+encodeURIComponent(portalToken)); },500);
     } else {
         document.getElementById('proc-msg').textContent = 'Your subscription is now active. ' +
             (username ? 'Sign in with username: ' + username : 'You can now sign in to the internet.');

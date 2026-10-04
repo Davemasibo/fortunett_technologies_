@@ -16,7 +16,11 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
     $stmt->execute([$_SESSION['customer_data']['tenant_id']]);
     $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
     
-    if (!empty($settings['company_name'])) $tenant_branding['company_name'] = $settings['company_name'];
+    $company=$pdo->prepare('SELECT company_name FROM tenants WHERE id=?');
+    $company->execute([$_SESSION['customer_data']['tenant_id']]);
+    $companyName=$company->fetchColumn();
+    $tenant_branding['company_name']=$companyName ?: $tenant_branding['company_name'];
+    if (!$companyName && !empty($settings['company_name'])) $tenant_branding['company_name'] = $settings['company_name'];
     if (!empty($settings['brand_color'])) $tenant_branding['brand_color'] = $settings['brand_color'];
     if (!empty($settings['system_logo'])) $tenant_branding['system_logo'] = $settings['system_logo'];
     if (!empty($settings['support_number'])) $tenant_branding['support_number'] = $settings['support_number'];
@@ -111,7 +115,7 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
             $isAcctPage = basename($_SERVER['PHP_SELF']) === 'account.php';
             ?>
             <a href="account.php" class="sidebar-profile-card <?= $isAcctPage ? 'active' : '' ?>" title="My Account">
-                <div class="sp-avatar"><?= $initial ?></div>
+                <div class="sp-avatar"><?= htmlspecialchars($initial) ?></div>
                 <div class="sp-info">
                     <?php if ($custName): ?>
                     <div class="sp-name"><?= htmlspecialchars($custName) ?></div>
@@ -134,9 +138,12 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
                     <button class="menu-toggle" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false" onclick="toggleSidebarMobile()">
                         <i class="fas fa-bars"></i>
                     </button>
-                    <span class="page-title" id="topbar-page-title"></span>
+                    <div><small class="customer-nav-brand"><?= htmlspecialchars($tenant_branding['company_name']) ?></small><span class="page-title" id="topbar-page-title"></span></div>
                 </div>
-                <div class="topbar-right"></div>
+                <div class="topbar-right">
+                    <div data-customer-theme-mount></div>
+                    <details class="customer-profile-menu"><summary aria-label="Account menu"><span class="customer-nav-avatar"><?= htmlspecialchars($initial) ?></span><span class="customer-nav-name"><?= htmlspecialchars($custName ?: 'My account') ?></span></summary><div class="customer-profile-popover"><strong><?= htmlspecialchars($custName ?: 'Customer') ?></strong><small><?= htmlspecialchars($acctNum ?: '') ?></small><a href="account.php">Manage account</a><a href="payment.php">Payments &amp; receipts</a><a href="logout.php">Sign out</a></div></details>
+                </div>
             </div>
 
             <script>

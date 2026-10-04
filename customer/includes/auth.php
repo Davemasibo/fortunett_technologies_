@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../classes/CustomerAuth.php';
+require_once __DIR__.'/tenant.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -29,7 +30,8 @@ function getCurrentCustomer() {
     $auth = new CustomerAuth($pdo);
     $result = $auth->validateSession($_SESSION['customer_token']);
     
-    if ($result['valid']) {
+    $hostTenant=customerHostTenant($pdo);
+    if ($result['valid'] && ($hostTenant===null || $hostTenant===(int)$result['client']['tenant_id'])) {
         return $result['client'];
     }
     

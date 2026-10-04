@@ -24,4 +24,5 @@ function customerThemeHead(PDO $pdo, int $tenantId): void
     echo '<style id="tenant-customer-theme">html:root{' . $data['vars']
         . ';--customer-background:' . $data['background'] . ';}</style>';
     echo '<link rel="stylesheet" href="css/portal.css?v=' . filemtime(__DIR__ . '/../css/portal.css') . '">';
+    echo '<script src="js/theme.js?v=' . filemtime(__DIR__.'/../js/theme.js') . '"></script>';
 }

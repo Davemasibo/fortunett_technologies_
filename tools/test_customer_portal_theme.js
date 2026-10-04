@@ -40,6 +40,10 @@ const root=path.join(__dirname,'..');
    }
    await page.setViewportSize({width:390,height:844});
    if(template==='dashboard.php') {
+    assert.equal(await page.locator('#customer-network-password').getAttribute('type'),'password');
+    await page.getByRole('button',{name:'Show password',exact:true}).click();
+    assert.equal(await page.locator('#customer-network-password').getAttribute('type'),'text');
+    await page.getByRole('button',{name:'Hide password',exact:true}).click();
     assert.equal(await page.locator('.mobile-nav').isVisible(),true);
     await page.locator('.menu-toggle').click();
     assert.equal(await page.locator('.menu-toggle').getAttribute('aria-expanded'),'true');
@@ -50,6 +54,18 @@ const root=path.join(__dirname,'..');
    if(theme==='light' && ['packages.php','payment.php','login.php'].includes(template)) await page.screenshot({path:path.join(root,'artifacts','customer-'+template.replace('.php','')+'.png'),fullPage:true});
    console.log('PASS '+theme+' '+template+': tenant palette, three viewport widths');
   }
+  template='dashboard.php';theme='light';await page.goto('https://portal.test/customer/dashboard.php');
+  const picker=page.locator('[data-customer-theme-picker]');
+  await picker.selectOption('dark');
+  assert.equal(await page.locator('html').getAttribute('data-customer-theme'),'dark');
+  assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(20, 20, 20)');
+  await page.reload();assert.equal(await picker.inputValue(),'dark');
+  template='payment.php';await page.goto('https://portal.test/customer/payment.php');assert.equal(await picker.inputValue(),'dark');
+  await picker.selectOption('light');assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(243, 245, 247)');
+  await picker.selectOption('system');await page.emulateMedia({colorScheme:'dark'});await page.waitForFunction(()=>document.documentElement.getAttribute('data-customer-theme')==='dark');assert.equal(await page.locator('html').getAttribute('data-customer-theme'),'dark');
+  await picker.selectOption('tenant');assert.equal(await page.locator('html').getAttribute('data-customer-theme'),'tenant');
+  await page.screenshot({path:path.join(root,'artifacts','customer-payment-theme-picker.png'),fullPage:true});
+  console.log('PASS personal theme choice, persistence across pages, device theme and tenant reset');
   assert.deepEqual(errors,[]);
  } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

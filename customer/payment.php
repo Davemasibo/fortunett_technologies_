@@ -1029,7 +1029,7 @@ function pollTopupStatus(checkoutId) {
             if (data.status === 'paid') {
                 clearInterval(interval);
                 document.getElementById('stkStatus').textContent = 'Balance topped up! Refreshing…';
-                setTimeout(() => window.location.href = 'payment.php?topup=success', 2000);
+                setTimeout(() => window.location.href = 'dashboard.php?payment=success', 2000);
             } else if (data.status === 'failed') {
                 clearInterval(interval);
                 document.getElementById('stkProcessingBackdrop').classList.remove('show');

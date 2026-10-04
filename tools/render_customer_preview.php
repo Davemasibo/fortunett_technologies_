@@ -8,7 +8,7 @@ session_start();
 $page = $argv[1] ?? 'dashboard.php';
 if (!in_array($page, ['dashboard.php','packages.php','payment.php','account.php','devices.php','login.php','register.php','renew.php'], true)) exit(1);
 $GLOBALS['previewPackage'] = ['id'=>39,'name'=>'Daily Wi-Fi','price'=>40,'description'=>'Stay connected throughout your day', 'download_speed'=>10,'upload_speed'=>10,'validity_value'=>24,'validity_unit'=>'hours','data_limit'=>0,'device_limit'=>1,'connection_type'=>'hotspot','mikrotik_profile'=>'pkg39','hotspot_server'=>'all','status'=>'active'];
-$GLOBALS['previewCustomer'] = ['id'=>1,'tenant_id'=>9,'package_id'=>39,'full_name'=>'Alex Mwangi','name'=>'Alex Mwangi','username'=>'preview','account_number'=>'DEMO001','phone'=>'0712345678','email'=>'alex@example.test','status'=>'active','expiry_date'=>date('Y-m-d H:i:s',time()+3600*18),'account_balance'=>0,'connection_type'=>'hotspot','created_at'=>'2026-09-01 10:00:00','address'=>'Nairobi'];
+$GLOBALS['previewCustomer'] = ['id'=>1,'tenant_id'=>9,'package_id'=>39,'full_name'=>'Alex Mwangi','name'=>'Alex Mwangi','username'=>'preview','mikrotik_username'=>'preview','mikrotik_password'=>'demo-only','account_number'=>'DEMO001','phone'=>'0712345678','email'=>'alex@example.test','status'=>'active','expiry_date'=>date('Y-m-d H:i:s',time()+3600*18),'account_balance'=>0,'connection_type'=>'hotspot','created_at'=>'2026-09-01 10:00:00','address'=>'Nairobi'];
 class CustomerPreviewPDO extends PDO {
     public function __construct() {}
     public function prepare(string $query,array $options=[]): PDOStatement|false { return new CustomerPreviewStatement($query); }
