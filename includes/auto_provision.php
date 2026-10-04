@@ -15,6 +15,7 @@ require_once __DIR__ . '/../classes/MikrotikAPI.php';
 require_once __DIR__ . '/radius_client.php';
 require_once __DIR__ . '/package_profile.php';
 require_once __DIR__ . '/hotspot_sync.php';
+require_once __DIR__ . '/hotspot_wireless.php';
 require_once __DIR__ . '/hotspot_connection.php';
 
 /**
@@ -571,7 +572,7 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
 {
     try {
         // ── Resolve base URL for this tenant ──────────────────────────────────
-        $stmt = $pdo->prepare("SELECT provisioning_token, subdomain FROM tenants WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT provisioning_token, subdomain, company_name FROM tenants WHERE id = ?");
         $stmt->execute([$tenantId]);
         $tenantRow = $stmt->fetch(PDO::FETCH_ASSOC);
         $provToken = $tenantRow['provisioning_token'] ?? '';
@@ -651,6 +652,10 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
         // html-directory-override, when set, takes precedence over html-directory.
         // We collect the effective directory each profile resolves to so Step 4 can
         // write login.html to all of them.
+        $wifiApi=new MikrotikAPI(...$mkArgs);
+        try { $wifiApi->connect(); deployHotspotWireless($wifiApi,(string)($tenantRow['company_name'] ?? '')); }
+        finally { $wifiApi->disconnect(); }
+
         $effectiveDirs = ['flash/hotspot', 'flash/flash/hotspot']; // always cover both
         foreach ($profiles as $p) {
             if (empty($p['.id'])) continue;

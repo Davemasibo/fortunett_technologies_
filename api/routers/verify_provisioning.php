@@ -15,6 +15,7 @@ ini_set('display_errors', 0);
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../classes/MikrotikAPI.php';
+require_once __DIR__ . '/../../includes/hotspot_wireless.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user_id'])) { ob_clean(); echo json_encode(['success' => false, 'error' => 'Unauthorized']); exit; }
@@ -117,6 +118,9 @@ try {
         $dhcp = $api->comm('/ip/dhcp-server/print');
         $dhcpOk = $anyRow($dhcp, fn($r) => ($r['name'] ?? '') === 'hs-dhcp' && ($r['disabled'] ?? 'true') !== 'true');
         $checks[] = ['label' => 'DHCP server (hs-dhcp)', 'ok' => $dhcpOk, 'detail' => $dhcpOk ? 'Serving 10.5.50.0/24' : 'Missing — clients get no IP, portal will not load'];
+
+        $tenantName=$pdo->prepare('SELECT company_name FROM tenants WHERE id=?'); $tenantName->execute([$tenantId]);
+        $checks=array_merge($checks,hotspotWirelessReadiness($api,(string)$tenantName->fetchColumn(),(string)($hsRow['interface'] ?? $bridgeName)));
 
         $files = $api->comm('/file/print');
         $loginOk = $anyRow($files, fn($r) => substr($r['name'] ?? '', -strlen('hotspot/login.html')) === 'hotspot/login.html');

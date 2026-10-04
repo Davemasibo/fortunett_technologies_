@@ -11,7 +11,7 @@ function mergeRouterServiceTypes(string $existing, array $requested): string
     return implode(',', array_values(array_unique($types)));
 }
 
-function buildRouterServiceCommand(array $services, bool $noSharing, string $portalHost = '', string $loginServeUrl = '', string $portalIp = '', string $bridgeName = ''): string
+function buildRouterServiceCommand(array $services, bool $noSharing, string $portalHost = '', string $loginServeUrl = '', string $portalIp = '', string $bridgeName = '', string $companyName = ''): string
 {
     $sharedUsers = $noSharing ? '1' : 'unlimited';
     $parts = [];
@@ -79,6 +79,10 @@ function buildRouterServiceCommand(array $services, bool $noSharing, string $por
         // Caps live on the per-package profile that autoProvisionClient() creates.
         $parts[] = '/ip hotspot user profile set [find name=default] rate-limit="" shared-users=' . $sharedUsers;
         $parts[] = '/ip hotspot add name=hotspot1 interface=$bn address-pool=hs-pool profile=hsprof1 disabled=no';
+        if ($companyName!=='') {
+            require_once __DIR__.'/hotspot_wireless.php';
+            $parts[]=hotspotWirelessCommand($companyName);
+        }
         $parts[] = ':do {/ip firewall nat remove [find comment="FortuNett-Hotspot-NAT"]} on-error={}';
         $parts[] = '/ip firewall nat add chain=srcnat src-address=10.5.50.0/24 action=masquerade comment="FortuNett-Hotspot-NAT"';
 

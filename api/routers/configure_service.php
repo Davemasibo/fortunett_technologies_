@@ -72,11 +72,12 @@ try {
     ")->execute([$serviceTypesStr, in_array('hotspot', $services, true), $noSharing, $router['id'], $tenantId]);
 
     // Resolve tenant portal info for walled garden + login page fetch
+    $companyName    = '';
     $portalHost     = '';
     $loginServeUrl  = '';
     $portalIp       = '';
     try {
-        $tSt = $pdo->prepare("SELECT subdomain, provisioning_token FROM tenants WHERE id = ? LIMIT 1");
+        $tSt = $pdo->prepare("SELECT subdomain, provisioning_token, company_name FROM tenants WHERE id = ? LIMIT 1");
         $tSt->execute([$tenantId]);
         $tRow = $tSt->fetch(PDO::FETCH_ASSOC);
 
@@ -88,6 +89,7 @@ try {
         } catch (Throwable $_e) {}
 
         if ($tRow) {
+            $companyName=(string)$tRow['company_name'];
             $sub        = $tRow['subdomain'] ?: '';
             $portalHost = $sub ? "$sub.$platformDomain" : $platformDomain;
             if (!empty($tRow['provisioning_token'])) {
@@ -111,7 +113,7 @@ try {
         }
     } catch (Throwable $_e) {}
 
-    $command = buildRouterServiceCommand($services, (bool)$noSharing, $portalHost, $loginServeUrl, $portalIp, $bridgeName);
+    $command = buildRouterServiceCommand($services, (bool)$noSharing, $portalHost, $loginServeUrl, $portalIp, $bridgeName, $companyName);
 
     echo json_encode([
         'status'             => 'success',

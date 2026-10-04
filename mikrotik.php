@@ -761,6 +761,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <p style="color:rgba(255,255,255,.4); margin-bottom:8px;">Select one or both services to enable on this router.</p>
                 <p style="font-size:12px; color:rgba(255,255,255,.25); margin-bottom:20px;">You can select both if this router serves PPPoE and hotspot clients.</p>
 
+                <p style="font-size:12px;color:#a3a3a3;">Compatible customer radios will broadcast your company name as open Wi-Fi. Connect through Ethernet while applying setup; wireless uplinks are preserved.</p>
                 <label for="wizardBridgeName">Customer LAN bridge</label>
                 <input id="wizardBridgeName" maxlength="64" placeholder="Automatic if there is one enabled bridge" style="width:100%;padding:10px;margin:8px 0;">
                 <p style="font-size:12px;color:#a3a3a3;">For several bridges, run <code>/interface bridge print</code> in WinBox and enter the customer bridge's exact name. Hotspot replaces DHCP on that bridge and customers reconnect on 10.5.50.0/24. Use separate LANs for two Hotspot gateways to avoid competing DHCP servers.</p>
@@ -1242,6 +1243,7 @@ window.onclick = function(event) {
     </div>
     <p id="provRouterLabel" style="font-size:12px;color:rgba(255,255,255,.4);margin:0 0 14px;"></p>
     <p style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:14px;">Select the services to configure now. To add PPPoE later, select only PPPoE and keep the existing Hotspot configuration. Copy the script into WinBox → New Terminal.</p>
+    <p style="font-size:12px;color:#a3a3a3;">Hotspot setup automatically enables customer Wi-Fi on compatible radios, using your company name with no Wi-Fi key. Connect through Ethernet while applying it. Wireless uplinks are preserved.</p>
     <label for="provBridgeName" style="display:block;color:#e2e2e0;font-size:13px;">LAN bridge name</label>
     <input id="provBridgeName" type="text" maxlength="64" placeholder="Leave blank if the router has one bridge" style="width:100%;padding:9px;margin:6px 0 14px;background:#111;color:#e2e2e0;border:1px solid #555;border-radius:6px;">
 
