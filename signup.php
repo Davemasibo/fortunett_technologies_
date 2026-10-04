@@ -126,25 +126,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
                         }
                     }
                     $pdo->commit();
-                    if ($googleSignup && $googleSignup['authoritative']) {
-                        unset($_SESSION['google_signup']);
-                        $workspaceUrl = googleTenantLoginUrl($pdo, $tenantId);
-                        $success = 'Workspace created! <a href="' . htmlspecialchars($workspaceUrl, ENT_QUOTES, 'UTF-8') . '">Sign in with Google on your workspace</a>.';
-                        $showSignup = true; $showLogin = true; $publicHome = 'login.php';
-                        require __DIR__ . '/includes/public_landing.php'; exit;
-                    }
                     unset($_SESSION['google_signup']);
 
                     // Use platform domain from settings, fallback to hardcoded
                     $platformDomain = getPlatformSetting($pdo, 'platform_domain', 'fortunetttech.site');
                     $trialDays      = max(0, (int)getPlatformSetting($pdo, 'default_trial_days', 14));
                     $tenantUrl  = "https://" . $subdomain . "." . $platformDomain;
-                    $loginLink  = $tenantUrl . "/login.php";
-                    $verifyLink = $tenantUrl . "/verify.php?token=" . $token;
+                    $loginLink  = $tenantUrl . "/login.php?signin=1";
+                    $workspaceUrl = $loginLink;
+                    $googleVerified = $googleSignup && $googleSignup['authoritative'];
+                    $actionLink = $googleVerified ? $loginLink : $tenantUrl . "/verify.php?token=" . $token;
+                    $actionLabel = $googleVerified ? 'Open your workspace' : 'Verify Email &amp; Login';
+                    $signInMethod = $googleSignup ? 'Continue with Google using the email you registered with. No separate password was created.' : 'Sign in with your registered email or username and the password you chose.';
                     $trialEnds  = $trialDays > 0 ? date('d M Y', strtotime("+{$trialDays} days")) : 'N/A';
 
                     // Welcome + verification email
-                    $subject = "Welcome to $business_name — Verify Your Account";
+                    $subject = $googleVerified ? "Welcome to $business_name - Your Workspace Is Ready" : "Welcome to $business_name — Verify Your Account";
                     $body = <<<HTML
 <!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
@@ -166,24 +163,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
         <span style="font-weight:600;">{$username}</span>
       </div>
       <div style="margin-bottom:12px;"><span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;">Plan</span><br>
-        <span style="font-weight:600;">Starter (14-day free trial)</span>
+        <span style="font-weight:600;">{$trialDays}-day free trial</span>
       </div>
       <div><span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;">Trial Ends</span><br>
         <span style="font-weight:600;">{$trialEnds}</span>
       </div>
     </div>
 
+    <p style="color:#374151;">{$signInMethod}</p>
     <p style="text-align:center;margin:28px 0;">
-      <a href="{$verifyLink}" style="display:inline-block;padding:14px 28px;background:linear-gradient(135deg,#2C5282,#4A90E2);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:16px;">Verify Email &amp; Login</a>
+      <a href="{$actionLink}" style="display:inline-block;padding:14px 28px;background:linear-gradient(135deg,#2C5282,#4A90E2);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:16px;">{$actionLabel}</a>
     </p>
 
     <p style="font-size:13px;color:#6b7280;">If the button above doesn't work, copy and paste this link:<br>
-    <a href="{$verifyLink}" style="color:#2C5282;">{$verifyLink}</a></p>
+    <a href="{$actionLink}" style="color:#2C5282;">{$actionLink}</a></p>
 
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
     <p style="font-size:13px;color:#6b7280;margin:0;">
-      <strong>Getting started:</strong> After verifying, add your MikroTik router under <em>Routers</em>,
-      create service packages, then start adding customers. Your first 14 days are free — no credit card needed.
+      <strong>Getting started:</strong> Open your workspace, complete the setup checklist, and add your MikroTik router under <em>Routers</em>,
+      create service packages, then start adding customers. Your first {$trialDays} days are free — no credit card needed.
     </p>
   </div>
   <div style="background:#f8fafc;padding:16px 36px;text-align:center;font-size:12px;color:#94a3b8;border-top:1px solid #e2e8f0;">
@@ -193,11 +191,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
 </body></html>
 HTML;
 
-                    if (function_exists('sendEmail') && sendEmail($email, $subject, $body)) {
-                        $success = "Account created! Check your email at <strong>" . htmlspecialchars($email) . "</strong> to verify and get started. Your dashboard: <a href='$tenantUrl'>$tenantUrl</a>";
-                    } else {
-                        $success = "Account created! Your dashboard URL is <a href='$tenantUrl'>$tenantUrl</a>. (Email delivery unavailable — please contact support to verify your account.)";
+                    try {
+                        $welcomeSent = function_exists('sendEmail') && sendEmail($email, $subject, $body) === true;
+                    } catch (Throwable $mailError) {
+                        $welcomeSent = false;
+                        error_log('Signup welcome delivery failed: ' . get_class($mailError));
                     }
+                    $mailNotice = $welcomeSent
+                        ? 'Your workspace details have been emailed to you. Check your inbox and spam folder.'
+                        : 'Your account is saved, but we could not send the welcome email. Keep the workspace link below.';
+                    $nextStep = $googleVerified
+                        ? 'Use Continue with Google on your workspace to sign in.'
+                        : 'Verify your email before signing in. If the email did not arrive, use Resend verification on the sign-in page.';
+                    $success = 'Workspace created successfully!<br>' . htmlspecialchars($nextStep, ENT_QUOTES, 'UTF-8')
+                        . '<br>' . htmlspecialchars($mailNotice, ENT_QUOTES, 'UTF-8')
+                        . '<br><strong>Your workspace:</strong> <a href="' . htmlspecialchars($loginLink, ENT_QUOTES, 'UTF-8') . '">'
+                        . htmlspecialchars($tenantUrl, ENT_QUOTES, 'UTF-8') . '</a>';
+
                 } else {
                     // Roll back the user record if tenant creation failed
                     if ($pdo->inTransaction()) $pdo->rollBack();

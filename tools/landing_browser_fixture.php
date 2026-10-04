@@ -1,7 +1,7 @@
 <?php
 // Isolated local fixture; never connects to the application database.
 if (PHP_SAPI !== 'cli') exit;
-$pdo = new PDO('mysql:host=127.0.0.1;port=3308;charset=utf8mb4', 'root', '', [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+$pdo = new PDO('mysql:host=127.0.0.1;port='.(int)(getenv('LANDING_TEST_DB_PORT') ?: 3308).';charset=utf8mb4', 'root', '', [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
 $schema = 'fortunett_landing_browser_test';
 if (in_array('--cleanup', $argv, true)) { $pdo->exec("DROP DATABASE IF EXISTS `$schema`"); exit; }
 $pdo->exec("CREATE DATABASE `$schema`");

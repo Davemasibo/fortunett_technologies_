@@ -81,6 +81,8 @@ function sendEmail($to, $subject, $body) {
             
             // Server settings
             $mail->isSMTP();
+            $mail->Timeout = 10;
+            $mail->Timelimit = 15;
             $mail->Host = $mailHost;
             $mail->SMTPAuth = true;
             $mail->Username = $mailUsername;  // SMTP auth user (the Gmail account)

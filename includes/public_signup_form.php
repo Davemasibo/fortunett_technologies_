@@ -1,9 +1,9 @@
 <span class="eyebrow">MAKE ROOM FOR YOUR NETWORK</span>
-<h2><?= $googleSignup ? 'Finish your workspace' : 'Create your account' ?></h2>
+<h2><?= $success ? 'Your workspace is ready' : ($googleSignup ? 'Finish your workspace' : 'Create your account') ?></h2>
 <p class="muted">Bring your customers, routers, and billing together.</p>
 <?php if ($error): ?><div class="login-error" role="alert"><?= landingEscape($error) ?></div><?php endif; ?>
 <?php if ($success): ?>
-    <div class="auth-notice" role="status"><?= $success ?></div><a class="button submit-button" href="login.php?signin=1">Continue to sign in →</a>
+    <div class="auth-notice" role="status"><?= $success ?></div><a class="button submit-button" href="<?= landingEscape($workspaceUrl ?? 'login.php?signin=1') ?>">Open your workspace →</a>
 <?php elseif ($signupEnabled === '0'): ?>
     <div class="auth-notice">New registrations are currently closed. Existing customers can still sign in.</div><a class="text-link" href="login.php?signin=1">Sign in →</a>
 <?php else: ?>
