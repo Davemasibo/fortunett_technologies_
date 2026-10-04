@@ -185,6 +185,7 @@ try {
 
         // ── RSC Output ────────────────────────────────────────────────────────
         echo ':if ([:tonum [:pick [/system resource get version] 0 [:find [/system resource get version] "."]]] < 7) do={:error "RouterOS 7 or newer is required. Upgrade this router in WinBox before connecting it."};' . "\n";
+        echo routerDeviceModeGuard() . ";\n";
         echo "# Fortunett Technologies Provisioning Script\n";
         echo "# Generated:    " . date('Y-m-d H:i:s') . "\n";
         echo "# Tenant ID:    $tenantId\n";

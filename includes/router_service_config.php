@@ -5,6 +5,23 @@ function routerServiceString(string $value): string
     return '"' . str_replace(['\\', '"', '$', "\r", "\n"], ['\\\\', '\\"', '\\$', '', ''], $value) . '"';
 }
 
+/** Stop before changing a router when device-mode blocks required features. */
+function routerDeviceModeGuard(bool $hotspot = false): string
+{
+    $features=$hotspot ? ['scheduler','fetch','hotspot'] : ['scheduler','fetch'];
+    $parts=[':local blockedFeatures ""'];
+    foreach ($features as $feature) {
+        // Older RouterOS versions may not expose per-feature device-mode flags.
+        $parts[]=':local featureAllowed true';
+        $parts[]=':do {:set featureAllowed [/system device-mode get '.$feature.']} on-error={}';
+        $parts[]=':if ($featureAllowed=false) do={:set blockedFeatures ($blockedFeatures . " '.$feature.'")}';
+    }
+    $enable=implode(' ',array_map(fn($feature)=>$feature.'=yes',$features));
+    $message='Device-mode blocks required features. Run /system device-mode update '.$enable.' then physically power-cycle within the displayed countdown and retry setup. Blocked:';
+    $parts[]=':if ([:len $blockedFeatures]>0) do={:error ('.routerServiceString($message).' . $blockedFeatures)}';
+    return '{ '.implode('; ',$parts).'; }';
+}
+
 function mergeRouterServiceTypes(string $existing, array $requested): string
 {
     $types = array_filter(array_merge(explode(',', $existing), $requested), fn($s) => in_array($s, ['hotspot', 'pppoe'], true));
@@ -14,7 +31,7 @@ function mergeRouterServiceTypes(string $existing, array $requested): string
 function buildRouterServiceCommand(array $services, bool $noSharing, string $portalHost = '', string $loginServeUrl = '', string $portalIp = '', string $bridgeName = '', string $companyName = ''): string
 {
     $sharedUsers = $noSharing ? '1' : 'unlimited';
-    $parts = [];
+    $parts = [routerDeviceModeGuard(in_array('hotspot',$services,true))];
     $parts[] = ':local bn ""';
     $parts[] = ':local newBridge false';
     if ($bridgeName !== '') {

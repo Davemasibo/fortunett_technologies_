@@ -62,6 +62,17 @@ try {
     $pdo->prepare("UPDATE mikrotik_routers SET status='active',last_seen=NOW() WHERE id=? AND tenant_id=?")
         ->execute([$routerId,$tenantId]);
     $checks = [];
+    $deviceMode=$api->comm('/system/device-mode/print');
+    foreach ($deviceMode as $mode) {
+        if (!isset($mode['!re'])) continue;
+        $required=in_array('hotspot',$services,true) ? ['scheduler','fetch','hotspot'] : ['scheduler','fetch'];
+        foreach ($required as $feature) {
+            if (!array_key_exists($feature,$mode)) continue;
+            $allowed=in_array((string)$mode[$feature],['true','yes','1'],true);
+            $checks[]=['label'=>'Device-mode: '.$feature,'ok'=>$allowed,'detail'=>$allowed ? 'Allowed' : 'Run /system device-mode update scheduler=yes fetch=yes hotspot=yes, physically power-cycle within countdown, then retry'];
+        }
+    }
+
 
     // ── Bridge ────────────────────────────────────────────────────────────────
     $bridges   = $api->comm('/interface/bridge/print');

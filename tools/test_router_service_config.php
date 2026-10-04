@@ -21,3 +21,7 @@ serviceCheck(routerServiceString('bridge";$bad')==='"bridge\\";\\$bad"','Bridge 
 serviceCheck(str_starts_with($hotspot,'{ ') && str_ends_with($hotspot,'; }'),'Provisioning locals stay inside one explicit RouterOS scope');
 serviceCheck(str_contains($hotspot,'LAN bridge not found: ') && str_contains($hotspot,'LAN bridge is disabled: '),'Missing and disabled bridges have distinct actionable errors');
 serviceCheck(strpos($hotspot,'LAN bridge not found: ') < strpos($hotspot,'/ip hotspot remove'),'Bridge validation runs before existing Hotspot settings are changed');
+
+serviceCheck(strpos($hotspot,'/system device-mode get hotspot') < strpos($hotspot,'/ip hotspot remove'),'Device-mode prerequisites are checked before service changes');
+serviceCheck(str_contains(routerDeviceModeGuard(true),'scheduler=yes fetch=yes hotspot=yes') && str_contains(routerDeviceModeGuard(true),'physically power-cycle'),'Device-mode restrictions include exact physical recovery instructions');
+serviceCheck(!str_contains(routerDeviceModeGuard(false),'/system device-mode get hotspot'),'Management-only setup does not require Hotspot permission');

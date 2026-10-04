@@ -18,6 +18,7 @@ ob_start();
 require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
 require_once '../../classes/WireGuardManager.php';
+require_once '../../includes/router_service_config.php';
 
 ob_clean();
 
@@ -114,7 +115,7 @@ try {
     // are joined with ';' so the whole thing runs atomically in the terminal (a
     // '#' comment in a one-liner would swallow everything after it on the line).
     // Each mutating step is preceded by an idempotent remove so re-running is safe.
-    $parts = [];
+    $parts = [routerDeviceModeGuard()];
     $parts[] = ':if ([:tonum [:pick [/system resource get version] 0 [:find [/system resource get version] "."]]] < 7) do={:error "RouterOS 7 or newer is required. Upgrade in WinBox first."}';
     // Reconfigure only the platform tunnel, leaving other VPNs intact.
     $parts[] = ':do {/ip address remove [find interface="wg-fortunett"]} on-error={}';

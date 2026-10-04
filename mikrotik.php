@@ -741,7 +741,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <!-- END LOCALHOST INFO -->
 
-            <p style="margin-bottom:16px; color:rgba(255,255,255,.5);">Connect this router to the internet, open WinBox ? New Terminal, then copy and paste the command once. RouterOS 7 or newer is required. Keep this page open while we verify the connection. Use a unique name and separate script for each device:</p>
+            <p style="margin-bottom:16px; color:rgba(255,255,255,.5);">Connect this router to the internet, open WinBox ? New Terminal, then copy and paste the command once. RouterOS 7 or newer is required. If setup reports a device-mode restriction, enable scheduler, fetch and Hotspot, then physically power-cycle during the confirmation countdown. Keep this page open while we verify the connection. Use a unique name and separate script for each device:</p>
             <div class="command-box">
                 <button class="copy-btn" onclick="copyCommand()">Copy</button>
                 <div class="command-text" id="provisionCommand">Generating command...</div>
