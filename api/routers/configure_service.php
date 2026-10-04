@@ -115,6 +115,7 @@ try {
 
     echo json_encode([
         'status'             => 'success',
+        'router_id'          => (int)$router['id'],
         'message'            => 'Configuration generated for: ' . implode(', ', $services),
         'services'           => $services,
         'command'            => $command,

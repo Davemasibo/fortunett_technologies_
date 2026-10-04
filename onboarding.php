@@ -24,6 +24,13 @@ include __DIR__.'/includes/sidebar.php';
 </li>
 <?php endforeach; ?>
 </ol>
+<h2>Connect your first MikroTik</h2>
+<ol><li>Connect your router to the internet and open WinBox. Upgrade to RouterOS 7 or newer if needed.</li>
+<li>Open <a href="mikrotik.php?open_modal=1">Add MikroTik</a>, choose a unique device name and copy its connection command into WinBox ? New Terminal.</li>
+<li>Keep the setup window open. It checks the management connection before offering customer services.</li>
+<li>Select Hotspot or PPPoE and your customer LAN bridge. Copy the service command into the terminal, then click Verify configuration.</li>
+<li>Continue with packages, payment settings and a test customer below. Check that a customer can connect, pay and access the internet.</li></ol>
+<p>If an import fails, keep the terminal error and use Repair management connection. Each router uses its own script. If two routers serve the same physical customer network, plan one DHCP gateway or separate VLANs before enabling Hotspot on both.</p>
 <h2>Your devices</h2>
 <p>For two routers, repeat setup for the second device in the same account. Each device needs its own generated script and VPN address. Do not reuse the first device’s script.</p>
 <ul><?php foreach ($progress['routers'] as $router): ?>

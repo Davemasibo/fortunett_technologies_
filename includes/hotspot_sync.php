@@ -231,3 +231,58 @@ function hotspotSyncInstallerRsc(string $pageUrl, string $verUrl, string $interv
 :put "FortuNett portal sync installed. Check /log print for progress."
 RSC;
 }
+
+/** Push the current catalog without changing Hotspot, DHCP or customer sessions. */
+function syncHotspotCatalogPage($api, string $html, string $pageUrl): int
+{
+    $servers=routerCheckedCommand($api, '/ip/hotspot/print');
+    $profiles=[];
+    foreach ($servers as $server) if (isset($server['!re']) && ($server['disabled'] ?? 'false') !== 'true') $profiles[]=$server['profile'] ?? '';
+    if (!$profiles) return 0; // A PPPoE-only router has no customer Hotspot page.
+    $dirs=[];
+    foreach (routerCheckedCommand($api, '/ip/hotspot/profile/print') as $profile) {
+        if (in_array($profile['name'] ?? '',$profiles,true) && !empty($profile['html-directory'])) $dirs[]=$profile['html-directory'];
+    }
+    if (!$dirs) throw new RuntimeException('Hotspot HTML directory could not be determined');
+    $files=routerCheckedCommand($api, '/file/print');
+    $paths=[];
+    foreach ($files as $file) {
+        $name=$file['name'] ?? '';
+        if (isset($file['.id']) && (in_array($name,['hotspot/login.html','flash/hotspot/login.html','flash/flash/hotspot/login.html'],true)
+            || in_array($name,array_map(fn($dir)=>rtrim($dir,'/').'/login.html',$dirs),true))) $paths[$name]=$file['.id'];
+    }
+    foreach ($dirs as $dir) if (!isset($paths[rtrim($dir,'/').'/login.html'])) throw new RuntimeException('Hotspot login file missing; complete service setup first');
+    foreach ($paths as $name=>$id) {
+        if (strlen($html)<=60000) {
+            routerCheckedCommand($api,'/file/set',['=.id='.$id,'=contents='.$html]);
+        } else {
+            routerCheckedCommand($api,'/tool/fetch',['=url='.$pageUrl,'=dst-path='.$name,'=check-certificate=no']);
+        }
+        $contents='';
+        if (strlen($html)<=60000) {
+            foreach (routerCheckedCommand($api,'/file/get',['=number='.$id,'=value-name=contents']) as $row) if (isset($row['ret'])) $contents=$row['ret'];
+        } else {
+            for ($offset=0;$offset<strlen($html);$offset+=32768) {
+                $chunk='';
+                foreach (routerCheckedCommand($api,'/file/read',['=file='.$name,'=offset='.$offset,'=chunk-size=32768']) as $row) if (isset($row['data'])) $chunk.=$row['data'];
+                if ($chunk==='') throw new RuntimeException('Portal file could not be verified');
+                $contents.=$chunk;
+            }
+        }
+        if (!hash_equals(hash('sha256',$html),hash('sha256',$contents))) throw new RuntimeException('Portal catalog verification failed: '.$name);
+    }
+    return count($paths);
+}
+
+function syncTenantHotspotCatalog(PDO $pdo, $api, int $tenant): void
+{
+    require_once __DIR__.'/../hotspot/render_login.php';
+    $st=$pdo->prepare('SELECT * FROM tenants WHERE id=?'); $st->execute([$tenant]); $row=$st->fetch(PDO::FETCH_ASSOC);
+    $urls=hotspotPortalUrls($pdo,$tenant);
+    if (!$row || !$urls) throw new RuntimeException('Tenant portal settings are missing');
+    $count=syncHotspotCatalogPage($api,renderHotspotLoginPage($pdo,$row),$urls['page']);
+    if ($count) {
+        $installed=installHotspotSyncScheduler($api,$urls['page'],$urls['version']);
+        if (!$installed['installed']) throw new RuntimeException('Portal fallback schedule could not be installed');
+    }
+}

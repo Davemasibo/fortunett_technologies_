@@ -115,15 +115,11 @@ try {
     // '#' comment in a one-liner would swallow everything after it on the line).
     // Each mutating step is preceded by an idempotent remove so re-running is safe.
     $parts = [];
-    // Full cleanup FIRST — remove every existing WireGuard peer and interface plus
-    // any stray VPN-subnet address. Earlier runs left orphaned interfaces (e.g. *8,
-    // *9) whose peers also claimed allowed-address=10.200.200.0/24, so the router
-    // had multiple interfaces fighting over the same route ("ambiguous" tunnel
-    // routing) and the handshake never settled. Wiping all WG state guarantees a
-    // single clean interface. These routers are platform-managed for this VPN only.
-    $parts[] = ':do {/interface/wireguard/peers remove [find]} on-error={}';
-    $parts[] = ':do {/interface/wireguard remove [find]} on-error={}';
-    $parts[] = ':do {/ip address remove [find address~"10.200.200."]} on-error={}';
+    $parts[] = ':if ([:tonum [:pick [/system resource get version] 0 [:find [/system resource get version] "."]]] < 7) do={:error "RouterOS 7 or newer is required. Upgrade in WinBox first."}';
+    // Reconfigure only the platform tunnel, leaving other VPNs intact.
+    $parts[] = ':do {/ip address remove [find interface="wg-fortunett"]} on-error={}';
+    $parts[] = ':do {/interface/wireguard/peers remove [find interface="wg-fortunett"]} on-error={}';
+    $parts[] = ':do {/interface/wireguard remove [find name="wg-fortunett"]} on-error={}';
     // Recreate a single clean interface + peer + VPN IP.
     $parts[] = "/interface/wireguard add name=\"wg-fortunett\" listen-port=13231 private-key=\"{$routerPrivKey}\"";
     $parts[] = "/interface/wireguard/peers add interface=\"wg-fortunett\" public-key=\"{$vpsPublicKey}\" endpoint-address={$serverIp} endpoint-port={$wgPort} allowed-address=10.200.200.0/24 persistent-keepalive=25";
@@ -135,7 +131,8 @@ try {
     $parts[] = "/ip service set api disabled=no port=8728 address={$vpsVpnIp}/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
     $parts[] = ':do {/ip firewall filter remove [find comment="Fortunett-API-VPN"]} on-error={}';
     $parts[] = "/ip firewall filter add chain=input action=accept protocol=tcp src-address={$vpsVpnIp} dst-port=8728 comment=\"Fortunett-API-VPN\"";
-    $parts[] = '/ip firewall filter move [find comment="Fortunett-API-VPN"] destination=0';
+    // Target a static rule ID: rule number 0 may be a built-in Hotspot rule.
+    $parts[] = '{ :local apiRule [/ip firewall filter find where comment="Fortunett-API-VPN" dynamic=no]; :local staticRules [/ip firewall filter find where dynamic=no]; :if (([:len $apiRule]>0) && ([:len $staticRules]>0)) do={ :if (($apiRule->0)!=($staticRules->0)) do={ /ip firewall filter move ($apiRule->0) destination=($staticRules->0) } } };';
 
     // Watchdog — a peer caches its resolved endpoint, so a WAN IP change or an ISP
     // reconnect can silently stop the handshake with the interface still showing

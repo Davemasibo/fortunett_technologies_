@@ -4,6 +4,7 @@ ini_set('display_errors', 0);
 require_once '../../includes/db_master.php';
 require_once '../../includes/tenant.php';
 require_once '../../classes/WireGuardManager.php';
+require_once '../../includes/router_service_config.php';
 ob_clean();
 header('Content-Type: application/json');
 
@@ -67,7 +68,10 @@ try {
         }
 
         // ── Managed admin credentials ─────────────────────────────────────────
-        $adminPassword = bin2hex(random_bytes(8));
+        $existingStmt=$pdo->prepare('SELECT * FROM mikrotik_routers WHERE tenant_id=? AND name=? ORDER BY id DESC LIMIT 1');
+        $existingStmt->execute([$tenantId,$identity]);
+        $existingRouter=$existingStmt->fetch(PDO::FETCH_ASSOC);
+        $adminPassword=($existingRouter && $existingRouter['username']==='fortunett_admin') ? $existingRouter['password'] : bin2hex(random_bytes(8));
 
         // ── WireGuard setup ───────────────────────────────────────────────────
         // Pre-create a router record so we have an ID for the VPN IP assignment.
@@ -77,6 +81,7 @@ try {
             mt_rand(0, 0x0fff) | 0x4000, mt_rand(0, 0x3fff) | 0x8000,
             mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff));
 
+        if (!empty($existingRouter['provision_id'])) $provisionId=$existingRouter['provision_id'];
         $routerWgPriv  = '';
         $routerWgPub   = '';
         $vpnIp         = '';
@@ -115,7 +120,9 @@ try {
 
         if ($wgAvailable) {
             try {
-                $keys         = WireGuardManager::generateKeyPair();
+                $keys = (!empty($existingRouter['wg_private_key']) && !empty($existingRouter['wg_public_key']))
+                    ? ['private'=>$existingRouter['wg_private_key'],'public'=>$existingRouter['wg_public_key']]
+                    : WireGuardManager::generateKeyPair();
                 $routerWgPriv = $keys['private'];
                 $routerWgPub  = $keys['public'];
 
@@ -125,6 +132,10 @@ try {
                 // NOT NULL with no default, so a partial INSERT fails under
                 // MySQL strict mode (production) while passing on local XAMPP.
                 // These are the same credentials the .rsc creates on the router.
+                if ($existingRouter) {
+                    $routerId=(int)$existingRouter['id'];
+                    $pdo->prepare("UPDATE mikrotik_routers SET username='fortunett_admin',password=? WHERE id=? AND tenant_id=?")->execute([$adminPassword,$routerId,$tenantId]);
+                } else {
                 $pdo->prepare("
                     INSERT INTO mikrotik_routers
                         (tenant_id, name, ip_address, username, password, status)
@@ -137,6 +148,8 @@ try {
 
                 $routerId = (int)$pdo->lastInsertId();
 
+                }
+
                 // Set WG + provision columns (silently skip if columns missing)
                 foreach ([
                     "UPDATE mikrotik_routers SET provision_id=? WHERE id=?"  => [$provisionId, $routerId],
@@ -146,7 +159,7 @@ try {
                     try { $pdo->prepare($sql)->execute($params); } catch (\Exception $e) {}
                 }
 
-                $vpnIp    = WireGuardManager::vpnIp($routerId);
+                $vpnIp = !empty($existingRouter['vpn_ip']) ? $existingRouter['vpn_ip'] : WireGuardManager::vpnIp($routerId);
 
                 // Update the row with the assigned VPN IP
                 $pdo->prepare("UPDATE mikrotik_routers SET vpn_ip=? WHERE id=?")
@@ -163,20 +176,15 @@ try {
         }
 
         if (!$wgAvailable) {
-            // Make this impossible to miss. A '#' comment scrolls past unread in
-            // the RouterOS terminal, which is how a whole fleet ended up with no
-            // tunnel; :log error + :put land in the router log and on screen.
-            $reason  = $wgSkipReason ?: 'WireGuard is not running on the VPS. Run setup_wireguard_server.sh first.';
-            $wgNote  = "# ── WireGuard tunnel NOT configured ──────────────────────────────────\n";
-            $wgNote .= '# ' . str_replace(["\n", "\r"], ' ', $reason) . "\n";
-            $wgNote .= ':log error "[Fortunett] WireGuard tunnel NOT configured — ' . addslashes(substr(str_replace(['"', "\n", "\r"], ["'", ' ', ' '], $reason), 0, 160)) . '";' . "\n";
-            $wgNote .= ':put "[Fortunett] WARNING: no WireGuard tunnel. This router will NOT be manageable from the portal.";' . "\n";
-            error_log('[provision.php] WireGuard skipped for tenant ' . $tenantId . ': ' . $reason);
+            http_response_code(503);
+            echo ':error "Management setup is unavailable. Contact platform support before retrying.";' . "\n";
+            exit;
         }
 
         $t = $token;
 
         // ── RSC Output ────────────────────────────────────────────────────────
+        echo ':if ([:tonum [:pick [/system resource get version] 0 [:find [/system resource get version] "."]]] < 7) do={:error "RouterOS 7 or newer is required. Upgrade this router in WinBox before connecting it."};' . "\n";
         echo "# Fortunett Technologies Provisioning Script\n";
         echo "# Generated:    " . date('Y-m-d H:i:s') . "\n";
         echo "# Tenant ID:    $tenantId\n";
@@ -190,7 +198,7 @@ try {
         echo ":log info \"[Fortunett] Starting provisioning — $identity\";\n\n";
 
         // 1. Identity
-        echo "/system identity set name=\"$identity\";\n\n";
+        echo "/system identity set name=" . routerServiceString($identity) . ";\n\n";
 
         // 2. Managed admin user
         echo ":do { /user remove [find name=\"fortunett_admin\"] } on-error={};\n";
@@ -204,17 +212,10 @@ try {
 
             echo "# ── WireGuard VPN tunnel ──────────────────────────────────────────────\n";
 
-            // Wipe ALL WireGuard state first, not just the interface named
-            // wg-fortunett. Re-running provisioning used to leave orphaned
-            // interfaces (*8, *9, …) behind, and every one of their peers also
-            // claimed allowed-address=10.200.200.0/24. RouterOS then had several
-            // interfaces competing for the same route, picked one at random, and
-            // the handshake never settled — the single biggest cause of tunnels
-            // that come up and then fall behind. These routers are platform-managed
-            // for this VPN only, so wiping is safe and makes the result deterministic.
-            echo ":do { /interface/wireguard/peers remove [find] } on-error={};\n";
-            echo ":do { /interface/wireguard remove [find] } on-error={};\n";
-            echo ":do { /ip address remove [find address~\"10.200.200.\"] } on-error={};\n";
+            // Preserve VPNs managed outside this platform.
+            echo ':do { /ip address remove [find interface="wg-fortunett"] } on-error={};' . "\n";
+            echo ':do { /interface/wireguard/peers remove [find interface="wg-fortunett"] } on-error={};' . "\n";
+            echo ':do { /interface/wireguard remove [find name="wg-fortunett"] } on-error={};' . "\n";
 
             echo "/interface/wireguard add name=\"wg-fortunett\" listen-port=13231 private-key=\"$routerWgPriv\";\n";
             echo "/interface/wireguard/peers add interface=\"wg-fortunett\" public-key=\"$vpsWgPub\"";
@@ -234,7 +235,8 @@ try {
             echo ":do { /ip firewall filter remove [find comment=\"Fortunett-API\"] } on-error={};\n";
             echo "/ip firewall filter add chain=input action=accept protocol=tcp";
             echo " src-address=$vpsVpnIp dst-port=8728 comment=\"Fortunett-API-VPN\";\n";
-            echo "/ip firewall filter move [find comment=\"Fortunett-API-VPN\"] destination=0;\n\n";
+            // Avoid using a built-in dynamic Hotspot rule as the destination.
+            echo '{ :local apiRule [/ip firewall filter find where comment="Fortunett-API-VPN" dynamic=no]; :local staticRules [/ip firewall filter find where dynamic=no]; :if (([:len $apiRule]>0) && ([:len $staticRules]>0)) do={ :if (($apiRule->0)!=($staticRules->0)) do={ /ip firewall filter move ($apiRule->0) destination=($staticRules->0) } } };' . "\n\n";
 
             // ── Tunnel watchdog ──────────────────────────────────────────────
             // A WireGuard peer caches its resolved endpoint. After a WAN IP change,
@@ -278,13 +280,13 @@ try {
 
         // 5. Register immediately
         echo ":delay 3s;\n";
-        echo "/tool fetch $mode url=\"$serverUrl\" http-method=post";
+        echo ":do { /tool fetch $mode url=\"$serverUrl\" http-method=post";
         echo " http-data=\"provisioning_token=$t&provision_id=$provisionId$wgIpParam";
         echo "&router_ip=\$[/ip address get [find interface=ether1] address]";
         echo "&router_mac=\$[/interface ethernet get ether1 mac-address]";
         echo "&router_identity=\$[/system identity get name]";
         echo "&router_username=fortunett_admin&router_password=$adminPassword\"";
-        echo " keep-result=no;\n\n";
+        echo ' keep-result=no; } on-error={:put "Registration request did not finish. Use Verify on router in the portal."};' . "\n\n";
 
         // 6. Download branded hotspot login page to every html-directory path.
         // RouterOS 7 sometimes stores html-directory=flash/hotspot but serves from

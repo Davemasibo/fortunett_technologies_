@@ -31,6 +31,12 @@ function dashboardQueuePackage(PDO $pdo, int $tenant, int $id): void {
     foreach ($clients->fetchAll(PDO::FETCH_COLUMN) as $client) dashboardQueueCustomer($pdo, $tenant, (int)$client);
 }
 
+function dashboardQueuePortal(PDO $pdo, int $tenant): void {
+    $routers=$pdo->prepare('SELECT id FROM mikrotik_routers WHERE tenant_id=?'); $routers->execute([$tenant]);
+    $insert=$pdo->prepare("INSERT INTO dashboard_sync_jobs (tenant_id,kind,entity_id,router_id) VALUES (?,'portal',0,?)");
+    foreach ($routers->fetchAll(PDO::FETCH_COLUMN) as $router) $insert->execute([$tenant,$router]);
+}
+
 function dashboardDisableUser($api, string $service, string $username): void {
     if ($username === '') return;
     $hotspot = $service === 'hotspot';
@@ -77,12 +83,14 @@ function dashboardApplyJob(PDO $pdo, array $job): void {
     $api = new MikrotikAPI($router['vpn_ip'] ?: $router['ip_address'], $router['username'], $router['password'], (int)($router['api_port'] ?: 8728));
     if (!$api->connect()) throw new RuntimeException('Router unavailable');
     try {
+        if ($job['kind'] === 'portal') { syncTenantHotspotCatalog($pdo,$api,$tenant); return; }
         if ($job['kind'] === 'package') {
             $stmt = $pdo->prepare('SELECT * FROM packages WHERE tenant_id=? AND id=?');
             $stmt->execute([$tenant, $job['entity_id']]);
             $package = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$package) return;
             if (!syncPackageProfileToRouter($api, $package['connection_type'] ?: $package['type'], packageProfileName($package), packageRateLimit($package), $package)) throw new RuntimeException('Profile verification failed');
+            if (($package['connection_type'] ?: $package['type']) === 'hotspot') syncTenantHotspotCatalog($pdo,$api,$tenant);
             return;
         }
         $stmt = $pdo->prepare('SELECT * FROM clients WHERE tenant_id=? AND id=?');

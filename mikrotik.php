@@ -741,7 +741,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <!-- END LOCALHOST INFO -->
 
-            <p style="margin-bottom:16px; color:rgba(255,255,255,.5);">Run this command in your Mikrotik Terminal to connect:</p>
+            <p style="margin-bottom:16px; color:rgba(255,255,255,.5);">Connect this router to the internet, open WinBox ? New Terminal, then copy and paste the command once. RouterOS 7 or newer is required. Keep this page open while we verify the connection. Use a unique name and separate script for each device:</p>
             <div class="command-box">
                 <button class="copy-btn" onclick="copyCommand()">Copy</button>
                 <div class="command-text" id="provisionCommand">Generating command...</div>
@@ -761,6 +761,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <p style="color:rgba(255,255,255,.4); margin-bottom:8px;">Select one or both services to enable on this router.</p>
                 <p style="font-size:12px; color:rgba(255,255,255,.25); margin-bottom:20px;">You can select both if this router serves PPPoE and hotspot clients.</p>
 
+                <label for="wizardBridgeName">Customer LAN bridge</label>
+                <input id="wizardBridgeName" maxlength="64" placeholder="Automatic if there is one enabled bridge" style="width:100%;padding:10px;margin:8px 0;">
+                <p style="font-size:12px;color:#a3a3a3;">For several bridges, run <code>/interface bridge print</code> in WinBox and enter the customer bridge's exact name. Hotspot replaces DHCP on that bridge and customers reconnect on 10.5.50.0/24. Use separate LANs for two Hotspot gateways to avoid competing DHCP servers.</p>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; text-align:left;">
                     <div class="service-card" id="svc-pppoe" onclick="toggleService('pppoe', this)" style="border:1px solid var(--neu-border); background:var(--neu-surf); padding:16px; border-radius:8px; cursor:pointer; transition:.2s; position:relative;">
                         <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
@@ -819,12 +822,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 let currentStep = 1;
 let provisioningTimer = null;
+let wizardRouterId = null;
+const wizardServiceTemplate=document.getElementById('step3').innerHTML;
 let selectedServices = new Set(); // supports multi-select: 'pppoe', 'hotspot', or both
 let wizardMethod = 'provision'; // 'provision' | 'direct'
 
 function openWizard() {
     document.getElementById('wizardModal').style.display = 'flex';
+    document.getElementById('step3').innerHTML=wizardServiceTemplate;
+    document.getElementById('nextBtn').style.display='';
     currentStep = 1;
+    wizardRouterId = null;
     selectedServices = new Set();
     wizardMethod = 'provision';
     selectMethod('provision');
@@ -1000,27 +1008,28 @@ function showWizardError(msg) {
 }
 
 function startPolling() {
-    if(provisioningTimer) clearInterval(provisioningTimer);
-    const name = document.getElementById('mikrotikName').value;
-    
-    provisioningTimer = setInterval(() => {
-        fetch('api/routers/check_status.php?identity=' + encodeURIComponent(name))
-        .then(r => r.json())
-        .then(data => {
-            if(data.connected) {
-                clearInterval(provisioningTimer);
-                document.getElementById('connectionStatus').innerHTML = '<i class="fas fa-check-circle"></i> Connection Verified!';
-                document.getElementById('connectionStatus').style.background = 'rgba(52,211,153,.15)';
-                document.getElementById('connectionStatus').style.color = '#6ee7b7';
-                
-                // Auto advance shortly after success
-                setTimeout(() => {
-                    currentStep = 3;
-                    updateWizard();
-                }, 1000);
-            }
-        });
-    }, 3000); // Check every 3 seconds
+    if (provisioningTimer) clearTimeout(provisioningTimer);
+    const name=document.getElementById('mikrotikName').value.trim();
+    const started=Date.now();
+    async function check() {
+        if (currentStep!==2 || document.getElementById('wizardModal').style.display==='none') return;
+        const status=document.getElementById('connectionStatus');
+        try {
+            const response=await fetch('api/routers/check_status.php?identity='+encodeURIComponent(name));
+            const data=await response.json();
+            if (data.router) wizardRouterId=data.router.id;
+            if (data.connected) { status.textContent='Management connection verified.'; currentStep=3; updateWizard(); return; }
+            status.textContent=data.message || 'Waiting for your router?';
+        } catch(e) { status.textContent='Connection check failed. Retrying automatically.'; }
+        if (Date.now()-started>120000) {
+            status.innerHTML+='<div>Check the WinBox terminal for an import error and confirm internet access. '
+              +(wizardRouterId ? '<button type="button" onclick="setupWireGuard(wizardRouterId,null)">Repair management connection</button> ' : '')
+              +'<button type="button" onclick="startPolling()">Check again</button></div>';
+            return;
+        }
+        provisioningTimer=setTimeout(check,5000);
+    }
+    check();
 }
 
 function toggleService(service, el) {
@@ -1074,6 +1083,8 @@ function finishWizard() {
 
     const formData = new FormData();
     formData.append('identity',           name);
+    if (wizardRouterId) formData.append('router_id',wizardRouterId);
+    formData.append('bridge_name',document.getElementById('wizardBridgeName')?.value.trim() || '');
     formData.append('services',           servicesList);
     formData.append('hotspot_no_sharing', noSharing);
 
@@ -1088,6 +1099,7 @@ function finishWizard() {
             const label = services.map(s => String(s).toUpperCase()).join(' + ') || 'Router';
             // Single-line script — one copy, one paste. Rendered in one box.
             const cmd = data.command || '';
+            provRouterId=data.router_id; provRouterName=name; provSelected=new Set(services);
 
             document.getElementById('step3').innerHTML = `
                 <div style="padding:20px;">
@@ -1095,7 +1107,7 @@ function finishWizard() {
                         <div style="width:48px; height:48px; background:rgba(52,211,153,.15); color:#6ee7b7; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 12px;">
                             <i class="fas fa-check" style="font-size:24px;"></i>
                         </div>
-                        <h3 style="font-size:18px; font-weight:600; margin-bottom:4px; color:#e2e2e0;">${label} Configured</h3>
+                        <h3 style="font-size:18px; font-weight:600; margin-bottom:4px; color:#e2e2e0;">${label} setup ready</h3>
                         <p style="color:rgba(255,255,255,.4); font-size:13px;">Copy the command below and paste it <strong>once</strong> into your MikroTik terminal (New Terminal in WinBox, or SSH). Assumes <strong>ether1</strong> is your WAN/uplink.</p>
                     </div>
                     <div class="command-box" style="text-align:left;">
@@ -1103,7 +1115,9 @@ function finishWizard() {
                         <div class="command-text" style="white-space:pre-wrap; word-break:break-all; user-select:all;">${escapeHtml(cmd)}</div>
                     </div>
                     <div style="text-align:center; margin-top:20px;">
-                        <button onclick="location.reload()" style="padding:10px 24px; background:linear-gradient(135deg, var(--primary-dark,#1e3a5f) 0%, var(--primary-color,#3B6EA5) 100%); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">Done</button>
+                        <button id="provVerifyBtn" onclick="verifyProvision()" style="padding:10px;cursor:pointer;">I've run it ? Verify configuration</button>
+                        <div id="provVerifyOut" role="status" style="margin-top:12px;text-align:left;"></div>
+                        <button id="wizardDoneBtn" disabled onclick="location.href='onboarding.php'" style="padding:10px 24px; background:linear-gradient(135deg, var(--primary-dark,#1e3a5f) 0%, var(--primary-color,#3B6EA5) 100%); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">Done</button>
                     </div>
                 </div>
             `;
@@ -1503,6 +1517,7 @@ function verifyProvision() {
             if (!d.api_ok) {
                 out.innerHTML = '<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:12px 14px;font-size:13px;color:#fca5a5;">'
                     + '<i class="fas fa-triangle-exclamation" style="margin-right:6px;"></i>Could not reach the router API to verify. ' + escapeHtml(d.error || '')
+                    + '<button type="button" onclick="setupWireGuard(provRouterId,null)">Repair management connection</button>'
                     + '<div style="font-size:12px;color:rgba(255,255,255,.4);margin-top:6px;">The script may still have run fine — this only means the app can\'t connect (usually the WireGuard tunnel is down). Bring the tunnel up, then Verify again.</div></div>';
                 return;
             }
@@ -1520,7 +1535,7 @@ function verifyProvision() {
 
             out.innerHTML = banner + '<div style="background:var(--neu-surf);border:1px solid var(--neu-border);border-radius:8px;padding:4px 14px;">' + rows + '</div>';
 
-            if (d.all_ok) showToast('Provisioning verified on ' + provRouterName, 'success');
+            if (d.all_ok) { showToast('Provisioning verified on '+provRouterName,'success'); const done=document.getElementById('wizardDoneBtn'); if(done) {done.disabled=false;done.textContent='Continue onboarding';} }
         })
         .catch(e => {
             btn.disabled = false;
@@ -1549,7 +1564,7 @@ function setupWireGuard(routerId, btn) {
             body.innerHTML = `
               <div style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.2);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#4ade80;">
                 <i class="fas fa-check-circle" style="margin-right:6px;"></i>
-                VPN IP <strong>${d.vpn_ip}</strong> assigned and peer added to VPS wg0.
+                Connection instructions ready for <strong>${escapeHtml(d.vpn_ip)}</strong>. Run them below, then check the connection.
               </div>
               <p style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:10px;">
                 Copy the command below and paste it <strong>once</strong> into the RouterOS terminal (Winbox → New Terminal):
@@ -1563,9 +1578,21 @@ function setupWireGuard(routerId, btn) {
               </div>
               <p style="font-size:12px;color:rgba(255,255,255,.35);margin-top:12px;">
                 After running these commands, the tunnel will come up automatically. Test connectivity with: <code style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:3px;">/ping ${d.vpn_ip ? '10.200.200.1' : ''}</code>
-              </p>`;
+              </p>
+              <button type="button" onclick="checkSetupConnection(${Number(routerId)},this)">I've run it ? Check connection</button>
+              <div id="wgConnectionResult" role="status" style="margin-top:12px;"></div>`;
         })
         .catch(() => { body.innerHTML = '<div style="color:#f87171;padding:16px;">Network error. Try again.</div>'; });
+}
+
+async function checkSetupConnection(id,button) {
+    button.disabled=true;
+    const output=document.getElementById('wgConnectionResult'); output.textContent='Checking management login?';
+    try {
+        const body=new FormData(); body.append('id',id);
+        const response=await fetch('api/routers/test_connection.php',{method:'POST',body}); const result=await response.json();
+        output.textContent=result.status==='success' ? 'Management connection verified. Close this window and verify your customer services.' : (result.message || 'Connection not ready. Check the terminal for errors.');
+    } catch(e) {output.textContent='Unable to check. Try again.';} finally {button.disabled=false;}
 }
 
 function testConnection(id, btn) {

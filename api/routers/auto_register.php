@@ -171,7 +171,12 @@ try {
     // Auto-deploy hotspot login page whenever the router checks in.
     // _uploadHotspotLoginPage does its own TCP reachability check internally,
     // so it is safe to attempt even without a VPN IP (falls back to public IP).
-    if ($savedRouterId) {
+    // Complete the router's registration fetch before calling back into its API.
+    // Otherwise portal deployment keeps the HTTP request idle and can deadlock
+    // with the router waiting for this fetch to finish. Non-FPM deployments use
+    // the explicit service setup step to deploy the portal instead.
+    if ($savedRouterId && function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
         try {
             require_once __DIR__ . '/../../includes/auto_provision.php';
             $rSt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE id = ? AND tenant_id = ?");

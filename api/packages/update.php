@@ -121,10 +121,17 @@ try {
     foreach ($networkTerms as $field => $value) {
         if ((string)($oldPackage[$field] ?? '') !== (string)$value) $networkChanged = true;
     }
+    $portalChanged=false;
+    foreach (['name','description','price'] as $field) {
+        $value=$field==='price' ? $price : ($field==='name' ? $name : $description);
+        if ((string)($oldPackage[$field] ?? '') !== (string)$value) $portalChanged=true;
+    }
     if ($networkChanged) dashboardQueuePackage($pdo, (int)$tenant_id, $id);
+    elseif ($portalChanged) dashboardQueuePortal($pdo,(int)$tenant_id);
+    $syncPending=$networkChanged || $portalChanged;
     $pdo->commit();
     ob_clean();
-    echo json_encode(['success' => true, 'sync_pending' => $networkChanged, 'message' => $networkChanged ? 'Package saved. Applying settings to routers and connected customers.' : 'Package saved.']);
+    echo json_encode(['success' => true, 'sync_pending' => $syncPending, 'message' => $syncPending ? 'Package saved. Applying settings to routers and connected customers.' : 'Package saved.']);
 
 } catch (Throwable $e) {
     try { if ($pdo->inTransaction()) $pdo->rollBack(); } catch (Throwable $re) {}

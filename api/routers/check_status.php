@@ -1,49 +1,36 @@
 <?php
-header('Content-Type: application/json');
-require_once '../../includes/db_master.php';
-require_once '../../includes/auth.php';
-
-// Start session if not started
+ob_start();
+ini_set('display_errors', 0);
+require_once __DIR__.'/../../includes/db_master.php';
+require_once __DIR__.'/../../classes/MikrotikAPI.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
-$user_id = $_SESSION['user_id'] ?? 0;
-
-$identity = $_GET['identity'] ?? '';
-
-if (!$user_id || !$identity) {
-    echo json_encode(['connected' => false, 'message' => 'Unauthorized or missing identity']);
-    exit;
-}
-
+header('Content-Type: application/json');
+$result = ['connected'=>false];
 try {
-    // Get Tenant ID
-    $tStmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
-    $tStmt->execute([$user_id]);
-    $tenant_id = $tStmt->fetchColumn();
-
-    if (!$tenant_id) {
-        throw new Exception("Tenant not found");
-    }
-
-    // Check for recent activity on this router for this tenant
-    // We look for 'active' or 'online' status within the last 5 minutes
-    $stmt = $pdo->prepare("
-        SELECT id, name, ip_address, status, last_seen 
-        FROM mikrotik_routers 
-        WHERE (name = ? OR identity = ?) 
-        AND tenant_id = ? 
-        AND (status = 'active' OR status = 'online')
-        AND last_seen >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)
-    ");
-    $stmt->execute([$identity, $identity, $tenant_id]);
-    $router = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($router) {
-        echo json_encode(['connected' => true, 'router' => $router]);
+    $userId = (int)($_SESSION['user_id'] ?? 0);
+    $identity = trim((string)($_GET['identity'] ?? ''));
+    if (!$userId || !$identity) throw new RuntimeException('Sign in and enter a router name.');
+    $st=$pdo->prepare('SELECT tenant_id FROM users WHERE id=?'); $st->execute([$userId]);
+    $tenantId=(int)$st->fetchColumn();
+    if (!$tenantId) throw new RuntimeException('No tenant assigned.');
+    $st=$pdo->prepare('SELECT * FROM mikrotik_routers WHERE tenant_id=? AND (name=? OR identity=?) ORDER BY id DESC LIMIT 1');
+    $st->execute([$tenantId,$identity,$identity]); $router=$st->fetch(PDO::FETCH_ASSOC);
+    if (!$router) {
+        $result['message']='Waiting for the router. Open WinBox, choose New Terminal and paste the connection command.';
     } else {
-        echo json_encode(['connected' => false]);
+        $result['router']=['id'=>(int)$router['id'],'name'=>$router['name']];
+        $api=new MikrotikAPI($router['vpn_ip'] ?: $router['ip_address'],$router['username'],$router['password'],(int)($router['api_port'] ?: 8728));
+        if (!$api->isReachable(2)) {
+            $result['message']='Router setup has started, but the management connection is not ready. Wait a few seconds. If it stays here, check that the import completed without an error.';
+        } else {
+            $api->connect();
+            $api->disconnect();
+            $pdo->prepare("UPDATE mikrotik_routers SET status='active',last_seen=NOW() WHERE id=? AND tenant_id=?")->execute([$router['id'],$tenantId]);
+            $result['connected']=true;
+            $result['message']='Router API connection verified.';
+        }
     }
-
-} catch (Exception $e) {
-    echo json_encode(['connected' => false, 'error' => $e->getMessage()]);
+} catch (Throwable $e) {
+    $result['message']='Connection not verified: '.$e->getMessage();
 }
-?>
+ob_clean(); echo json_encode($result);
