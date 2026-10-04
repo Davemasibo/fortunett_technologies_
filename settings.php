@@ -752,6 +752,12 @@ input:checked + .set-slider:before { transform:translateX(20px);background:#fff;
                  GENERAL
             ════════════════════════════════════════════════════ -->
             <div class="tab-pane fade" id="general" role="tabpanel">
+                <div class="set-section">
+                    <div class="set-section-title"><i class="fas fa-list-check"></i> Workspace setup</div>
+                    <p>Resume your setup checklist or connect another device to this account.</p>
+                    <a class="btn btn-primary" href="onboarding.php">Setup checklist</a>
+                    <a class="btn btn-outline-secondary" href="mikrotik.php?open_modal=1">Add MikroTik</a>
+                </div>
                 <form method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="action" value="update_general">
 

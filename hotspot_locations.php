@@ -5,20 +5,21 @@ require_once __DIR__ . '/includes/db_master.php';
 $st = $pdo->prepare('SELECT r.id,r.name FROM mikrotik_routers r JOIN users u ON u.tenant_id=r.tenant_id WHERE u.id=? ORDER BY r.name');
 $st->execute([$_SESSION['user_id']]);
 $routers = $st->fetchAll(PDO::FETCH_ASSOC);
+include __DIR__.'/includes/header.php';
+include __DIR__.'/includes/sidebar.php';
 ?>
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hotspot locations</title>
-<style>body{font:16px system-ui,sans-serif;background:#f5f7fa;color:#172b43;margin:0;padding:24px}main{max-width:1200px;margin:auto}select,button{font:inherit;padding:10px;margin:8px}table{border-collapse:collapse;width:100%;background:white}th,td{text-align:left;padding:12px;border-bottom:1px solid #ddd}p{line-height:1.6}.table-wrap{overflow:auto}#status{min-height:24px}</style></head><body><main>
-<a href="mikrotik.php">Back to routers</a><h1>Hotspot locations</h1>
+<link rel="stylesheet" href="assets/css/setup-pages.css">
+<div class="main-content-wrapper"><main class="workspace-page"><div class="page-heading"><h1>Hotspot locations</h1><a class="setup-button" href="mikrotik.php">Manage routers</a></div><section class="setup-card">
 <p>Live traffic and connected customers by router interface. Add a location name to the interface comment in MikroTik. A shared switch uplink combines all APs behind it.</p>
-<label>Router <select id="router"><option value="">Select router</option><?php foreach ($routers as $r): ?><option value="<?= (int)$r['id'] ?>"><?= htmlspecialchars($r['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach ?></select></label><button id="refresh">Refresh</button>
+<label>Router <select id="router"><option value="">Select router</option><?php foreach ($routers as $r): ?><option value="<?= (int)$r['id'] ?>"><?= htmlspecialchars($r['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach ?></select></label><button class="setup-button" id="refresh">Refresh</button>
 <p id="status" role="status"></p><div class="table-wrap"><table><thead><tr><th>Location / interface</th><th>Link</th><th>Customers</th><th>Sessions</th><th>Received Mbps</th><th>Sent Mbps</th><th>Active-session download MB</th></tr></thead><tbody id="locations"></tbody></table></div>
 <p>Rates appear after two samples, about ten seconds apart, and include all traffic on that interface. Counters restart when the router or interface resets. Session downloads cover currently connected sessions only. Unmapped clients need VLAN, CAPsMAN, or AP-specific telemetry for attribution.</p>
-<h2>Location sales</h2>
+</section><section class="setup-card"><h2>Location sales</h2>
 <label>Date <input id="sales-date" type="date" value="<?= date('Y-m-d') ?>"></label>
 <p id="sales-status" role="status"></p>
 <div class="table-wrap"><table><thead><tr><th>Purchase location</th><th>Completed sales</th><th>Revenue (KES)</th></tr></thead><tbody id="sales"></tbody></table></div>
 <p>Sales are attributed to the interface observed when a new portal checkout starts. Unattributed sales include older purchases, manual payments, and purchases whose location could not be verified. That row covers the whole ISP, not just the selected router. Moving devices does not move earlier sales. Dates use Africa/Nairobi time.</p>
-</main><script>
+</section></main></div><script>
 let previous=null, busy=false;
 const router=document.getElementById('router'), status=document.getElementById('status');
 async function refresh(){
@@ -60,6 +61,8 @@ async function refreshSales(){
 router.addEventListener('change',()=>{previous=null;document.getElementById('locations').replaceChildren();document.getElementById('sales').replaceChildren();refresh();refreshSales();});
 document.getElementById('refresh').addEventListener('click',()=>{refresh();refreshSales();});
 document.getElementById('sales-date').addEventListener('change',refreshSales);
+if(router.options.length>1){router.selectedIndex=1;refresh();refreshSales();}
 setInterval(refresh,10000);
 setInterval(refreshSales,60000);
-</script></body></html>
+</script>
+<?php include __DIR__.'/includes/footer.php'; ?>

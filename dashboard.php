@@ -453,7 +453,6 @@ include 'includes/sidebar.php';
 
 <div class="main-content-wrapper">
     <div class="dashboard-container">
-        <p><a href="onboarding.php">Tenant setup checklist</a> · <a href="mikrotik.php?open_modal=1">Add another MikroTik to this account</a></p>
         <!-- Header -->
         <div class="dashboard-header">
             <div class="breadcrumb">
@@ -703,6 +702,7 @@ include 'includes/sidebar.php';
                 </div>
             </div>
             
+            <?php include __DIR__.'/includes/router_collections_widget.php'; ?>
             <!-- Row 1: Payments & Active Users -->
             <div class="dashboard-chart-row">
                 <!-- Payments Chart -->
@@ -1263,4 +1263,5 @@ function updateDashboardStats() { refreshDashboard(); refreshRouterStatus(); }
 // All charts are built by refreshDashboard() — no static initialization needed
 </script>
 
+<script src="assets/router-collections.js"></script>
 <?php include 'includes/footer.php'; ?>

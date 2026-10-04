@@ -11,33 +11,20 @@ $progress=tenantOnboardingProgress($pdo,$tenantId);
 include __DIR__.'/includes/header.php';
 include __DIR__.'/includes/sidebar.php';
 ?>
-<div class="main-content-wrapper"><main style="max-width:1000px;margin:auto;padding:32px">
-<h1>Set up your workspace</h1>
-<p><?= htmlspecialchars($progress['tenant']['company_name']) ?>: <?= $progress['completed'] ?> of <?= $progress['total'] ?> steps complete. Progress updates from your saved settings.</p>
-<p>Trial accounts have no base monthly fee. Collection-based invoices start after successful customer collections; trial PPPoE fees count customers who paid during the month.</p>
-<ol>
-<?php foreach ($progress['steps'] as $step): ?>
-<li style="margin:24px 0;padding:16px;border:1px solid #888;border-radius:8px">
-<strong><?= $step['done'] ? 'Complete: ' : 'Next: ' ?><?= htmlspecialchars($step['title']) ?></strong>
-<p><?= htmlspecialchars($step['detail']) ?></p>
-<a href="<?= htmlspecialchars($step['url']) ?>">Open <?= htmlspecialchars($step['title']) ?></a>
-</li>
-<?php endforeach; ?>
-</ol>
-<h2>Connect your first MikroTik</h2>
-<ol><li>Connect your router to the internet and open WinBox. Upgrade to RouterOS 7 or newer if needed.</li>
-<li>Open <a href="mikrotik.php?open_modal=1">Add MikroTik</a>, choose a unique device name and copy its connection command into WinBox ? New Terminal.</li>
-<li>Keep the setup window open. It checks the management connection before offering customer services.</li>
-<li>Select Hotspot or PPPoE and your customer LAN bridge. Copy the service command into the terminal, then click Verify configuration.</li>
-<li>Continue with packages, payment settings and a test customer below. Check that a customer can connect, pay and access the internet.</li></ol>
-<p>If an import fails, keep the terminal error and use Repair management connection. Each router uses its own script. If two routers serve the same physical customer network, plan one DHCP gateway or separate VLANs before enabling Hotspot on both.</p>
-<h2>Your devices</h2>
-<p>For two routers, repeat setup for the second device in the same account. Each device needs its own generated script and VPN address. Do not reuse the first device’s script.</p>
-<ul><?php foreach ($progress['routers'] as $router): ?>
-<li><?= htmlspecialchars($router['name']) ?> — <?= htmlspecialchars($router['status']) ?> <button type="button" onclick="verifyRouter(<?= (int)$router['id'] ?>,this)">Verify device</button> <span id="verify-<?= (int)$router['id'] ?>" role="status"></span></li>
-<?php endforeach; ?></ul>
-<p><a href="mikrotik.php?open_modal=1">Add another MikroTik</a> · <a href="dashboard.php">Open dashboard</a></p>
-<p>The dashboard shows PPPoE and Hotspot sessions for each device and totals across connected devices. Session totals can include the same customer connected on both routers. Financial collections are counted once per payment across the account.</p>
+<link rel="stylesheet" href="assets/css/setup-pages.css">
+<div class="main-content-wrapper"><main class="workspace-page">
+<div class="page-heading"><div><h1>Get your network ready</h1><p><?= htmlspecialchars($progress['tenant']['company_name']) ?></p></div><a class="setup-button" href="settings.php#general">Back to settings</a></div>
+<section class="setup-card"><h2><?= $progress['completed'] ?> of <?= $progress['total'] ?> steps complete</h2>
+<div class="progress-track" role="progressbar" aria-label="Account setup" aria-valuemin="0" aria-valuemax="<?= $progress['total'] ?>" aria-valuenow="<?= $progress['completed'] ?>"><div class="progress-fill" style="width:<?= round(100*$progress['completed']/$progress['total']) ?>%"></div></div>
+<p>Progress reflects saved account data. Live device verification and customer tests are required before field deployment.</p>
+<?php foreach ($progress['steps'] as $step): if (!$step['done']): ?><a class="setup-button primary" href="<?= htmlspecialchars($step['url']) ?>">Continue: <?= htmlspecialchars($step['title']) ?></a><?php break; endif; endforeach; ?></section>
+<div class="setup-grid"><?php foreach ($progress['steps'] as $index=>$step): ?>
+<section class="setup-card <?= $step['done']?'complete':'' ?>"><h2><span class="step-number"><?= $step['done']?'&#10003;':$index+1 ?></span><?= htmlspecialchars($step['title']) ?></h2><small><?= $step['done']?'Complete':'Action needed' ?></small><p><?= htmlspecialchars($step['detail']) ?></p><a class="setup-button" href="<?= htmlspecialchars($step['url']) ?>"><?= $step['done']?'Review':'Set up' ?></a></section>
+<?php endforeach; ?></div>
+<section class="setup-card"><div class="page-heading"><h2>Your devices</h2><a class="setup-button" href="mikrotik.php?open_modal=1">Add MikroTik</a></div><p>Use a separate management script for each device. Select its customer LAN bridge, deploy Hotspot or PPPoE, then verify.</p>
+<div class="setup-grid"><?php foreach ($progress['routers'] as $router): ?><div class="setup-card"><h2><?= htmlspecialchars($router['name']) ?></h2><p><?= htmlspecialchars($router['status']) ?> ? Last contact: <?= htmlspecialchars($router['last_seen'] ?: 'Not yet connected') ?></p><button class="setup-button" type="button" data-services="<?= htmlspecialchars($router['service_types'] ?? '') ?>" onclick="verifyRouter(<?= (int)$router['id'] ?>,this)">Verify configuration</button> <a class="setup-button" href="mikrotik.php">Verify speeds</a><span id="verify-<?= (int)$router['id'] ?>" role="status">Live verification required.</span></div><?php endforeach; ?><?php if (!$progress['routers']): ?><p>Add your first MikroTik to begin.</p><?php endif; ?></div></section>
+<section class="setup-card"><h2>Before field deployment</h2><ol><li>Restart each router and confirm its management tunnel reconnects and configuration verification passes.</li><li>Join the tenant-branded open Wi-Fi or customer LAN. Check the captive portal plans and customer portal link.</li><li>Buy a package on each router. Confirm one receipt, internet activation and the recorded router collection.</li><li>Test download and upload under load. Verify the live queue matches the package; confirm expiry stops internet access and reconnect does not restore expired access.</li><li>Check WAN, cabling and power on site. Separate customer networks or VLANs when both routers run DHCP and Hotspot.</li></ol><p>Save the test results for each router before calling deployment complete. Wi-Fi is open; paid internet access is controlled by the captive portal.</p></section>
+<section class="setup-card"><h2>Trial billing</h2><p>No base monthly fee applies during the trial. Collection-based invoices start after successful customer collections.</p><a class="setup-button" href="dashboard.php">Open dashboard</a></section>
 </main></div>
 <script>
 async function verifyRouter(id,button) {
@@ -45,10 +32,10 @@ async function verifyRouter(id,button) {
     const output=document.getElementById('verify-'+id);
     output.textContent='Checking…';
     try {
-        const body=new FormData(); body.append('router_id',id); body.append('services','');
+        const body=new FormData(); body.append('router_id',id); body.append('services',button.dataset.services || '');
         const response=await fetch('api/routers/verify_provisioning.php',{method:'POST',body});
         const result=await response.json();
-        output.textContent=result.api_ok ? 'API connected. '+(result.checks||[]).map(c=>c.label+': '+(c.ok?'OK':'Needs attention')).join('; ') : (result.error||'Connection failed');
+        output.textContent=result.api_ok ? (result.all_ok ? 'Configuration verified. ' : 'Needs attention. ')+(result.checks||[]).map(c=>c.label+': '+(c.ok?'OK':'Needs attention')).join('; ') : (result.error||'Connection failed');
     } catch(e) { output.textContent='Verification unavailable. Try again.'; }
     finally { button.disabled=false; }
 }
