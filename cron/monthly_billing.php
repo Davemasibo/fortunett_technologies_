@@ -5,7 +5,7 @@
  * Calculates each tenant's monthly platform fee:
  *   - KSH 25 per active PPPoE user (rate from plan)
  *   - 3% commission on hotspot collections (rate from plan)
- *   - Fixed base fee (from plan, default 0)
+ *   - Monthly fee per configured router (waived during trial)
  *
  * Creates a platform_invoice row for each tenant and
  * sends an invoice notification email to the admin.
@@ -82,6 +82,8 @@ foreach ($tenants as $tenant) {
         $pppoeCount = (int)$invoice['pppoe_user_count'];
         $hotspotCollections = (float)$invoice['hotspot_collections'];
         $tenant['base_fee'] = (float)$invoice['base_fee'];
+        $tenant['router_count']=(int)($invoice['router_count']??0);
+        $tenant['router_fee_per_router']=(float)($invoice['router_fee_per_router']??0);
         $tenant['pppoe_fee'] = (float)$invoice['pppoe_fee_per_user'];
         $tenant['commission_rate'] = (float)$invoice['hotspot_commission_rate'];
         $totalDue = (float)$invoice['total_due'];
@@ -147,7 +149,7 @@ HTML;
     if ($baseFee > 0) {
         $body .= <<<HTML
       <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e2e8f0;font-size:14px;color:#374151;">
-        <span>Base Platform Fee</span><span>KSH {$baseFee}</span>
+        <span>Monthly Router Fee ({$tenant['router_count']} routers x KSH {$tenant['router_fee_per_router']})</span><span>KSH {$baseFee}</span>
       </div>
 HTML;
     }

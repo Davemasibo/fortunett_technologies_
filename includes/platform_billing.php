@@ -31,6 +31,7 @@
 
 require_once __DIR__ . '/schema_guard.php';
 require_once __DIR__ . '/trial_billing.php';
+require_once __DIR__.'/router_billing.php';
 
 /**
  * A tenant's permanent paybill reference, e.g. "FN5".
@@ -306,11 +307,13 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingP
               AND p.payment_date>=? AND p.payment_date<?");
         $collections->execute([$tenantId, $periodStart, date('Y-m-01', strtotime($periodStart . ' +1 month'))]);
         $collected = $collections->fetch(PDO::FETCH_ASSOC);
+        $routerBase=platformRouterBaseCharge($r['tenant_status'] ?? '',
+            platformConfiguredRouterCount($pdo,$tenantId,$periodStart),(float)$r['base_fee']);
         $charges = platformTrialCharges($r['tenant_status'] ?? '', (float)$collected['collected'],
-            $pppoeCount, (int)$collected['paying_users'], (float)$r['base_fee']);
+            $pppoeCount, (int)$collected['paying_users'], $routerBase['base_fee']);
         $pppoeCount = $charges['users'];
         $r['base_fee'] = $charges['base_fee'];
-        if (!$charges['eligible'] && !$existing) return null;
+        if ((!$charges['eligible'] || ($pppoeCount * $r['pppoe_fee'] + $hotspotCollections * $r['hotspot_rate'] + $r['base_fee']) <= 0) && !$existing) return null;
 
         // pppoe_subtotal, hotspot_commission and total_due are STORED GENERATED
         // columns — the database derives them from the inputs below. Writing to
@@ -326,12 +329,12 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingP
                 UPDATE platform_invoices
                 SET pppoe_user_count = ?, pppoe_fee_per_user = ?,
                     hotspot_collections = ?, hotspot_commission_rate = ?,
-                    base_fee = ?, plan_id = ?, status = ?
+                    base_fee = ?, router_count = ?, router_fee_per_router = ?, plan_id = ?, status = ?
                 WHERE id = ? AND (status IN ('pending', 'overdue') OR total_due=0) AND COALESCE(amount_paid, 0) = 0
             ")->execute([
                 $pppoeCount, $r['pppoe_fee'],
                 $hotspotCollections, $r['hotspot_rate'],
-                $r['base_fee'], $r['plan_id'],
+                $r['base_fee'], $routerBase['router_count'], $routerBase['router_fee_per_router'], $r['plan_id'],
                 ($pppoeCount * $r['pppoe_fee'] + $hotspotCollections * $r['hotspot_rate'] + $r['base_fee']) > 0
                     ? ($existing['status'] === 'overdue' ? 'overdue' : 'pending') : 'paid',
                 $existing['id'],
@@ -342,13 +345,13 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingP
                     (invoice_number, tenant_id, billing_period, plan_id,
                      pppoe_user_count, pppoe_fee_per_user,
                      hotspot_collections, hotspot_commission_rate,
-                     base_fee, status, due_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                     base_fee, router_count, router_fee_per_router, status, due_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
             ")->execute([
                 $invoiceNumber, $tenantId, $periodStart, $r['plan_id'],
                 $pppoeCount, $r['pppoe_fee'],
                 $hotspotCollections, $r['hotspot_rate'],
-                $r['base_fee'], $dueDate,
+                $r['base_fee'], $routerBase['router_count'], $routerBase['router_fee_per_router'], $dueDate,
             ]);
         }
 

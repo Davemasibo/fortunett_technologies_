@@ -223,7 +223,7 @@ table a:hover{color:#93c5fd;}
                 </div>
                 <?php if ($invoiceDetail['base_fee'] > 0): ?>
                 <div class="line-item">
-                    <span>Base Platform Fee</span>
+                    <span><?= $invoiceDetail['router_count'] === null ? 'Monthly fee (previous billing)' : 'Monthly Router Fee ('.(int)$invoiceDetail['router_count'].' routers x KSH '.number_format($invoiceDetail['router_fee_per_router'],2).')' ?></span>
                     <strong>KSH <?= number_format($invoiceDetail['base_fee'], 2) ?></strong>
                 </div>
                 <?php endif; ?>

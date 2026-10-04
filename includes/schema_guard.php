@@ -307,6 +307,10 @@ function ensurePlatformBillingSchema(PDO $pdo): void
     if ($done) return;
     $done = true;
 
+    // Nullable on old invoices: historical charges retain their original basis.
+    ensureColumn($pdo,'platform_invoices','router_count','INT UNSIGNED DEFAULT NULL');
+    ensureColumn($pdo,'platform_invoices','router_fee_per_router','DECIMAL(12,2) DEFAULT NULL');
+
     // Part-payment support: a tenant paying 500 against a 1,200 invoice must
     // reduce the balance rather than be rejected or over-credited.
     if (ensureColumn($pdo, 'platform_invoices', 'amount_paid',

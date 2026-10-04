@@ -29,27 +29,20 @@ $orgSlug     = strtoupper(preg_replace('/[^a-z0-9]/i', '', $orgName));
 $currentMonthStart = date('Y-m-01');
 $currentMonthEnd   = date('Y-m-t');
 
-// --- PPPoE User Count ---
+// --- Active PPPoE users (same basis as the invoice engine) ---
 try {
-    $pppoeStmt = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE tenant_id = ? AND subscription_plan LIKE '%pppoe%'");
-    $pppoeStmt->execute([$tenant_id]);
-    $pppoeCount = (int)$pppoeStmt->fetchColumn();
-
-    // If no 'pppoe' label, just count all clients (fallback)
-    if ($pppoeCount === 0) {
-        $allStmt = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE tenant_id = ?");
-        $allStmt->execute([$tenant_id]);
-        $pppoeCount = (int)$allStmt->fetchColumn();
-    }
-} catch (Exception $e) { $pppoeCount = 0; }
+    $pppoeStmt=$pdo->prepare("SELECT COUNT(*) FROM clients WHERE tenant_id=? AND status='active' AND connection_type='pppoe'");
+    $pppoeStmt->execute([$tenant_id]);$pppoeCount=(int)$pppoeStmt->fetchColumn();
+} catch(Exception $e){$pppoeCount=0;}
 
 // --- Revenue ---
 try {
-$revStmt = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM payments WHERE tenant_id = ? AND status = 'completed' AND payment_date BETWEEN ? AND ?");
+$revStmt = $pdo->prepare("SELECT COALESCE(SUM(p.amount),0) FROM payments p JOIN clients c ON c.id=p.client_id AND c.tenant_id=p.tenant_id WHERE p.tenant_id = ? AND p.status = 'completed' AND c.connection_type='hotspot' AND p.payment_date BETWEEN ? AND ?");
     $revStmt->execute([$tenant_id, $currentMonthStart . ' 00:00:00', $currentMonthEnd . ' 23:59:59']);
     $currentRevenue = (float)$revStmt->fetchColumn();
 } catch (Exception $e) { $currentRevenue = 0; }
 
+require_once __DIR__.'/includes/platform_billing.php';
 // --- Billing Calculation ---
 // Fetch rates from the tenant's assigned subscription plan
 $pppoeRate   = 25.00;
@@ -70,6 +63,10 @@ try {
         $baseMonthlyFee = (float)$rateRow['base_monthly_fee'];
     }
 } catch (Exception $e) {}
+
+$routerBase=platformRouterBaseCharge($tenant['status']??'',platformConfiguredRouterCount($pdo,(int)$tenant_id),(float)$baseMonthlyFee);
+$baseMonthlyFee=$routerBase['base_fee'];
+$showBaseFees=($tenant['status']??'')!=='trial' && $routerBase['router_count']>0;
 
 $pppoeSubtotal = $pppoeCount * $pppoeRate;
 $hotspotFee    = $currentRevenue * $hotspotRate;
@@ -136,7 +133,7 @@ $billsStmt = $pdo->prepare("
            invoice_number,
            billing_period,
            hotspot_collections            AS total_collections,
-           base_fee,
+           base_fee, router_count, router_fee_per_router,
            pppoe_subtotal,
            pppoe_user_count AS pppoe_count,
            pppoe_fee_per_user AS pppoe_rate,
@@ -640,6 +637,9 @@ include 'includes/sidebar.php';
             'billing_period'    => $currentMonthStart,
             'total_collections' => $currentRevenue,
             'base_fee'          => $baseMonthlyFee,
+            'router_count'      => $currentBill ? $currentBill['router_count'] : $routerBase['router_count'],
+            'router_fee_per_router' => $currentBill ? $currentBill['router_fee_per_router'] : $routerBase['router_fee_per_router'],
+            'show_router_fee'   => $showBaseFees,
             'pppoe_subtotal'    => $pppoeSubtotal,
             'total_due'         => $serviceSubtotal,
             'due_date'          => $currentBill['due_date'] ?? null,
@@ -689,7 +689,7 @@ include 'includes/sidebar.php';
                         <th>Period</th>
                         <th class="text-end">Revenue Collected</th>
                         <th class="text-end">PPPoE Fee</th>
-                        <th class="text-end">Base Monthly Fee</th>
+                        <?php if ($showBaseFees): ?><th class="text-end">Monthly Fee</th><?php endif; ?>
                         <th class="text-end">Hotspot Commission</th>
                         <th class="text-end">Total Due</th>
                         <th class="text-center">Status</th>
@@ -698,6 +698,7 @@ include 'includes/sidebar.php';
                 </thead>
                 <tbody>
                     <?php foreach ($bills as $bill):
+                        $bill['show_router_fee']=$showBaseFees;
                         $bTotal = $bill['total_due'];
                         $isPaid = $bill['status'] === 'paid';
                     ?>
@@ -705,7 +706,7 @@ include 'includes/sidebar.php';
                         <td style="font-weight:600; color:#e2e2e0;"><?php echo date('F Y', strtotime($bill['billing_period'])); ?></td>
                         <td class="text-end"><?php echo $collectionError ? 'Unavailable' : 'KES ' . number_format($collectionMonths[$bill['billing_period']]['collected'] ?? 0, 2); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['pppoe_subtotal'], 2); ?></td>
-                        <td class="text-end">KES <?php echo number_format($bill['base_fee'], 2); ?></td>
+                        <?php if ($showBaseFees): ?><td class="text-end">KES <?php echo number_format($bill['base_fee'], 2); ?></td><?php endif; ?>
                         <td class="text-end">KES <?php echo number_format($bill['commission_amount'], 2); ?></td>
                         <td class="text-end" style="font-weight:700; color:#e2e2e0;">KES <?php echo number_format($bTotal, 2); ?></td>
                         <td class="text-center">
@@ -800,10 +801,10 @@ include 'includes/sidebar.php';
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td><div class="desc-main">Base Monthly Fee</div><div class="desc-sub">Fixed monthly subscription fee</div></td>
+                <tr id="invRouterFeeRow" style="display:none">
+                    <td><div class="desc-main" id="invRouterFeeLabel">Monthly Router Fee</div><div class="desc-sub" id="invRouterFeeDescription">Monthly fee per configured MikroTik</div></td>
                     <td id="invMonthlyRate">KES <?php echo number_format($baseMonthlyFee, 2); ?></td>
-                    <td>1</td>
+                    <td id="invRouterQty">0 routers</td>
                     <td id="invMonthlyFee">KES <?php echo number_format($baseMonthlyFee, 2); ?></td>
                 </tr>
                 <tr>
@@ -1020,7 +1021,14 @@ function openInvoiceModal(bill) {
     document.getElementById('invPppoeRate').textContent       = 'KES ' + fmt(pppoeRate) + '/user';
     document.getElementById('invPppoeQty').textContent        = pppoeCount + ' user' + (pppoeCount !== 1 ? 's' : '');
     document.getElementById('invBaseFee').textContent         = 'KES ' + fmt(pppoe);
-    document.getElementById('invMonthlyRate').textContent     = 'KES ' + fmt(base);
+    const hasRouterSnapshot = bill.router_count != null;
+    const routerQty = hasRouterSnapshot ? Number(bill.router_count) : 1;
+    const routerRate = bill.router_fee_per_router == null ? base : Number(bill.router_fee_per_router);
+    document.getElementById('invRouterFeeRow').style.display = base > 0 && bill.show_router_fee !== false ? '' : 'none';
+    document.getElementById('invRouterFeeLabel').textContent = bill.router_count == null ? 'Monthly fee (previous billing)' : 'Monthly Router Fee';
+    document.getElementById('invRouterQty').textContent = hasRouterSnapshot ? routerQty + ' router' + (routerQty !== 1 ? 's' : '') : '1 month';
+    document.getElementById('invRouterFeeDescription').textContent = hasRouterSnapshot ? 'Monthly fee per configured MikroTik' : 'Previous monthly subscription fee';
+    document.getElementById('invMonthlyRate').textContent = 'KES ' + fmt(routerRate) + (hasRouterSnapshot ? '/router' : '/month');
     document.getElementById('invMonthlyFee').textContent      = 'KES ' + fmt(base);
     document.getElementById('invAmountPaid').textContent      = 'KES ' + fmt(paid);
     document.getElementById('invCommRate').textContent        = rate.toFixed(2) + '%';

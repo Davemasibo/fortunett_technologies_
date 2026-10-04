@@ -266,7 +266,7 @@ table a:hover{color:#93c5fd;}
                             <div class="hint">Percentage of hotspot revenue collected</div>
                         </div>
                         <div class="form-group">
-                            <label>Base Monthly Fee (KSH)</label>
+                            <label>Monthly Fee per MikroTik (KSH)</label>
                             <input type="number" name="base_monthly_fee" id="fBaseFee" step="0.01" min="0" required>
                             <div class="hint">Fixed platform fee added to every invoice</div>
                         </div>
@@ -308,7 +308,7 @@ table a:hover{color:#93c5fd;}
                         <th>Slug</th>
                         <th>PPPoE Fee / User</th>
                         <th>Hotspot Commission</th>
-                        <th>Base Monthly Fee</th>
+                        <th>Monthly Fee / MikroTik</th>
                         <th>Max Clients</th>
                         <th>Max Routers</th>
                         <th>Trial Days</th>
