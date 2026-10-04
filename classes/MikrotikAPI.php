@@ -9,6 +9,7 @@ class MikrotikAPI {
     private $username;
     private $password;
     private $socket;
+    private $readDeadline = 0.0;
     private $connected = false;
     private $debug = false;
     
@@ -161,6 +162,7 @@ class MikrotikAPI {
      * Read response from router
      */
     private function read() {
+        $this->readDeadline = microtime(true) + 30;
         $response = [];
         $done     = false;
 
@@ -170,9 +172,9 @@ class MikrotikAPI {
             } catch (Exception $e) {
                 // Some RouterOS versions close the TCP connection immediately after
                 // sending !done / !fatal without sending the trailing empty word.
-                // If we already have data (or saw !done), return what we have
+                // Only a completed reply may be returned after the socket closes
                 // rather than surfacing a misleading "connection closed" error.
-                if ($done || !empty($response)) {
+                if ($done) {
                     break;
                 }
                 throw $e;
@@ -204,66 +206,51 @@ class MikrotikAPI {
      * Read word from socket
      */
     private function readWord() {
-        $len = $this->readLen();
-        
-        if ($len === 0) {
-            return '';
+        $length = $this->readLen();
+        if ($length > 16 * 1024 * 1024) {
+            $this->disconnect();
+            throw new Exception('Router API reply exceeds the allowed size');
         }
-        
-        $word = '';
-        $remaining = $len;
-        
-        while ($remaining > 0) {
-            $data = fread($this->socket, $remaining);
-            if ($data === false || $data === '') {
-                throw new Exception("Connection lost while reading");
-            }
-            $word .= $data;
-            $remaining -= strlen($data);
-        }
-        
-        return $word;
+        return $length === 0 ? '' : $this->readExact($length);
     }
-    
-    /**
-     * Read length from socket
-     */
-    private function readLen() {
-        $data = fread($this->socket, 1);
 
-        // Empty string or false means socket timed out or was closed by the router.
-        // Returning 0 here would cause read() to loop forever, so throw instead.
-        if ($data === false || $data === '') {
-            $meta = stream_get_meta_data($this->socket);
-            if ($meta['timed_out'] ?? false) {
-                throw new Exception("Router API read timeout — no response within the allowed window");
+    private function readExact($length) {
+        $buffer = '';
+        while (strlen($buffer) < $length) {
+            $remaining = $this->readDeadline - microtime(true);
+            if ($remaining <= 0) {
+                $this->disconnect();
+                throw new Exception('Router API response deadline exceeded');
             }
-            throw new Exception("Connection closed by router unexpectedly");
+            $seconds = min(8.0, $remaining);
+            stream_set_timeout($this->socket, (int)$seconds, (int)(($seconds - (int)$seconds) * 1000000));
+            $chunk = fread($this->socket, $length - strlen($buffer));
+            if ($chunk === false || $chunk === '') {
+                $meta = stream_get_meta_data($this->socket);
+                $this->disconnect();
+                throw new Exception(!empty($meta['timed_out'])
+                    ? 'Router API read timeout' : 'Router API connection closed before the complete reply');
+            }
+            $buffer .= $chunk;
         }
+        return $buffer;
+    }
 
-        $byte = ord($data);
-
-        if ($byte == 0) {
-            return 0;
+    private function readLen() {
+        $byte = ord($this->readExact(1));
+        if (($byte & 0x80) === 0) return $byte;
+        if (($byte & 0xC0) === 0x80) return (($byte & 0x3F) << 8) | ord($this->readExact(1));
+        if (($byte & 0xE0) === 0xC0) {
+            $tail = $this->readExact(2);
+            return (($byte & 0x1F) << 16) | (ord($tail[0]) << 8) | ord($tail[1]);
         }
-
-        if (($byte & 0x80) == 0) {
-            return $byte;
+        if (($byte & 0xF0) === 0xE0) {
+            $tail = $this->readExact(3);
+            return (($byte & 0x0F) << 24) | (ord($tail[0]) << 16) | (ord($tail[1]) << 8) | ord($tail[2]);
         }
-
-        if (($byte & 0xC0) == 0x80) {
-            return (($byte & 0x3F) << 8) + ord(fread($this->socket, 1));
-        }
-
-        if (($byte & 0xE0) == 0xC0) {
-            return (($byte & 0x1F) << 16) + (ord(fread($this->socket, 1)) << 8) + ord(fread($this->socket, 1));
-        }
-
-        if (($byte & 0xF0) == 0xE0) {
-            return (($byte & 0x0F) << 24) + (ord(fread($this->socket, 1)) << 16) + (ord(fread($this->socket, 1)) << 8) + ord(fread($this->socket, 1));
-        }
-
-        return (ord(fread($this->socket, 1)) << 24) + (ord(fread($this->socket, 1)) << 16) + (ord(fread($this->socket, 1)) << 8) + ord(fread($this->socket, 1));
+        if ($byte === 0xF0) return unpack('N', $this->readExact(4))[1];
+        $this->disconnect();
+        throw new Exception('Invalid Router API word length');
     }
     
     /**

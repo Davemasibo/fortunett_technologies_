@@ -14,6 +14,7 @@ class RouterOSAPI {
     public $delay    = 3;
 
     private $socket;
+    private $readDeadline = 0.0;
     public  $error_no;
     public  $error_str;
 
@@ -109,6 +110,7 @@ class RouterOSAPI {
     // ── Private helpers ─────────────────────────────────────────────────────────
 
     private function read() {
+        $this->readDeadline = microtime(true) + 30;
         $words = [];
         $done  = false;
 
@@ -116,7 +118,7 @@ class RouterOSAPI {
             try {
                 $word = $this->readWord();
             } catch (Exception $e) {
-                if ($done || !empty($words)) break;
+                if ($done) break;
                 throw $e;
             }
 
@@ -157,39 +159,51 @@ class RouterOSAPI {
     }
 
     private function readWord() {
-        $len = $this->readLen();
-        if ($len === 0) return '';
+        $length = $this->readLen();
+        if ($length > 16 * 1024 * 1024) {
+            $this->disconnect();
+            throw new Exception('Router API reply exceeds the allowed size');
+        }
+        return $length === 0 ? '' : $this->readExact($length);
+    }
 
-        $buf = '';
-        while (strlen($buf) < $len) {
-            $chunk = fread($this->socket, $len - strlen($buf));
+    private function readExact($length) {
+        $buffer = '';
+        while (strlen($buffer) < $length) {
+            $remaining = $this->readDeadline - microtime(true);
+            if ($remaining <= 0) {
+                $this->disconnect();
+                throw new Exception('Router API response deadline exceeded');
+            }
+            $seconds = min(max(0.1, (float)$this->timeout), $remaining);
+            stream_set_timeout($this->socket, (int)$seconds, (int)(($seconds - (int)$seconds) * 1000000));
+            $chunk = fread($this->socket, $length - strlen($buffer));
             if ($chunk === false || $chunk === '') {
                 $meta = stream_get_meta_data($this->socket);
-                throw new Exception(($meta['timed_out'] ?? false)
-                    ? 'RouterOS API read timeout'
-                    : 'Connection closed by router');
+                $this->disconnect();
+                throw new Exception(!empty($meta['timed_out'])
+                    ? 'Router API read timeout' : 'Router API connection closed before the complete reply');
             }
-            $buf .= $chunk;
+            $buffer .= $chunk;
         }
-        return $buf;
+        return $buffer;
     }
 
     private function readLen() {
-        $raw = fread($this->socket, 1);
-        if ($raw === false || $raw === '') {
-            $meta = stream_get_meta_data($this->socket);
-            throw new Exception(($meta['timed_out'] ?? false)
-                ? 'RouterOS API read timeout'
-                : 'Connection closed by router');
+        $byte = ord($this->readExact(1));
+        if (($byte & 0x80) === 0) return $byte;
+        if (($byte & 0xC0) === 0x80) return (($byte & 0x3F) << 8) | ord($this->readExact(1));
+        if (($byte & 0xE0) === 0xC0) {
+            $tail = $this->readExact(2);
+            return (($byte & 0x1F) << 16) | (ord($tail[0]) << 8) | ord($tail[1]);
         }
-        $b = ord($raw);
-
-        if ($b === 0)               return 0;
-        if (($b & 0x80) === 0)      return $b;
-        if (($b & 0xC0) === 0x80)   return (($b & 0x3F) << 8)  | ord(fread($this->socket, 1));
-        if (($b & 0xE0) === 0xC0)   return (($b & 0x1F) << 16) | (ord(fread($this->socket, 1)) << 8) | ord(fread($this->socket, 1));
-        if (($b & 0xF0) === 0xE0)   return (($b & 0x0F) << 24) | (ord(fread($this->socket, 1)) << 16) | (ord(fread($this->socket, 1)) << 8) | ord(fread($this->socket, 1));
-        return (ord(fread($this->socket, 1)) << 24) | (ord(fread($this->socket, 1)) << 16) | (ord(fread($this->socket, 1)) << 8) | ord(fread($this->socket, 1));
+        if (($byte & 0xF0) === 0xE0) {
+            $tail = $this->readExact(3);
+            return (($byte & 0x0F) << 24) | (ord($tail[0]) << 16) | (ord($tail[1]) << 8) | ord($tail[2]);
+        }
+        if ($byte === 0xF0) return unpack('N', $this->readExact(4))[1];
+        $this->disconnect();
+        throw new Exception('Invalid Router API word length');
     }
 
     private function writeWord($word) {
