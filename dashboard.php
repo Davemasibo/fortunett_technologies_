@@ -452,6 +452,14 @@ include 'includes/sidebar.php';
 </style>
 
 <div class="main-content-wrapper">
+<?php
+require_once __DIR__.'/includes/onboarding.php';
+try { $setupProgress=tenantOnboardingProgress($pdo,(int)$tenant_id); } catch (Throwable $e) { $setupProgress=null; }
+if ($setupProgress && !$setupProgress['steps'][2]['done']): ?>
+<div style="margin:20px;padding:20px;border:1px solid #3B6EA5;border-radius:12px;" role="region" aria-label="Router setup">
+<strong>Finish connecting your MikroTik</strong><p>Follow the guide, verify your services and test your first customer. Your saved setup is ready to continue.</p>
+<a href="onboarding.php" class="btn btn-primary">Continue setup</a></div>
+<?php endif; ?>
     <div class="dashboard-container">
         <!-- Header -->
         <div class="dashboard-header">

@@ -3,6 +3,7 @@ header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
 require_once '../../includes/router_service_config.php';
+require_once '../../includes/onboarding_checks.php';
 
 redirectIfNotLoggedIn();
 
@@ -70,6 +71,8 @@ try {
         SET service_types = ?, hotspot_shared_users = CASE WHEN ? THEN ? ELSE hotspot_shared_users END
         WHERE id = ? AND tenant_id = ?
     ")->execute([$serviceTypesStr, in_array('hotspot', $services, true), $noSharing, $router['id'], $tenantId]);
+
+    saveOnboardingCheck($pdo,$tenantId,(int)$router['id'],$serviceTypesStr,false,'Service setup prepared. Apply the script and verify configuration.');
 
     // Resolve tenant portal info for walled garden + login page fetch
     $companyName    = '';

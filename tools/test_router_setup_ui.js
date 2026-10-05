@@ -9,7 +9,7 @@ async function run(connected) {
  const status={textContent:'',innerHTML:''};let scheduled=0,advanced=0;
  const context={currentStep:2,provisioningTimer:null,wizardRouterId:null,Date,encodeURIComponent,
  document:{getElementById:id=>id==='mikrotikName'?{value:'RB951'}:id==='wizardModal'?{style:{display:'flex'}}:status},
- clearTimeout(){},setTimeout(){scheduled++;return 1;},updateWizard(){advanced++;},
+ clearTimeout(){},setTimeout(){scheduled++;return 1;},updateWizard(){advanced++;},loadWizardBridges(){},
  fetch:async()=>({json:async()=>({connected,router:{id:20},message:'Awaiting API'})})};
  vm.createContext(context);vm.runInContext(polling+';startPolling();',context);
  await new Promise(resolve=>setImmediate(resolve));

@@ -19,7 +19,9 @@ try {
     loginUser($user['id'],$user['username'],$user['role']);
     $_SESSION['tenant_id']=$tenant;$_SESSION['is_super_admin']=false;
     $_SESSION['tenant_subdomain']=explode('.',strtolower($_SERVER['HTTP_HOST']))[0];
-    header('Location: dashboard.php');exit;
+    $destination=!empty($_SESSION['resume_onboarding']) ? 'onboarding.php' : 'dashboard.php';
+    unset($_SESSION['resume_onboarding']);
+    header('Location: '.$destination);exit;
 } catch(Throwable $e) {
     header('Location: login.php?signin=1&google_error=1');exit;
 }

@@ -10,6 +10,7 @@
  * POST: router_id, services (csv: 'pppoe', 'hotspot', or 'pppoe,hotspot')
  * Returns: { success, api_ok, all_ok, checks:[{label, ok, detail}], error? }
  */
+require_once __DIR__.'/../../includes/onboarding_checks.php';
 ob_start();
 ini_set('display_errors', 0);
 header('Content-Type: application/json');
@@ -34,6 +35,15 @@ $rq = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE id = ? AND tenant_id =
 $rq->execute([$routerId, $tenantId]);
 $router = $rq->fetch(PDO::FETCH_ASSOC);
 if (!$router) { ob_clean(); echo json_encode(['success' => false, 'error' => 'Router not found']); exit; }
+
+if (!$services) $services=explode(',',onboardingServices($router['service_types'] ?? ''));
+$services=array_values(array_filter($services));
+register_shutdown_function(function() use ($pdo,$tenantId,$routerId,&$services,&$result) {
+    if (!isset($result)) return;
+    $failed=array_filter($result['checks'] ?? [],fn($c)=>!$c['ok']);
+    $summary=$result['error'] ?? implode('; ',array_map(fn($c)=>$c['label'].': '.$c['detail'],$failed));
+    saveOnboardingCheck($pdo,$tenantId,$routerId,implode(',',$services),!empty($services) && !empty($result['all_ok']),$summary);
+});
 
 // Prefer VPN IP (WireGuard) over public IP
 $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
@@ -165,7 +175,7 @@ try {
     $api->disconnect();
 
     $result['checks']  = $checks;
-    $result['all_ok']  = !empty($checks) && !array_filter($checks, fn($c) => !$c['ok']);
+    $result['all_ok']  = !empty($services) && !empty($checks) && !array_filter($checks, fn($c) => !$c['ok']);
 
 } catch (Throwable $e) {
     $result['error'] = $e->getMessage();

@@ -764,6 +764,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <p style="font-size:12px;color:#a3a3a3;">Compatible customer radios will broadcast your company name as open Wi-Fi. Connect through Ethernet while applying setup; wireless uplinks are preserved.</p>
                 <label for="wizardBridgeName">Customer LAN bridge</label>
+                <select id="wizardDetectedBridges" aria-label="Detected customer bridges" onchange="document.getElementById('wizardBridgeName').value=this.value"><option value="">Select a detected bridge</option></select><button type="button" onclick="loadWizardBridges()">Refresh bridges</button><p id="wizardBridgeStatus" role="status"></p>
                 <input id="wizardBridgeName" maxlength="64" placeholder="Automatic if there is one enabled bridge" style="width:100%;padding:10px;margin:8px 0;">
                 <p style="font-size:12px;color:#a3a3a3;">For several bridges, run <code>/interface bridge print</code> in WinBox and enter the customer bridge's exact name. Hotspot replaces DHCP on that bridge and customers reconnect on 10.5.50.0/24. Use separate LANs for two Hotspot gateways to avoid competing DHCP servers.</p>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; text-align:left;">
@@ -1009,6 +1010,20 @@ function showWizardError(msg) {
     setTimeout(() => { if (el) el.style.display = 'none'; }, 4000);
 }
 
+async function loadWizardBridges() {
+    const status=document.getElementById('wizardBridgeStatus'), select=document.getElementById('wizardDetectedBridges');
+    if (!wizardRouterId || !status || !select) return;
+    status.textContent='Reading customer bridges...';
+    try {
+        const response=await fetch('api/routers/bridges.php?router_id='+encodeURIComponent(wizardRouterId));
+        const data=await response.json();
+        if (!response.ok) throw new Error(data.error || 'Cannot read bridges.');
+        select.replaceChildren(new Option('Select a detected bridge',''));
+        for (const name of data.bridges || []) select.add(new Option(name,name));
+        if (data.bridges?.length===1) {select.value=data.bridges[0];document.getElementById('wizardBridgeName').value=data.bridges[0];}
+        status.textContent=data.bridges?.length ? 'Choose the bridge connected to your customers. Confirm before applying setup.' : 'No enabled bridge found. Configure a customer LAN bridge in WinBox, then refresh.';
+    } catch(e) {status.textContent=e.message+' You can enter the exact bridge name below.';}
+}
 function startPolling() {
     if (provisioningTimer) clearTimeout(provisioningTimer);
     const name=document.getElementById('mikrotikName').value.trim();
@@ -1020,7 +1035,7 @@ function startPolling() {
             const response=await fetch('api/routers/check_status.php?identity='+encodeURIComponent(name));
             const data=await response.json();
             if (data.router) wizardRouterId=data.router.id;
-            if (data.connected) { status.textContent='Management connection verified.'; currentStep=3; updateWizard(); return; }
+            if (data.connected) { status.textContent='Management connection verified.'; currentStep=3; updateWizard(); loadWizardBridges(); return; }
             status.textContent=data.message || 'Waiting for your router?';
         } catch(e) { status.textContent='Connection check failed. Retrying automatically.'; }
         if (Date.now()-started>120000) {
@@ -1946,3 +1961,11 @@ document.getElementById('terminalModal').addEventListener('click', function(e) {
 </script>
 
 <?php include 'includes/footer.php'; ?>
+
+<?php
+$resumeId=(int)($_GET['resume_router'] ?? 0);
+foreach ($routers as $resumeRouter):
+    if ((int)$resumeRouter['id']!==$resumeId) continue;
+?>
+<script>openProvision(<?php echo $resumeId; ?>,<?php echo json_encode($resumeRouter['name'],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT); ?>);</script>
+<?php break; endforeach; ?>

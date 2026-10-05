@@ -26,7 +26,9 @@ if ($subdomain !== null) {
         if (is_string($logo) && preg_match('~^(?:https://|/?uploads/)~i', $logo)) $branding['logo'] = $logo;
     } catch (PDOException $e) { /* Branding is optional. */ }
 }
-if (isLoggedIn() && !googlePending('google_workspace_request')) { header('Location: dashboard.php'); exit; }
+if (isLoggedIn() && !googlePending('google_workspace_request')) { $destination=!empty($_SESSION['resume_onboarding']) ? 'onboarding.php' : 'dashboard.php';
+    unset($_SESSION['resume_onboarding']);
+    header('Location: '.$destination); exit; }
 $error = isset($_GET['google_error']) ? 'Google sign-in expired. Click Continue with Google to try again.' : '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -78,7 +80,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $tSubRow = $tSubStmt->fetch();
                             if ($tSubRow) $_SESSION['tenant_subdomain'] = $tSubRow['subdomain'];
                         }
-                        header("Location: dashboard.php");
+                        $destination=!empty($_SESSION['resume_onboarding']) ? 'onboarding.php' : 'dashboard.php';
+                        unset($_SESSION['resume_onboarding']);
+                        header('Location: '.$destination);
                         exit;
                     }
                 }

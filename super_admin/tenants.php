@@ -226,6 +226,7 @@ table a:hover{color:#93c5fd;}
         </div>
     </div>
     <div class="content" id="sa-main-content">
+    <p><a class="btn-sm btn-view" href="onboarding.php">Trial setup progress</a></p>
 
     <?php if ($detailTenant): ?>
         <a href="tenants.php" class="back-link"><i class="fas fa-arrow-left"></i> Back to all tenants</a>
