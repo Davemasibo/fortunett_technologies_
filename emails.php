@@ -36,8 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = $_POST['message'];
         
         // Lookup email
-        $cStmt = $pdo->prepare("SELECT email FROM clients WHERE id = ?");
-        $cStmt->execute([$recipientId]);
+        $cStmt = $pdo->prepare("SELECT email FROM clients WHERE id = ? AND tenant_id = ?");
+        $cStmt->execute([$recipientId, $tenant_id]);
         $email = $cStmt->fetchColumn();
         
         if ($email) {

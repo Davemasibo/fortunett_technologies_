@@ -19,6 +19,7 @@ chdir(dirname(__DIR__)); // Set working dir to project root
 
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../includes/db_master.php';
+require_once __DIR__.'/../includes/email_helper.php';
 require_once __DIR__ . '/../includes/platform_billing.php';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -120,104 +121,19 @@ function sendInvoiceEmail(PDO $pdo, array $tenant, string $invoiceNumber, string
     $hotspotCommission = round($hotspotCollections * $commissionRate, 2);
     $commissionPct     = round($commissionRate * 100, 2);
 
-    $body = <<<HTML
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f1f5f9;margin:0;padding:20px;">
-<div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.08);">
-  <div style="background:linear-gradient(135deg,#0f3460,#16213e);padding:32px;text-align:center;color:#fff;">
-    <h1 style="margin:0;font-size:22px;">FortuNett Technologies</h1>
-    <p style="margin:8px 0 0;opacity:.8;font-size:14px;">Platform Invoice — $periodLabel</p>
-  </div>
-  <div style="padding:32px;">
-    <p style="color:#374151;">Dear <strong>{$tenant['admin_username']}</strong>,</p>
-    <p style="color:#374151;">Your monthly platform invoice has been generated. Please review and pay by <strong>$dueDateFmt</strong> to avoid service interruption.</p>
-
-    <div style="background:#f8fafc;border-radius:10px;padding:20px;margin:24px 0;">
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e2e8f0;font-size:14px;color:#374151;">
-        <span>Invoice Number</span><strong>{$invoiceNumber}</strong>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e2e8f0;font-size:14px;color:#374151;">
-        <span>PPPoE Users ({$pppoeCount} × KSH {$pppoeRate})</span><span>KSH {$pppoeSubtotal}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e2e8f0;font-size:14px;color:#374151;">
-        <span>Hotspot Commission ({$commissionPct}% × KSH {$hotspotCollections})</span><span>KSH {$hotspotCommission}</span>
-      </div>
-HTML;
-
-    if ($baseFee > 0) {
-        $body .= <<<HTML
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e2e8f0;font-size:14px;color:#374151;">
-        <span>Monthly Router Fee ({$tenant['router_count']} routers x KSH {$tenant['router_fee_per_router']})</span><span>KSH {$baseFee}</span>
-      </div>
-HTML;
-    }
-
-    $body .= <<<HTML
-      <div style="display:flex;justify-content:space-between;padding:12px 0 4px;font-size:16px;font-weight:700;color:#0f3460;">
-        <span>Total Due</span><span>KSH {$totalDue}</span>
-      </div>
-      <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Due by: {$dueDateFmt}</div>
-    </div>
-
-    <p style="text-align:center;">
-      <a href="{$billingPage}" style="display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#0f3460,#16213e);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">Pay Now via M-Pesa</a>
-    </p>
-
-    <p style="font-size:13px;color:#6b7280;margin-top:24px;">Pay via M-Pesa Paybill <strong>400200</strong>, Account: <strong>{$invoiceNumber}</strong>.<br>
-    If you have questions, contact <a href="mailto:support@fortunetttech.site">support@fortunetttech.site</a>.</p>
-  </div>
-  <div style="background:#f8fafc;padding:16px 32px;text-align:center;font-size:12px;color:#94a3b8;border-top:1px solid #e2e8f0;">
-    FortuNett Technologies — Multi-Tenant ISP Management Platform<br>
-    <a href="{$tenantUrl}" style="color:#0f3460;">{$tenantUrl}</a>
-  </div>
-</div>
-</body></html>
-HTML;
-
-    // Use PHPMailer if available, otherwise php mail()
-    $sent = false;
-    if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
-        try {
-            $mail = new PHPMailer\PHPMailer\PHPMailer(true);
-            // Use system SMTP from .env / config
-            $mail->isSMTP();
-            $mail->Host       = getenv('MAIL_HOST') ?: 'smtp.gmail.com';
-            $mail->SMTPAuth   = true;
-            $mail->Username   = getenv('MAIL_USERNAME') ?: '';
-            $mail->Password   = getenv('MAIL_PASSWORD') ?: '';
-            $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
-            $mail->Port       = (int)(getenv('MAIL_PORT') ?: 587);
-            $mail->setFrom(getenv('MAIL_FROM_ADDRESS') ?: 'billing@fortunetttech.site', 'FortuNett Billing');
-            $mail->addAddress($tenant['admin_email']);
-            $mail->isHTML(true);
-            $mail->Subject = $subject;
-            $mail->Body    = $body;
-            $mail->AltBody = "Invoice $invoiceNumber — KSH $totalDue due $dueDateFmt. Pay at $billingPage";
-            $mail->send();
-            $sent = true;
-        } catch (Throwable $e) {
-            error_log("monthly_billing email error (PHPMailer) tenant {$tenant['id']}: " . $e->getMessage());
-        }
-    }
-
-    if (!$sent) {
-        $headers  = "MIME-Version: 1.0\r\n";
-        $headers .= "Content-type: text/html; charset=UTF-8\r\n";
-        $headers .= "From: FortuNett Billing <billing@fortunetttech.site>\r\n";
-        @mail($tenant['admin_email'], $subject, $body, $headers);
-    }
-
-    // Log email to outbox (tenant_id 0 = system for platform billing emails)
+    $rows=['Invoice number'=>$invoiceNumber,'Billing period'=>$periodLabel,'PPPoE users'=>$pppoeCount.' x KSH '.number_format($pppoeRate,2).' = KSH '.number_format($pppoeSubtotal,2),'Hotspot commission'=>$commissionPct.'% of KSH '.number_format($hotspotCollections,2).' = KSH '.number_format($hotspotCommission,2)];
+    if ($baseFee>0) $rows['Monthly router fee']=($tenant['router_count'] ?? 0).' routers x KSH '.number_format($tenant['router_fee_per_router'] ?? 0,2).' = KSH '.number_format($baseFee,2);
+    $rows['Total due']='KSH '.number_format($totalDue,2); $rows['Due date']=$dueDateFmt;
+    $body=fortunettEmail('Your monthly invoice is ready',
+        '<p>Hello <strong>'.fortunettEmailEscape($tenant['admin_username']).'</strong>,</p><p>Review your platform invoice and pay by the due date to keep your workspace active.</p>'
+        .fortunettEmailSummary($rows)
+        .'<p style="font-size:13px;color:#64748b;">Pay via M-Pesa Paybill <strong>400200</strong>, account <strong>'.fortunettEmailEscape($invoiceNumber).'</strong>.</p>',
+        ['category'=>'Billing','preheader'=>'Invoice '.$invoiceNumber.': KSH '.number_format($totalDue,2).' due '.$dueDateFmt.'.','action_label'=>'View invoice & pay','action_url'=>$billingPage]);
+    $result=sendEmail($tenant['admin_email'],$subject,$body);
+    $sent=$result===true;
     try {
-        $pdo->prepare("
-            INSERT INTO email_outbox (tenant_id, recipient_email, subject, message_body, status)
-            VALUES (?, ?, ?, ?, 'sent')
-        ")->execute([$tenant['id'], $tenant['admin_email'], $subject, substr($body, 0, 2000)]);
-    } catch (Throwable $e) {
-        // Non-fatal
-    }
-
-    $log("EMAIL sent to {$tenant['admin_email']} for invoice $invoiceNumber");
+        $pdo->prepare("INSERT INTO email_outbox (tenant_id,recipient_email,subject,message_body,status) VALUES (?,?,?,?,?)")
+            ->execute([$tenant['id'],$tenant['admin_email'],$subject,$body,$sent ? 'sent' : 'failed']);
+    } catch (Throwable $e) { error_log('Unable to record invoice email status: '.get_class($e)); }
+    $log('EMAIL '.($sent ? 'accepted by SMTP' : 'failed').' for tenant #'.$tenant['id'].' invoice '.$invoiceNumber);
 }

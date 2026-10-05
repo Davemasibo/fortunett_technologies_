@@ -14,13 +14,14 @@ try {
         $stage=onboardingReminderStage($tenant,time());
         if (!$stage || !filter_var($tenant['email'],FILTER_VALIDATE_EMAIL)) continue;
         $message=onboardingReminderMessage($tenant,$domain);
-        echo ($send ? 'SEND' : 'PREVIEW').' tenant #'.$tenant['id'].' '.$stage.' — '.$tenant['step']."\n";
+        echo ($send ? 'SENDING' : 'PREVIEW').' tenant #'.$tenant['id'].' '.$stage.' — '.$tenant['step']."\n";
         if (!$send) {echo $message['body']."\n\n"; continue;}
         // Recheck immediately before delivery; completed tenants leave the candidate list.
         $current=array_filter(onboardingTrialCandidates($pdo),fn($t)=>(int)$t['id']===(int)$tenant['id']);
         if (!$current) continue;
         if (sendEmail($tenant['email'],$message['subject'],$message['body'])===true) {
             $st=$pdo->prepare('INSERT INTO onboarding_reminders (tenant_id,stage,sent_at) VALUES (?,?,NOW()) ON DUPLICATE KEY UPDATE sent_at=NOW()'); $st->execute([$tenant['id'],$stage]);
+            echo 'ACCEPTED by SMTP for tenant #'.$tenant['id']."; inbox placement must be checked in the receiving mailbox.\n";
         } else {fwrite(STDERR,'Delivery failed for tenant #'.$tenant['id']."; retry on next run.\n");}
     }
 } finally {$pdo->query("SELECT RELEASE_LOCK('fortunett_onboarding_reminders')");}

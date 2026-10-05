@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__.'/onboarding_checks.php';
+require_once __DIR__.'/email_brand.php';
 function onboardingTrialCandidates(PDO $pdo): array {
     $st=$pdo->query("SELECT t.id,t.company_name,t.subdomain,t.created_at,u.email,u.email_verified,u.is_verified FROM tenants t JOIN users u ON u.id=t.admin_user_id AND u.tenant_id=t.id WHERE t.status='trial' AND t.trial_ends_at>NOW() ORDER BY t.created_at");
     $candidates=[];
@@ -33,7 +34,10 @@ function onboardingReminderStage(array $tenant,int $now): ?string {
 function onboardingReminderMessage(array $tenant,string $domain): array {
     if (!preg_match('/^[a-z0-9][a-z0-9-]*$/i',$tenant['subdomain']) || !preg_match('/^[a-z0-9.-]+$/i',$domain)) throw new RuntimeException('Invalid workspace domain');
     $url='https://'.$tenant['subdomain'].'.'.$domain.'/onboarding.php';
-    $escape=fn($s)=>htmlspecialchars($s,ENT_QUOTES,'UTF-8');
-    $body='<h2>Finish your MikroTik setup</h2><p>Hello '.$escape($tenant['company_name']).',</p><p>Your next step: <strong>'.$escape($tenant['step']).'</strong>.</p><p>Have your router connected to the internet, a laptop, WinBox and your router login ready. If the router serves customers, download a backup before making changes.</p><p><a href="'.$escape($url).'">Continue setup</a></p><p>Sign in with your existing account. The guide will show the connection command, customer network selection and verification steps.</p><p>If you already pasted the script, return to the guide and verify configuration. Check the WinBox terminal for an import error if the router has not connected.</p>';
+    $body=fortunettEmail('Get your network ready',
+        '<p>Hello <strong>'.fortunettEmailEscape($tenant['company_name']).'</strong>,</p><p>Your workspace is ready. Complete your router setup to start managing your network.</p>'
+        .fortunettEmailSummary(['Your next step'=>$tenant['step']]).'<!-- email-action -->'
+        .'<p style="font-weight:700;color:#14243b;">Before you begin</p><ul><li>Connect your MikroTik to the internet.</li><li>Have your laptop, WinBox and router login ready.</li><li>If the router serves customers, download a backup before making changes.</li></ul><p>Sign in with your existing account. Your setup guide walks you through connecting the router, choosing the customer network and verifying your services.</p><p style="font-size:13px;color:#64748b;">Already pasted the command? Continue to verification. If the router has not connected, check WinBox for a fetch or import error.</p>',
+        ['category'=>'Router setup','preheader'=>$tenant['step'].'. Resume your guided MikroTik setup.','action_label'=>'Continue setup','action_url'=>$url]);
     return ['subject'=>'Continue your MikroTik setup','body'=>$body];
 }

@@ -52,12 +52,9 @@ if (isset($_GET['email']) || $_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 $subject = "Verify Your Account - $business_name";
-                $body = "
-                    <h2>Welcome to $business_name</h2>
-                    <p>We received a request to resend your verification email.</p>
-                    <p>Click below to verify your account:</p>
-                    <p><a href='$verifyUrl' style='padding:10px 20px;background:#28a745;color:white;text-decoration:none;border-radius:5px;'>Verify Email & Login</a></p>
-                ";
+                $body=fortunettEmail('Verify your email',
+                    '<p>We received a request to resend your account verification link.</p><p>Confirm this email address to access your workspace and continue setting up your network.</p><p style="font-size:13px;color:#64748b;">If you did not create an account, you can ignore this email.</p>',
+                    ['category'=>'Account verification','preheader'=>'Confirm your email to access your workspace.','action_label'=>'Verify email & sign in','action_url'=>$verifyUrl]);
 
                 $sendResult = false;
                 if (function_exists('sendEmail')) {

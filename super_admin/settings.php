@@ -447,7 +447,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                         <div class="toggle-row" style="margin-top:16px;">
                             <div class="label-wrap">
                                 <strong>Enable Platform SMTP</strong>
-                                <span>If disabled, PHP mail() fallback is used (not recommended for production)</span>
+                                <span>If disabled, platform email delivery stops unless SMTP is configured in the server environment.</span>
                             </div>
                             <label class="toggle-switch">
                                 <input type="checkbox" name="email_active" <?= !empty($emailCfg['is_active']) ? 'checked' : '' ?>>

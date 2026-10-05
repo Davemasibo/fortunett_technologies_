@@ -142,54 +142,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
 
                     // Welcome + verification email
                     $subject = $googleVerified ? "Welcome to $business_name - Your Workspace Is Ready" : "Welcome to $business_name — Verify Your Account";
-                    $body = <<<HTML
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f1f5f9;margin:0;padding:20px;">
-<div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.08);">
-  <div style="background:linear-gradient(135deg,#2C5282,#4A90E2);padding:36px;text-align:center;color:#fff;">
-    <h1 style="margin:0;font-size:24px;">Welcome to {$business_name}!</h1>
-    <p style="margin:10px 0 0;opacity:.85;">Your ISP management platform is ready</p>
-  </div>
-  <div style="padding:36px;">
-    <p style="color:#374151;">Hi <strong>{$username}</strong>,</p>
-    <p style="color:#374151;">Your dedicated ISP workspace has been created. Here are your details:</p>
-
-    <div style="background:#f8fafc;border-radius:10px;padding:20px;margin:20px 0;">
-      <div style="margin-bottom:12px;"><span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;">Your Dashboard URL</span><br>
-        <a href="{$tenantUrl}" style="color:#2C5282;font-weight:700;font-size:16px;">{$tenantUrl}</a>
-      </div>
-      <div style="margin-bottom:12px;"><span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;">Username</span><br>
-        <span style="font-weight:600;">{$username}</span>
-      </div>
-      <div style="margin-bottom:12px;"><span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;">Plan</span><br>
-        <span style="font-weight:600;">{$trialDays}-day free trial</span>
-      </div>
-      <div><span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;">Trial Ends</span><br>
-        <span style="font-weight:600;">{$trialEnds}</span>
-      </div>
-    </div>
-
-    <p style="color:#374151;">{$signInMethod}</p>
-    <p style="text-align:center;margin:28px 0;">
-      <a href="{$actionLink}" style="display:inline-block;padding:14px 28px;background:linear-gradient(135deg,#2C5282,#4A90E2);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:16px;">{$actionLabel}</a>
-    </p>
-
-    <p style="font-size:13px;color:#6b7280;">If the button above doesn't work, copy and paste this link:<br>
-    <a href="{$actionLink}" style="color:#2C5282;">{$actionLink}</a></p>
-
-    <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
-    <p style="font-size:13px;color:#6b7280;margin:0;">
-      <strong>Getting started:</strong> Open your workspace, complete the setup checklist, and add your MikroTik router under <em>Routers</em>,
-      create service packages, then start adding customers. Your first {$trialDays} days are free — no credit card needed.
-    </p>
-  </div>
-  <div style="background:#f8fafc;padding:16px 36px;text-align:center;font-size:12px;color:#94a3b8;border-top:1px solid #e2e8f0;">
-    {$business_name} &bull; <a href="mailto:support@fortunetttech.site" style="color:#2C5282;">support@fortunetttech.site</a>
-  </div>
-</div>
-</body></html>
-HTML;
+                    $body=fortunettEmail('Welcome to your workspace',
+                        '<p>Hi <strong>'.fortunettEmailEscape($username).'</strong>,</p><p>Your ISP workspace has been created. '.($googleVerified ? 'You can sign in and connect your first MikroTik.' : 'Verify your email to sign in and connect your first MikroTik.').'</p>'
+                        .fortunettEmailSummary(['Workspace'=>$tenantUrl,'Username'=>$username,'Plan'=>$trialDays.'-day free trial','Trial ends'=>$trialEnds])
+                        .'<p>'.fortunettEmailEscape($signInMethod).'</p><p>Once signed in, open the setup guide to connect your router, create packages and add your first customer.</p>',
+                        ['category'=>'Welcome','preheader'=>'Your workspace is ready. '.($googleVerified ? 'Connect your first router.' : 'Verify your email to get started.'),'action_label'=>html_entity_decode($actionLabel,ENT_QUOTES,'UTF-8'),'action_url'=>$actionLink]);
 
                     try {
                         $welcomeSent = function_exists('sendEmail') && sendEmail($email, $subject, $body) === true;

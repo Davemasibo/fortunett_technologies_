@@ -20,21 +20,9 @@ $subject = 'FortuNett Platform — SMTP Test';
 $sentAt  = date('Y-m-d H:i:s');
 $host    = htmlspecialchars($_SERVER['HTTP_HOST'] ?? 'localhost');
 
-$body = "<html><body style=\"font-family:sans-serif;background:#f1f5f9;padding:20px;\">
-<div style=\"max-width:500px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.08);\">
-  <div style=\"background:linear-gradient(135deg,#0f3460,#16213e);padding:28px;text-align:center;color:#fff;\">
-    <h2 style=\"margin:0;\">FortuNett SMTP Test</h2>
-    <p style=\"margin:8px 0 0;opacity:.8;font-size:14px;\">Platform Super Admin</p>
-  </div>
-  <div style=\"padding:28px;color:#374151;\">
-    <p>If you received this email, your SMTP configuration is working correctly.</p>
-    <div style=\"background:#f8fafc;border-radius:8px;padding:14px;margin:16px 0;font-size:13px;\">
-      <strong>Sent at:</strong> {$sentAt}<br>
-      <strong>Server:</strong> {$host}
-    </div>
-  </div>
-</div>
-</body></html>";
+$body=fortunettEmail('Your SMTP test',
+    '<p>This message checks whether your configured SMTP service can accept an email. Receiving it confirms delivery to this mailbox; inbox placement and authentication should be checked in the message headers.</p>'.fortunettEmailSummary(['Sent at'=>$sentAt,'Server'=>html_entity_decode($host,ENT_QUOTES,'UTF-8')]),
+    ['category'=>'Delivery test','preheader'=>'Check delivery and authentication in this message?s headers.']);
 
 $result = sendEmail($to, $subject, $body);
 

@@ -17,6 +17,7 @@ chdir(dirname(__DIR__));
 
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../includes/db_master.php';
+require_once __DIR__.'/../includes/email_helper.php';
 require_once __DIR__ . '/../includes/cron_heartbeat.php';
 require_once __DIR__ . '/../includes/schema_guard.php';
 require_once __DIR__ . '/../includes/platform_billing.php';
@@ -172,103 +173,30 @@ $log("=== Done ===");
 
 // ─── Email builders ───────────────────────────────────────────────────────────
 
-function buildTrialExpiredEmail(array $t, string $tenantUrl): string {
-    return <<<HTML
-<div style="font-family:sans-serif;max-width:560px;margin:auto;background:#fff;border-radius:10px;overflow:hidden;">
-  <div style="background:#7c3aed;padding:24px;color:#fff;text-align:center;">
-    <h2 style="margin:0;">Free Trial Ended</h2>
-    <p style="margin:6px 0 0;opacity:.85;">Subscribe to continue using FortuNett</p>
-  </div>
-  <div style="padding:28px;">
-    <p>Dear <strong>{$t['company_name']}</strong> administrator,</p>
-    <p>Your 14-day free trial has ended. To continue managing your ISP and serving your customers, please pay your first platform invoice.</p>
-    <p>Your account will be reactivated <strong>automatically</strong> within minutes of payment confirmation.</p>
-    <p style="text-align:center;margin:24px 0;"><a href="{$tenantUrl}/billing.php" style="background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">View Invoice &amp; Pay</a></p>
-    <p style="font-size:12px;color:#6b7280;">Pay via M-Pesa Paybill <strong>400200</strong>. For assistance, contact <a href="mailto:support@fortunetttech.site">support@fortunetttech.site</a></p>
-  </div>
-</div>
-HTML;
+function buildTrialExpiredEmail(array $t,string $tenantUrl): string {
+    return fortunettEmail('Your trial has ended',
+        '<p>Hello <strong>'.fortunettEmailEscape($t['company_name']).'</strong>,</p><p>Your free trial has ended. Open Billing to review your platform invoice and continue using your workspace.</p><p>Access is restored automatically after payment confirmation.</p><p style="font-size:13px;color:#64748b;">You can pay via M-Pesa Paybill <strong>400200</strong>.</p>',
+        ['category'=>'Trial update','preheader'=>'Review your invoice to continue using your workspace.','action_label'=>'View invoice & pay','action_url'=>$tenantUrl.'/billing.php']);
 }
-
-function buildWarningEmail(array $inv, int $warningDays, string $tenantUrl): string {
-    $due = date('d M Y', strtotime($inv['due_date']));
-    $amt = number_format($inv['total_due'], 2);
-    return <<<HTML
-<div style="font-family:sans-serif;max-width:560px;margin:auto;background:#fff;border-radius:10px;overflow:hidden;">
-  <div style="background:#d97706;padding:24px;color:#fff;text-align:center;">
-    <h2 style="margin:0;">Payment Reminder</h2>
-    <p style="margin:6px 0 0;opacity:.85;">Invoice {$inv['invoice_number']} is due in {$warningDays} days</p>
-  </div>
-  <div style="padding:28px;">
-    <p>Dear <strong>{$inv['admin_username']}</strong>,</p>
-    <p>Your platform invoice <strong>{$inv['invoice_number']}</strong> of <strong>KSH {$amt}</strong> is due on <strong>{$due}</strong>.</p>
-    <p>Please pay promptly to avoid account suspension.</p>
-    <p style="text-align:center;margin:24px 0;"><a href="{$tenantUrl}/billing.php" style="background:#d97706;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Pay Now</a></p>
-    <p style="font-size:12px;color:#6b7280;">Pay via M-Pesa Paybill <strong>400200</strong>, Account: <strong>{$inv['invoice_number']}</strong></p>
-  </div>
-</div>
-HTML;
+function buildWarningEmail(array $inv,int $warningDays,string $tenantUrl): string {
+    $due=date('d M Y',strtotime($inv['due_date']));
+    return fortunettEmail('Your invoice is due soon',
+        '<p>Hello <strong>'.fortunettEmailEscape($inv['admin_username']).'</strong>,</p><p>Please pay your invoice by the due date to avoid account suspension.</p>'
+        .fortunettEmailSummary(['Invoice'=>$inv['invoice_number'],'Amount due'=>'KSH '.number_format($inv['total_due'],2),'Due date'=>$due,'Time remaining'=>$warningDays.' days'])
+        .'<p style="font-size:13px;color:#64748b;">M-Pesa Paybill <strong>400200</strong>, account <strong>'.fortunettEmailEscape($inv['invoice_number']).'</strong>.</p>',
+        ['category'=>'Payment reminder','preheader'=>'Invoice '.$inv['invoice_number'].' is due on '.$due.'.','action_label'=>'View invoice & pay','action_url'=>$tenantUrl.'/billing.php']);
 }
-
-function buildSuspensionEmail(array $t, string $tenantUrl): string {
-    return <<<HTML
-<div style="font-family:sans-serif;max-width:560px;margin:auto;background:#fff;border-radius:10px;overflow:hidden;">
-  <div style="background:#dc2626;padding:24px;color:#fff;text-align:center;">
-    <h2 style="margin:0;">Account Suspended</h2>
-    <p style="margin:6px 0 0;opacity:.85;">Overdue platform invoice</p>
-  </div>
-  <div style="padding:28px;">
-    <p>Dear <strong>{$t['company_name']}</strong> administrator,</p>
-    <p>Your FortuNett platform account has been <strong>suspended</strong> due to an unpaid overdue invoice. Your ISP dashboard is currently inaccessible to your team.</p>
-    <p>To restore access immediately, please pay the outstanding invoice via M-Pesa Paybill <strong>400200</strong>. Your account will be reactivated automatically within minutes of payment confirmation.</p>
-    <p style="text-align:center;margin:24px 0;"><a href="{$tenantUrl}/billing.php" style="background:#dc2626;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Pay & Restore Access</a></p>
-    <p style="font-size:12px;color:#6b7280;">For urgent assistance, contact <a href="mailto:support@fortunetttech.site">support@fortunetttech.site</a></p>
-  </div>
-</div>
-HTML;
+function buildSuspensionEmail(array $t,string $tenantUrl): string {
+    return fortunettEmail('Restore access to your workspace',
+        '<p>Hello <strong>'.fortunettEmailEscape($t['company_name']).'</strong>,</p><p>Your platform account has been suspended because an invoice is overdue. Your team cannot currently access the ISP dashboard.</p><p>Review the outstanding invoice and pay to restore access. Reactivation follows automatically after payment confirmation.</p><p style="font-size:13px;color:#64748b;">M-Pesa Paybill <strong>400200</strong>.</p>',
+        ['category'=>'Account status','preheader'=>'An overdue invoice needs your attention.','action_label'=>'Pay & restore access','action_url'=>$tenantUrl.'/billing.php']);
 }
-
 function buildReactivationEmail(array $t): string {
-    return <<<HTML
-<div style="font-family:sans-serif;max-width:560px;margin:auto;background:#fff;border-radius:10px;overflow:hidden;">
-  <div style="background:#16a34a;padding:24px;color:#fff;text-align:center;">
-    <h2 style="margin:0;">Account Reactivated</h2>
-  </div>
-  <div style="padding:28px;">
-    <p>Dear <strong>{$t['company_name']}</strong> administrator,</p>
-    <p>Great news! Your payment has been confirmed and your FortuNett platform account is now <strong>active</strong> again.</p>
-    <p>Your team and customers can resume normal operations immediately.</p>
-    <p style="font-size:12px;color:#6b7280;">Thank you for your continued partnership with FortuNett Technologies.</p>
-  </div>
-</div>
-HTML;
+    return fortunettEmail('Your workspace is active again',
+        '<p>Hello <strong>'.fortunettEmailEscape($t['company_name']).'</strong>,</p><p>Your payment has been confirmed and your FortuNett platform account is active again. Your team can sign in and resume managing your network.</p><p>Thank you for using FortuNett Technologies.</p>',
+        ['category'=>'Payment confirmed','preheader'=>'Payment confirmed. Your team can access the workspace again.']);
 }
-
-function sendSystemEmail(string $to, string $subject, string $body): void {
-    if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
-        try {
-            $mail = new PHPMailer\PHPMailer\PHPMailer(true);
-            $mail->isSMTP();
-            $mail->Host       = getenv('MAIL_HOST') ?: 'smtp.gmail.com';
-            $mail->SMTPAuth   = true;
-            $mail->Username   = getenv('MAIL_USERNAME') ?: '';
-            $mail->Password   = getenv('MAIL_PASSWORD') ?: '';
-            $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
-            $mail->Port       = (int)(getenv('MAIL_PORT') ?: 587);
-            $mail->setFrom(getenv('MAIL_FROM_ADDRESS') ?: 'billing@fortunetttech.site', 'FortuNett Technologies');
-            $mail->addAddress($to);
-            $mail->isHTML(true);
-            $mail->Subject = $subject;
-            $mail->Body    = $body;
-            $mail->send();
-            return;
-        } catch (Throwable $e) {
-            error_log("check_suspensions email error: " . $e->getMessage());
-        }
-    }
-
-    $headers  = "MIME-Version: 1.0\r\n";
-    $headers .= "Content-type: text/html; charset=UTF-8\r\n";
-    $headers .= "From: FortuNett Technologies <billing@fortunetttech.site>\r\n";
-    @mail($to, $subject, $body, $headers);
+function sendSystemEmail(string $to,string $subject,string $body): void {
+    $result=sendEmail($to,$subject,$body);
+    if ($result!==true) error_log('Account-status email was not accepted by SMTP. Check the configured provider.');
 }

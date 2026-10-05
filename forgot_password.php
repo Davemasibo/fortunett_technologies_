@@ -45,15 +45,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Send email
                 $resetLink = "https://" . $_SERVER['HTTP_HOST'] . "/reset_password.php?token=" . $token;
                 $subject = "Reset Your Password - $business_name";
-                $body = "
-                    <h2>Password Reset Request</h2>
-                    <p>Hello {$user['username']},</p>
-                    <p>You requested a password reset. Click the button below to set a new password. This link expires in 30 minutes.</p>
-                    <p><a href='$resetLink' style='display:inline-block;padding:10px 20px;background-color:#28a745;color:white;text-decoration:none;border-radius:5px;'>Reset Password</a></p>
-                    <p>If you did not request this, please ignore this email.</p>
-                ";
+                $body=fortunettEmail('Reset your password',
+                    '<p>Hello <strong>'.fortunettEmailEscape($user['username']).'</strong>,</p><p>We received a request to reset your password. Use the button below to choose a new one.</p>'
+                    .fortunettEmailSummary(['Link expires'=>'30 minutes'])
+                    .'<p style="font-size:13px;color:#64748b;">If you did not request this, you can ignore this email. Your password stays unchanged.</p>',
+                    ['category'=>'Account security','preheader'=>'Choose a new password. This link expires in 30 minutes.','action_label'=>'Reset password','action_url'=>$resetLink]);
 
-                if (function_exists('sendEmail') && sendEmail($email, $subject, $body)) {
+                if (function_exists('sendEmail') && sendEmail($email, $subject, $body) === true) {
                     $success = "A password reset link has been sent to your email.";
                 } else {
                     $error = "Failed to send reset email. Please try again later.";

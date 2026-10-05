@@ -1021,7 +1021,7 @@ input:checked + .set-slider:before { transform:translateX(20px);background:#fff;
                         <?php if ($hasPlatformEmail): ?>
                             <strong>Using platform SMTP</strong> — Emails are currently sent via FortuNett's shared mail server. Configure your own SMTP below to use your own domain and sender address.
                         <?php else: ?>
-                            <strong>No email configured</strong> — No SMTP credentials found. Emails may use PHP mail() which often fails in production. Configure SMTP below for reliable delivery.
+                            <strong>No email configured</strong> — No SMTP credentials found. Emails require authenticated SMTP. Configure SMTP below to enable delivery.
                         <?php endif; ?>
                     </div>
                 </div>
