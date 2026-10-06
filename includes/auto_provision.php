@@ -144,6 +144,7 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
         } catch (Throwable $_e) {}
 
         $deviceConnected = false;
+        $deviceLoginPending = false;
         if ($connType === 'pppoe') {
             // Ensure captive-portal infrastructure exists before provisioning the real profile
             if ($serverIp) {
@@ -164,12 +165,15 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
             try {
                 require_once __DIR__ . '/hotspot_device.php';
                 $device = $pdo->prepare('SELECT mac_address FROM hotspot_device_context WHERE tenant_id=? AND client_id=? AND updated_at>NOW()-INTERVAL 1 DAY');
+                $mac = ($client['bound_mac_address'] ?? '') ?: ($reconnectMac ?? '');
                 $device->execute([$tenantId,$clientId]);
                 $mac = ($client['bound_mac_address'] ?? '') ?: ($reconnectMac ?? $device->fetchColumn());
                 if ($mac) $deviceConnected = connectKnownHotspotDevice($api, $mac, $username, $password, $client['expiry_date']);
+                $deviceLoginPending = !empty($mac) && !$deviceConnected;
                 if ($deviceConnected) $pdo->prepare('UPDATE clients SET last_seen=NOW() WHERE id=? AND tenant_id=?')->execute([$clientId,$tenantId]);
             } catch (Throwable $e) {
                 // Portal credential handoff remains available on older RouterOS.
+                $deviceLoginPending = true;
                 error_log('Hotspot device login: ' . $e->getMessage());
                 if ($reconnectMac !== null && !preg_match('/no such command|bad command name/i', $e->getMessage())) throw $e;
             }
@@ -216,8 +220,9 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
 
         return [
             'success'  => true,
+            'connection_pending' => $deviceLoginPending,
             'device_connected' => $deviceConnected,
-            'message'  => 'Provisioned successfully',
+            'message'  => $deviceLoginPending ? 'Paid hotspot user provisioned; device login pending, retry required' : 'Provisioned successfully',
             'username' => $username,
             'password' => $password,
             'service'  => $connType,

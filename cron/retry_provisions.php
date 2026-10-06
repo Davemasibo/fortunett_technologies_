@@ -97,7 +97,7 @@ foreach ($due as $row) {
     try {
         $result = autoProvisionClient($pdo, $clientId, $tenantId, 0, false);
 
-        if ($result['success']) {
+        if ($result['success'] && empty($result['connection_pending'])) {
             $pdo->prepare("DELETE FROM pending_provisions WHERE id = ?")->execute([$row['id']]);
             $log("  SUCCESS #{$row['id']} client {$clientId} — provisioned (attempt {$attempt})");
         } else {

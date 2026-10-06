@@ -12,6 +12,10 @@ function subscriptionPurchase(array $package, float $amount, float $balance = 0)
     if ($priceCents < 1) throw new InvalidArgumentException('Package price must be at least one cent.');
     $available = (int)round($amount * 100) + (int)round($balance * 100);
     $periods = max(0, intdiv($available, $priceCents));
+    // Hotspot buys one timed session; excess money remains account credit.
+    if (strtolower($package['conn_type'] ?? $package['connection_type'] ?? $package['type'] ?? '') === 'hotspot') {
+        $periods = min(1, $periods);
+    }
     $value = filter_var($package['validity_value'] ?? null, FILTER_VALIDATE_INT);
     $unit = packageValidityUnit($package['validity_unit'] ?? null, true);
     if (!$value || $value < 1 || $periods > intdiv(PHP_INT_MAX, $value)) {

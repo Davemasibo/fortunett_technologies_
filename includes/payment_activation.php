@@ -19,7 +19,7 @@ function activatePaidSubscription(PDO $pdo, int $clientId, int $tenantId, string
     $pdo->beginTransaction();
     try {
         // Serializes renewals for the same customer, including different receipts.
-        $st = $pdo->prepare('SELECT expiry_date, status, account_balance FROM clients WHERE id = ? AND tenant_id = ? FOR UPDATE');
+        $st = $pdo->prepare('SELECT expiry_date, status, account_balance, connection_type FROM clients WHERE id = ? AND tenant_id = ? FOR UPDATE');
         $st->execute([$clientId, $tenantId]);
         $client = $st->fetch(PDO::FETCH_ASSOC);
         if (!$client) throw new RuntimeException('Payment customer not found');
@@ -43,10 +43,12 @@ function activatePaidSubscription(PDO $pdo, int $clientId, int $tenantId, string
             return array_merge(['expiry_date' => $previous['expiry_date'], 'already_applied' => true], $grant);
         }
 
+        $hotspot = ($client['connection_type'] ?? '') === 'hotspot';
+        if ($package && $hotspot) $package['conn_type'] = 'hotspot';
         $purchase = $package && $amount !== null
             ? subscriptionPurchase($package, $amount, (float)($client['account_balance'] ?? 0))
             : ['periods' => 1, 'validity_value' => $package['validity_value'] ?? null, 'validity_unit' => $package['validity_unit'] ?? null];
-        $expiry = $package && $purchase['periods'] > 0 ? packageExtendExpiry($client['status'] === 'active' ? $client['expiry_date'] : null, $purchase['validity_value'], $purchase['validity_unit']) : $client['expiry_date'];
+        $expiry = $package && $purchase['periods'] > 0 ? packageExtendExpiry(!$hotspot && $client['status'] === 'active' ? $client['expiry_date'] : null, $purchase['validity_value'], $purchase['validity_unit']) : $client['expiry_date'];
         if ($package && $purchase['periods'] > 0) {
             $pdo->prepare("UPDATE clients SET status = 'active', expiry_date = ?, package_id = ?,
                 expiry_reminder_3d_sent = 0, expiry_reminder_1d_sent = 0

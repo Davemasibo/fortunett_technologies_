@@ -13,13 +13,13 @@ function tenantOnboardingProgress(PDO $pdo, int $tenantId): array
     $st = $pdo->prepare('SELECT id,name,status,last_seen,service_types FROM mikrotik_routers WHERE tenant_id=? ORDER BY id');
     $st->execute([$tenantId]);
     $routers = $st->fetchAll(PDO::FETCH_ASSOC);
-    $connected = count(array_filter($routers, fn($r) => in_array($r['status'], ['active','online'], true) && !empty($r['last_seen'])));
     $checks=onboardingChecks($pdo,$tenantId);
-    $verified=count(array_filter($routers,fn($r)=>onboardingRouterVerified($r,$checks[(int)$r['id']] ?? [])));
+    $ready = count(array_filter($routers, fn($r) => in_array($r['status'], ['active','online'], true)
+        && !empty($r['last_seen']) && onboardingRouterVerified($r, $checks[(int)$r['id']] ?? [])));
     $steps = [
         ['title'=>'Verify your account', 'done'=>$count("SELECT COUNT(*) FROM users u JOIN tenants t ON t.admin_user_id=u.id WHERE u.tenant_id=? AND (u.email_verified=1 OR u.is_verified=1)")>0, 'url'=>'settings.php#general', 'detail'=>'Open the verification link sent at signup. Google verified accounts are ready.'],
         ['title'=>'Confirm business profile', 'done'=>!empty(trim($tenant['company_name'] ?? '')), 'url'=>'settings.php#general', 'detail'=>'Save your company name and contact details.'],
-        ['title'=>'Connect every MikroTik', 'done'=>count($routers)>0 && $connected===count($routers) && $verified===count($routers), 'url'=>'mikrotik.php?open_modal=1', 'detail'=>'Add each device separately under this account. Give each a unique name, generate its own setup script, run it on that device, then Test Connection and Verify Provisioning.'],
+        ['title'=>'Connect your first MikroTik', 'done'=>$ready>0, 'url'=>'mikrotik.php?open_modal=1', 'detail'=>'Connect at least one device, run its setup script, then Test Connection and Verify Provisioning. You can proceed with the remaining steps and add more routers later.'],
         ['title'=>'Create service packages', 'done'=>$count('SELECT COUNT(*) FROM packages WHERE tenant_id=?')>0, 'url'=>'packages.php?open_modal=1', 'detail'=>'Create the PPPoE or Hotspot packages your customers will buy.'],
         ['title'=>'Configure collections', 'done'=>$count('SELECT COUNT(*) FROM payment_gateways WHERE tenant_id=? AND is_active=1')>0, 'url'=>'settings.php#payments', 'detail'=>'Configure and activate your payment gateway and register its callbacks.'],
         ['title'=>'Provision your first customer', 'done'=>$count("SELECT COUNT(*) FROM router_services WHERE tenant_id=? AND status='active'")>0, 'url'=>'clients.php?open_modal=1', 'detail'=>'Create a customer and choose a package. After payment, open the customer and use Provision to Router to select the correct device. Check that the customer can connect.'],

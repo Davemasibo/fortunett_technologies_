@@ -488,7 +488,10 @@ include 'includes/sidebar.php';
                 <?php if ($expiredActiveFilter): ?><input type="hidden" name="expiry" value="overdue_active"><?php endif; ?>
                 <div class="filter-group">
                     <label class="filter-label">Search by name, phone, email, or customer ID...</label>
-                    <input type="text" name="search" class="filter-input" placeholder="Type to search..." value="<?php echo htmlspecialchars($search ?? ''); ?>">
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="search" name="search" aria-label="Search customers" enterkeyhint="search" class="filter-input" style="min-width:0;flex:1;" placeholder="Type to search..." value="<?php echo htmlspecialchars($search ?? ''); ?>">
+                        <button type="submit" class="btn btn-primary" style="flex-shrink:0;min-height:44px;">Search</button>
+                    </div>
                 </div>
                 <div class="filter-group">
                     <label class="filter-label">All Packages</label>
@@ -1217,7 +1220,7 @@ function viewCustomer(customerJson) {
     const timeEl = document.getElementById('infoTime');
     if (currentCustomer.expiry_date) {
         const timeLeft = calculateTimeLeft(currentCustomer.expiry_date);
-        const expired  = new Date(currentCustomer.expiry_date) < new Date();
+        const expired  = parseAccountDate(currentCustomer.expiry_date) < new Date();
         timeEl.innerHTML = `${formatDate(currentCustomer.expiry_date)} &nbsp;<span style="color:${expired?'#EF4444':'#059669'};font-size:12px;">(${timeLeft})</span>`;
     } else {
         timeEl.textContent = '—';
@@ -1426,7 +1429,7 @@ function submitExpiryChange(fd, label) {
                 const timeEl = document.getElementById('infoTime');
                 if (timeEl) {
                     const tl = calculateTimeLeft(d.new_expiry);
-                    const exp = new Date(d.new_expiry) < new Date();
+                    const exp = parseAccountDate(d.new_expiry) < new Date();
                     timeEl.innerHTML = formatDate(d.new_expiry) + ' &nbsp;<span style="color:' + (exp?'#EF4444':'#059669') + ';font-size:12px;">(' + tl + ')</span>';
                 }
                 document.getElementById('modalPackageInfo').textContent =
@@ -2184,19 +2187,27 @@ function updatePauseBtn(status) {
 
 function calculateTimeLeft(expiryDate) {
     if (!expiryDate) return 'N/A';
-    const diff = new Date(expiryDate) - new Date();
+    const diff = parseAccountDate(expiryDate) - new Date();
+    if (!Number.isFinite(diff)) return 'N/A';
     if (diff < 0) return 'Expired';
     const days  = Math.floor(diff / 86400000);
     const hours = Math.floor((diff % 86400000) / 3600000);
     if (days > 0) return days + 'd ' + hours + 'h remaining';
     if (hours > 0) return hours + 'h remaining';
-    return 'Expiring soon';
+    return Math.ceil(diff / 60000) + 'm remaining';
+}
+
+// Database DATETIME values use Africa/Nairobi, regardless of the viewer's timezone.
+function parseAccountDate(value) {
+    if (!value) return new Date(NaN);
+    const iso = String(value).trim().replace(' ', 'T');
+    return new Date(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(iso) ? iso + '+03:00' : iso);
 }
 
 function formatDate(dateString) {
     if (!dateString) return "N/A";
-    const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-    return new Date(dateString).toLocaleDateString(undefined, options);
+    const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' };
+    return parseAccountDate(dateString).toLocaleString('en-KE', options);
 }
 
 // Close expiry modal on backdrop click

@@ -20,7 +20,7 @@ Preview reminder content without sending email:
 After reviewing recipients in the admin report and approving delivery, schedule
 the following hourly using the deployment's PHP executable and absolute paths:
 
-    php cron/onboarding_reminders.php --send
+    1php cron/onboarding_reminders.php --send
 
 The job uses registered tenant admin emails, verified accounts, active trial dates
 and saved router verification. It sends at most one current stage (welcome, day1,

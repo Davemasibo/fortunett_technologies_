@@ -87,7 +87,11 @@ checkConnectivity($queryThenCallback['already_applied'], 'Query and callback sha
 $receiptOnly = activatePaidSubscription($db, 1, 2, 'final-receipt', 'final-receipt', $package);
 checkConnectivity($receiptOnly['already_applied'], 'Receipt-based confirmation cannot reapply an STK payment');
 $second = activatePaidSubscription($db, 1, 2, 'checkout-2', 'receipt-2', $package);
-checkConnectivity(strtotime($second['expiry_date']) - strtotime($first['expiry_date']) === 1800, 'A separate payment extends remaining paid time');
+checkConnectivity(abs(strtotime($second['expiry_date']) - (time() + 1800)) <= 1, 'A separate hotspot purchase grants one fresh package duration');
+$db->client['expiry_date'] = date('Y-m-d H:i:s', time() + 5 * 3600);
+$capped = activatePaidSubscription($db, 1, 2, 'cap-hotspot', 'cap-receipt', $package);
+checkConnectivity(abs(strtotime($capped['expiry_date']) - (time() + 1800)) <= 1, 'Existing five-hour expiry cannot inflate a new 30-minute hotspot purchase');
+$second = $capped;
 $db->failQueue = true;
 try { activatePaidSubscription($db, 1, 2, 'checkout-3', 'receipt-3', $package); } catch (RuntimeException $e) {}
 checkConnectivity($db->client['expiry_date'] === $second['expiry_date'] && !isset($db->activations['2:checkout-3']), 'Queue failure rolls back activation for safe retry');

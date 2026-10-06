@@ -18,9 +18,15 @@ class OnboardingTestStatement extends PDOStatement {
 function checkOnboarding(bool $ok,string $label): void {if(!$ok)throw new RuntimeException($label);echo "PASS: $label\n";}
 $db=new OnboardingTestPDO();
 $progress=tenantOnboardingProgress($db,22);
-checkOnboarding(count($progress['routers'])===2 && !$progress['steps'][2]['done'],'Second pending device prevents router setup from being complete');
+checkOnboarding(count($progress['routers'])===2 && !$progress['steps'][2]['done'],'Connected but unverified router still needs provisioning verification');
 foreach($db->queries as [$sql,$params]) checkOnboarding($params===[22],'Progress reads stay within authenticated tenant');
 $db->configured=true;
+$progress=tenantOnboardingProgress($db,22);
+checkOnboarding($progress['steps'][2]['done'], 'One verified connected router permits setup with another router pending');
+$db->routers[0]['status']='pending';
+$progress=tenantOnboardingProgress($db,22);
+checkOnboarding(!$progress['steps'][2]['done'], 'Verification and connection must belong to the same router');
+$db->routers[0]['status']='active';
 $db->routers[1]['status']='active';$db->routers[1]['last_seen']='2026-10-03 12:01:00';
 $progress=tenantOnboardingProgress($db,22);
 checkOnboarding($progress['completed']===$progress['total'],'Verified devices, packages, provisioning and collection complete setup');

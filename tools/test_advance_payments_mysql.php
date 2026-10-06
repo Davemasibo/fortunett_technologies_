@@ -13,7 +13,7 @@ $checks = 0;
 function advanceCheck($ok, $label) { global $checks; if (!$ok) throw new RuntimeException($label); $checks++; echo "PASS $label\n"; }
 try {
     $pdo->exec("CREATE TABLE clients (id INT PRIMARY KEY, tenant_id INT, status VARCHAR(20), package_id INT,
-        expiry_date DATETIME NULL, account_balance DECIMAL(12,2) DEFAULT 0,
+        connection_type VARCHAR(20) DEFAULT 'pppoe', expiry_date DATETIME NULL, account_balance DECIMAL(12,2) DEFAULT 0,
         expiry_reminder_3d_sent INT DEFAULT 0, expiry_reminder_1d_sent INT DEFAULT 0) ENGINE=InnoDB");
     $pdo->exec("CREATE TABLE pending_provisions (tenant_id INT, client_id INT, package_id INT, receipt VARCHAR(191),
         fail_reason TEXT, attempts INT DEFAULT 1, next_retry_at DATETIME, PRIMARY KEY(tenant_id, client_id)) ENGINE=InnoDB");
@@ -59,6 +59,16 @@ try {
     advanceCheck($days['validity_value'] === 60, 'two 30-day packages grant exactly 60 days');
     advanceCheck(packageExpiryFrom(1,'months','2027-01-31 12:34:56') === '2027-02-28 12:34:56', 'calendar months clamp to the last valid day');
     advanceCheck(packageExpiryFrom(1,'months','2028-01-31 12:34:56') === '2028-02-29 12:34:56', 'calendar month extension respects leap years');
+    $insert->execute([5,'active',date('Y-m-d H:i:s',time()+18000),45]);
+    $pdo->exec("UPDATE clients SET connection_type='hotspot' WHERE id=5");
+    $hotspot = ['id'=>9,'price'=>5,'validity_value'=>30,'validity_unit'=>'minutes'];
+    $start = time();
+    $r = activatePaidSubscription($pdo,5,2,'hotspot-one','hotspot-receipt',$hotspot,5);
+    advanceCheck($r['periods'] === 1 && abs(strtotime($r['expiry_date'])-($start+1800)) <= 1, '30-minute hotspot purchase never stacks five hours of old expiry or credit');
+    advanceCheck((float)$r['balance'] === 45.0, 'Unused hotspot credit is preserved');
+    $expiry = $r['expiry_date'];
+    $r = activatePaidSubscription($pdo,5,2,'hotspot-one','hotspot-receipt',$hotspot,5);
+    advanceCheck($r['already_applied'] && $r['expiry_date'] === $expiry, 'Hotspot callback replay does not reset the deadline');
     $before = $pdo->query('SELECT * FROM clients WHERE id=4')->fetch(PDO::FETCH_ASSOC);
     $pdo->exec('DROP TABLE pending_provisions');
     try { activatePaidSubscription($pdo,4,2,'rollback','rollback',$package,3000); throw new RuntimeException('Expected failure'); }

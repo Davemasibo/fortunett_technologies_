@@ -373,9 +373,10 @@ function process_payment_success(
     try {
             $provResult = autoProvisionClient($pdo, $clientId, $tenantId, 0, false);
             $results['steps']['provision'] = $provResult['success'] ?? false;
+            $results['steps']['device_connected'] = $provResult['device_connected'] ?? false;
 
             // Queue for retry if provisioning failed (router unreachable, etc.)
-            if (!($provResult['success'] ?? false)) {
+            if (!($provResult['success'] ?? false) || !empty($provResult['connection_pending'])) {
                 $failReason = $provResult['message'] ?? 'unknown';
                 try {
                     $pdo->prepare("
