@@ -6,15 +6,17 @@ function serviceCheck(bool $ok, string $label): void {
 }
 $hotspot=buildRouterServiceCommand(['hotspot'],true,'homelinkfiber.fortunetttech.site','','212.95.34.211','bridge-lan');
 serviceCheck(str_contains($hotspot, '/ip hotspot add') && !str_contains($hotspot, '/interface pppoe-server server add'),'Hotspot-only onboarding does not enable PPPoE');
-serviceCheck(str_contains($hotspot, ':set bn "bridge-lan"') && str_contains($hotspot, 'interface=$bn'),'Hotspot binds to the selected LAN bridge');
+serviceCheck(str_contains($hotspot, ':local bn "bridge-lan"') && str_contains($hotspot, 'interface=$bn'),'Hotspot binds to the selected LAN bridge');
 serviceCheck(str_contains($hotspot, 'gateway=10.5.50.1') && str_contains($hotspot, 'shared-users=1'),'Hotspot includes DHCP gateway and sharing choice');
 $pppoe=buildRouterServiceCommand(['pppoe'],false,'','','','bridge-lan');
 serviceCheck(!str_contains($pppoe, '/ip hotspot') && !str_contains($pppoe, '/ip dhcp-server'),'Adding only PPPoE leaves existing Hotspot and DHCP configuration untouched');
 serviceCheck(!str_contains($pppoe, '/ip address remove'),'Adding a service preserves interface IP addresses');
-serviceCheck(str_contains($pppoe, ':if ($newBridge) do='),'Existing bridge membership is preserved');
+serviceCheck(!str_contains($pppoe, '/interface bridge port add'),'Existing bridge membership is preserved');
 serviceCheck(str_contains($pppoe,'10.10.10.2-10.10.10.254') && !str_contains($pppoe,'10.5.50.2'),'PPPoE uses a separate client pool');
-$both=buildRouterServiceCommand(['hotspot','pppoe'],false);
-serviceCheck(substr_count($both,'interface=$bn')>=3 && str_contains($both,'Multiple bridges found'),'Both services use the same selected bridge and ambiguous bridge selection stops');
+$both=buildRouterServiceCommand(['hotspot','pppoe'],false,'','','','bridge-lan');
+serviceCheck(substr_count($both,'interface=$bn')>=3,'Both services use the same explicitly selected bridge');
+try { buildRouterServiceCommand(['hotspot'],false); throw new RuntimeException('Blank bridge accepted'); }
+catch (InvalidArgumentException $e) { serviceCheck(true,'Missing LAN selection stops service generation'); }
 serviceCheck(mergeRouterServiceTypes('hotspot',['pppoe'])==='hotspot,pppoe','Adding PPPoE retains the saved Hotspot service');
 serviceCheck(mergeRouterServiceTypes('hotspot,pppoe',['pppoe'])==='hotspot,pppoe','Repeated additions do not duplicate services');
 serviceCheck(routerServiceString('bridge";$bad')==='"bridge\\";\\$bad"','Bridge names cannot inject RouterOS commands');

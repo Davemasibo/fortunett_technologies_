@@ -4,6 +4,8 @@ require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
 require_once '../../includes/router_service_config.php';
 require_once '../../includes/onboarding_checks.php';
+require_once '../../includes/router_wan.php';
+require_once '../../classes/MikrotikAPI.php';
 
 redirectIfNotLoggedIn();
 
@@ -51,10 +53,10 @@ try {
     $owner->execute([$_SESSION['user_id']]);
     $tenantId = (int)$owner->fetchColumn();
     if ($routerId) {
-        $stmt = $pdo->prepare('SELECT id,service_types FROM mikrotik_routers WHERE id=? AND tenant_id=?');
+        $stmt = $pdo->prepare('SELECT * FROM mikrotik_routers WHERE id=? AND tenant_id=?');
         $stmt->execute([$routerId,$tenantId]);
     } else {
-        $stmt = $pdo->prepare('SELECT id,service_types FROM mikrotik_routers WHERE (identity=? OR name=?) AND tenant_id=? ORDER BY id LIMIT 1');
+        $stmt = $pdo->prepare('SELECT * FROM mikrotik_routers WHERE (identity=? OR name=?) AND tenant_id=? ORDER BY id LIMIT 1');
         $stmt->execute([$identity,$identity,$tenantId]);
     }
     $router = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -63,6 +65,15 @@ try {
         echo json_encode(['status' => 'error', 'message' => 'Router not found']);
         exit;
     }
+
+    $wanRecord=loadRouterWan($pdo,$tenantId,(int)$router['id']);
+    if (!$wanRecord) throw new RuntimeException('Prepare and apply WAN setup before customer services.');
+    $wanConfig=json_decode($wanRecord['config_json'],true,512,JSON_THROW_ON_ERROR);
+    if ($bridgeName==='' || $bridgeName!==$wanConfig['lan']) throw new RuntimeException('Select the customer LAN bridge saved in WAN setup: '.$wanConfig['lan']);
+    $api=new MikrotikAPI($router['vpn_ip'] ?: $router['ip_address'],$router['username'],$router['password'],(int)($router['api_port'] ?: 8728));
+    try {$api->connect(); $wanChecks=verifyRouterWan($api,$wanRecord);} finally {$api->disconnect();}
+    if (array_filter($wanChecks,fn($c)=>!$c['ok'])) throw new RuntimeException('WAN verification failed. Apply WAN setup and fix the failed connectivity checks first.');
+    $pdo->prepare('UPDATE router_wan_config SET verified_at=NOW() WHERE id=? AND tenant_id=?')->execute([$wanRecord['id'],$tenantId]);
 
     // Persist both service_types and the hotspot sharing setting
     $serviceTypesStr = mergeRouterServiceTypes((string)($router['service_types'] ?? ''), $services);
@@ -117,6 +128,8 @@ try {
     } catch (Throwable $_e) {}
 
     $command = buildRouterServiceCommand($services, (bool)$noSharing, $portalHost, $loginServeUrl, $portalIp, $bridgeName, $companyName);
+
+    $command='{ '.routerWanProbeSource($wanConfig,$wanRecord['billing_url']).'; '.$command.'; }';
 
     echo json_encode([
         'status'             => 'success',

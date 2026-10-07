@@ -11,6 +11,7 @@
  * Returns: { success, api_ok, all_ok, checks:[{label, ok, detail}], error? }
  */
 require_once __DIR__.'/../../includes/onboarding_checks.php';
+require_once __DIR__.'/../../includes/router_wan.php';
 ob_start();
 ini_set('display_errors', 0);
 header('Content-Type: application/json');
@@ -72,7 +73,10 @@ try {
     $result['api_ok'] = true;
     $pdo->prepare("UPDATE mikrotik_routers SET status='active',last_seen=NOW() WHERE id=? AND tenant_id=?")
         ->execute([$routerId,$tenantId]);
-    $checks = [];
+    $wanRecord=loadRouterWan($pdo,$tenantId,$routerId);
+    $checks=$wanRecord ? verifyRouterWan($api,$wanRecord) : [['label'=>'WAN setup','ok'=>false,'detail'=>'Prepare WAN settings before verifying services']];
+    $wanConfig=$wanRecord ? json_decode($wanRecord['config_json'],true) : null;
+    if ($wanRecord) $pdo->prepare('UPDATE router_wan_config SET verified_at=IF(?,NOW(),NULL) WHERE id=? AND tenant_id=?')->execute([!array_filter($checks,fn($c)=>!$c['ok']),$wanRecord['id'],$tenantId]);
     $fasttrackSafe=true;
     foreach (routerCheckedCommand($api,'/ip/firewall/filter/print',['?action=fasttrack-connection']) as $rule) if (isset($rule['.id']) && ($rule['disabled']??'false')!=='true') $fasttrackSafe=false;
     $checks[]=['label'=>'Package queue enforcement','ok'=>$fasttrackSafe,'detail'=>$fasttrackSafe ? 'FastTrack bypass disabled' : 'FastTrack bypasses paid speed limits; reapply service provisioning'];
@@ -91,16 +95,17 @@ try {
 
     // ── Bridge ────────────────────────────────────────────────────────────────
     $bridges   = $api->comm('/interface/bridge/print');
-    $bridgeName = null;
+    $bridgeName = $wanConfig['lan'] ?? null;
+    $bridgeFound=false;
     foreach ($bridges as $b) {
-        if (isset($b['!re']) && ($b['disabled'] ?? 'false') === 'false' && !empty($b['name'])) { $bridgeName = $b['name']; break; }
+        if (isset($b['!re']) && ($b['disabled'] ?? 'false') === 'false' && ($b['name'] ?? '')===$bridgeName) { $bridgeFound=true; break; }
     }
-    $checks[] = ['label' => 'Bridge interface', 'ok' => (bool)$bridgeName, 'detail' => $bridgeName ?: 'No enabled bridge found'];
+    $checks[] = ['label' => 'Bridge interface', 'ok' => $bridgeFound, 'detail' => $bridgeName ?: 'No enabled bridge found'];
 
     // ── PPPoE ─────────────────────────────────────────────────────────────────
     if (in_array('pppoe', $services, true)) {
         $pp = $api->comm('/interface/pppoe-server/server/print');
-        $ppOk = $anyRow($pp, fn($r) => ($r['service-name'] ?? '') === 'pppoe-service' && ($r['disabled'] ?? 'true') !== 'true');
+        $ppOk = $anyRow($pp, fn($r) => ($r['service-name'] ?? '') === 'pppoe-service' && ($r['interface'] ?? '')===$bridgeName && ($r['disabled'] ?? 'true') !== 'true');
         $checks[] = ['label' => 'PPPoE server (pppoe-service)', 'ok' => $ppOk, 'detail' => $ppOk ? 'Running' : 'Not found or disabled'];
 
         $prof = $api->comm('/ppp/profile/print');
@@ -115,7 +120,7 @@ try {
         foreach ($hs as $r) { if (isset($r['!re']) && ($r['name'] ?? '') === 'hotspot1') { $hsRow = $r; break; } }
         $hsOk = $hsRow && ($hsRow['disabled'] ?? 'true') !== 'true';
         $onBridge = $hsOk && $bridgeName && ($hsRow['interface'] ?? '') === $bridgeName;
-        $checks[] = ['label' => 'Hotspot server (hotspot1)', 'ok' => $hsOk,
+        $checks[] = ['label' => 'Hotspot server (hotspot1)', 'ok' => $onBridge,
             'detail' => $hsOk ? ('Running on ' . ($hsRow['interface'] ?? '?') . ($onBridge ? '' : ' — NOT on bridge')) : 'Not found or disabled'];
 
         // Verify the profile the server actually references, not a hardcoded name.

@@ -5,6 +5,7 @@ require_once '../../includes/db_master.php';
 require_once '../../includes/tenant.php';
 require_once '../../classes/WireGuardManager.php';
 require_once '../../includes/router_service_config.php';
+require_once '../../includes/router_wan.php';
 ob_clean();
 header('Content-Type: application/json');
 
@@ -29,6 +30,10 @@ try {
     }
 
     if ($format === 'rsc') {
+        $wanStmt=$pdo->prepare('SELECT * FROM router_wan_config WHERE tenant_id=? AND identity=? LIMIT 1');
+        $wanStmt->execute([$tenantId,$identity]); $wanRecord=$wanStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$wanRecord) {http_response_code(409); echo ':error "Prepare WAN settings in the portal before provisioning";'; exit;}
+        $wanConfig=json_decode($wanRecord['config_json'],true,512,JSON_THROW_ON_ERROR);
         header('Content-Type: text/plain');
         header('Content-Disposition: attachment; filename="provision.rsc"');
 
@@ -181,11 +186,13 @@ try {
             exit;
         }
 
+        $pdo->prepare('UPDATE router_wan_config SET router_id=? WHERE id=? AND tenant_id=?')->execute([$routerId,$wanRecord['id'],$tenantId]);
         $t = $token;
 
         // ── RSC Output ────────────────────────────────────────────────────────
         echo ':if ([:tonum [:pick [/system resource get version] 0 [:find [/system resource get version] "."]]] < 7) do={:error "RouterOS 7 or newer is required. Upgrade this router in WinBox before connecting it."};' . "\n";
         echo routerDeviceModeGuard() . ";\n";
+        echo routerWanProbeSource($wanConfig,$wanRecord['billing_url']) . ";\n";
         echo "# Fortunett Technologies Provisioning Script\n";
         echo "# Generated:    " . date('Y-m-d H:i:s') . "\n";
         echo "# Tenant ID:    $tenantId\n";
@@ -196,7 +203,7 @@ try {
                                         . ' set platform_settings.server_external_ip)' : '  (from platform_settings)') . "\n";
         echo "# Safe to re-run — cleans up previous config first.\n\n";
 
-        echo ":log info \"[Fortunett] Starting provisioning — $identity\";\n\n";
+        echo ':log info ' . routerServiceString('[Fortunett] Starting provisioning - '.$identity) . ";\n\n";
 
         // 1. Identity
         echo "/system identity set name=" . routerServiceString($identity) . ";\n\n";
@@ -267,27 +274,14 @@ try {
             echo "# NOTE: API address restriction NOT changed — run setup_wireguard_server.sh on VPS first.\n\n";
         }
 
-        // 4. Heartbeat scheduler — posts to auto_register.php every 5 min
-        $wgIpParam = $vpnIp ? "&vpn_ip=$vpnIp" : '';
-        echo ":local cmd \"/tool fetch $mode url=\\\"$serverUrl\\\" http-method=post";
-        echo " http-data=\\\"provisioning_token=$t&provision_id=$provisionId$wgIpParam";
-        echo "&router_ip=\\\$[/ip address get [find interface=ether1] address]";
-        echo "&router_mac=\\\$[/interface ethernet get ether1 mac-address]";
-        echo "&router_identity=\\\$[/system identity get name]";
-        echo "&router_username=fortunett_admin&router_password=$adminPassword\\\"";
-        echo " keep-result=no\";\n";
-        echo ":do { /system scheduler remove [find name=\"fortunett_heartbeat\"] } on-error={};\n";
-        echo "/system scheduler add name=\"fortunett_heartbeat\" interval=5m on-event=\$cmd start-time=startup;\n\n";
-
-        // 5. Register immediately
-        echo ":delay 3s;\n";
-        echo ":do { /tool fetch $mode url=\"$serverUrl\" http-method=post";
-        echo " http-data=\"provisioning_token=$t&provision_id=$provisionId$wgIpParam";
-        echo "&router_ip=\$[/ip address get [find interface=ether1] address]";
-        echo "&router_mac=\$[/interface ethernet get ether1 mac-address]";
-        echo "&router_identity=\$[/system identity get name]";
-        echo "&router_username=fortunett_admin&router_password=$adminPassword\"";
-        echo ' keep-result=no; } on-error={:put "Registration request did not finish. Use Verify on router in the portal."};' . "\n\n";
+        // Heartbeat and first registration use the configured logical WAN interface.
+        $registrationSource=routerWanRegistrationSource($wanConfig,$serverUrl,[
+            'provisioning_token'=>$t,'provision_id'=>$provisionId,'vpn_ip'=>$vpnIp,
+            'router_username'=>'fortunett_admin','router_password'=>$adminPassword,
+        ]);
+        echo ':do {/system scheduler remove [find name="fortunett_heartbeat"]} on-error={};' . "\n";
+        echo '/system scheduler add name="fortunett_heartbeat" interval=5m start-time=startup on-event=' . routerServiceString($registrationSource) . ";\n";
+        echo ':delay 3s; :do {' . $registrationSource . '} on-error={:put "Registration failed. Check WAN and management connectivity."};' . "\n";
 
         // 6. Download branded hotspot login page to every html-directory path.
         // RouterOS 7 sometimes stores html-directory=flash/hotspot but serves from
@@ -336,7 +330,9 @@ try {
 
 } catch (Exception $e) {
     if ($format === 'rsc') {
-        echo ":log error \"Provisioning failed: " . addslashes($e->getMessage()) . "\";";
+        http_response_code(503);
+        ob_clean();
+        echo ':error "Provisioning unavailable. Check WAN migration and management server configuration.";';
         exit;
     }
     echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);

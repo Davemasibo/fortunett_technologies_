@@ -30,25 +30,15 @@ function mergeRouterServiceTypes(string $existing, array $requested): string
 
 function buildRouterServiceCommand(array $services, bool $noSharing, string $portalHost = '', string $loginServeUrl = '', string $portalIp = '', string $bridgeName = '', string $companyName = ''): string
 {
+    if ($bridgeName === '') throw new InvalidArgumentException('Select the customer LAN bridge explicitly.');
     $sharedUsers = $noSharing ? '1' : 'unlimited';
     $parts = [routerDeviceModeGuard(in_array('hotspot',$services,true))];
     $parts[] = ':foreach ft in=[/ip firewall filter find where action=fasttrack-connection] do={/ip firewall filter set $ft disabled=yes}';
     $parts[] = ':foreach flow in=[/ip firewall connection find where fasttrack=yes] do={/ip firewall connection remove $flow}';
-    $parts[] = ':local bn ""';
-    $parts[] = ':local newBridge false';
-    if ($bridgeName !== '') {
-        $parts[] = ':set bn ' . routerServiceString($bridgeName);
-        $parts[] = ':local targetBridge [/interface bridge find where name=$bn]';
-        $parts[] = ':if ([:len $targetBridge]=0) do={:error ("LAN bridge not found: " . $bn . ". Run /interface bridge print and use its exact name") }';
-        $parts[] = ':if ([/interface bridge get ($targetBridge->0) disabled]=true) do={:error ("LAN bridge is disabled: " . $bn)}';
-    } else {
-        $parts[] = ':local bf [/interface bridge find where disabled=no]';
-        $parts[] = ':if ([:len $bf]>1) do={:error "Multiple bridges found. Enter the LAN bridge name in the portal"}';
-        $parts[] = ':if ([:len $bf]=1) do={:set bn [/interface bridge get ($bf->0) name]} else={/interface bridge add name=bridge-local auto-mac=yes comment="FortuNett-Bridge"; :set bn "bridge-local"; :set newBridge true}';
-    }
-    // Preserve existing bridge membership and interface addresses when adding a
-    // service later. Only a newly created bridge needs initial LAN membership.
-    $parts[] = ':if ($newBridge) do={:foreach i in=[/interface ethernet find where name!="ether1"] do={:local n [/interface ethernet get $i name]; :if ([:len [/interface bridge port find where interface=$n]]=0) do={/interface bridge port add bridge=$bn interface=$n}}; :do {:foreach w in=[/interface wireless find] do={:local wn [/interface wireless get $w name]; :if ([:len [/interface bridge port find where interface=$wn]]=0) do={/interface bridge port add bridge=$bn interface=$wn}}} on-error={}}';
+    $parts[] = ':local bn ' . routerServiceString($bridgeName);
+    $parts[] = ':local targetBridge [/interface bridge find where name=$bn]';
+    $parts[] = ':if ([:len $targetBridge]=0) do={:error ("LAN bridge not found: " . $bn . ". Run /interface bridge print and use its exact name")}';
+    $parts[] = ':if ([/interface bridge get ($targetBridge->0) disabled]=true) do={:error ("LAN bridge is disabled: " . $bn)}';
 
     if (in_array('pppoe', $services, true)) {
         $parts[] = ':do {/interface pppoe-server server remove [find service-name=pppoe-service]} on-error={}';
@@ -86,7 +76,7 @@ function buildRouterServiceCommand(array $services, bool $noSharing, string $por
         $parts[] = '/ip dhcp-server network add address=10.5.50.0/24 gateway=10.5.50.1 dns-server=10.5.50.1';
         // The hotspot DNS proxy forwards to the router's own resolver — make sure it
         // has upstreams and answers queries from hotspot clients.
-        $parts[] = '/ip dns set servers=8.8.8.8,8.8.4.4 allow-remote-requests=yes';
+        $parts[] = '/ip dns set allow-remote-requests=yes';
         // html-directory MUST be "hotspot" (not "flash/hotspot"): RouterOS 7 prepends
         // flash/ internally, so "flash/hotspot" becomes flash/flash/hotspot and the
         // hotspot can't find login.html → it serves a 404 instead of the portal.

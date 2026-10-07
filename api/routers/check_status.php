@@ -3,6 +3,7 @@ ob_start();
 ini_set('display_errors', 0);
 require_once __DIR__.'/../../includes/db_master.php';
 require_once __DIR__.'/../../classes/MikrotikAPI.php';
+require_once __DIR__.'/../../includes/router_wan.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 header('Content-Type: application/json');
 $result = ['connected'=>false];
@@ -24,7 +25,11 @@ try {
             $result['message']='Router setup has started, but the management connection is not ready. Wait a few seconds. If it stays here, check that the import completed without an error.';
         } else {
             $api->connect();
+            $wanRecord=loadRouterWan($pdo,$tenantId,(int)$router['id']);
+            $wanChecks=$wanRecord ? verifyRouterWan($api,$wanRecord) : [];
             $api->disconnect();
+            if (!$wanRecord || array_filter($wanChecks,fn($c)=>!$c['ok'])) throw new RuntimeException('WAN connectivity not verified. Apply WAN setup and check DNS, route and billing access.');
+            $pdo->prepare('UPDATE router_wan_config SET verified_at=NOW() WHERE id=? AND tenant_id=?')->execute([$wanRecord['id'],$tenantId]);
             $pdo->prepare("UPDATE mikrotik_routers SET status='active',last_seen=NOW() WHERE id=? AND tenant_id=?")->execute([$router['id'],$tenantId]);
             $result['connected']=true;
             $result['message']='Router API connection verified.';

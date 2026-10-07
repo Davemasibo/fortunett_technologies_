@@ -8,6 +8,8 @@ require_once __DIR__ . '/config/mpesa.php';
 $_base_path = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 
 redirectIfNotLoggedIn();
+require_once __DIR__.'/includes/router_wan_form.php';
+$_SESSION['wan_csrf'] ??= bin2hex(random_bytes(32));
 
 $action_result = null;
 
@@ -585,6 +587,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                         <!-- Management -->
                         <div class="footer-actions-group">
+                            <button class="footer-btn" onclick="openWanSetup(<?php echo (int)$router['id']; ?>)">WAN setup</button>
                             <button class="footer-btn edit" onclick="editRouter(<?php echo htmlspecialchars(json_encode($router)); ?>)" title="Edit router settings"><i class="fas fa-sliders-h"></i> Edit</button>
                             <button class="footer-btn danger" onclick="confirmDeleteRouter(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars($router['name']); ?>')" title="Remove this router"><i class="fas fa-trash-alt"></i></button>
                         </div>
@@ -596,6 +599,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 </div>
 
+<meta name="wan-csrf" content="<?php echo htmlspecialchars($_SESSION['wan_csrf']); ?>">
+<input type="hidden" id="wanProvisionEndpoint" value="<?php echo htmlspecialchars($_base_path.'/api/routers/provision.php?token='.rawurlencode($tenant['provisioning_token'] ?? '')); ?>">
+<div id="wanSetupModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:3000;align-items:center;justify-content:center;">
+ <div style="background:#171717;color:#eee;padding:24px;border-radius:12px;max-width:700px;width:90%;max-height:90vh;overflow:auto;">
+  <button type="button" onclick="document.getElementById('wanSetupModal').style.display='none'" style="float:right;">Close</button>
+  <h3>WAN setup</h3>
+  <?php renderRouterWanForm('editWan'); ?>
+  <button type="button" onclick="prepareWan('editWan',this)">Prepare installer</button>
+  <button type="button" onclick="verifyWan(this)">Verify WAN on router</button>
+  <div id="editWanOutput" role="status" style="white-space:pre-wrap;"></div>
+ </div>
+</div>
+<script src="assets/router-wan.js" defer></script>
 <!-- Toast Notification -->
 <?php if ($action_result): ?>
 <div class="position-fixed top-0 end-0 p-3" style="z-index: 1100">
@@ -742,7 +758,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <!-- END LOCALHOST INFO -->
 
-            <p style="margin-bottom:16px; color:rgba(255,255,255,.5);">Connect this router to the internet, open WinBox ? New Terminal, then copy and paste the command once. RouterOS 7 or newer is required. If setup reports a device-mode restriction, enable scheduler, fetch and Hotspot, then physically power-cycle during the confirmation countdown. Keep this page open while we verify the connection. Use a unique name and separate script for each device:</p>
+            <p style="margin-bottom:16px; color:rgba(255,255,255,.5);">Prepare the WAN settings below, download the installer and import it locally in WinBox. The installer configures and checks Internet access before connecting management. RouterOS 7 or newer is required. If setup reports a device-mode restriction, enable scheduler, fetch and Hotspot, then physically power-cycle during the confirmation countdown. Keep this page open while we verify the connection. Use a unique name and separate script for each device:</p>
+            <h3>WAN setup</h3>
+            <?php renderRouterWanForm('wizardWan'); ?>
+            <button type="button" onclick="prepareWan('wizardWan',this)">Prepare WAN and management installer</button>
+            <div id="wizardWanOutput" role="status" style="white-space:pre-wrap;"></div>
             <div class="command-box">
                 <button class="copy-btn" onclick="copyCommand()">Copy</button>
                 <div class="command-text" id="provisionCommand">Generating command...</div>
@@ -765,8 +785,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <p style="font-size:12px;color:#a3a3a3;">Compatible customer radios will broadcast your company name as open Wi-Fi. Connect through Ethernet while applying setup; wireless uplinks are preserved.</p>
                 <label for="wizardBridgeName">Customer LAN bridge</label>
                 <select id="wizardDetectedBridges" aria-label="Detected customer bridges" onchange="document.getElementById('wizardBridgeName').value=this.value"><option value="">Select a detected bridge</option></select><button type="button" onclick="loadWizardBridges()">Refresh bridges</button><p id="wizardBridgeStatus" role="status"></p>
-                <input id="wizardBridgeName" maxlength="64" placeholder="Automatic if there is one enabled bridge" style="width:100%;padding:10px;margin:8px 0;">
-                <p style="font-size:12px;color:#a3a3a3;">For several bridges, run <code>/interface bridge print</code> in WinBox and enter the customer bridge's exact name. Hotspot replaces DHCP on that bridge and customers reconnect on 10.5.50.0/24. Use separate LANs for two Hotspot gateways to avoid competing DHCP servers.</p>
+                <input id="wizardBridgeName" maxlength="64" placeholder="Required: exact customer LAN bridge name" style="width:100%;padding:10px;margin:8px 0;">
+                <p style="font-size:12px;color:#a3a3a3;">Run <code>/interface bridge print</code> in WinBox and enter the customer bridge's exact name. Hotspot replaces DHCP on that bridge and customers reconnect on 10.5.50.0/24. Use separate LANs for two Hotspot gateways to avoid competing DHCP servers.</p>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; text-align:left;">
                     <div class="service-card" id="svc-pppoe" onclick="toggleService('pppoe', this)" style="border:1px solid var(--neu-border); background:var(--neu-surf); padding:16px; border-radius:8px; cursor:pointer; transition:.2s; position:relative;">
                         <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
@@ -985,7 +1005,10 @@ function nextStep() {
         const host     = window.location.host;
         const protocol = window.location.protocol;
         const endpoint = `${protocol}//${host}<?php echo $_base_path; ?>/api/routers/provision.php`;
-        const cmd      = `/tool fetch url="${endpoint}?token=${token}&identity=${encodeURIComponent(name)}&format=rsc" dst-path=provision.rsc; :delay 5s; /import provision.rsc;`;
+        const managementUrl=new URL(endpoint);
+        managementUrl.searchParams.set('token',token);
+        document.getElementById('wanProvisionEndpoint').value=managementUrl.href;
+        const cmd='Prepare WAN settings below and download the installer first.';
 
         if (host.includes('localhost') || host.includes('127.0.0.1')) {
             const infoPanel = document.getElementById('localhostInfoPanel');
@@ -1020,7 +1043,7 @@ async function loadWizardBridges() {
         if (!response.ok) throw new Error(data.error || 'Cannot read bridges.');
         select.replaceChildren(new Option('Select a detected bridge',''));
         for (const name of data.bridges || []) select.add(new Option(name,name));
-        if (data.bridges?.length===1) {select.value=data.bridges[0];document.getElementById('wizardBridgeName').value=data.bridges[0];}
+        select.value=document.getElementById('wizardBridgeName').value;
         status.textContent=data.bridges?.length ? 'Choose the bridge connected to your customers. Confirm before applying setup.' : 'No enabled bridge found. Configure a customer LAN bridge in WinBox, then refresh.';
     } catch(e) {status.textContent=e.message+' You can enter the exact bridge name below.';}
 }
@@ -1125,7 +1148,7 @@ function finishWizard() {
                             <i class="fas fa-check" style="font-size:24px;"></i>
                         </div>
                         <h3 style="font-size:18px; font-weight:600; margin-bottom:4px; color:#e2e2e0;">${label} setup ready</h3>
-                        <p style="color:rgba(255,255,255,.4); font-size:13px;">Copy the command below and paste it <strong>once</strong> into your MikroTik terminal (New Terminal in WinBox, or SSH). Assumes <strong>ether1</strong> is your WAN/uplink.</p>
+                        <p style="color:rgba(255,255,255,.4); font-size:13px;">Copy the command below and paste it <strong>once</strong> into your MikroTik terminal (New Terminal in WinBox, or SSH). Uses your verified WAN settings and selected customer LAN bridge.</p>
                     </div>
                     <div class="command-box" style="text-align:left;">
                         <button class="copy-btn" onclick="copyCmd(this)">Copy</button>
@@ -1261,7 +1284,7 @@ window.onclick = function(event) {
     <p style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:14px;">Select the services to configure now. To add PPPoE later, select only PPPoE and keep the existing Hotspot configuration. Copy the script into WinBox → New Terminal.</p>
     <p style="font-size:12px;color:#a3a3a3;">Hotspot setup automatically enables customer Wi-Fi on compatible radios, using your company name with no Wi-Fi key. Connect through Ethernet while applying it. Wireless uplinks are preserved.</p>
     <label for="provBridgeName" style="display:block;color:#e2e2e0;font-size:13px;">LAN bridge name</label>
-    <input id="provBridgeName" type="text" maxlength="64" placeholder="Leave blank if the router has one bridge" style="width:100%;padding:9px;margin:6px 0 14px;background:#111;color:#e2e2e0;border:1px solid #555;border-radius:6px;">
+    <input id="provBridgeName" type="text" maxlength="64" placeholder="Required: bridge saved in WAN setup" style="width:100%;padding:9px;margin:6px 0 14px;background:#111;color:#e2e2e0;border:1px solid #555;border-radius:6px;">
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
       <div class="prov-svc" id="prov-pppoe" onclick="provToggle('pppoe',this)" style="border:1px solid var(--neu-border);background:var(--neu-surf);padding:14px;border-radius:8px;cursor:pointer;transition:.15s;position:relative;">
