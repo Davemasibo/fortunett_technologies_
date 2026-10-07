@@ -2,6 +2,24 @@
 require_once __DIR__.'/../includes/router_wan.php';
 function wanAssert(bool $ok,string $label): void {if (!$ok) throw new RuntimeException($label); echo "PASS: $label\n";}
 function wanReject(array $input): void {try {routerWanInput($input); throw new RuntimeException('Unsafe input accepted');} catch (InvalidArgumentException $e) {}}
+class WanStorageError extends PDOException {
+    public function __construct(string $sqlState) {$this->code=$sqlState;}
+}
+class WanStorageDouble extends PDO {
+    public array $statements=[];
+    public function __construct(private string $sqlState='') {}
+    public function query(string $query,?int $fetchMode=null,mixed ...$fetchModeArgs): PDOStatement|false {
+        if($this->sqlState!=='')throw new WanStorageError($this->sqlState);
+        return false;
+    }
+    public function exec(string $statement): int|false {$this->statements[]=$statement;return 0;}
+}
+$missingStorage=new WanStorageDouble('42S02');ensureRouterWanStorage($missingStorage);
+wanAssert(count($missingStorage->statements)===1 && str_contains($missingStorage->statements[0],'CREATE TABLE IF NOT EXISTS router_wan_config'),'Missing WAN storage is initialized using the additive migration');
+$existingStorage=new WanStorageDouble();ensureRouterWanStorage($existingStorage);
+wanAssert(!$existingStorage->statements,'Existing WAN storage is preserved');
+try {ensureRouterWanStorage(new WanStorageDouble('42000'));throw new RuntimeException('Permission error ignored');}
+catch(WanStorageError $e) {wanAssert($e->getCode()==='42000','Storage permission errors are surfaced instead of running unrelated migrations');}
 $input=['lan_bridge'=>'bridge-lan'];
 $dhcp=routerWanInput($input);
 wanAssert($dhcp['mode']==='dhcp' && $dhcp['wan']==='ether1','Ordinary Ethernet defaults to DHCP on ether1');

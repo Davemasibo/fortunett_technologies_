@@ -10,6 +10,9 @@ try {
     if (empty($_SESSION['user_id'])) {http_response_code(401); throw new RuntimeException('Sign in to continue.');}
     $st=$pdo->prepare('SELECT tenant_id FROM users WHERE id=?'); $st->execute([$_SESSION['user_id']]); $tenantId=(int)$st->fetchColumn();
     if (!$tenantId) throw new RuntimeException('No tenant assigned.');
+    // Finish the additive WAN migration on first use after deployment.
+    // No existing router settings or tables are changed.
+    ensureRouterWanStorage($pdo);
     $routerId=(int)($_REQUEST['router_id'] ?? 0); $router=null;
     if ($routerId) {
         $st=$pdo->prepare('SELECT * FROM mikrotik_routers WHERE id=? AND tenant_id=?'); $st->execute([$routerId,$tenantId]); $router=$st->fetch(PDO::FETCH_ASSOC);
@@ -18,7 +21,7 @@ try {
     $identity=$router ? (string)$router['name'] : trim((string)($_POST['identity'] ?? ''));
     if ($_SERVER['REQUEST_METHOD']==='GET') {
         $record=$router ? loadRouterWan($pdo,$tenantId,$routerId) : null;
-        echo json_encode(['status'=>'success','config'=>$record ? json_decode($record['config_json'],true) : null]); exit;
+        echo json_encode(['status'=>'success','router_name'=>$router['name'] ?? '', 'config'=>$record ? json_decode($record['config_json'],true) : null]); exit;
     }
     if ($_SERVER['REQUEST_METHOD']!=='POST') {http_response_code(405); throw new RuntimeException('Method not allowed.');}
     if (empty($_SESSION['wan_csrf']) || !hash_equals($_SESSION['wan_csrf'],(string)($_POST['csrf'] ?? ''))) {http_response_code(403); throw new RuntimeException('Reload this page before configuring WAN.');}
@@ -32,7 +35,7 @@ try {
         $ok=!array_filter($checks,fn($c)=>!$c['ok']);
         if (!$ok) saveOnboardingCheck($pdo,$tenantId,$routerId,(string)($router['service_types'] ?? ''),false,'WAN verification failed. Fix connectivity and verify services again.');
         $pdo->prepare('UPDATE router_wan_config SET verified_at=IF(?,NOW(),NULL) WHERE id=? AND tenant_id=?')->execute([$ok,$record['id'],$tenantId]);
-        echo json_encode(['status'=>'success','all_ok'=>$ok,'checks'=>$checks]); exit;
+        echo json_encode(['status'=>'success','all_ok'=>$ok,'checks'=>$checks,'lan_bridge'=>$record['lan_bridge'],'router_name'=>$router['name']]); exit;
     }
     if ($identity==='' || strlen($identity)>64 || preg_match('/[\x00-\x1f]/',$identity)) throw new InvalidArgumentException('Enter a router name of up to 64 characters.');
     $cfg=routerWanInput($_POST);
@@ -52,6 +55,7 @@ try {
     echo json_encode(['status'=>'success','script'=>$script,'config'=>$cfg,'identity'=>$identity]);
 } catch (Throwable $e) {
     if (http_response_code()<400) http_response_code($e instanceof InvalidArgumentException ? 400 : 503);
-    $message=$e instanceof PDOException ? 'WAN storage unavailable. Apply the router WAN database migration.' : $e->getMessage();
-    echo json_encode(['status'=>'error','message'=>$message]);
+    if ($e instanceof PDOException) error_log('WAN setup storage failure: '.$e->getCode());
+    $message=$e instanceof PDOException ? 'Internet setup is not available on the server yet. Ask your administrator to finish the update, then try again.' : $e->getMessage();
+    echo json_encode(['status'=>'error','code'=>$e instanceof PDOException ? 'storage_unavailable' : 'setup_error','message'=>$message]);
 }

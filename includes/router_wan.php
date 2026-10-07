@@ -1,6 +1,14 @@
 <?php
 require_once __DIR__.'/router_service_config.php';
 
+function ensureRouterWanStorage(PDO $pdo): void {
+    try {$pdo->query('SELECT id FROM router_wan_config LIMIT 0');}
+    catch (PDOException $e) {
+        if ($e->getCode()!=='42S02') throw $e;
+        $pdo->exec(file_get_contents(__DIR__.'/../sql/migrations/2026-10-07-router-wan.sql'));
+    }
+}
+
 function routerWanInput(array $input): array {
     $name = function(string $key, string $default = '') use ($input): string {
         $value=trim((string)($input[$key] ?? $default));
