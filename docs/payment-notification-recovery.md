@@ -143,3 +143,31 @@ A live already-activated payment status returned HTTP 200 with credentials in
 latency, not a new STK-to-Internet connection. No new real payment was initiated.
 All five deployed files match local checksums. Backups are under
 `/root/fortunett-portal-ux-before-20261010/`.
+
+## Platform-wide rollout and Git reconciliation, 10 October 2026
+
+The production edits matched incoming commit `06c3e4d`, including the previously
+untracked notification helper. Saved only those payment/portal paths in the
+named stash `fortunett-reviewed-payment-portal-before-06c3e4d`, then fast-forwarded
+production. The encryption key, environment backups, logs and unrelated local
+deletions were preserved. Do not apply this stash over the same committed fixes.
+
+The shared backend and rendered captive template apply across tenants. Fleet
+portal synchronization now includes temporarily inactive/offline routers, reads
+the build marker explicitly when file listings omit contents, and verifies the
+published build after triggering a download. Direct-upload recovery verifies
+portal contents. The sweep also installs/verifies the optimized paid-expiry
+watchdog on reachable hotspot routers. Check mode performs no writes.
+
+Installed a server sweep every five minutes with
+`/run/fortunett-portal-sync.lock`; the previous crontab is saved at
+`/root/fortunett-crontab-before-fleet-20261010.txt`. Router pull schedules remain
+hourly and run on startup when installed. Failed server reachability probes do
+not establish whether an unreachable router has its pull scheduler installed.
+
+The initial fleet run verified tenant 5/router 12's build `bf797eb3465d` and
+tenant 9/router 19's build `990c85eaec4d`. Tenant 1/router 9, tenant 6/router 15
+and tenant 14/routers 20 and 21 were unreachable and remain awaiting verification.
+The server will keep attempting them. Do not report the four router copies as
+updated until a successful connection and readback occurs. Shared server changes
+are already published for their tenants.

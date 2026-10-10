@@ -128,6 +128,7 @@ foreach ($routers as $router) {
             ? ['installed' => true, 'message' => '']
             : installHotspotSyncScheduler($api, $urls['page'], $urls['version']);
         if (!$sched['installed']) throw new RuntimeException('Portal sync scheduler could not be installed');
+        if (!$checkOnly) installPaidExpiryWatchdog($api);
 
         // Does the router already hold this build?
         $onRouter = null;
