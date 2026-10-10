@@ -31,7 +31,6 @@ require_once __DIR__ . '/validity.php';
 require_once __DIR__ . '/payment_activation.php';
 require_once __DIR__ . '/payment_terms.php';
 require_once __DIR__ . '/payment_identity.php';
-require_once __DIR__ . '/payment_notifications.php';
 
 /**
  * @param PDO    $pdo
@@ -369,24 +368,8 @@ function process_payment_success(
     // Part-payments remain credit and must not be advertised as new access.
     if ($results['periods'] === 0) return $results;
 
-    // Persist the login and SMS job before router I/O, even on repeated callbacks.
-    $creds = ensurePaidLoginCredentials($pdo, $tenantId, $clientId);
-    $notificationId = null;
-    try {
-      if (!empty($client['phone'])) {
-        $msg = 'KSH ' . number_format($amount, 2) . ' received for ' . ($package['name'] ?? 'your plan')
-            . '. Valid to ' . ($expiryDate ? date('d M Y H:i', strtotime($expiryDate)) : 'pending activation')
-            . '. If not connected, open the Wi-Fi login page. Username: ' . $creds['username']
-            . ' Password: ' . $creds['password'] . '. Ref ' . $receipt . '.';
-        $notificationId = queuePaymentNotification($pdo, $tenantId, $clientId, $paymentId, $receipt, $client['phone'], $msg);
-        $results['steps']['sms'] = false;
-      }
-    } catch (Throwable $e) {
-        error_log("pipeline notification queue [$receipt]: " . $e->getMessage());
-        $results['steps']['sms'] = false;
-    }
-
-    // The router uses the same durable credentials already sent to the customer.
+    // Runs BEFORE the customer is notified: the SMS and email carry their login
+    // credentials, and those are only final once the router has been programmed.
     try {
             $provResult = autoProvisionClient($pdo, $clientId, $tenantId, 0, false);
             $results['steps']['provision'] = $provResult['success'] ?? false;
@@ -421,17 +404,12 @@ function process_payment_success(
         $results['steps']['provision'] = false;
     }
 
-    // SMS provider latency must not postpone the customer's router connection.
-    // The notice was persisted before I/O and the worker can recover a crash.
-    if ($notificationId) {
-        try { $results['steps']['sms'] = deliverPaymentNotification($pdo, $notificationId) === 'sent'; }
-        catch (Throwable $e) { error_log("pipeline notification delivery [$receipt]: " . $e->getMessage()); }
-    }
-
     if ($activation['already_applied']) return $results;
 
     // ── 10. Notify the customer — SMS + email, including their credentials ─────
-    // Email uses the same stable credentials as the queued payment SMS.
+    // Deliberately after provisioning: mikrotik_username/password are written by
+    // autoProvisionClient(), so sending earlier delivered a receipt with no way
+    // to actually log in. Customers then had to be told their password by hand.
     $creds = ['username' => '', 'password' => ''];
     try {
         $cr = $pdo->prepare("SELECT mikrotik_username, mikrotik_password, email FROM clients WHERE id = ? AND tenant_id = ? LIMIT 1");
@@ -444,7 +422,94 @@ function process_payment_success(
 
     $expiryHuman = $expiryDate ? date('d M Y H:i', strtotime($expiryDate)) : 'N/A';
     $pkgName     = $package['name'] ?? 'your plan';
+    $firstName   = explode(' ', trim($results['client_name']))[0] ?: 'there';
     $hasCreds    = $creds['username'] !== '' && $creds['password'] !== '';
+
+    // Who the message is from. The TalkSasa sender ID is often a short code
+    // like "FORTUNETT" that says nothing to the customer of a reseller, so the
+    // ISP is named in the body too.
+    $companyName = '';
+    try {
+        $cn = $pdo->prepare("SELECT company_name FROM tenants WHERE id = ? LIMIT 1");
+        $cn->execute([$tenantId]);
+        $companyName = trim((string)$cn->fetchColumn());
+    } catch (Throwable $_e) {}
+
+    // "10Mbps, 1 Day" — what the customer actually bought, not just its name.
+    // A hotspot buyer picks by speed and duration and forgets the plan name
+    // before the SMS arrives.
+    $pkgDetail = [];
+    if (!empty($package['download_speed'])) {
+        $pkgDetail[] = (int)$package['download_speed'] . 'Mbps';
+    }
+    if (!empty($package['validity_value'])) {
+        $pkgDetail[] = packageValidityLabel($package['validity_value'], $package['validity_unit'] ?? 'days');
+    }
+    $pkgDetailStr = $pkgDetail ? ' (' . implode(', ', $pkgDetail) . ')' : '';
+
+    // ── 10a. SMS ───────────────────────────────────────────────────────────────
+    try {
+        if (!empty($client['phone'])) {
+            // sms_logs is defined in no schema file, so on every deployment both
+            // queries below were silently swallowed: no dedupe (a retried
+            // callback texted the customer twice) and no record that anything
+            // was ever sent, which is what made "SMS is not working" impossible
+            // to confirm or deny from the admin UI.
+            require_once __DIR__ . '/schema_guard.php';
+            ensureSmsTables($pdo);
+
+            // sms_logs.reference makes this idempotent across Safaricom's retries
+            $alreadySent = false;
+            try {
+                $smsCk = $pdo->prepare("SELECT 1 FROM sms_logs WHERE client_id = ? AND tenant_id = ? AND reference = ? LIMIT 1");
+                $smsCk->execute([$clientId, $tenantId, $receipt]);
+                $alreadySent = (bool)$smsCk->fetchColumn();
+            } catch (Throwable $_e) { /* table may not exist */ }
+
+            if (!$alreadySent) {
+                // Four things, in the order the customer needs them: that the
+                // money arrived, what it bought, when it runs out, and how to
+                // get on. The receipt goes last -- it matters only if
+                // something is disputed. Amount is printed without decimals
+                // when it has none: "KSH 50" reads as money, "KSH 50.00" reads
+                // as a system.
+                $amountStr = (floor($amount) == $amount)
+                           ? number_format($amount, 0)
+                           : number_format($amount, 2);
+
+                $msg = "Hi {$firstName}, KSH {$amountStr} received."
+                     . " {$pkgName}{$pkgDetailStr} valid to {$expiryHuman}.";
+                if ($hasCreds) {
+                    $msg .= " Login: {$creds['username']}/{$creds['password']}.";
+                }
+                $msg .= " Ref {$receipt}.";
+                $msg .= $companyName !== '' ? " -{$companyName}" : ' Thank you!';
+
+                require_once __DIR__ . '/../classes/SMSHelper.php';
+                $sms       = new SMSHelper($pdo, $tenantId);
+                $smsResult = $sms->send($client['phone'], $msg, $clientId);
+                $results['steps']['sms'] = $smsResult['success'] ?? false;
+
+                try {
+                    $pdo->prepare("
+                        INSERT INTO sms_logs (client_id, tenant_id, phone, message, status, reference)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ")->execute([
+                        $clientId, $tenantId, $client['phone'], $msg,
+                        ($smsResult['success'] ?? false) ? 'sent' : 'failed',
+                        $receipt,
+                    ]);
+                } catch (Throwable $_e) { /* sms_logs may not exist */ }
+            } else {
+                $results['steps']['sms'] = 'already_sent';
+            }
+        } else {
+            $results['steps']['sms'] = 'no_phone';
+        }
+    } catch (Throwable $e) {
+        error_log("pipeline sms [$receipt]: " . $e->getMessage());
+        $results['steps']['sms'] = false;
+    }
 
     // ── 10b. Email ─────────────────────────────────────────────────────────────
     try {

@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const html = fs.readFileSync(require('node:path').join(__dirname, '../hotspot/login.html'), 'utf8');
-const source = html.slice(html.indexOf('function pollBuyStatus()'), html.indexOf('function cancelBuy()'));
+const source = html.slice(html.indexOf('function pollBuyStatus()'), html.indexOf('// Credentials remain visible'));
 function portal(response) {
     const ctx = {
         _buyReqId:'checkout', _buyClientId:1, _buyPollCount:100, _buyPollMax:75,
@@ -11,7 +11,9 @@ function portal(response) {
         calls:[], document:{getElementById:()=>({textContent:'',style:{},scrollIntoView(){}}),querySelector:()=>({textContent:''})},
         tickCountdown(){}, setStep(){}, clearInterval(){}, encodeURIComponent,
         forgetCheckout(){ctx.calls.push('forgot');}, cancelBuy(){ctx.calls.push('buy-again');},
+        rememberCheckout(){},
         setBuyNotice(){}, showResult(){}, autoConnect(u,p){ctx.calls.push(['connect',u,p]);},
+        showPaidRecovery(d){ctx.calls.push(['credentials',d.username,d.password]);},
         fetch: async()=>({json:async()=>response})
     };
     vm.createContext(ctx); vm.runInContext(source,ctx); return ctx;
@@ -21,6 +23,11 @@ function portal(response) {
     p.pollBuyStatus(); await new Promise(setImmediate);
     assert.equal(p._buyReqId,'checkout'); assert.equal(p._buyPolling,false); assert.deepEqual(p.calls,[]);
     console.log('PASS: slow provisioning retains the checkout beyond the former five-minute timeout');
+    p=portal({status:'processing',payment_confirmed:true,username:'paid-user',password:'test-only',portal_token:'token'});
+    p.pollBuyStatus(); await new Promise(setImmediate);
+    assert.equal(p._buyReqId,'checkout'); assert.equal(p._paidConfirmed,true);
+    assert.deepEqual(p.calls,[['credentials','paid-user','test-only']]);
+    console.log('PASS: confirmed payment exposes manual credentials without navigation or discarding recovery');
     p=portal({status:'completed',username:'paid-user',password:'test-only'});
     p.pollBuyStatus(); await new Promise(setImmediate);
     assert.equal(p.calls[0][0],'connect'); assert.equal(p.calls[0][1],'paid-user');

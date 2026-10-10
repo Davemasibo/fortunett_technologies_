@@ -23,7 +23,7 @@
 require_once __DIR__ . '/sms_config.php';
 
 /** Verdicts, worst first — this order drives the fleet summary. */
-const SMS_VERDICT_ORDER = ['rejected', 'sender_rejected', 'unreachable', 'no_credentials', 'simulation', 'stale_url', 'untested', 'ok'];
+const SMS_VERDICT_ORDER = ['rejected', 'unreachable', 'no_credentials', 'simulation', 'stale_url', 'untested', 'ok'];
 
 /**
  * Verify one tenant, end to end.
@@ -51,7 +51,7 @@ function smsVerifyTenant(PDO $pdo, int $tenantId, bool $probe = true): array
         $out['detail'] = 'No usable credentials of their own and no platform key to fall back on.';
         $out['action'] = 'Set a platform-wide TalkSasa token under System Settings → SMS, or give this tenant their own.';
         $out += smsRecentOutcomes($pdo, $tenantId);
-        return smsApplySenderEvidence($out);
+        return $out;
     }
 
     $key = trim((string)($config['api_key'] ?? ''));
@@ -70,7 +70,7 @@ function smsVerifyTenant(PDO $pdo, int $tenantId, bool $probe = true): array
     if (!$probe) {
         if ($out['verdict'] === 'no_credentials') $out['verdict'] = 'untested';
         $out += smsRecentOutcomes($pdo, $tenantId);
-        return smsApplySenderEvidence($out);
+        return $out;
     }
 
     $result = smsProbeKey($out['api_url'], $key);
@@ -105,21 +105,7 @@ function smsVerifyTenant(PDO $pdo, int $tenantId, bool $probe = true): array
     }
 
     $out += smsRecentOutcomes($pdo, $tenantId);
-    return smsApplySenderEvidence($out);
-}
-
-/** A working balance endpoint does not verify the configured sender. */
-function smsApplySenderEvidence(array $state): array {
-    if (!in_array($state['verdict'], ['ok','untested','stale_url'], true)) return $state;
-    $sender = trim((string)($state['sender_id'] ?? ''));
-    $failedAt = $state['last_failed_at'] ?? null;
-    $sentAt = $state['last_sent_at'] ?? null;
-    if (!$sender || !$failedAt || ($sentAt && $sentAt >= $failedAt)) return $state;
-    if (!preg_match('/Originator\s+' . preg_quote($sender, '/') . '\s+is not authorized\b/i', (string)($state['last_error'] ?? ''))) return $state;
-    $state['verdict'] = 'sender_rejected';
-    $state['detail'] = 'The provider rejected sender ' . $sender . ' on ' . $failedAt . '. Token authentication does not verify SMS delivery.';
-    $state['action'] = 'Set a sender ID approved for this provider account, then verify delivery.';
-    return $state;
+    return $out;
 }
 
 /**
@@ -196,7 +182,7 @@ function smsProbeKey(string $url, string $key): array
 /** What actually happened to this tenant's recent messages. */
 function smsRecentOutcomes(PDO $pdo, int $tenantId, int $days = 30): array
 {
-    $out = ['sent_30d' => 0, 'failed_30d' => 0, 'last_error' => '', 'last_sent_at' => null, 'last_failed_at' => null];
+    $out = ['sent_30d' => 0, 'failed_30d' => 0, 'last_error' => '', 'last_sent_at' => null];
 
     try {
         $st = $pdo->prepare("
@@ -218,14 +204,12 @@ function smsRecentOutcomes(PDO $pdo, int $tenantId, int $days = 30): array
 
     try {
         $st = $pdo->prepare("
-            SELECT provider_response, sent_at FROM sms_outbox
+            SELECT provider_response FROM sms_outbox
             WHERE tenant_id = ? AND status <> 'sent'
             ORDER BY sent_at DESC LIMIT 1
         ");
         $st->execute([$tenantId]);
-        $row = $st->fetch(PDO::FETCH_ASSOC);
-        $raw = $row['provider_response'] ?? null;
-        $out['last_failed_at'] = $row['sent_at'] ?? null;
+        $raw = $st->fetchColumn();
         if ($raw) {
             $j = json_decode((string)$raw, true);
             $out['last_error'] = is_array($j) ? (string)($j['message'] ?? '') : substr((string)$raw, 0, 160);
@@ -275,6 +259,5 @@ function smsVerdictLabel(string $verdict): string
         'simulation'     => 'Simulation only (TEST_KEY)',
         'unreachable'    => 'Provider unreachable',
         'rejected'       => 'Token rejected',
-        'sender_rejected'=> 'Sender rejected',
     ][$verdict] ?? $verdict;
 }

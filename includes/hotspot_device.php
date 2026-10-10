@@ -68,7 +68,10 @@ function resolveClientRouter(PDO $pdo, array $client, int $tenant): int {
         $st = $pdo->prepare('SELECT mac_address FROM hotspot_device_context WHERE tenant_id=? AND client_id=? AND updated_at>NOW()-INTERVAL 1 DAY');
         $st->execute([$tenant,$client['id']]); $mac = $mac ?: ($st->fetchColumn() ?: '');
     } catch (PDOException $e) { if (($e->errorInfo[1] ?? null) !== 1146) throw $e; }
-    $routers = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE tenant_id=? AND status IN ('active','online') ORDER BY id");
+    // Health probes mark transient timeouts inactive/offline. Those routers
+    // remain candidates for paid recovery; actual API reachability is checked
+    // during provisioning. Suspended and unprovisioned routers stay excluded.
+    $routers = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE tenant_id=? AND status IN ('active','online','inactive','offline') ORDER BY id");
     $routers->execute([$tenant]); $rows = $routers->fetchAll(PDO::FETCH_ASSOC);
     if (count($rows) === 1) return (int)$rows[0]['id'];
     if ($mac && ($client['connection_type'] ?? '') === 'hotspot') {

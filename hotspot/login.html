@@ -455,11 +455,12 @@ function openPaymentDialog() {
 function closePaymentDialog() {
   cancelBuy();
   document.getElementById('payment-dialog').close();
+  resumeCheckout(false);
   rememberPortalDraft();
 }
 var paymentDialog = document.getElementById('payment-dialog');
 if (paymentDialog) {
-  paymentDialog.addEventListener('cancel', function () { cancelBuy(); });
+  paymentDialog.addEventListener('cancel', function () { cancelBuy(); resumeCheckout(false); });
   paymentDialog.addEventListener('close', rememberPortalDraft);
 }
 // A selected card can be tapped again after closing the payment dialog.
@@ -710,7 +711,7 @@ var _buyTimer     = null;
 var _buyReqId     = null;
 var _buyClientId  = null;
 var _buyPollCount = 0;
-var _buyPollMax   = 75;   /* 75 × 4s = 5 min — matches Safaricom's STK timeout */
+var _buyPollMax   = 150;   /* 75 × 4s = 5 min — matches Safaricom's STK timeout */
 
 function normalisePhone(raw) {
   var phone = String(raw || '').replace(/[\s\-()+]/g, '');
@@ -734,6 +735,7 @@ function openTvDialog() {
 function closeTvDialog() { if (!document.getElementById('tv-submit').disabled) document.getElementById('tv-dialog').close(); }
 async function submitTvPayment(event) {
   event.preventDefault();
+  if (resumePendingPayment()) { closeTvDialog(); return; }
   var button = document.getElementById('tv-submit');
   if (button.disabled) return;
   var mac = document.getElementById('tv-mac').value.trim().replace(/-/g, ':').toUpperCase();
@@ -754,7 +756,7 @@ async function submitTvPayment(event) {
     document.getElementById('buy-form').style.display = 'none';
     document.getElementById('buy-status').style.display = 'block';
     document.getElementById('buy-result').style.display = 'none';
-    setStep(2); clearInterval(_buyTimer); _buyTimer = setInterval(pollBuyStatus,4000);
+    setStep(2); clearInterval(_buyTimer); _buyTimer = setInterval(pollBuyStatus,2000); pollBuyStatus();
   } catch (e) { error.textContent = e.message || 'Could not reach the payment service. If a prompt arrived, do not pay twice.'; }
   finally { button.disabled = false; button.textContent = 'Bind & Pay'; }
 }
@@ -762,6 +764,7 @@ var tvDialog = document.getElementById('tv-dialog');
 if (tvDialog) tvDialog.addEventListener('cancel', function(e) { if (document.getElementById('tv-submit').disabled) e.preventDefault(); });
 
 function doBuyPlan() {
+  if (resumePendingPayment()) return;
   var phone = normalisePhone(document.getElementById('buy-phone').value);
   var row   = document.querySelector('.pkg-row.selected');
   var pkgEl = row && row.querySelector('input[type=radio]');
@@ -816,8 +819,8 @@ function doBuyPlan() {
       _paidConfirmed = false;
       rememberCheckout();
       setStep(2);
-      _buyTimer = setInterval(pollBuyStatus, 4000);
-      tickCountdown();
+      _buyTimer = setInterval(pollBuyStatus, 2000);
+      pollBuyStatus();
       return;
     }
 
@@ -833,15 +836,26 @@ function doBuyPlan() {
 function tickCountdown() {
   var el = document.getElementById('buy-countdown');
   if (!el || !_buyReqId) return;
-  var left = Math.max(0, (_buyPollMax - _buyPollCount) * 4);
-  var m = Math.floor(left / 60), s = left % 60;
-  el.innerHTML = 'Waiting for confirmation — <b>' + m + ':' + (s < 10 ? '0' : '') + s + '</b> left';
+  el.textContent = _paidConfirmed
+    ? 'Payment received. Keep this device on Wi-Fi; connection retries continue if you close this page. Do not pay again.'
+    : 'Approve the M-Pesa prompt. We will connect you as soon as payment is confirmed; there is no fixed five-minute wait.';
 }
 
 var _buyPolling = false;
 var _paidConfirmed = false;
-function rememberCheckout() {
-  try { localStorage.setItem('fortunett-checkout-' + TID, JSON.stringify({checkout:_buyReqId, client:_buyClientId, saved:Date.now()})); } catch (_) {}
+function rememberCheckout(phase) {
+  try { localStorage.setItem('fortunett-checkout-' + TID, JSON.stringify({checkout:_buyReqId, client:_buyClientId, phase:phase || 'pending', saved:Date.now()})); } catch (_) {}
+}
+function resumePendingPayment() {
+  try {
+    var saved = JSON.parse(localStorage.getItem('fortunett-checkout-' + TID) || 'null');
+    if (saved && saved.checkout && saved.phase === 'pending' && Date.now() - saved.saved < 24 * 60 * 60 * 1000) {
+      resumeCheckout(true);
+      setBuyNotice('Checking your existing payment. Do not pay again.', 'warn');
+      return true;
+    }
+  } catch (_) {}
+  return false;
 }
 function forgetCheckout() {
   try { localStorage.removeItem('fortunett-checkout-' + TID); } catch (_) {}
@@ -855,7 +869,7 @@ function pollBuyStatus() {
   tickCountdown();
 
   /* After ~20s the PIN prompt has been answered one way or the other */
-  if (_buyPollCount === 5) setStep(3);
+  if (_buyPollCount === 10) setStep(3);
 
   if (_buyPolling) return;
   _buyPolling = true;
@@ -880,13 +894,11 @@ function pollBuyStatus() {
          bounces the customer back to the sign-in page. */
       if (d.status === 'processing') {
         _paidConfirmed = d.payment_confirmed === true;
-        if (_paidConfirmed && d.portal_token) {
-          clearInterval(_buyTimer);
-          forgetCheckout();
-          window.location.assign(customerPortalDestination(d.portal_token));
-          return;
+        if (_paidConfirmed) {
+          tickCountdown();
+          showPaidRecovery(d);
         }
-        setStep(4);
+        setStep(_paidConfirmed ? 4 : 3);
         var sub = document.querySelector('#st-4 .step-sub');
         if (sub) sub.textContent = d.message || 'Setting up your connection…';
         return;
@@ -894,6 +906,7 @@ function pollBuyStatus() {
 
       if (d.status === 'completed') {
         clearInterval(_buyTimer);
+        rememberCheckout('completed');
         _buyReqId = null;
         setStep(4);
         document.getElementById('buy-countdown').textContent = '';
@@ -901,7 +914,7 @@ function pollBuyStatus() {
         if (d.device_only) {
           forgetCheckout();
           document.getElementById('buy-status').style.display = 'none';
-          showResult('buy-result', true, 'TV / device connected', 'Your selected device is connected until its paid expiry. Opening your customer account...', '');
+          showResult('buy-result', true, 'TV / device access ready', 'Keep your selected device on this Wi-Fi. Opening your customer account...', '');
           if (d.portal_token) setTimeout(function(){window.location.assign(customerPortalDestination(d.portal_token));},500);
           return;
         }
@@ -939,6 +952,25 @@ function pollBuyStatus() {
     })
     .catch(function () { /* Keep the checkout while the network recovers. */ })
     .finally(function () { if (pollTimeout) clearTimeout(pollTimeout); _buyPolling = false; });
+}
+
+// Credentials remain visible during router recovery; never claim Internet
+// connectivity solely because payment succeeded. Do not store passwords locally.
+function showPaidRecovery(data) {
+  var extra = '';
+  if (!data.device_only && data.username && data.password) {
+    document.getElementById('auto-user').value = data.username;
+    document.getElementById('auto-pass').value = data.password;
+    if (data.portal_token) document.getElementById('auto-dst').value = customerPortalDestination(data.portal_token);
+    extra = '<div class="creds"><div><span>Username</span> ' + escHtml(data.username) + '</div>' +
+      '<div><span>Password</span> ' + escHtml(data.password) + '</div></div>' +
+      '<div class="result-sub">Screenshot these credentials for manual login. SMS is not required.</div>' +
+      '<button class="btn-ghost" type="button" onclick="document.getElementById(\'hs-auto-form\').submit()">Try connecting now</button>';
+  }
+  if (data.portal_token) extra += '<a class="btn-ghost" href="' + escHtml(customerPortalDestination(data.portal_token)) + '">Open my account</a>';
+  showResult('buy-result', null, 'Payment received',
+    data.device_only ? 'Keep your TV / device on this Wi-Fi. We are retrying its connection.' :
+    'We are connecting you automatically. Keep Wi-Fi on. If you leave, return to this page and check your previous payment.', extra);
 }
 
 function cancelBuy() {
@@ -1005,7 +1037,7 @@ function resumeCheckout(manual) {
     // checkout automatically would submit the same credentials on every load.
     // Keep payment recovery available, but require a click after navigation.
     if (manual !== true) {
-      showResult('checkout-recovery', false, 'Previous payment found',
+      showResult('checkout-recovery', null, 'Previous payment found',
         'Check this payment before paying again. You can retry the connection without another M-Pesa prompt.',
         '<button class="btn-ghost" type="button" onclick="resumeCheckout(true)">Check previous payment</button>');
       return;
@@ -1019,7 +1051,7 @@ function resumeCheckout(manual) {
     document.getElementById('buy-status').style.display = 'block';
     setStep(3);
     clearInterval(_buyTimer);
-    _buyTimer = setInterval(pollBuyStatus, 4000);
+    _buyTimer = setInterval(pollBuyStatus, 2000);
     pollBuyStatus();
   } catch (_) {}
 }

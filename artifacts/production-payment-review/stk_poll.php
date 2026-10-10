@@ -14,7 +14,6 @@ require_once __DIR__ . '/../classes/MpesaAPI.php';
 require_once __DIR__ . '/../includes/cron_heartbeat.php';
 
 cron_heartbeat($pdo, 'stk_poll');
-paymentNotificationSchema($pdo);
 
 $logDir = __DIR__ . '/../logs';
 if (!is_dir($logDir)) { @mkdir($logDir, 0755, true); }

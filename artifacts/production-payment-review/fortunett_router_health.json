@@ -1,0 +1,135 @@
+{
+    "resource": {
+        "uptime": "4d11h38m27s",
+        "version": "7.12.1 (stable)",
+        "free-memory": "58118144",
+        "total-memory": "134217728",
+        "cpu-load": "80",
+        "architecture-name": "mipsbe",
+        "board-name": "RB951Ui-2HnD"
+    },
+    "api_service": {
+        "port": "8728",
+        "address": "10.200.200.1\/32",
+        "disabled": "false"
+    },
+    "hotspot_sessions": 4,
+    "tcp_api_connections": 1,
+    "relevant_firewall_rules": [
+        {
+            "chain": "input",
+            "action": "accept",
+            "protocol": "tcp",
+            "src-address": "10.200.200.1",
+            "dst-port": "8728",
+            "bytes": "45251363",
+            "packets": "522097",
+            "comment": "Fortunett-API-VPN"
+        },
+        {
+            "chain": "input",
+            "action": "jump",
+            "bytes": "7896856245",
+            "packets": "47239372"
+        },
+        {
+            "chain": "input",
+            "action": "drop",
+            "protocol": "tcp",
+            "dst-port": "64872-64875",
+            "bytes": "0",
+            "packets": "0"
+        },
+        {
+            "chain": "input",
+            "action": "accept",
+            "bytes": "369250256",
+            "packets": "1068261",
+            "comment": "defconf: accept established,related,untracked"
+        },
+        {
+            "chain": "input",
+            "action": "drop",
+            "bytes": "305322",
+            "packets": "4374",
+            "comment": "defconf: drop invalid"
+        },
+        {
+            "chain": "input",
+            "action": "accept",
+            "protocol": "icmp",
+            "bytes": "622468",
+            "packets": "22185",
+            "comment": "defconf: accept ICMP"
+        },
+        {
+            "chain": "input",
+            "action": "accept",
+            "bytes": "0",
+            "packets": "0",
+            "comment": "defconf: accept to local loopback (for CAPsMAN)"
+        },
+        {
+            "chain": "input",
+            "action": "drop",
+            "bytes": "490212",
+            "packets": "2645",
+            "comment": "defconf: drop all not coming from LAN"
+        }
+    ],
+    "profile": [
+        {
+            "name": "total",
+            "usage": "0"
+        },
+        {
+            "name": "total",
+            "usage": "0"
+        },
+        {
+            "name": "console",
+            "usage": "31"
+        },
+        {
+            "name": "flash",
+            "usage": "2.5"
+        },
+        {
+            "name": "dns",
+            "usage": "0.5"
+        },
+        {
+            "name": "firewall",
+            "usage": "0.5"
+        },
+        {
+            "name": "networking",
+            "usage": "2.5"
+        },
+        {
+            "name": "logging",
+            "usage": "1.5"
+        },
+        {
+            "name": "management",
+            "usage": "51"
+        },
+        {
+            "name": "hotspot",
+            "usage": "6.5"
+        },
+        {
+            "name": "profiling",
+            "usage": "0.5"
+        },
+        {
+            "name": "unclassified",
+            "usage": "3.5"
+        },
+        {
+            "name": "total",
+            "usage": "100"
+        }
+    ],
+    "paid_scheduler_count": 142
+}

@@ -10,7 +10,7 @@ function enforceCustomerSessions(PDO $pdo, callable $log, array $services = ['pp
     $routers = $pdo->query("
         SELECT id, tenant_id, name, ip_address, vpn_ip, username, password, api_port
         FROM mikrotik_routers
-        WHERE status IN ('active','online')
+        WHERE status IN ('active','online','inactive','offline')
         ORDER BY tenant_id, id
     ")->fetchAll(PDO::FETCH_ASSOC);
 

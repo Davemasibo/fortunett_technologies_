@@ -17,7 +17,6 @@ require_once __DIR__ . '/package_profile.php';
 require_once __DIR__ . '/hotspot_sync.php';
 require_once __DIR__ . '/hotspot_wireless.php';
 require_once __DIR__ . '/hotspot_connection.php';
-require_once __DIR__ . '/payment_notifications.php';
 
 /**
  * Provision a newly activated client on their tenant's first active router.
@@ -85,9 +84,9 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
         }
 
         // ── Resolve credentials ───────────────────────────────────────────────
-        $creds = ensurePaidLoginCredentials($pdo, $tenantId, $clientId);
-        $username = $creds['username'];
-        $password = $creds['password'];
+        $username = $client['mikrotik_username']
+            ?: ($connType === 'hotspot' ? hotspotPhoneUsername($client['phone'] ?? '') : ('user_' . substr(preg_replace('/\D/', '', $client['phone'] ?? ''), -8)));
+        $password = $client['mikrotik_password'] ?: ($connType === 'hotspot' ? hotspotGeneratePin() : bin2hex(random_bytes(4)));
 
         packageProfileSettings($package, $connType);
         $rateLimit = packageRateLimit($package);

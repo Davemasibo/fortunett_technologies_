@@ -76,7 +76,18 @@ try {
     }
 
     try {
-        $tx['status'] = reconcileCustomerStk($pdo, $tx);
+        // Activated payments are a database read, not another router/SMS attempt.
+        // The callback and durable worker own provisioning independently of this page.
+        $activated = false;
+        if ($tx['status'] === 'completed' && (string)($tx['result_code'] ?? '') === '0') {
+            $ready = $pdo->prepare("SELECT 1 FROM payment_activations a JOIN clients c
+                ON c.id=a.client_id AND c.tenant_id=a.tenant_id
+                WHERE a.tenant_id=? AND a.client_id=? AND a.activation_key IN (?,?)
+                  AND a.expiry_date=c.expiry_date LIMIT 1");
+            $ready->execute([(int)$tx['tenant_id'], (int)$tx['client_id'], $checkoutId, $tx['mpesa_receipt_number'] ?? '']);
+            $activated = (bool)$ready->fetchColumn();
+        }
+        if (!$activated) $tx['status'] = reconcileCustomerStk($pdo, $tx);
     } catch (Throwable $e) {
         error_log('Payment activation recovery: ' . $e->getMessage());
         echo json_encode(['status'=>'processing', 'message'=>'We are recovering your payment and connection. Do not pay again.']);
@@ -115,9 +126,16 @@ try {
         // Create auto-login token for customer portal
         $portalToken = null;
         try {
-            $portalToken = bin2hex(random_bytes(16));
-            $pdo->prepare("INSERT INTO payment_auto_logins (client_id, login_token, expires_at, status) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE), 'pending')")
-                ->execute([$resolvedClientId, $portalToken]);
+            $tokenSt = $pdo->prepare("SELECT login_token FROM payment_auto_logins
+                WHERE client_id=? AND status='pending' AND expires_at>DATE_ADD(NOW(),INTERVAL 5 MINUTE)
+                ORDER BY expires_at DESC LIMIT 1");
+            $tokenSt->execute([$resolvedClientId]);
+            $portalToken = $tokenSt->fetchColumn() ?: null;
+            if (!$portalToken) {
+                $portalToken = bin2hex(random_bytes(16));
+                $pdo->prepare("INSERT INTO payment_auto_logins (client_id, login_token, expires_at, status) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE), 'pending')")
+                    ->execute([$resolvedClientId, $portalToken]);
+            }
         } catch (Exception $_e) { $portalToken = null; }
 
         $resolvedTenantId = (int)($client['tenant_id'] ?? $tx['tenant_id'] ?? 0);
@@ -137,13 +155,16 @@ try {
         }
 
         if (!$provisioned && $resolvedTenantId) {
-            // The pipeline may still be running, or the router was briefly
-            // unreachable. autoProvisionClient() is idempotent, so retrying here
-            // is safe and usually completes on the first poll.
+            // Do not hold the status response behind router timeouts or the
+            // callback's customer lock. Keep a durable job if one is missing;
+            // repeated browser polls must not postpone an existing retry.
             try {
-                require_once __DIR__ . '/../../includes/auto_provision.php';
-                $prov = autoProvisionClient($pdo, $resolvedClientId, $resolvedTenantId, 0, false);
-                $provisioned = (bool)($prov['success'] ?? false);
+                $pdo->prepare("INSERT IGNORE INTO pending_provisions
+                    (tenant_id,client_id,package_id,receipt,fail_reason,next_retry_at)
+                    VALUES (?,?,?,?,?,NOW())")->execute([
+                        $resolvedTenantId,$resolvedClientId,$client['package_id'],
+                        ($tx['mpesa_receipt_number'] ?? '') ?: $checkoutId,'Paid portal connection recovery'
+                    ]);
             } catch (Throwable $e) {
                 error_log("hotspot_payment_status provision retry [$resolvedClientId]: " . $e->getMessage());
             }
@@ -154,6 +175,9 @@ try {
                 'status'  => 'processing',
                 'payment_confirmed' => true,
                 'portal_token' => $portalToken,
+                'username' => $client['mikrotik_username'] ?? '',
+                'password' => $client['mikrotik_password'] ?? '',
+                'device_only' => !empty($client['bound_mac_address']),
                 'message' => 'Payment confirmed. Setting up your connection…',
             ]);
             exit;
@@ -174,11 +198,10 @@ try {
         }
 
         if (!empty($client['bound_mac_address'])) {
-            require_once __DIR__ . '/../../includes/auto_provision.php';
-            $tv = $prov ?? autoProvisionClient($pdo, $resolvedClientId, $resolvedTenantId, 0, false);
-            echo json_encode(!empty($tv['device_connected'])
-                ? ['status'=>'completed','device_only'=>true,'portal_token'=>$portalToken,'message'=>'Your TV / device is connected.']
-                : ['status'=>'processing','payment_confirmed'=>true,'portal_token'=>$portalToken,'message'=>'Payment received. Keep the TV connected to this Wi-Fi; we are retrying its connection.']);
+            // A cleared provisioning queue means the worker completed the bound
+            // device handoff. Never log the paying phone into this subscription.
+            echo json_encode(['status'=>'completed','device_only'=>true,'portal_token'=>$portalToken,
+                'message'=>'Your TV / device access is ready. Keep it on this Wi-Fi.']);
             exit;
         }
 

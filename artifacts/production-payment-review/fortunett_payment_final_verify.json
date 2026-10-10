@@ -1,0 +1,55 @@
+{
+    "checked_at": "2026-10-09T07:55:45+03:00",
+    "jobs": {
+        "stk_poll": {
+            "ran": true,
+            "ts": 1791521701,
+            "age": 44,
+            "at": "2026-10-09T07:55:01+03:00",
+            "note": null
+        },
+        "retry_provisions": {
+            "ran": true,
+            "ts": 1791521701,
+            "age": 44,
+            "at": "2026-10-09T07:55:01+03:00",
+            "note": null
+        }
+    },
+    "credential_sms": [
+        {
+            "status": "blocked_config",
+            "records": 6,
+            "max_attempts": 1
+        }
+    ],
+    "paid_provision_backlog": 1,
+    "ledger": [
+        {
+            "status": "completed",
+            "records": 1235,
+            "amount": "18925.00"
+        },
+        {
+            "status": "failed",
+            "records": 397,
+            "amount": "14360.00"
+        },
+        {
+            "status": "pending",
+            "records": 8,
+            "amount": "130.00"
+        }
+    ],
+    "sms_status": {
+        "sender_id": "TALKSASA",
+        "verdict": "sender_rejected",
+        "detail": "The provider rejected sender TALKSASA on 2026-10-09 07:53:01. Token authentication does not verify SMS delivery.",
+        "action": "Set a sender ID approved for this provider account, then verify delivery.",
+        "last_failed_at": "2026-10-09 07:53:01"
+    },
+    "credentials_present": {
+        "current_paid_accounts": 6,
+        "with_credentials": "6"
+    }
+}

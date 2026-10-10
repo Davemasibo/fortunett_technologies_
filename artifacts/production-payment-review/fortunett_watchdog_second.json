@@ -1,0 +1,87 @@
+{
+    "sampled_at": "2026-10-10T07:16:26+03:00",
+    "samples": [
+        {
+            "cpu_percent": 33,
+            "api_read_ms": 598,
+            "script_jobs": 4
+        },
+        {
+            "cpu_percent": 33,
+            "api_read_ms": 664,
+            "script_jobs": 4
+        },
+        {
+            "cpu_percent": 1,
+            "api_read_ms": 637,
+            "script_jobs": 2
+        },
+        {
+            "cpu_percent": 56,
+            "api_read_ms": 603,
+            "script_jobs": 2
+        },
+        {
+            "cpu_percent": 3,
+            "api_read_ms": 636,
+            "script_jobs": 2
+        },
+        {
+            "cpu_percent": 74,
+            "api_read_ms": 640,
+            "script_jobs": 2
+        }
+    ],
+    "profile": [
+        {
+            "name": "total",
+            "usage": "0"
+        },
+        {
+            "name": "total",
+            "usage": "0"
+        },
+        {
+            "name": "networking",
+            "usage": "1"
+        },
+        {
+            "name": "management",
+            "usage": "1"
+        },
+        {
+            "name": "routing",
+            "usage": "0.5"
+        },
+        {
+            "name": "profiling",
+            "usage": "0.5"
+        },
+        {
+            "name": "unclassified",
+            "usage": "0.5"
+        },
+        {
+            "name": "total",
+            "usage": "3.5"
+        }
+    ],
+    "enabled_hotspot_users": 14,
+    "sessions": [
+        {
+            "bytes-in": "639232887",
+            "bytes-out": "3070845444",
+            "uptime": "11h33m5s"
+        },
+        {
+            "bytes-in": "15223005",
+            "bytes-out": "321105882",
+            "uptime": "38m44s"
+        },
+        {
+            "bytes-in": "246355",
+            "bytes-out": "728908",
+            "uptime": "1h11m37s"
+        }
+    ]
+}

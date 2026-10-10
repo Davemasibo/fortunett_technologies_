@@ -1,0 +1,115 @@
+{
+    "sampled_at": "2026-10-10T07:11:02+03:00",
+    "samples": [
+        {
+            "cpu_percent": 17,
+            "api_read_ms": 710,
+            "script_jobs": 2
+        },
+        {
+            "cpu_percent": 32,
+            "api_read_ms": 747,
+            "script_jobs": 3
+        },
+        {
+            "cpu_percent": 4,
+            "api_read_ms": 755,
+            "script_jobs": 3
+        },
+        {
+            "cpu_percent": 6,
+            "api_read_ms": 706,
+            "script_jobs": 2
+        },
+        {
+            "cpu_percent": 2,
+            "api_read_ms": 796,
+            "script_jobs": 5
+        },
+        {
+            "cpu_percent": 7,
+            "api_read_ms": 708,
+            "script_jobs": 3
+        }
+    ],
+    "profile": [
+        {
+            "name": "total",
+            "usage": "0"
+        },
+        {
+            "name": "total",
+            "usage": "0"
+        },
+        {
+            "name": "console",
+            "usage": "28.5"
+        },
+        {
+            "name": "flash",
+            "usage": "0"
+        },
+        {
+            "name": "dns",
+            "usage": "0"
+        },
+        {
+            "name": "firewall",
+            "usage": "1"
+        },
+        {
+            "name": "networking",
+            "usage": "0.5"
+        },
+        {
+            "name": "management",
+            "usage": "27.5"
+        },
+        {
+            "name": "wireless",
+            "usage": "4"
+        },
+        {
+            "name": "hotspot",
+            "usage": "2.5"
+        },
+        {
+            "name": "certificate",
+            "usage": "0"
+        },
+        {
+            "name": "profiling",
+            "usage": "0"
+        },
+        {
+            "name": "queuing",
+            "usage": "0"
+        },
+        {
+            "name": "unclassified",
+            "usage": "0.5"
+        },
+        {
+            "name": "total",
+            "usage": "64.5"
+        }
+    ],
+    "enabled_hotspot_users": 14,
+    "sessions": [
+        {
+            "bytes-in": "639195354",
+            "bytes-out": "3070812462",
+            "uptime": "11h27m42s"
+        },
+        {
+            "bytes-in": "14379444",
+            "bytes-out": "298509623",
+            "uptime": "33m21s"
+        },
+        {
+            "bytes-in": "245013",
+            "bytes-out": "728698",
+            "uptime": "1h6m14s"
+        }
+    ]
+}

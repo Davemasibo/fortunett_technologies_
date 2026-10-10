@@ -1,0 +1,207 @@
+{
+    "checked_at": "2026-10-09T07:52:50+03:00",
+    "automation": {
+        "stk_poll": {
+            "ran": true,
+            "ts": 1791521521,
+            "age": 49,
+            "at": "2026-10-09T07:52:01+03:00",
+            "note": null
+        },
+        "retry_provisions": {
+            "ran": true,
+            "ts": 1791521521,
+            "age": 49,
+            "at": "2026-10-09T07:52:01+03:00",
+            "note": null
+        }
+    },
+    "missing_columns": {
+        "payments": [],
+        "mpesa_transactions": []
+    },
+    "payments_by_state": [
+        {
+            "status": "completed",
+            "records": 1402,
+            "amount": "129642.00"
+        },
+        {
+            "status": "failed",
+            "records": 405,
+            "amount": "20470.00"
+        },
+        {
+            "status": "pending",
+            "records": 8,
+            "amount": "130.00"
+        }
+    ],
+    "completed_with_failed_provider": [
+        {
+            "COUNT(*)": 0
+        }
+    ],
+    "pending_with_confirmed_provider": [
+        {
+            "COUNT(*)": 0
+        }
+    ],
+    "pending_with_failed_provider": [
+        {
+            "COUNT(*)": 0
+        }
+    ],
+    "provisioning_backlog": [
+        {
+            "records": 2,
+            "max_attempts": 2191
+        }
+    ],
+    "sms_states": [
+        {
+            "status": "failed",
+            "records": 34129
+        },
+        {
+            "status": "sent",
+            "records": 266
+        }
+    ],
+    "payment_sms_states": [
+        {
+            "status": "blocked_config",
+            "records": 3,
+            "max_attempts": 1
+        },
+        {
+            "status": "pending",
+            "records": 1,
+            "max_attempts": 0
+        }
+    ],
+    "routers": [
+        {
+            "id": 9,
+            "tenant_id": 1
+        },
+        {
+            "id": 12,
+            "tenant_id": 5
+        },
+        {
+            "id": 15,
+            "tenant_id": 6
+        },
+        {
+            "id": 19,
+            "tenant_id": 9
+        },
+        {
+            "id": 20,
+            "tenant_id": 14
+        },
+        {
+            "id": 21,
+            "tenant_id": 14
+        }
+    ],
+    "sms_configuration": [
+        {
+            "tenant_id": 1,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 10,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 11,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 12,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 13,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 14,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 15,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 16,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 2,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 3,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 4,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 5,
+            "source": "own",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 6,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 7,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 8,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        },
+        {
+            "tenant_id": 9,
+            "source": "platform",
+            "sender_id": "TALKSASA",
+            "verdict": "untested"
+        }
+    ]
+}

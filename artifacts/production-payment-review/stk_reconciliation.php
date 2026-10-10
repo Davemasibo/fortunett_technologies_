@@ -101,18 +101,7 @@ function reconcileCustomerStk(PDO $pdo, array $tx, bool $allowQuery = true): str
     }
     $paymentCheck = $pdo->prepare("SELECT 1 FROM payments WHERE tenant_id=? AND client_id=? AND status='completed' AND transaction_id IN (?,?)");
     $paymentCheck->execute([$tenant,$client,$checkout,$terms['receipt']]);
-    $recorded = (bool)$paymentCheck->fetchColumn();
-    paymentNotificationSchema($pdo);
-    $notice = $pdo->prepare('SELECT 1 FROM payment_notifications n JOIN payments p ON p.id=n.payment_id AND p.tenant_id=n.tenant_id WHERE p.tenant_id=? AND p.client_id=? AND p.transaction_id IN (?,?) LIMIT 1');
-    $notice->execute([$tenant,$client,$checkout,$terms['receipt']]);
-    $missingNotice = !$notice->fetchColumn();
-    // Repair only the current purchased plan: polling older renewals must not
-    // resend obsolete passwords/expiry notices for every historical purchase.
-    $current = $pdo->prepare("SELECT 1 FROM clients c JOIN payment_activations a ON a.client_id=c.id AND a.tenant_id=c.tenant_id
-        WHERE c.id=? AND c.tenant_id=? AND c.status='active' AND c.expiry_date>NOW()
-          AND a.activation_key IN (?,?) AND a.expiry_date=c.expiry_date LIMIT 1");
-    $current->execute([$client,$tenant,$checkout,$terms['receipt']]);
-    if (!$applied || !$recorded || ($missingNotice && $current->fetchColumn())) process_payment_success($pdo, $client, $tenant, $terms['amount'], $terms['receipt'], 'mpesa_stk', null, null, $checkout);
+    if (!$applied || !$paymentCheck->fetchColumn()) process_payment_success($pdo, $client, $tenant, $terms['amount'], $terms['receipt'], 'mpesa_stk', null, null, $checkout);
     else {
         $pdo->prepare("UPDATE payments SET payment_method='mpesa_stk' WHERE tenant_id=? AND client_id=? AND transaction_id IN (?,?)")->execute([$tenant, $client, $checkout, $terms['receipt']]);
     }

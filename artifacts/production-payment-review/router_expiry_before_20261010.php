@@ -94,71 +94,38 @@ function routerUptimeSeconds(string $value): int
     return $seconds;
 }
 
-/** Scan enabled users and live artifacts, rather than rewriting every expired account. */
-function paidExpiryWatchdogScript(): string
+/** Backstop for missed one-shot events, including reboot and clock corrections. */
+function installPaidExpiryWatchdog($api): void
 {
-    $script = ':if ([/system script job print count-only where script="fn-paid-expiry-watchdog"] < 2) do={ ';
-    $script .= routerClockKeyScript();
-    $script .= ':local paidAllowed do={ :local c $1; :local clock $2; :local day $3; :local allowed false; :do { ';
-    $script .= ':local deadline [:tonum [:pick $c 6 20]]; :local issued [:tonum [:pick $c 29 43]]; ';
-    $script .= ':if (([:len $day] = 8) && ([:typeof $clock] = "num") && ([:typeof $deadline] = "num") && ([:typeof $issued] = "num") && ($clock >= $issued) && ($clock < $deadline)) do={ :set allowed true; }; } on-error={}; :return $allowed; }; ';
+    $name = 'fn-paid-expiry-watchdog';
+    $script = routerClockKeyScript();
     foreach (['hotspot', 'pppoe'] as $service) {
         $base = $service === 'hotspot' ? '/ip hotspot user' : '/ppp secret';
         $active = $service === 'hotspot' ? '/ip hotspot active' : '/ppp active';
         $field = $service === 'hotspot' ? 'user' : 'name';
-        $script .= ':foreach id in=[' . $base . ' find where disabled=no] do={ :local c [' . $base . ' get $id comment]; ';
-        $script .= ':if ([:pick $c 0 6] = "FNEXP:") do={ :if (![$paidAllowed $c $clockkey $daykey]) do={ ' . $base . ' disable $id; }; }; }; ';
-        // Disabled users can still have an old live session. Check sessions
-        // independently so filtering disabled accounts never weakens expiry.
-        $script .= ':foreach sid in=[' . $active . ' find] do={ :local u [' . $active . ' get $sid ' . $field . ']; ';
-        $script .= ':foreach id in=[' . $base . ' find where name=$u] do={ :local c [' . $base . ' get $id comment]; ';
-        $script .= ':if ([:pick $c 0 6] = "FNEXP:") do={ :if (![$paidAllowed $c $clockkey $daykey]) do={ ' . $active . ' remove $sid; }; }; }; }; ';
-    }
-    $script .= ':foreach sid in=[/ip hotspot cookie find] do={ :local u [/ip hotspot cookie get $sid user]; ';
-    $script .= ':foreach id in=[/ip hotspot user find where name=$u] do={ :local c [/ip hotspot user get $id comment]; ';
-    $script .= ':if ([:pick $c 0 6] = "FNEXP:") do={ :if (![$paidAllowed $c $clockkey $daykey]) do={ /ip hotspot cookie remove $sid; }; }; }; }; ';
-    $script .= ':foreach sid in=[/ip hotspot ip-binding find where type=bypassed] do={ :local mac [/ip hotspot ip-binding get $sid mac-address]; ';
-    $script .= ':if (([:len [:tostr $mac]] = 17) && ($mac != "00:00:00:00:00:00")) do={ ';
-    $script .= ':foreach id in=[/ip hotspot user find where mac-address=$mac] do={ :local c [/ip hotspot user get $id comment]; ';
-    $script .= ':if ([:pick $c 0 6] = "FNEXP:") do={ :if (![$paidAllowed $c $clockkey $daykey]) do={ /ip hotspot ip-binding remove $sid; }; }; }; }; }; ';
-    return $script . '};';
-}
-
-/** Backstop remains every five seconds; only one named script may run at once. */
-function installPaidExpiryWatchdog($api): void
-{
-    $name = 'fn-paid-expiry-watchdog';
-    $script = paidExpiryWatchdogScript();
-    $scriptId = null;
-    $scriptCurrent = false;
-    foreach (routerCheckedCommand($api, '/system/script/print', ['?name=' . $name]) as $row) {
-        if (($row['name'] ?? '') !== $name) continue;
-        $scriptId = $row['.id'];
-        $scriptCurrent = ($row['source'] ?? '') === $script;
-    }
-    if (!$scriptCurrent) {
-        routerCheckedCommand($api, '/system/script/' . ($scriptId ? 'set' : 'add'), [
-            $scriptId ? '=.id=' . $scriptId : '=name=' . $name,
-            '=source=' . $script, '=policy=read,write,test',
-        ]);
-        $verified = false;
-        foreach (routerCheckedCommand($api, '/system/script/print', ['?name=' . $name]) as $row) {
-            if (($row['name'] ?? '') === $name && ($row['source'] ?? '') === $script) $verified = true;
+        $script .= ':foreach id in=[' . $base . ' find] do={ :local c [' . $base . ' get $id comment]; ';
+        $script .= ':if ([:pick $c 0 6] = "FNEXP:") do={ :local u [' . $base . ' get $id name]; :local allowed false; :do { ';
+        $script .= ':local deadline [:tonum [:pick $c 6 20]]; :local issued [:tonum [:pick $c 29 43]]; ';
+        $script .= ':if (([:len $daykey] = 8) && ($clockkey >= $issued) && ($clockkey < $deadline)) do={ :set allowed true; }; } on-error={}; ';
+        $script .= ':if (!$allowed) do={ ' . $base . ' disable $id; ' . $active . ' remove [' . $active . ' find where ' . $field . '=$u]; ';
+        if ($service === 'hotspot') {
+            $script .= '/ip hotspot cookie remove [/ip hotspot cookie find where user=$u]; ';
+            $script .= ':local mac [/ip hotspot user get $id mac-address]; :if (([:len [:tostr $mac]] = 17) && ($mac != "00:00:00:00:00:00")) do={ /ip hotspot ip-binding remove [/ip hotspot ip-binding find where mac-address=$mac and type=bypassed]; }; ';
         }
-        if (!$verified) throw new RuntimeException('Router expiry script could not be verified');
+        $script .= '}; }; }; ';
     }
-    $event = '/system script run ' . $name;
+    $rows = routerCheckedCommand($api, '/system/scheduler/print', ['?name=' . $name]);
     $id = null;
-    foreach (routerCheckedCommand($api, '/system/scheduler/print', ['?name=' . $name]) as $row) if (($row['name'] ?? '') === $name) {
+    foreach ($rows as $row) if (($row['name'] ?? '') === $name) {
         $id = $row['.id'];
-        if (($row['on-event'] ?? '') === $event && ($row['disabled'] ?? '') === 'false' && routerUptimeSeconds($row['interval'] ?? '0s') === 5) return;
+        if (($row['on-event'] ?? '') === $script && ($row['disabled'] ?? '') === 'false' && routerUptimeSeconds($row['interval'] ?? '0s') === 5) return;
     }
     routerCheckedCommand($api, '/system/scheduler/' . ($id ? 'set' : 'add'), [
         $id ? '=.id=' . $id : '=name=' . $name, '=start-time=startup', '=interval=5s',
-        '=on-event=' . $event, '=policy=read,write,test', '=disabled=no',
+        '=on-event=' . $script, '=policy=read,write,test', '=disabled=no',
     ]);
     foreach (routerCheckedCommand($api, '/system/scheduler/print', ['?name=' . $name]) as $row) {
-        if (($row['on-event'] ?? '') === $event && ($row['disabled'] ?? '') === 'false' && routerUptimeSeconds($row['interval'] ?? '0s') === 5) return;
+        if (($row['on-event'] ?? '') === $script && ($row['disabled'] ?? '') === 'false' && routerUptimeSeconds($row['interval'] ?? '0s') === 5) return;
     }
     throw new RuntimeException('Router expiry watchdog could not be verified');
 }

@@ -1,0 +1,493 @@
+{
+    "checked_at": "2026-10-10T07:13:06+03:00",
+    "customers": [
+        {
+            "phone_ending": "1697",
+            "found": false
+        },
+        {
+            "id": 397,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "account_number": "G024",
+            "package_id": 40,
+            "expiry_date": "2026-10-10 01:05:29",
+            "last_seen": "2026-10-10 01:05:07",
+            "package_name": "8hrs unlimited @25",
+            "price": "25.00",
+            "validity_value": 8,
+            "validity_unit": "hours",
+            "phone_ending": "5446",
+            "has_credentials": true,
+            "entitled_now": false,
+            "payments": [
+                {
+                    "id": 1894,
+                    "amount": "25.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-09 17:05:14",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1860,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-08 22:34:28",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1824,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-08 18:34:22",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1808,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-08 12:10:49",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1796,
+                    "amount": "5.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-08 00:03:28",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1795,
+                    "amount": "5.00",
+                    "status": "failed",
+                    "payment_date": "2026-10-08 00:03:09",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1755,
+                    "amount": "20.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-07 17:49:32",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1728,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-06 23:01:22",
+                    "payment_method": "mpesa_stk"
+                }
+            ],
+            "transactions": [
+                {
+                    "id": 1845,
+                    "amount": "25.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-09 17:05:14",
+                    "updated_at": "2026-10-10 07:12:14"
+                },
+                {
+                    "id": 1811,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-08 22:34:28",
+                    "updated_at": "2026-10-09 22:34:11"
+                },
+                {
+                    "id": 1775,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-08 18:34:22",
+                    "updated_at": "2026-10-09 18:34:12"
+                },
+                {
+                    "id": 1759,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-08 12:10:49",
+                    "updated_at": "2026-10-09 12:10:03"
+                },
+                {
+                    "id": 1747,
+                    "amount": "5.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-08 00:03:28",
+                    "updated_at": "2026-10-09 00:03:09"
+                },
+                {
+                    "id": 1746,
+                    "amount": "5.00",
+                    "status": "failed",
+                    "result_code": 1037,
+                    "result_desc": "DS timeout user cannot be reached.",
+                    "created_at": "2026-10-08 00:03:09",
+                    "updated_at": "2026-10-08 00:03:15"
+                },
+                {
+                    "id": 1706,
+                    "amount": "20.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-07 17:49:32",
+                    "updated_at": "2026-10-08 17:49:18"
+                },
+                {
+                    "id": 1679,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-06 23:01:22",
+                    "updated_at": "2026-10-07 23:01:08"
+                }
+            ],
+            "grants": [
+                {
+                    "package_id": 40,
+                    "periods": 1,
+                    "validity_value": 8,
+                    "validity_unit": "hours",
+                    "expiry_date": "2026-10-10 01:05:29",
+                    "previous_expiry": "2026-10-09 01:34:46",
+                    "created_at": "2026-10-09 17:05:29"
+                },
+                {
+                    "package_id": 36,
+                    "periods": 1,
+                    "validity_value": 3,
+                    "validity_unit": "hours",
+                    "expiry_date": "2026-10-09 01:34:46",
+                    "previous_expiry": "2026-10-08 21:34:33",
+                    "created_at": "2026-10-08 22:34:46"
+                },
+                {
+                    "package_id": 36,
+                    "periods": 1,
+                    "validity_value": 3,
+                    "validity_unit": "hours",
+                    "expiry_date": "2026-10-08 21:34:33",
+                    "previous_expiry": "2026-10-08 15:11:05",
+                    "created_at": "2026-10-08 18:34:33"
+                },
+                {
+                    "package_id": 36,
+                    "periods": 1,
+                    "validity_value": 3,
+                    "validity_unit": "hours",
+                    "expiry_date": "2026-10-08 15:11:05",
+                    "previous_expiry": "2026-10-08 00:33:42",
+                    "created_at": "2026-10-08 12:11:05"
+                },
+                {
+                    "package_id": 39,
+                    "periods": 1,
+                    "validity_value": 30,
+                    "validity_unit": "minutes",
+                    "expiry_date": "2026-10-08 00:33:42",
+                    "previous_expiry": "2026-10-07 23:49:46",
+                    "created_at": "2026-10-08 00:03:42"
+                }
+            ],
+            "provision": [],
+            "device": [
+                {
+                    "updated_at": "2026-10-09 17:05:11"
+                }
+            ],
+            "sms": [
+                {
+                    "status": "blocked_config",
+                    "last_error": "Provider rejected it: Originator TALKSASA is not authorized to send this message",
+                    "attempts": 1
+                }
+            ],
+            "router_user": {
+                "disabled": "true",
+                "profile": "pkg40-8hrsunlimited25",
+                "uptime": "3d15h16m32s",
+                "limit-uptime": "3d15h16m37s",
+                "comment": "FNEXP:20261010010526|FNSTART:20261009170615|Customer-5446"
+            },
+            "sessions": [],
+            "remembered_device_visible": false
+        },
+        {
+            "phone_ending": "5735",
+            "found": false
+        },
+        {
+            "id": 552,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "account_number": "G172",
+            "package_id": 37,
+            "expiry_date": "2026-10-09 21:46:21",
+            "last_seen": "2026-10-09 20:52:29",
+            "package_name": "1 hour unlimited @ 10",
+            "price": "10.00",
+            "validity_value": 1,
+            "validity_unit": "hours",
+            "phone_ending": "2685",
+            "has_credentials": true,
+            "entitled_now": false,
+            "payments": [
+                {
+                    "id": 1913,
+                    "amount": "10.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-09 20:46:05",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1856,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-08 21:53:11",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1711,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-06 20:20:51",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1671,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-05 22:51:10",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1623,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-05 08:34:11",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1570,
+                    "amount": "20.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-04 17:43:04",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1569,
+                    "amount": "25.00",
+                    "status": "failed",
+                    "payment_date": "2026-10-04 17:42:37",
+                    "payment_method": "mpesa_stk"
+                },
+                {
+                    "id": 1490,
+                    "amount": "20.00",
+                    "status": "completed",
+                    "payment_date": "2026-10-03 20:05:29",
+                    "payment_method": "mpesa_stk"
+                }
+            ],
+            "transactions": [
+                {
+                    "id": 1864,
+                    "amount": "10.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-09 20:46:05",
+                    "updated_at": "2026-10-10 07:12:09"
+                },
+                {
+                    "id": 1807,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-08 21:53:11",
+                    "updated_at": "2026-10-09 21:53:39"
+                },
+                {
+                    "id": 1662,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-06 20:20:51",
+                    "updated_at": "2026-10-07 20:20:26"
+                },
+                {
+                    "id": 1622,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-05 22:51:10",
+                    "updated_at": "2026-10-06 22:51:13"
+                },
+                {
+                    "id": 1574,
+                    "amount": "15.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-05 08:34:11",
+                    "updated_at": "2026-10-06 08:34:08"
+                },
+                {
+                    "id": 1521,
+                    "amount": "20.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-04 17:43:04",
+                    "updated_at": "2026-10-05 17:42:13"
+                },
+                {
+                    "id": 1520,
+                    "amount": "25.00",
+                    "status": "failed",
+                    "result_code": 1032,
+                    "result_desc": "Request Cancelled by user.",
+                    "created_at": "2026-10-04 17:42:37",
+                    "updated_at": "2026-10-04 17:42:45"
+                },
+                {
+                    "id": 1441,
+                    "amount": "20.00",
+                    "status": "completed",
+                    "result_code": 0,
+                    "result_desc": "The service request is processed successfully.",
+                    "created_at": "2026-10-03 20:05:29",
+                    "updated_at": "2026-10-04 20:05:20"
+                }
+            ],
+            "grants": [
+                {
+                    "package_id": 37,
+                    "periods": 1,
+                    "validity_value": 1,
+                    "validity_unit": "hours",
+                    "expiry_date": "2026-10-09 21:46:21",
+                    "previous_expiry": "2026-10-09 00:53:27",
+                    "created_at": "2026-10-09 20:46:21"
+                },
+                {
+                    "package_id": 36,
+                    "periods": 1,
+                    "validity_value": 3,
+                    "validity_unit": "hours",
+                    "expiry_date": "2026-10-09 00:53:27",
+                    "previous_expiry": "2026-10-06 23:21:04",
+                    "created_at": "2026-10-08 21:53:27"
+                },
+                {
+                    "package_id": 36,
+                    "periods": 1,
+                    "validity_value": 3,
+                    "validity_unit": "hours",
+                    "expiry_date": "2026-10-06 23:21:04",
+                    "previous_expiry": "2026-10-06 01:51:26",
+                    "created_at": "2026-10-06 20:21:04"
+                },
+                {
+                    "package_id": 36,
+                    "periods": 1,
+                    "validity_value": 3,
+                    "validity_unit": "hours",
+                    "expiry_date": "2026-10-06 01:51:26",
+                    "previous_expiry": "2026-10-05 11:34:22",
+                    "created_at": "2026-10-05 22:51:26"
+                },
+                {
+                    "package_id": 36,
+                    "periods": 1,
+                    "validity_value": 3,
+                    "validity_unit": "hours",
+                    "expiry_date": "2026-10-05 11:34:22",
+                    "previous_expiry": "2026-10-04 23:43:27",
+                    "created_at": "2026-10-05 08:34:22"
+                }
+            ],
+            "provision": [],
+            "device": [
+                {
+                    "updated_at": "2026-10-09 20:58:40"
+                }
+            ],
+            "sms": [
+                {
+                    "status": "blocked_config",
+                    "last_error": "Provider rejected it: Originator TALKSASA is not authorized to send this message",
+                    "attempts": 1
+                }
+            ],
+            "router_user": {
+                "disabled": "true",
+                "profile": "pkg37-1hourunlimited10",
+                "uptime": "16h15m16s",
+                "limit-uptime": "17h9m34s",
+                "comment": "FNEXP:20261009214619|FNSTART:20261009205158|Customer-2685"
+            },
+            "sessions": [],
+            "remembered_device_visible": false
+        },
+        {
+            "id": 681,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "account_number": "G195",
+            "package_id": null,
+            "expiry_date": "2026-10-09 19:14:00",
+            "last_seen": null,
+            "package_name": null,
+            "price": null,
+            "validity_value": null,
+            "validity_unit": null,
+            "phone_ending": "2685",
+            "has_credentials": false,
+            "entitled_now": false,
+            "payments": [],
+            "transactions": [],
+            "grants": [],
+            "provision": [],
+            "device": [],
+            "sms": [],
+            "router_user": null,
+            "sessions": [],
+            "remembered_device_visible": false
+        }
+    ],
+    "near_phone_matches": {
+        "3121697": [],
+        "2695735": []
+    },
+    "provider_transactions": {
+        "3121697": [],
+        "2695735": []
+    },
+    "unmatched_payments": {
+        "3121697": [],
+        "2695735": []
+    },
+    "script_jobs": 5,
+    "watchdog": [
+        {
+            "name": "fn-paid-expiry-watchdog",
+            "interval": "5s",
+            "run-count": "93766",
+            "disabled": "false"
+        }
+    ]
+}

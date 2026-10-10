@@ -19,8 +19,6 @@ require_once __DIR__ . '/../includes/auto_provision.php';
 require_once __DIR__ . '/../includes/cron_heartbeat.php';
 
 cron_heartbeat($pdo, 'retry_provisions');
-require_once __DIR__ . '/../includes/payment_notifications.php';
-retryPaymentNotifications($pdo);
 require_once __DIR__ . '/../includes/dashboard_sync.php';
 dashboardSyncSchema($pdo);
 dashboardProcessSync($pdo, null, 30);

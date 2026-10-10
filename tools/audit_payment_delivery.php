@@ -11,6 +11,7 @@ $checks = [
     'pending_with_failed_provider' => "SELECT COUNT(*) FROM payments p WHERE p.status='pending' AND EXISTS (SELECT 1 FROM mpesa_transactions mt WHERE mt.tenant_id=p.tenant_id AND mt.client_id=p.client_id AND (mt.checkout_request_id=p.checkout_request_id OR mt.checkout_request_id=p.transaction_id) AND mt.status='failed')",
     'provisioning_backlog' => 'SELECT COUNT(*) AS records,MAX(attempts) AS max_attempts FROM pending_provisions',
     'sms_states' => 'SELECT status,COUNT(*) AS records FROM sms_outbox GROUP BY status',
+    'payment_sms_states' => 'SELECT status,COUNT(*) AS records,MAX(attempts) AS max_attempts FROM payment_notifications GROUP BY status',
     'routers' => 'SELECT id,tenant_id FROM mikrotik_routers',
 ];
 $report = ['checked_at'=>date(DATE_ATOM)];

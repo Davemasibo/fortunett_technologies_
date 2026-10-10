@@ -1,0 +1,1696 @@
+{
+    "tenant": {
+        "id": 9,
+        "company_name": "Ghettoh Link Network Solutions",
+        "subdomain": "ghettohlink"
+    },
+    "recent_payments": [
+        {
+            "status": "completed",
+            "records": 133,
+            "oldest": "2026-10-06 07:51:37",
+            "newest": "2026-10-09 07:09:51"
+        },
+        {
+            "status": "failed",
+            "records": 45,
+            "oldest": "2026-10-06 10:50:37",
+            "newest": "2026-10-09 03:14:46"
+        },
+        {
+            "status": "pending",
+            "records": 2,
+            "oldest": "2026-10-07 17:57:49",
+            "newest": "2026-10-07 17:59:44"
+        }
+    ],
+    "recent_paid_clients": [
+        {
+            "id": 435,
+            "status": "active",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-09 10:10:08",
+            "last_seen": "2026-10-09 07:49:08",
+            "package_id": 36,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-09 07:09:51",
+            "payment_count": 15
+        },
+        {
+            "id": 446,
+            "status": "active",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-10 04:12:24",
+            "last_seen": "2026-10-09 07:49:08",
+            "package_id": 33,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-09 04:12:05",
+            "payment_count": 4
+        },
+        {
+            "id": 450,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-09 03:30:25",
+            "last_seen": "2026-10-09 02:58:07",
+            "package_id": 36,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-09 00:30:11",
+            "payment_count": 4
+        },
+        {
+            "id": 449,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-09 00:24:00",
+            "last_seen": "2026-10-08 23:55:43",
+            "package_id": 39,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 23:53:50",
+            "payment_count": 3
+        },
+        {
+            "id": 499,
+            "status": "active",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-09 13:32:18",
+            "last_seen": "2026-10-09 05:59:08",
+            "package_id": 34,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 23:32:00",
+            "payment_count": 2
+        },
+        {
+            "id": 400,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 23:33:17",
+            "last_seen": "2026-10-08 23:32:16",
+            "package_id": 39,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 23:03:02",
+            "payment_count": 3
+        },
+        {
+            "id": 509,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 23:40:39",
+            "last_seen": "2026-10-01 23:12:19",
+            "package_id": 37,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 22:40:31",
+            "payment_count": 1
+        },
+        {
+            "id": 397,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-09 01:34:46",
+            "last_seen": "2026-10-09 01:33:07",
+            "package_id": 36,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 22:34:28",
+            "payment_count": 7
+        },
+        {
+            "id": 508,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 22:58:09",
+            "last_seen": "2026-10-05 21:05:09",
+            "package_id": 37,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 21:57:59",
+            "payment_count": 2
+        },
+        {
+            "id": 552,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-09 00:53:27",
+            "last_seen": "2026-10-06 21:44:48",
+            "package_id": 36,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 21:53:11",
+            "payment_count": 2
+        },
+        {
+            "id": 485,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-09 00:24:51",
+            "last_seen": "2026-10-08 23:25:15",
+            "package_id": 36,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 21:24:33",
+            "payment_count": 1
+        },
+        {
+            "id": 403,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-09 00:20:18",
+            "last_seen": "2026-10-07 13:09:12",
+            "package_id": 36,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 21:19:54",
+            "payment_count": 2
+        },
+        {
+            "id": 160,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 21:38:41",
+            "last_seen": "2026-10-08 21:47:36",
+            "package_id": 39,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 21:08:32",
+            "payment_count": 5
+        },
+        {
+            "id": 176,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-09 03:06:36",
+            "last_seen": "2026-10-09 03:05:08",
+            "package_id": 35,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 21:06:20",
+            "payment_count": 1
+        },
+        {
+            "id": 467,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 22:05:55",
+            "last_seen": "2026-10-08 00:15:13",
+            "package_id": 37,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 21:05:43",
+            "payment_count": 5
+        },
+        {
+            "id": 692,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 23:55:42",
+            "last_seen": "2026-10-08 18:17:14",
+            "package_id": 36,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 20:55:31",
+            "payment_count": 2
+        },
+        {
+            "id": 189,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-09 02:51:41",
+            "last_seen": "2026-10-09 01:45:11",
+            "package_id": 35,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 20:51:25",
+            "payment_count": 3
+        },
+        {
+            "id": 497,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 23:45:34",
+            "last_seen": "2026-10-06 21:56:01",
+            "package_id": 36,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 20:45:23",
+            "payment_count": 3
+        },
+        {
+            "id": 190,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-09 02:26:20",
+            "last_seen": "2026-10-09 02:25:08",
+            "package_id": 35,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 20:26:09",
+            "payment_count": 8
+        },
+        {
+            "id": 395,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 23:13:23",
+            "last_seen": "2026-10-08 23:13:15",
+            "package_id": 36,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 20:13:12",
+            "payment_count": 4
+        },
+        {
+            "id": 441,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 20:49:47",
+            "last_seen": "2026-10-08 20:49:26",
+            "package_id": 37,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 19:49:29",
+            "payment_count": 3
+        },
+        {
+            "id": 524,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 19:48:34",
+            "last_seen": "2026-10-08 19:48:14",
+            "package_id": 39,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 19:18:26",
+            "payment_count": 1
+        },
+        {
+            "id": 693,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 20:08:54",
+            "last_seen": "2026-10-08 19:13:28",
+            "package_id": 37,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 19:08:24",
+            "payment_count": 1
+        },
+        {
+            "id": 495,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 19:04:52",
+            "last_seen": "2026-10-08 18:35:36",
+            "package_id": 39,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 18:34:40",
+            "payment_count": 4
+        },
+        {
+            "id": 389,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-09 00:12:23",
+            "last_seen": "2026-10-09 00:11:08",
+            "package_id": 35,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 18:12:10",
+            "payment_count": 3
+        },
+        {
+            "id": 690,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-09 00:43:10",
+            "last_seen": "2026-10-08 16:43:45",
+            "package_id": 40,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 16:42:59",
+            "payment_count": 1
+        },
+        {
+            "id": 430,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 23:47:50",
+            "last_seen": "2026-10-08 23:47:08",
+            "package_id": 40,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 15:47:32",
+            "payment_count": 2
+        },
+        {
+            "id": 398,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 16:24:34",
+            "last_seen": "2026-10-08 16:23:09",
+            "package_id": 36,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 13:24:22",
+            "payment_count": 5
+        },
+        {
+            "id": 406,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 14:14:21",
+            "last_seen": "2026-10-08 13:54:14",
+            "package_id": 37,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 13:14:08",
+            "payment_count": 1
+        },
+        {
+            "id": 676,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 14:59:38",
+            "last_seen": "2026-10-08 12:07:44",
+            "package_id": 36,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 11:59:22",
+            "payment_count": 5
+        },
+        {
+            "id": 689,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 12:37:05",
+            "last_seen": "2026-10-08 11:37:56",
+            "package_id": 37,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 11:36:54",
+            "payment_count": 1
+        },
+        {
+            "id": 464,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 16:32:50",
+            "last_seen": "2026-10-08 16:30:08",
+            "package_id": 35,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 10:32:40",
+            "payment_count": 2
+        },
+        {
+            "id": 540,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 09:41:20",
+            "last_seen": "2026-10-08 09:39:08",
+            "package_id": 39,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 09:11:06",
+            "payment_count": 4
+        },
+        {
+            "id": 539,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 08:28:13",
+            "last_seen": "2026-10-08 08:28:09",
+            "package_id": 39,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 07:58:00",
+            "payment_count": 1
+        },
+        {
+            "id": 688,
+            "status": "inactive",
+            "connection_type": "hotspot",
+            "expiry_date": "2026-10-08 02:39:37",
+            "last_seen": "2026-10-08 02:38:11",
+            "package_id": 37,
+            "has_username": 1,
+            "has_password": 1,
+            "latest_payment": "2026-10-08 01:39:18",
+            "payment_count": 1
+        }
+    ],
+    "router_config": [
+        {
+            "id": 19,
+            "name": "rb951",
+            "ip_address": "102.210.153.205",
+            "vpn_ip": "10.200.200.19",
+            "api_port": 8728,
+            "status": "inactive"
+        }
+    ],
+    "pending_provisions": [],
+    "sms_states_3d": [
+        {
+            "status": "failed",
+            "records": 583
+        }
+    ],
+    "sms_last_errors": [
+        {
+            "id": 34392,
+            "client_id": 446,
+            "status": "failed",
+            "provider_response": "{\"success\":false,\"sender_failure\":true,\"message\":\"Provider rejected it: Originator TALKSASA is not authorized to send this message\"}"
+        },
+        {
+            "id": 34391,
+            "client_id": 399,
+            "status": "failed",
+            "provider_response": "{\"success\":false,\"sender_failure\":true,\"message\":\"Provider rejected it: Originator TALKSASA is not authorized to send this message\"}"
+        },
+        {
+            "id": 34389,
+            "client_id": 446,
+            "status": "failed",
+            "provider_response": "{\"success\":false,\"sender_failure\":true,\"message\":\"Provider rejected it: Originator TALKSASA is not authorized to send this message\"}"
+        },
+        {
+            "id": 34388,
+            "client_id": 399,
+            "status": "failed",
+            "provider_response": "{\"success\":false,\"sender_failure\":true,\"message\":\"Provider rejected it: Originator TALKSASA is not authorized to send this message\"}"
+        }
+    ],
+    "sms_logs_3d": [
+        {
+            "status": "failed",
+            "records": 132
+        }
+    ],
+    "sms_columns": [
+        {
+            "Field": "id",
+            "Type": "int unsigned",
+            "Null": "NO",
+            "Key": "PRI",
+            "Default": null,
+            "Extra": "auto_increment"
+        },
+        {
+            "Field": "tenant_id",
+            "Type": "int unsigned",
+            "Null": "NO",
+            "Key": "MUL",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "client_id",
+            "Type": "int unsigned",
+            "Null": "YES",
+            "Key": "MUL",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "recipient_phone",
+            "Type": "varchar(20)",
+            "Null": "NO",
+            "Key": "",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "message",
+            "Type": "text",
+            "Null": "NO",
+            "Key": "",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "status",
+            "Type": "varchar(20)",
+            "Null": "YES",
+            "Key": "",
+            "Default": "sent",
+            "Extra": ""
+        },
+        {
+            "Field": "provider_response",
+            "Type": "text",
+            "Null": "YES",
+            "Key": "",
+            "Default": null,
+            "Extra": ""
+        },
+        {
+            "Field": "sent_at",
+            "Type": "timestamp",
+            "Null": "YES",
+            "Key": "",
+            "Default": "CURRENT_TIMESTAMP",
+            "Extra": "DEFAULT_GENERATED"
+        }
+    ],
+    "services": [
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": null,
+            "expiry_policy_version": 0
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-11-02 09:13:04",
+            "expiry_policy_version": 0
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-09-14 23:10:00",
+            "expiry_policy_version": 0
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-09-21 23:10:00",
+            "expiry_policy_version": 2
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-09-28 23:10:00",
+            "expiry_policy_version": 2
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-10-05 23:10:00",
+            "expiry_policy_version": 2
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-10-12 23:10:00",
+            "expiry_policy_version": 2
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-10-19 23:10:00",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-10-26 23:10:00",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-11-02 23:10:00",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-11-09 23:10:00",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-11-16 23:10:00",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-11-23 23:10:00",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-11-30 23:10:00",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-12-07 23:10:00",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-09-14 09:05:00",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-12 02:00:43",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 35,
+            "paid_expiry_at": "2026-09-12 22:44:40",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-12 23:44:40",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 35,
+            "paid_expiry_at": "2026-09-13 12:51:18",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 457,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 42,
+            "paid_expiry_at": "2026-10-12 00:00:00",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 457,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 42,
+            "paid_expiry_at": "2026-11-12 00:00:00",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 457,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 42,
+            "paid_expiry_at": "2026-10-13 16:07:00",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 35,
+            "paid_expiry_at": "2026-09-13 23:13:58",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 35,
+            "paid_expiry_at": "2026-09-14 12:49:04",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-09-21 11:46:33",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-14 21:40:14",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-15 07:48:39",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-15 10:48:50",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-15 13:44:24",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-15 17:20:52",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 36,
+            "paid_expiry_at": "2026-09-15 20:28:18",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 33,
+            "paid_expiry_at": "2026-09-18 09:23:16",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 36,
+            "paid_expiry_at": "2026-09-18 22:38:10",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-19 06:15:50",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-19 07:18:02",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 36,
+            "paid_expiry_at": "2026-09-19 23:26:26",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-20 07:19:17",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 33,
+            "paid_expiry_at": "2026-09-21 10:40:32",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 488,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-09-27 16:44:34",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "suspended",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-21 11:10:32",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-21 03:52:32",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-09-21 16:22:00",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-21 20:29:51",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 35,
+            "paid_expiry_at": "2026-09-22 12:40:03",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-09-29 17:46:31",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-09-22 23:07:04",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-09-23 05:36:52",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-23 11:04:21",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-23 12:07:55",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 513,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 33,
+            "paid_expiry_at": "2026-09-24 13:00:47",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-23 20:27:28",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-24 09:08:30",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 35,
+            "paid_expiry_at": "2026-09-24 17:38:39",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-24 18:08:39",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-09-24 22:53:47",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-09-25 01:53:47",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 513,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 35,
+            "paid_expiry_at": "2026-09-25 16:50:40",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 513,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 40,
+            "paid_expiry_at": "2026-09-26 18:02:55",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-26 15:49:50",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-09-26 18:57:57",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 513,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 40,
+            "paid_expiry_at": "2026-09-27 18:24:30",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-27 12:53:26",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-27 13:57:58",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-27 15:04:49",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-27 16:33:08",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-27 17:06:05",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-09-27 23:04:51",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-28 04:16:56",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 488,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-10-05 06:47:47",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-28 07:52:30",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-28 08:56:22",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 513,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 40,
+            "paid_expiry_at": "2026-09-28 16:42:58",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-28 09:29:56",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 34,
+            "paid_expiry_at": "2026-09-28 23:03:23",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-28 10:05:51",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-28 15:59:05",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 34,
+            "paid_expiry_at": "2026-09-29 20:36:27",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-09-29 14:01:04",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-09-29 17:05:40",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-29 21:09:25",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-09-29 23:39:51",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 35,
+            "paid_expiry_at": "2026-09-30 10:02:23",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-30 06:22:44",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 35,
+            "paid_expiry_at": "2026-09-30 13:21:41",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 513,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-10-07 07:30:42",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-09-30 13:10:53",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 33,
+            "paid_expiry_at": "2026-10-01 14:03:51",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-09-30 19:55:37",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 33,
+            "paid_expiry_at": "2026-10-02 14:07:56",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-10-01 15:45:48",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-10-01 19:40:09",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-10-01 20:36:18",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-10-01 22:26:04",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 35,
+            "paid_expiry_at": "2026-10-02 11:02:28",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-10-02 16:12:42",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-10-02 20:21:11",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-10-03 00:33:14",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-10-03 08:59:42",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 33,
+            "paid_expiry_at": "2026-10-04 08:42:28",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 399,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-10-10 19:16:58",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-10-03 23:22:36",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-10-04 08:24:58",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 33,
+            "paid_expiry_at": "2026-10-05 10:46:45",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-10-04 14:44:27",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-10-04 17:44:27",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-10-04 20:44:27",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-10-04 23:44:27",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 35,
+            "paid_expiry_at": "2026-10-05 08:41:45",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-10-05 10:44:58",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-10-05 10:56:05",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 33,
+            "paid_expiry_at": "2026-10-06 10:49:10",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 488,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-10-12 21:32:39",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 35,
+            "paid_expiry_at": "2026-10-06 06:42:28",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-10-06 07:49:18",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-10-06 10:51:54",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 31,
+            "paid_expiry_at": "2026-10-10 10:58:53",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-10-06 13:41:50",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-10-06 14:44:44",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-10-06 23:15:07",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-10-06 21:11:10",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 513,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 30,
+            "paid_expiry_at": "2026-10-14 07:25:06",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-10-07 09:37:48",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-10-07 10:16:21",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-10-07 21:15:43",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-10-08 02:35:21",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-10-08 08:56:31",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-10-08 18:54:52",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-10-08 20:22:17",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 37,
+            "paid_expiry_at": "2026-10-08 21:24:05",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-10-08 20:57:57",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 35,
+            "paid_expiry_at": "2026-10-09 02:55:07",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 499,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 34,
+            "paid_expiry_at": "2026-10-09 13:32:18",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-10-09 04:11:32",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 446,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 33,
+            "paid_expiry_at": "2026-10-10 04:12:24",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 39,
+            "paid_expiry_at": "2026-10-09 07:05:11",
+            "expiry_policy_version": 3
+        },
+        {
+            "client_id": 435,
+            "router_id": 19,
+            "status": "active",
+            "package_id": 36,
+            "paid_expiry_at": "2026-10-09 10:10:08",
+            "expiry_policy_version": 3
+        }
+    ],
+    "active_without_router_user_payment_evidence": [
+        {
+            "id": 457,
+            "connection_type": "pppoe",
+            "package_id": 42,
+            "status": "active",
+            "expiry_date": "2026-10-13 16:07:00",
+            "completed_payments": 1,
+            "last_paid": "2026-09-13 15:46:31"
+        },
+        {
+            "id": 681,
+            "connection_type": "hotspot",
+            "package_id": null,
+            "status": "active",
+            "expiry_date": "2026-10-09 19:14:00",
+            "completed_payments": 0,
+            "last_paid": null
+        }
+    ],
+    "sms_probe": {
+        "source": "platform",
+        "sender_id": "TALKSASA",
+        "verdict": "ok",
+        "detail": "The provider accepted this token.",
+        "action": "",
+        "probe": {
+            "ok": true,
+            "reachable": true,
+            "http": 200,
+            "message": "accepted",
+            "error": ""
+        }
+    }
+}
