@@ -1,5 +1,18 @@
 <?php
 require_once __DIR__.'/../includes/hotspot_sync.php';
+class PortalVersionRouterDouble {
+    public array $files=[['!re'=>true,'.id'=>'*3','name'=>'fortunett-portal.ver']];
+    public function comm($path,$params=[]):array {
+        if($path==='/file/print')return $this->files;
+        if($path==='/file/get')return [['!done'=>true,'ret'=>"b06ffe245681\n"]];
+        throw new RuntimeException('Unexpected version command');
+    }
+}
+$versionRouter=new PortalVersionRouterDouble();
+if(readHotspotPortalVersion($versionRouter)!=='b06ffe245681')throw new RuntimeException('Version contents omitted from print were not read');
+$versionRouter->files=[];
+if(readHotspotPortalVersion($versionRouter)!==null)throw new RuntimeException('Missing marker claimed current');
+echo "PASS: explicit build read handles omitted contents and absent markers\n";
 class CatalogRouterDouble {
     public bool $ignore=false;public array $files=['*1'=>'old','*2'=>'older'];
     public function comm($path,$params=[]): array {

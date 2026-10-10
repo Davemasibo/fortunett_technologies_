@@ -51,7 +51,7 @@ function out(string $msg): void
 
 $sql    = "SELECT r.*, t.id AS t_id FROM mikrotik_routers r
            JOIN tenants t ON t.id = r.tenant_id
-           WHERE r.status IN ('active','online')";
+           WHERE r.status IN ('active','online','inactive','offline')";
 $params = [];
 if ($onlyTenant) { $sql .= " AND r.tenant_id = ?"; $params[] = $onlyTenant; }
 if ($onlyRouter) { $sql .= " AND r.id = ?";        $params[] = $onlyRouter; }
@@ -111,19 +111,28 @@ foreach ($routers as $router) {
         $api = new MikrotikAPI($connectIp, $router['username'], $router['password'], $apiPort);
         $api->connect();
 
+        $hotspots = routerCheckedCommand($api, '/ip/hotspot/print');
+        $hasHotspot = false;
+        foreach ($hotspots as $hotspot) if (isset($hotspot['.id']) && ($hotspot['disabled'] ?? 'false') !== 'true') $hasHotspot = true;
+        if (!$hasHotspot) {
+            out("  SKIP  $label — no enabled hotspot service");
+            $stats['skipped']++;
+            $api->disconnect();
+            continue;
+        }
+
         // Always (re)install the scheduler — cheap, and it upgrades routers that
         // hold an older version of the script body. Skipped on --check, which
         // must not change a single thing on the router.
         $sched = $checkOnly
             ? ['installed' => true, 'message' => '']
             : installHotspotSyncScheduler($api, $urls['page'], $urls['version']);
+        if (!$sched['installed']) throw new RuntimeException('Portal sync scheduler could not be installed');
 
         // Does the router already hold this build?
         $onRouter = null;
         try {
-            foreach ($api->comm('/file/print', ['?name=fortunett-portal.ver']) as $f) {
-                if (isset($f['contents'])) { $onRouter = trim($f['contents']); break; }
-            }
+            $onRouter = readHotspotPortalVersion($api);
         } catch (Throwable $_e) {}
 
         if ($checkOnly) {
@@ -170,10 +179,13 @@ foreach ($routers as $router) {
         if (!$scriptId) {
             throw new RuntimeException('sync script missing after install');
         }
-        routerCheckedCommand($api, '/system/script/run', ['=.id=' . $scriptId]);
+        routerCheckedCommand($api, '/system/script/run', ['=number=' . $scriptId]);
+        if ($currentVersion === null || readHotspotPortalVersion($api) !== $currentVersion) {
+            throw new RuntimeException('Portal download did not reach the published build');
+        }
         try { $api->disconnect(); } catch (Throwable $_e) {}
 
-        out("  PUSH  $label — sync triggered (was: " . ($onRouter ?: 'unknown') . ", now: " . ($currentVersion ?: '?') . ')');
+        out("  PUSH  $label — build verified (was: " . ($onRouter ?: 'unknown') . ", now: " . ($currentVersion ?: '?') . ')');
         $stats['ok']++;
 
     } catch (Throwable $e) {
@@ -190,13 +202,23 @@ foreach ($routers as $router) {
         // the walled garden if the router drifted.
         try {
             _uploadHotspotLoginPage($pdo, $router, $tenantId);
-            out("        recovered via direct upload");
+            $verifyApi = new MikrotikAPI($connectIp, $router['username'], $router['password'], $apiPort);
+            try {
+                $verifyApi->connect();
+                $tenantSt = $pdo->prepare('SELECT * FROM tenants WHERE id=?');
+                $tenantSt->execute([$tenantId]);
+                $tenantRow = $tenantSt->fetch(PDO::FETCH_ASSOC);
+                if (!$tenantRow || !syncHotspotCatalogPage($verifyApi, renderHotspotLoginPage($pdo, $tenantRow), $urls['page'])) {
+                    throw new RuntimeException('Portal fallback could not be verified');
+                }
+            } finally { $verifyApi->disconnect(); }
+            out("        recovered via verified direct upload");
             $stats['failed']--;
             $stats['ok']++;
         } catch (Throwable $e2) {
             out("        direct upload also failed: " . $e2->getMessage());
         }
-    }
+    } finally { if (isset($api)) { try { $api->disconnect(); } catch (Throwable $_e) {} } }
 }
 
 out($checkOnly

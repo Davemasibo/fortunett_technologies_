@@ -19,6 +19,20 @@
 const HOTSPOT_SYNC_NAME = 'FortuNett-Portal-Sync';
 require_once __DIR__ . '/router_expiry.php';
 
+/** RouterOS file listings may omit contents; explicitly read the build marker. */
+function readHotspotPortalVersion($api): ?string
+{
+    foreach (routerCheckedCommand($api, '/file/print', ['?name=fortunett-portal.ver']) as $file) {
+        if (($file['name'] ?? '') !== 'fortunett-portal.ver') continue;
+        if (isset($file['contents'])) return trim($file['contents']);
+        if (!isset($file['.id'])) continue;
+        foreach (routerCheckedCommand($api, '/file/get', ['=number=' . $file['.id'], '=value-name=contents']) as $row) {
+            if (isset($row['ret'])) return trim($row['ret']);
+        }
+    }
+    return null;
+}
+
 /**
  * Resolve the portal URLs for a tenant.
  * Returns null when the tenant has no provisioning token (nothing to sync with).
