@@ -1,4 +1,5 @@
 let wanRouterId=0,wanViewVersion=0,wanReturnFocus=null,wanPreviousOverflow='';
+let wanProfileCredential={hasPassword:false,username:''},wanProfileTimer=null;
 const wanCsrf=document.querySelector('meta[name="wan-csrf"]').content;
 const wanElement=id=>document.getElementById(id);
 function wanProgress(step) {
@@ -13,7 +14,10 @@ function wanFields(prefix) {
     wanElement(prefix+'Pppoe').hidden=mode!=='pppoe';
     document.querySelectorAll(`input[name="${prefix}Connection"]`).forEach(radio=>radio.checked=radio.value===mode);
     for (const suffix of ['Address','Gateway']) wanElement(prefix+suffix).required=mode==='static';
-    for (const suffix of ['Username','Password']) wanElement(prefix+suffix).required=mode==='pppoe';
+    wanElement(prefix+'Username').required=mode==='pppoe';
+    const saved=prefix==='editWan' && wanProfileCredential.hasPassword && wanElement(prefix+'Username').value===wanProfileCredential.username;
+    wanElement(prefix+'Password').required=mode==='pppoe' && !saved;
+    wanElement(prefix+'Password').placeholder=saved?'Saved securely — leave blank to keep':'Password from your provider';
     wanElement(prefix+'Dns').required=mode==='static';
     wanElement(prefix+'DnsRequired').textContent=mode==='static'?'Required':'Optional';
     wanElement(prefix+'Dns').placeholder=mode==='static'?'For example, 1.1.1.1,8.8.8.8':'Automatic from your provider';
@@ -50,13 +54,15 @@ function wanError(output,error,title='Could not prepare your setup file') {
     else if (message==='Failed to fetch') message='We could not reach the billing server. Check your connection and try again.';
     wanStatus(output,title,message,'error');wanRevealOutput(output);
 }
-function wanValidate(prefix) {
+function wanValidate(prefix,requireLan=true) {
+    wanElement(prefix+'Lan').required=requireLan;
     const fields=document.querySelectorAll(`[data-prefix="${prefix}"] input:not([type="hidden"]):not([type="radio"])`);
     for (const input of fields) input.removeAttribute('aria-invalid');
     for (const input of fields) {
         if (!input.checkValidity() || (input.required && !input.value.trim())) {
             input.setAttribute('aria-invalid','true');
             if (wanElement(prefix+'Advanced').contains(input)) wanElement(prefix+'Advanced').open=true;
+            if(prefix==='editWan' && wanElement('editWanInstaller').contains(input))wanElement('editWanInstaller').open=true;
             input.focus();input.reportValidity();
             const label=document.querySelector(`label[for="${input.id}"]`);
             throw new Error('Please complete '+(label?.childNodes[0]?.textContent.trim() || 'the highlighted field')+'.');
@@ -68,7 +74,7 @@ function wanValidate(prefix) {
 }
 function wanBusy(prefix,busy,button) {
     button.disabled=busy;
-    if (prefix==='editWan') for (const id of ['editWanPrepare','editWanVerify']) wanElement(id).disabled=busy;
+    if (prefix==='editWan') for (const id of ['editWanPrepare','editWanVerify','editWanOfflinePrepare']) wanElement(id).disabled=busy;
 }
 function wanInstallResult(output,script,recovery=false) {
     const filename=recovery?'fortunett-wan.rsc':'fortunett-setup.rsc';
@@ -112,6 +118,7 @@ async function prepareWan(prefix,button) {
     } finally {if(active())wanBusy(prefix,false,button);}
 }
 function closeWanSetup() {
+    clearTimeout(wanProfileTimer);
     wanViewVersion++;wanElement('wanSetupModal').style.display='none';
     wanElement('editWanPassword').value='';document.body.style.overflow=wanPreviousOverflow;
     wanReturnFocus?.focus();
@@ -130,6 +137,7 @@ async function wanLoadBridges(routerId,version) {
     }
 }
 async function openWanSetup(routerId) {
+    clearTimeout(wanProfileTimer);wanProfileCredential={hasPassword:false,username:''};
     wanRouterId=routerId;const version=++wanViewVersion;
     const modal=wanElement('wanSetupModal'),output=wanElement('editWanOutput');
     if(modal.style.display!=='flex') {wanReturnFocus=document.activeElement;wanPreviousOverflow=document.body.style.overflow;}
@@ -141,25 +149,72 @@ async function openWanSetup(routerId) {
     const defaults={Interface:'ether1',Mode:'dhcp',Vlan:'',Address:'',Gateway:'',Dns:'',Username:'',Password:'',Lan:''};
     for (const [suffix,value] of Object.entries(defaults)) {wanElement('editWan'+suffix).value=value;wanElement('editWan'+suffix).removeAttribute('aria-invalid');}
     wanElement('editWanAdvanced').open=false;wanElement('editWanBridges').replaceChildren();wanFields('editWan');
+    wanElement('editWanInstaller').open=false;wanElement('editWanLan').required=false;
     wanBusy('editWan',true,wanElement('editWanPrepare'));
     modal.querySelector('input[type="radio"]')?.focus();
     try {
-        const response=await fetch('api/routers/wan_setup.php?router_id='+encodeURIComponent(routerId));const data=await response.json();
+        const response=await fetch('api/routers/wan_profile.php?router_id='+encodeURIComponent(routerId));const data=await response.json();
         if(version!==wanViewVersion)return;
         if (!response.ok) throw Object.assign(new Error(data.message),{code:data.code});
         wanElement('wanDeviceName').textContent=data.router_name || '';
-        if (data.config) {
-            for (const [key,suffix] of Object.entries({base:'Interface',mode:'Mode',vlan:'Vlan',address:'Address',gateway:'Gateway',dns:'Dns',username:'Username',lan:'Lan'})) wanElement('editWan'+suffix).value=data.config[key] ?? '';
-            if(data.config.base!=='ether1' || data.config.vlan || data.config.dns)wanElement('editWanAdvanced').open=true;
+        if (data.profile?.config) {
+            const cfg=data.profile.config;
+            for (const [key,suffix] of Object.entries({base:'Interface',mode:'Mode',vlan:'Vlan',address:'Address',gateway:'Gateway',dns:'Dns',username:'Username',lan:'Lan'})) wanElement('editWan'+suffix).value=cfg[key] ?? '';
+            wanProfileCredential={hasPassword:data.profile.has_password,username:cfg.username || ''};
+            if(cfg.base!=='ether1' || cfg.vlan || cfg.dns)wanElement('editWanAdvanced').open=true;
             wanFields('editWan');
         }
         output.replaceChildren();wanBusy('editWan',false,wanElement('editWanPrepare'));
+        if(data.profile){showWanProfile(data.profile);pollWanProfile(data.profile,version);}
         wanLoadBridges(routerId,version);
     } catch(error) {
         if(version!==wanViewVersion)return;
         wanError(output,error,'Setup is temporarily unavailable');
         const retry=wanNode('button','wan-button','Try again');retry.type='button';retry.onclick=()=>openWanSetup(routerId);output.firstElementChild.append(retry);
     }
+}
+function showWanProfile(profile) {
+    const titles={pending:'ISP login saved — waiting for your device',applying:'Applying your ISP settings',verifying:'Waiting for the ISP connection',connected:'Your device is connected',needs_attention:'Connection needs attention'};
+    wanStatus(wanElement('editWanCheckOutput'),titles[profile.state] || 'ISP connection saved',profile.message,profile.state==='connected'?'success':profile.state==='needs_attention'?'error':'');
+    wanProgress(profile.state==='connected'?3:2);
+}
+function pollWanProfile(profile,version) {
+    clearTimeout(wanProfileTimer);
+    if(!['pending','applying','verifying'].includes(profile.state))return;
+    wanProfileTimer=setTimeout(async()=>{
+        if(version!==wanViewVersion)return;
+        const body=new FormData();body.append('csrf',wanCsrf);body.append('router_id',wanRouterId);body.append('action','connect');
+        try {
+            const response=await fetch('api/routers/wan_profile.php',{method:'POST',body});const data=await response.json();
+            if(version!==wanViewVersion)return;
+            if(response.ok && data.profile){showWanProfile(data.profile);pollWanProfile(data.profile,version);}
+        } catch(error){if(version===wanViewVersion)pollWanProfile(profile,version);}
+    },10000);
+}
+async function saveWanProfile(button) {
+    const version=wanViewVersion,output=wanElement('editWanOutput');
+    try {
+        wanFields('editWan');wanValidate('editWan',false);wanBusy('editWan',true,button);
+        wanStatus(output,'Saving ISP connection','Protecting your credentials and checking existing management access.');
+        const body=wanPayload('editWan');body.set('action','save');
+        const response=await fetch('api/routers/wan_profile.php',{method:'POST',body});const data=await response.json();
+        if(version!==wanViewVersion)return;
+        if(!response.ok || data.status!=='success')throw new Error(data.message || 'Could not save the ISP login.');
+        wanElement('editWanPassword').value='';wanProfileCredential={hasPassword:data.profile.has_password,username:data.profile.config.username || ''};wanFields('editWan');
+        output.replaceChildren();showWanProfile(data.profile);pollWanProfile(data.profile,version);wanRevealOutput(wanElement('editWanCheckOutput'));
+    } catch(error){if(version===wanViewVersion)wanError(output,error,'Could not save ISP connection');}
+    finally {if(version===wanViewVersion)wanBusy('editWan',false,button);}
+}
+async function checkWanProfile(button) {
+    const version=wanViewVersion;wanBusy('editWan',true,button);
+    try {
+        const body=new FormData();body.append('csrf',wanCsrf);body.append('router_id',wanRouterId);body.append('action','connect');
+        const response=await fetch('api/routers/wan_profile.php',{method:'POST',body});const data=await response.json();
+        if(version!==wanViewVersion)return;
+        if(!response.ok)throw new Error(data.message);
+        showWanProfile(data.profile);pollWanProfile(data.profile,version);wanRevealOutput(wanElement('editWanCheckOutput'));
+    } catch(error){if(version===wanViewVersion)wanError(wanElement('editWanCheckOutput'),error,'Could not check ISP connection');}
+    finally {if(version===wanViewVersion)wanBusy('editWan',false,button);}
 }
 async function verifyWan(button) {
     const output=wanElement('editWanCheckOutput'),version=wanViewVersion;wanBusy('editWan',true,button);
@@ -200,3 +255,4 @@ document.addEventListener('keydown',event=>{
     }
 });
 for(const prefix of ['editWan','wizardWan'])wanElement(prefix+'Interface')?.addEventListener('input',()=>wanFields(prefix));
+wanElement('editWanUsername')?.addEventListener('input',()=>wanFields('editWan'));

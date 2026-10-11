@@ -9,7 +9,7 @@ function ensureRouterWanStorage(PDO $pdo): void {
     }
 }
 
-function routerWanInput(array $input): array {
+function routerWanInput(array $input,bool $requireLan=true): array {
     $name = function(string $key, string $default = '') use ($input): string {
         $value=trim((string)($input[$key] ?? $default));
         if (!preg_match('/^[A-Za-z0-9_. -]{1,64}$/D',$value)) throw new InvalidArgumentException('Invalid '.$key.'. Use letters, numbers, spaces, dots, underscores or hyphens.');
@@ -18,7 +18,8 @@ function routerWanInput(array $input): array {
     $mode=(string)($input['wan_mode'] ?? 'dhcp');
     if (!in_array($mode,['dhcp','static','pppoe'],true)) throw new InvalidArgumentException('Choose DHCP, static IP or PPPoE.');
     $base=$name('wan_interface','ether1');
-    $lan=$name('lan_bridge');
+    $lan=trim((string)($input['lan_bridge'] ?? ''));
+    if ($requireLan || $lan!=='') $lan=$name('lan_bridge');
     $vlan=trim((string)($input['vlan_id'] ?? ''));
     if ($vlan!=='' && (!ctype_digit($vlan) || (int)$vlan<1 || (int)$vlan>4094)) throw new InvalidArgumentException('VLAN ID must be between 1 and 4094.');
     $link=$vlan!=='' ? 'fortunett-wan-vlan' : $base;
@@ -55,6 +56,14 @@ function loadRouterWan(PDO $pdo,int $tenantId,int $routerId): ?array {
 /** Validate topology before any service or WAN mutation. Never detach bridge ports. */
 function routerWanTopologyGuard(array $c): string {
     $q='routerServiceString';
+    if (($c['lan'] ?? '')==='') {
+        $guard=':local wb '.$q($c['base']).'; :if ([:len [/interface find where name=$wb disabled=no]]=0) do={:error "WAN uplink missing or disabled"}; :if ([:len [/interface bridge port find where interface=$wb disabled=no]]>0) do={:error "Uplink is a bridge port. Select a dedicated WAN bridge or separate the WAN port first"}; ';
+        foreach (array_unique([$c['base'],$c['link'],$c['wan']]) as $interface) {
+            $guard.=':if ([:len [/interface bridge port find where interface='.$q($interface).' disabled=no]]>0) do={:error "WAN link belongs to a bridge"}; ';
+            foreach (['/ip hotspot','/ip dhcp-server','/interface pppoe-server server'] as $path) $guard.=':if ([:len ['.$path.' find where interface='.$q($interface).' disabled=no]]>0) do={:error "Selected uplink serves customers. Choose a separate WAN uplink"}; ';
+        }
+        return $guard;
+    }
     return ':local wb '.$q($c['base']).'; :local wl '.$q($c['lan']).'; '
         .':if ([:len [/interface find where name=$wb disabled=no]]=0) do={:error "WAN uplink interface missing or disabled"}; '
         .':if ([:len [/interface bridge find where name=$wl disabled=no]]=0) do={:error "Create or select an enabled customer LAN bridge first"}; '
@@ -91,7 +100,7 @@ function routerWanProbeSource(array $c,string $billingUrl,string $resultName='')
     return '{ '.implode('; ',$parts).'; }';
 }
 
-function routerWanSetupScript(array $c,string $password,string $billingUrl): string {
+function routerWanSetupScript(array $c,string $password,string $billingUrl,bool $remote=false): string {
     $q='routerServiceString';
     $parts=[routerDeviceModeGuard(),routerWanTopologyGuard($c)];
     // Reserved interfaces can only be reused if created by this installer.
@@ -127,10 +136,13 @@ function routerWanSetupScript(array $c,string $password,string $billingUrl): str
         }
     }
     $parts[]='/ip dns set servers='.$q($c['dns']);
+    $parts[]=':if ([:len [/ip firewall nat find where comment="Fortunett-WAN-NAT"]]>0) do={/ip firewall nat set [find where comment="Fortunett-WAN-NAT"] chain=srcnat action=masquerade out-interface='.$q($c['wan']).' disabled=no} else={:if ([:len [/ip firewall nat find where chain=srcnat action=masquerade out-interface='.$q($c['wan']).' disabled=no]]=0) do={/ip firewall nat add chain=srcnat action=masquerade out-interface='.$q($c['wan']).' comment="Fortunett-WAN-NAT"}}';
     $parts[]=':if ([:len [/interface list find where name="WAN"]]>0) do={:if ([:len [/interface list member find where list="WAN" interface='.$q($c['wan']).']]=0) do={/interface list member add list="WAN" interface='.$q($c['wan']).' comment="Fortunett-WAN"}}';
-    $parts[]=':delay 15s';
-    $parts[]=routerWanProbeSource($c,$billingUrl);
-    $parts[]=':put "WAN connectivity verified. Continue with management and customer services."';
+    if (!$remote) {
+        $parts[]=':delay 15s';
+        $parts[]=routerWanProbeSource($c,$billingUrl);
+        $parts[]=':put "WAN connectivity verified. Continue with management and customer services."';
+    }
     return "# Fortunett WAN installer. Import through a customer LAN port.\n# Existing bridge membership is preserved. PPPoE credentials may be included.\n{ ".implode('; ',array_map(fn($p)=>rtrim($p,"; "),$parts))."; }\n";
 }
 

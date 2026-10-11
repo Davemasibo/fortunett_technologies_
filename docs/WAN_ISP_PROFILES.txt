@@ -1,0 +1,52 @@
+ISP connection profiles
+
+The existing router card's WAN setup action saves ISP PPPoE credentials without
+requiring a customer LAN bridge. Save ISP login and connect stores a desired WAN
+profile, then applies it through an existing private API/VPN management channel.
+It does not configure a device that has no reachable management connection.
+The offline installer remains a separate optional action.
+
+Deployment
+- Deploy the PHP, JavaScript, CSS and SQL changes together. Clear old cached JS.
+- router_wan_profiles is created on first use when database permissions allow.
+  Otherwise apply sql/migrations/2026-10-11-router-wan-profiles.sql as an admin.
+- Ensure PHP OpenSSL is enabled.
+- Configure WAN_SECRET_DIR in .env to a persistent directory outside the web
+  root, writable by both the PHP application and the cron worker's user.
+  Alternatively configure WAN_CREDENTIAL_KEY as a base64-encoded random 32-byte
+  key. Keep the same key across web processes, workers, replicas and deployments.
+  Back up that key securely; replacing or losing it prevents saved credentials
+  from being decrypted. Never commit it to source control.
+- If no explicit key/directory is configured, a private key file is generated
+  outside common web roots. Lack of write permissions produces an admin-facing
+  configuration error; there is no plaintext storage fallback.
+- Existing CLI cron/check_router_status.php executions also process pending
+  WAN profiles. Alternatively schedule php cron/apply_wan_profiles.php every
+  minute. Opening WAN setup retries pending work while the dialog remains open.
+  Never execute these workers as public HTTP endpoints.
+
+Behavior
+- pending: settings saved, waiting for an existing management connection.
+- applying: a worker has claimed the desired revision.
+- verifying: settings dispatched; waiting for recovery and live router checks.
+- connected: completion marker and Internet checks passed for that revision.
+- needs_attention: conflict, explicit rejection, or connectivity checks failed.
+  Check connection verifies the previously sent settings; saving updated details
+  creates a new revision. Configuration is not blindly replayed after a drop.
+
+Only Fortunett-managed WAN objects are changed. The selected uplink must not
+already serve customer DHCP, hotspot or PPPoE servers. A tagged WAN masquerade
+rule and WAN interface-list membership follow the logical WAN. Existing managed
+heartbeats are updated to read the logical interface. Customer bridge selection
+remains a separate requirement when adding customer services.
+
+Homelink
+Select Provider login, enter the ISP PPPoE username and password that worked on
+the Tenda, and keep ether1 unless the actual RB760 topology requires a dedicated
+WAN bridge. Enter a VLAN only if the ISP requires it. The same ISP account may
+need to be disconnected on the Tenda before the provider accepts the RB760.
+Do not assume the ONT's management IP is the ISP's static gateway.
+
+Testing
+The profile processor was tested with simulated RouterOS responses and a real
+local database. A live RB760/ONT test is still required before production rollout.

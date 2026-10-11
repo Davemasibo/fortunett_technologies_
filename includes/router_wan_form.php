@@ -17,14 +17,16 @@ function renderRouterWanForm(string $prefix): void { ?>
   </div>
   <div id="<?= $prefix ?>Pppoe" class="wan-input-grid" hidden>
    <div class="wan-field"><label for="<?= $prefix ?>Username">Provider username <span>Required</span></label><input type="text" id="<?= $prefix ?>Username" autocomplete="off" placeholder="Username from your provider"></div>
-   <div class="wan-field"><label for="<?= $prefix ?>Password">Provider password <span>Required</span></label><input id="<?= $prefix ?>Password" type="password" autocomplete="new-password" placeholder="Password from your provider"><small>Enter it each time you prepare a new installer.</small></div>
+   <div class="wan-field"><label for="<?= $prefix ?>Password">Provider password <span>Required for first save</span></label><input id="<?= $prefix ?>Password" type="password" autocomplete="new-password" placeholder="Password from your provider"><small><?= $prefix==='editWan'?'Saved passwords stay private. Leave this blank to keep the saved password for the same username.':'Enter it each time you prepare a new installer.' ?></small></div>
   </div>
  </section>
+ <?php if($prefix==='editWan'): ?><details class="wan-advanced" id="editWanInstaller"><summary><span>Offline installer (optional)<small>Only needed if you choose to download and apply a file onsite</small></span></summary><?php endif; ?>
  <section class="wan-section" aria-labelledby="<?= $prefix ?>LanTitle">
   <div class="wan-section-heading"><span class="wan-step-number">2</span><div><h4 id="<?= $prefix ?>LanTitle">Choose your customer network</h4><p>This is the router network your customers connect to.</p></div></div>
-  <div class="wan-field"><label for="<?= $prefix ?>Lan">Customer network (LAN bridge) <span>Required</span></label><input type="text" id="<?= $prefix ?>Lan" maxlength="64" list="<?= $prefix ?>Bridges" required placeholder="Choose or enter your customer bridge" autocomplete="off"><datalist id="<?= $prefix ?>Bridges"></datalist><small id="<?= $prefix ?>BridgeHint">Use the exact existing bridge name. It must be separate from the provider's connection.</small></div>
+  <div class="wan-field"><label for="<?= $prefix ?>Lan">Customer network (LAN bridge) <span><?= $prefix==='editWan'?'For installer only':'Required' ?></span></label><input type="text" id="<?= $prefix ?>Lan" maxlength="64" list="<?= $prefix ?>Bridges" <?= $prefix==='editWan'?'':'required' ?> placeholder="Choose or enter your customer bridge" autocomplete="off"><datalist id="<?= $prefix ?>Bridges"></datalist><small id="<?= $prefix ?>BridgeHint">Use the exact existing bridge name. It must be separate from the provider's connection.</small></div>
   <details class="wan-help"><summary>Where do I find this name?</summary><p>Open WinBox → Bridge and copy the name of the bridge used by your customers. If the router is online, available names appear as you type. If you are unsure which bridge serves customers, ask your installer before continuing.</p></details>
  </section>
+ <?php if($prefix==='editWan'): ?><button id="editWanOfflinePrepare" type="button" class="wan-button" onclick="prepareWan('editWan',this)">Prepare offline installer</button></details><?php endif; ?>
  <details class="wan-advanced" id="<?= $prefix ?>Advanced">
   <summary><span>Advanced connection settings<small>Different uplink port, WAN bridge, VLAN or DNS</small></span><span class="wan-optional">Optional</span></summary>
   <div class="wan-input-grid">
@@ -33,6 +35,6 @@ function renderRouterWanForm(string $prefix): void { ?>
    <div class="wan-field wan-field-wide"><label for="<?= $prefix ?>Dns">DNS servers <span id="<?= $prefix ?>DnsRequired">Optional</span></label><input type="text" id="<?= $prefix ?>Dns" placeholder="Automatic from your provider"><small>For a fixed IP address, enter your provider's DNS servers, separated by commas.</small></div>
   </div>
  </details>
- <div class="wan-install-note"><i class="fas fa-circle-info" aria-hidden="true"></i><p>You can prepare the installer while the router is offline. Apply it onsite through a customer LAN port, then return here to check the connection.</p></div>
+ <div class="wan-install-note"><i class="fas fa-circle-info" aria-hidden="true"></i><p><?= $prefix==='editWan'?'Save your provider login now, even if the device is offline. We can apply it automatically when the device is reachable through its existing API/VPN management connection. A device with no management connection needs one-time local access first.':'You can prepare the installer while the router is offline. Apply it onsite through a customer LAN port, then return here to check the connection.' ?></p></div>
 </div>
 <?php }

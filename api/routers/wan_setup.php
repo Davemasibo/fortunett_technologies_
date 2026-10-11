@@ -38,14 +38,20 @@ try {
         echo json_encode(['status'=>'success','all_ok'=>$ok,'checks'=>$checks,'lan_bridge'=>$record['lan_bridge'],'router_name'=>$router['name']]); exit;
     }
     if ($identity==='' || strlen($identity)>64 || preg_match('/[\x00-\x1f]/',$identity)) throw new InvalidArgumentException('Enter a router name of up to 64 characters.');
-    $cfg=routerWanInput($_POST);
+    $wanInput=$_POST;
+    if($routerId && ($wanInput['wan_mode'] ?? '')==='pppoe' && empty($wanInput['wan_password'])) {
+        require_once __DIR__.'/../../includes/router_wan_profile.php';ensureWanProfiles($pdo);
+        $saved=wanProfileRecord($pdo,$tenantId,$routerId);$savedConfig=$saved ? json_decode($saved['config_json'],true) : [];
+        if($saved && ($savedConfig['username'] ?? '')===($wanInput['wan_username'] ?? '') && !empty($saved['password_ciphertext']))$wanInput['wan_password']=decryptWanPassword($saved['password_ciphertext']);
+    }
+    $cfg=routerWanInput($wanInput);
     // Use tenant/platform configuration, never a browser supplied probe URL.
     $st=$pdo->prepare('SELECT subdomain FROM tenants WHERE id=?'); $st->execute([$tenantId]); $sub=(string)$st->fetchColumn();
     $domain=$pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='platform_domain' LIMIT 1")->fetchColumn() ?: 'fortunetttech.site';
     $host=($sub ? $sub.'.' : '').$domain;
     if (!preg_match('/^[A-Za-z0-9.-]+$/D',$host)) throw new RuntimeException('Configure a valid platform domain.');
     $billingUrl='https://'.$host.'/api/routers/wan_health.php';
-    $script=routerWanSetupScript($cfg,(string)($_POST['wan_password'] ?? ''),$billingUrl);
+    $script=routerWanSetupScript($cfg,(string)($wanInput['wan_password'] ?? ''),$billingUrl);
     if (!$routerId) {
         $st=$pdo->prepare('SELECT id FROM mikrotik_routers WHERE tenant_id=? AND name=? ORDER BY id DESC LIMIT 1'); $st->execute([$tenantId,$identity]); $routerId=(int)$st->fetchColumn();
     }

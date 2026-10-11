@@ -49,3 +49,5 @@ foreach ($routers as $router) {
 }
 
 echo "Router status check completed at " . date('Y-m-d H:i:s') . "\n";
+// Existing scheduled status checks also deliver saved ISP profiles on reconnect.
+if(PHP_SAPI==='cli') require __DIR__.'/apply_wan_profiles.php';

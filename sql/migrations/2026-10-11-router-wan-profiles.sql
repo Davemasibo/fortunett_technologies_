@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS router_wan_profiles (
+ id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INT NOT NULL,
+ router_id INT NOT NULL,
+ config_json TEXT NOT NULL,
+ password_ciphertext TEXT DEFAULT NULL,
+ state VARCHAR(24) NOT NULL DEFAULT 'pending',
+ message VARCHAR(500) NOT NULL DEFAULT '',
+ revision INT UNSIGNED NOT NULL DEFAULT 1,
+ checked_at DATETIME DEFAULT NULL,
+ updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ UNIQUE KEY tenant_router (tenant_id,router_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

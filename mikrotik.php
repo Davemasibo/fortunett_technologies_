@@ -600,29 +600,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <meta name="wan-csrf" content="<?php echo htmlspecialchars($_SESSION['wan_csrf']); ?>">
-<link rel="stylesheet" href="assets/router-wan.css?v=2">
+<link rel="stylesheet" href="assets/router-wan.css?v=3">
 <input type="hidden" id="wanProvisionEndpoint" value="<?php echo htmlspecialchars($_base_path.'/api/routers/provision.php?token='.rawurlencode($tenant['provisioning_token'] ?? '')); ?>">
 <div id="wanSetupModal" class="wan-overlay" onclick="if(event.target===this)closeWanSetup()">
  <div class="wan-dialog" role="dialog" aria-modal="true" aria-labelledby="wanSetupTitle" aria-describedby="wanSetupDescription">
   <header class="wan-header">
    <div class="wan-header-icon"><i class="fas fa-network-wired" aria-hidden="true"></i></div>
-   <div><span class="wan-eyebrow">Device connection</span><h3 id="wanSetupTitle">Set up your Internet</h3><p id="wanSetupDescription">Choose your connection, download the installer, then check your device.</p><p id="wanDeviceName"></p></div>
+   <div><span class="wan-eyebrow">Device connection</span><h3 id="wanSetupTitle">Set up your Internet</h3><p id="wanSetupDescription">Save your provider login. We’ll connect your device when management access is available.</p><p id="wanDeviceName"></p></div>
    <button type="button" class="wan-close" onclick="closeWanSetup()" aria-label="Close Internet setup">×</button>
   </header>
   <div class="wan-body">
-   <div class="wan-progress" aria-label="Setup sequence"><span class="wan-progress-active" data-wan-step="1" aria-current="step"><b>1</b>Connection details</span><span data-wan-step="2"><b>2</b>Install on device</span><span data-wan-step="3"><b>3</b>Check connection</span></div>
+   <div class="wan-progress" aria-label="Setup sequence"><span class="wan-progress-active" data-wan-step="1" aria-current="step"><b>1</b>Provider details</span><span data-wan-step="2"><b>2</b>Save and connect</span><span data-wan-step="3"><b>3</b>Verify Internet</span></div>
    <?php renderRouterWanForm('editWan'); ?>
    <div id="editWanOutput" class="wan-output" role="status" aria-live="polite" aria-atomic="true"></div>
    <div id="editWanCheckOutput" class="wan-output" role="status" aria-live="polite" aria-atomic="true"></div>
   </div>
   <footer class="wan-footer">
-   <span class="wan-footer-copy">Preparing a file does not change your device.</span>
-   <button id="editWanVerify" type="button" class="wan-button" onclick="verifyWan(this)"><i class="fas fa-circle-check" aria-hidden="true"></i>Check connection</button>
-   <button id="editWanPrepare" type="button" class="wan-button wan-button-primary" onclick="prepareWan('editWan',this)"><i class="fas fa-download" aria-hidden="true"></i>Prepare setup file</button>
+   <span class="wan-footer-copy">ISP passwords are stored encrypted.</span>
+   <button id="editWanVerify" type="button" class="wan-button" onclick="checkWanProfile(this)"><i class="fas fa-circle-check" aria-hidden="true"></i>Check connection</button>
+   <button id="editWanPrepare" type="button" class="wan-button wan-button-primary" onclick="saveWanProfile(this)"><i class="fas fa-link" aria-hidden="true"></i>Save ISP login and connect</button>
   </footer>
  </div>
 </div>
-<script src="assets/router-wan.js?v=2" defer></script>
+<script src="assets/router-wan.js?v=3" defer></script>
 <!-- Toast Notification -->
 <?php if ($action_result): ?>
 <div class="position-fixed top-0 end-0 p-3" style="z-index: 1100">
