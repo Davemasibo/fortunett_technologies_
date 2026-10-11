@@ -7,6 +7,35 @@ function ensureWanProfiles(PDO $pdo): void {
     try {$pdo->query('SELECT id FROM router_wan_profiles LIMIT 0');}
     catch (PDOException $e) {if ($e->getCode()!=='42S02') throw $e; $pdo->exec(file_get_contents(__DIR__.'/../sql/migrations/2026-10-11-router-wan-profiles.sql'));}
 }
+/** Persist a fallback key in the existing, web-protected application environment. */
+function wanProfileEnvironmentKey(string $file): string {
+    // Never create a new publicly served file; deployment already supplies .env.
+    $handle=is_file($file) ? @fopen($file,'r+b') : false;
+    if(!$handle)throw new RuntimeException('ISP password storage needs server setup: make the application .env writable by PHP, or configure WAN_CREDENTIAL_KEY in .env.');
+    try {
+        if(!flock($handle,LOCK_EX))throw new RuntimeException('Could not lock WAN credential storage.');
+        $contents=stream_get_contents($handle);$encoded=null;
+        if($contents===false)throw new RuntimeException('Could not read application environment.');
+        foreach(preg_split('/\r?\n/',$contents) as $line) {
+            if(preg_match('/^\s*WAN_CREDENTIAL_KEY\s*=(.*)$/',$line,$match)) {
+                $value=trim($match[1]," \t\n\r\0\x0B\"'");
+                if($value!==''){$encoded=$value;break;}
+            }
+        }
+        if($encoded===null) {
+            $encoded=base64_encode(random_bytes(32));
+            // Replace an empty assignment so env.php cannot pick up an older blank.
+            $updated=preg_replace('/^[\t ]*WAN_CREDENTIAL_KEY[\t ]*=.*(?:\r?\n|$)/m','',$contents);
+            $updated=rtrim($updated,"\r\n")."\nWAN_CREDENTIAL_KEY=".$encoded."\n";
+            rewind($handle);
+            if(fwrite($handle,$updated)!==strlen($updated) || !fflush($handle) || !ftruncate($handle,strlen($updated)))throw new RuntimeException('Could not persist WAN credential encryption key.');
+        }
+        $key=base64_decode($encoded,true);
+        if($key===false || strlen($key)!==32)throw new RuntimeException('Administrator must configure a valid WAN credential encryption key.');
+        putenv('WAN_CREDENTIAL_KEY='.$encoded);$_ENV['WAN_CREDENTIAL_KEY']=$encoded;$_SERVER['WAN_CREDENTIAL_KEY']=$encoded;
+        return $key;
+    } finally {flock($handle,LOCK_UN);fclose($handle);}
+}
 function wanProfileKey(): string {
     $configured=(string)get_env_var('WAN_CREDENTIAL_KEY','');
     if ($configured!=='') {
@@ -23,7 +52,10 @@ function wanProfileKey(): string {
         if(in_array(strtolower(basename($ancestor)),['htdocs','public_html','wwwroot','html'],true)){$secretParent=dirname($ancestor);break;}
     }
     $directory=(string)get_env_var('WAN_SECRET_DIR',$secretParent.'/.fortunett-secrets/'.substr(hash('sha256',$appRoot),0,16));
-    if (!is_dir($directory) && !@mkdir($directory,0700,true) && !is_dir($directory)) throw new RuntimeException('Administrator must configure private WAN credential storage.');
+    if (!is_dir($directory) && !@mkdir($directory,0700,true) && !is_dir($directory)) {
+        if((string)get_env_var('WAN_SECRET_DIR','')!=='')throw new RuntimeException('Administrator must make the configured WAN_SECRET_DIR writable by PHP.');
+        return wanProfileEnvironmentKey($appRoot.'/.env');
+    }
     $resolved=strtolower(str_replace('\\','/',realpath($directory) ?: $directory));
     foreach ([$appRoot,$webRoot] as $root) {
         $root=strtolower(rtrim(str_replace('\\','/',realpath($root) ?: $root),'/'));

@@ -18,8 +18,12 @@ Deployment
   Back up that key securely; replacing or losing it prevents saved credentials
   from being decrypted. Never commit it to source control.
 - If no explicit key/directory is configured, a private key file is generated
-  outside common web roots. Lack of write permissions produces an admin-facing
-  configuration error; there is no plaintext storage fallback.
+  outside common web roots. If PHP cannot create that directory, it automatically
+  persists WAN_CREDENTIAL_KEY in the existing application .env under a file lock.
+  That file must be writable by PHP and blocked from HTTP access (the supplied
+  Nginx configuration blocks .env). The existing environment settings are kept.
+  No new .env is created and passwords are never stored as plaintext. Explicit
+  WAN_SECRET_DIR errors are reported rather than silently switching key storage.
 - Existing CLI cron/check_router_status.php executions also process pending
   WAN profiles. Alternatively schedule php cron/apply_wan_profiles.php every
   minute. Opening WAN setup retries pending work while the dialog remains open.
