@@ -43,6 +43,8 @@ if (isset($_SESSION['customer_data']['tenant_id'])) {
     customerThemeHead($pdo, (int)($_SESSION['customer_data']['tenant_id'] ?? 0));
     $portalLogo = customerThemeData($pdo, (int)($_SESSION['customer_data']['tenant_id'] ?? 0))['logo'];
     ?>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#customer-content">Skip to content</a>

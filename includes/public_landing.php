@@ -8,6 +8,8 @@
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="css/public-landing.css?v=2">
     <script src="js/public-landing.js?v=2" defer></script>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>

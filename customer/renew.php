@@ -254,6 +254,8 @@ body.auth-page{padding:16px 12px;}
 .lnk{background:none;border:none;color:var(--brand);filter:brightness(1.5);font-size:13px;font-weight:600;cursor:pointer;padding:0;font-family:inherit;text-decoration:underline;}
 </style>
 <?php require_once __DIR__ . '/includes/theme.php'; customerThemeHead($pdo, (int)($tenantId ?? 0)); ?>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body class="renew-page auth-page">
 <div class="renew-wrap">

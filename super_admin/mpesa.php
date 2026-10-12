@@ -104,6 +104,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .info-box{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);border-radius:8px;padding:14px 16px;font-size:13px;color:#93c5fd;line-height:1.6;}
 .info-box strong{color:#bfdbfe;}
 </style>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body class="sa-shell">
 

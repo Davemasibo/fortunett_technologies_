@@ -1456,7 +1456,9 @@ function printReceipt(tx) {
                 .total { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 10px 0; font-weight: bold; font-size: 16px; margin: 20px 0; }
                 .footer { font-size: 10px; color: #777; margin-top: 30px; }
             </style>
-        </head>
+        <link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
+</head>
         <body>
             <div class="header">
                 <div class="company">FORTUNNET TECHNOLOGIES</div>

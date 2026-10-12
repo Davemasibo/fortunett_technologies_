@@ -297,6 +297,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 @media(max-width:860px){.form-grid,.form-grid.thirds{grid-template-columns:1fr 1fr;}}
 @media(max-width:600px){.form-grid,.form-grid.thirds{grid-template-columns:1fr;}}
 </style>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body class="sa-shell">
 

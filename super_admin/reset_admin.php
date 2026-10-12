@@ -135,6 +135,8 @@ body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif
 .btn-danger { background:linear-gradient(135deg,#b91c1c,#ef4444); color:#fff; }
 .divider { border:none; border-top:1px solid rgba(255,255,255,.07); margin:20px 0; }
 </style>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body>
 <div class="wrap">

@@ -147,6 +147,8 @@ table a:hover{color:#93c5fd;}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
 @media(max-width:1100px){.stats-grid{grid-template-columns:repeat(2,1fr);}.two-col{grid-template-columns:1fr;}}
 </style>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body class="sa-shell">
 

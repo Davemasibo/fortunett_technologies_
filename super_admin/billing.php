@@ -176,6 +176,8 @@ table a{color:#3B6EA5;text-decoration:none;}
 table a:hover{color:#93c5fd;}
 @media(max-width:1100px){.stats-grid{grid-template-columns:repeat(2,1fr);}}
 </style>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body class="sa-shell">
 <?php include __DIR__ . '/includes/navigation.php'; ?>

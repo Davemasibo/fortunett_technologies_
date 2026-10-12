@@ -96,6 +96,7 @@ include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
 
+<link rel="stylesheet" href="css/sms-manager.css?v=1">
 <style>
     :root { --neu-bg:#141414; --neu-surf:#1c1c1b; --neu-s2:#222221; --neu-border:rgba(255,255,255,.06); --neu-card:8px 8px 20px rgba(0,0,0,.45),-4px -4px 10px rgba(255,255,255,.03); }
     .main-content-wrapper { background: var(--neu-bg) !important; }
@@ -142,12 +143,12 @@ include 'includes/sidebar.php';
     <div class="sms-container" style="padding: 24px; max-width: 1400px; margin: 0 auto;">
 
         <!-- Header -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <div class="sms-heading">
             <div>
                 <h1 style="font-size: 28px; font-weight: 600; color: #e2e2e0; margin: 0;">SMS Manager</h1>
                 <p style="color: rgba(255,255,255,.45); font-size: 14px;">Manage templates, configuration, and messaging.</p>
             </div>
-            <div style="display: flex; gap: 10px;">
+            <div class="sms-heading-actions">
                 <button onclick="openConfigModal()" class="btn-settings">
                     <i class="fas fa-cog"></i> Settings
                 </button>
@@ -165,12 +166,12 @@ include 'includes/sidebar.php';
         <?php endif; ?>
 
         <!-- Content Grid -->
-        <div style="display: grid; grid-template-columns: 3fr 1fr; gap: 24px;">
+        <div class="sms-grid">
 
             <!-- Left Column: Logs -->
             <div class="sms-panel">
                 <div class="sms-panel-header">Outbox History</div>
-                <div style="overflow-x:auto;">
+                <div class="sms-table-scroll">
                 <table class="sms-table">
                     <thead>
                         <tr>
@@ -184,22 +185,23 @@ include 'includes/sidebar.php';
                     <tbody>
                         <?php foreach ($sms_logs as $log): ?>
                         <tr>
-                            <td>
+                            <td data-label="Recipient">
                                 <div style="color:#e2e2e0;"><?php echo htmlspecialchars($log['full_name'] ?? 'Unknown'); ?></div>
                                 <div style="font-size:12px;color:rgba(255,255,255,.35);"><?php echo htmlspecialchars($log['recipient_phone']); ?></div>
                             </td>
-                            <td style="max-width:300px;">
-                                <?php echo htmlspecialchars(substr($log['message'], 0, 80)) . (strlen($log['message']) > 80 ? '...' : ''); ?>
+                            <td data-label="Message">
+                                <details class="sms-message-details"><summary>Read full message</summary><div class="sms-message-content"><?php echo htmlspecialchars($log['message'], ENT_QUOTES, 'UTF-8'); ?></div></details>
+                                <div class="sms-message-preview"><?php echo htmlspecialchars($log['message'], ENT_QUOTES, 'UTF-8'); ?></div>
                             </td>
-                            <td>
+                            <td data-label="Status">
                                 <span class="<?php echo $log['status'] === 'sent' ? 'sms-status-sent' : 'sms-status-failed'; ?>">
                                     <?php echo htmlspecialchars(strtoupper($log['status'])); ?>
                                 </span>
                             </td>
-                            <td style="font-size:12px;color:rgba(255,255,255,.4);">
+                            <td data-label="Date" style="font-size:12px;color:rgba(255,255,255,.6);">
                                 <?php echo date('M d, H:i', strtotime($log['sent_at'])); ?>
                             </td>
-                            <td style="min-width:180px;max-width:300px;">
+                            <td data-label="Action" style="min-width:180px;max-width:300px;">
                                 <?php if ($log['status'] === 'failed'): ?>
                                     <?php if (empty($log['retry_status']) || $log['retry_status'] === 'failed'): ?>
                                         <button type="button" class="btn-settings sms-retry" data-id="<?php echo (int)$log['id']; ?>">Retry SMS</button>
@@ -226,7 +228,7 @@ include 'includes/sidebar.php';
                     <div style="font-weight:600;margin-bottom:12px;color:#e2e2e0;">Templates</div>
                     <div style="display:flex;flex-direction:column;gap:10px;">
                         <?php foreach ($all_templates as $tpl): ?>
-                        <div onclick='openTemplateModal(<?php echo json_encode($tpl); ?>)' class="tpl-card">
+                        <div role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick='openTemplateModal(<?php echo htmlspecialchars(json_encode($tpl), ENT_QUOTES, "UTF-8"); ?>)' class="tpl-card">
                             <?php if (!empty($tpl['is_global'])): ?>
                                 <span class="global-badge" style="position:absolute;top:4px;right:4px;">Global</span>
                             <?php endif; ?>
@@ -410,6 +412,10 @@ function updateSmsMeta() {
         box2.textContent = 'Preview: ' + preview;
     }
 }
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') ['configModal','sendModal','templateModal'].forEach(id => { document.getElementById(id).style.display = 'none'; });
+});
 </script>
 
+<script src="js/sms-manager.js?v=1" defer></script>
 <?php include 'includes/footer.php'; ?>

@@ -524,7 +524,9 @@ function printBusinessReport() {
   .kpi{border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;min-width:140px;}
   .kpi b{display:block;font-size:17px;margin-top:2px;}
   .kpi span{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#6B7280;}
-</style></head><body>
+</style><link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
+</head><body>
 <h1>${bizEsc(BIZ_BRAND)} — Business report</h1>
 <p class="sub">${bizEsc(d.range.label)} · ${bizEsc(d.range.start)} to ${bizEsc(d.range.end)} · generated ${bizEsc(new Date().toLocaleString())}</p>
 <div class="kpis">

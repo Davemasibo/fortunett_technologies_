@@ -386,6 +386,8 @@ $profile = isLoggedIn() ? getISPProfile($pdo) : ['business_name' => 'ISP Managem
         .sidebar-menu a i { color: rgba(255,255,255,.6); }
         .sidebar-menu a:hover i, .sidebar-menu a.active i { color: #fff; }
     </style>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body>
 <?php if (isLoggedIn()): ?>

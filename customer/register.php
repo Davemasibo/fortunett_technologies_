@@ -216,6 +216,8 @@ $r = hexdec(substr($hex,0,2)); $g = hexdec(substr($hex,2,2)); $b = hexdec(substr
 .pkg-card.selected .pkg-card-check::after{content:'✓';color:var(--ink);font-size:10px;font-weight:700;}
 </style>
 <?php require_once __DIR__ . '/includes/theme.php'; customerThemeHead($pdo, (int)($tenantId ?? 0)); ?>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body class="auth-page">
 <div class="auth-container" style="max-width:480px;">

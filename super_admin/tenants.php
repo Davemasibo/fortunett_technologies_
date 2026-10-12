@@ -213,6 +213,8 @@ table a:hover{color:#93c5fd;}
 .alert-strip.danger{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#fca5a5;}
 .alert-strip.warn{background:rgba(245,158,11,.09);border:1px solid rgba(245,158,11,.28);color:#fcd34d;}
 </style>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body>
 <?php include __DIR__ . '/includes/navigation.php'; ?>

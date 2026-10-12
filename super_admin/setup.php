@@ -87,6 +87,8 @@ body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif
 .login-link a { color:#0f3460; text-decoration:none; font-weight:600; }
 .warning-banner { background:#fef3c7; border:1px solid #fcd34d; border-radius:8px; padding:10px 14px; font-size:12px; color:#92400e; margin-bottom:18px; display:flex; gap:8px; align-items:flex-start; }
 </style>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body>
 <div class="card">

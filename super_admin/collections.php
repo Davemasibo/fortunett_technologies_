@@ -200,6 +200,8 @@ tr:hover td{background:rgba(255,255,255,.03);}
 .note{padding:14px 20px;background:rgba(59,110,165,.09);border-top:1px solid var(--neu-border);font-size:12.5px;color:var(--neu-muted);line-height:1.6;}
 .logline{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#fca5a5;padding:6px 20px;border-bottom:1px solid rgba(255,255,255,.04);word-break:break-all;}
 </style>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body class="sa-shell">
 <?php include __DIR__ . '/includes/navigation.php'; ?>

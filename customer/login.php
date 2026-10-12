@@ -183,6 +183,8 @@ body.auth-page { padding: 16px; }
 .sec-sub{font-size:12px;color:var(--ink-dim);margin-bottom:20px;}
 </style>
 <?php require_once __DIR__ . '/includes/theme.php'; customerThemeHead($pdo, (int)($tenantId ?? 0)); ?>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body class="auth-page">
 <div class="auth-container">

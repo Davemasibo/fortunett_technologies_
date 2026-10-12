@@ -24,7 +24,9 @@ $st->execute($params);$recent=$st->fetchAll(PDO::FETCH_ASSOC);
 function smsUsageEscape($value):string { return htmlspecialchars((string)$value,ENT_QUOTES,'UTF-8'); }
 ?>
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tenant SMS usage</title>
-<style>body{font:15px system-ui;background:#f1f5f9;color:#172033;margin:0;padding:24px}main{max-width:1200px;margin:auto}table{width:100%;border-collapse:collapse;background:white;margin:20px 0}th,td{text-align:left;padding:12px;border-bottom:1px solid #e2e8f0}section{overflow:auto}a{color:#2563eb}input,button{font:inherit;padding:8px}form{display:flex;gap:12px;align-items:center;flex-wrap:wrap}</style></head>
+<style>body{font:15px system-ui;background:#f1f5f9;color:#172033;margin:0;padding:24px}main{max-width:1200px;margin:auto}table{width:100%;border-collapse:collapse;background:white;margin:20px 0}th,td{text-align:left;padding:12px;border-bottom:1px solid #e2e8f0}section{overflow:auto}a{color:#2563eb}input,button{font:inherit;padding:8px}form{display:flex;gap:12px;align-items:center;flex-wrap:wrap}</style><link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
+</head>
 <body><main><nav><a href="billing.php">Billing</a> · <a href="plans.php">Package SMS rates</a></nav>
 <h1>Tenant SMS usage</h1><p>Only accepted customer SMS funded by the platform are charged. Multipart messages count as multiple SMS parts. Rates are saved at send time; unresolved sends await provider verification.</p>
 <form><label>Month <input type="month" name="month" value="<?= smsUsageEscape($month) ?>" required></label><label>Tenant ID <input type="number" name="tenant" min="0" value="<?= $tenant ?>"></label><button>View usage</button></form>

@@ -60,6 +60,8 @@ if (!isset($_GET['token'])) {
     <title>Verify Account - <?php echo htmlspecialchars($business_name); ?></title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="css/auth.css" rel="stylesheet">
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body class="auth-page">
     <div class="auth-container">

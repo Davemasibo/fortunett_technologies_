@@ -5,6 +5,8 @@
 <title>Disbursements · <?= dh($name) ?> · FortuNett</title>
 <link rel="stylesheet" href="css/dark.css?v=2"><link rel="stylesheet" href="css/shell.css?v=2"><link rel="stylesheet" href="css/admin.css?v=1">
 <script src="js/shell.js?v=2" defer></script><script src="js/disbursements.js?v=2" defer></script>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head><body class="sa-shell">
 <?php include __DIR__ . '/navigation.php'; ?>
 <div class="main"><header class="topbar"><h1>Collections &amp; payouts</h1><span class="sa-subtle">KES · Nairobi time</span></header>

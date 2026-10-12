@@ -2029,7 +2029,7 @@ function loadSMSHistory(clientId) {
             body.innerHTML = msgs.map(m => `<tr>
                 <td>${fmtShortDate(m.sent_at)}</td>
                 <td>${m.phone || '—'}</td>
-                <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(m.message)}">${escHtml(m.message)}</td>
+                <td style="min-width:180px;max-width:420px;"><details><summary style="padding:10px 0;cursor:pointer;">Read full message</summary><div style="white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;">${escHtml(m.message)}</div></details></td>
                 <td><span class="pill ${pillClass[m.status]||'pending'}">${escHtml(ucFirst(m.status||'pending'))}</span>
                     ${m.status === 'failed' ? `<div style="margin-top:8px;">
                         ${!m.retry_status || m.retry_status === 'failed' ? `<button type="button" class="sms-retry customer-sms-cancel" data-id="${Number(m.id)}">Retry SMS</button>` : ''}

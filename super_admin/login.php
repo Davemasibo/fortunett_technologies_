@@ -40,6 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="theme-color" content="#101318"><link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>Sign in &middot; FortuNett administration</title><link rel="stylesheet" href="css/admin.css?v=1">
 <script src="js/login.js?v=1" defer></script>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head><body class="sa-login">
 <main class="sa-login-wrap">
     <section class="sa-login-intro" aria-label="FortuNett administration">

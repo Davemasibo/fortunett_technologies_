@@ -124,6 +124,8 @@ if (isset($_GET['email']) || $_SERVER['REQUEST_METHOD'] === 'POST') {
         .back-link { display: inline-block; margin-top: 20px; color: #3B6EA5; text-decoration: none; font-size: 14px; }
         .back-link:hover { text-decoration: underline; }
     </style>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body>
     <div class="container">

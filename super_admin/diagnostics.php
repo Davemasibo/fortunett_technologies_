@@ -108,6 +108,8 @@ table.sms-table tr:last-child td{border-bottom:none;}
 .rep-note{padding:12px 20px;font-size:12.5px;color:var(--neu-muted);line-height:1.6;border-top:1px solid var(--neu-border);background:rgba(59,110,165,.06);}
 .rep-note code{background:rgba(255,255,255,.08);padding:2px 7px;border-radius:5px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#cbd5e1;}
 </style>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body class="sa-shell">
 <?php include __DIR__ . '/includes/navigation.php'; ?>
