@@ -97,11 +97,13 @@ function smsVerifyTenant(PDO $pdo, int $tenantId, bool $probe = true): array
         $out['detail']  = 'The provider rejected the '
                         . ($usingPlatform ? 'PLATFORM' : "tenant's own")
                         . ' token: ' . $result['message'];
-        $out['action']  = $out['key_has_pipe']
+        $out['action']  = smsIsUwazii($config)
+            ? 'Check your Uwazii REST API token and server IP whitelist.'
+            : ($out['key_has_pipe']
             ? 'Generate a new API token in the TalkSasa dashboard under Developers/API and paste it in'
               . ($usingPlatform ? ' under System Settings → SMS.' : " on that tenant's SMS settings.")
             : 'The stored value contains no "|", so it is an older v1 key and can never authenticate against '
-              . '/api/v3. Issue a v3 API token instead.';
+              . '/api/v3. Issue a v3 API token instead.');
     }
 
     $out += smsRecentOutcomes($pdo, $tenantId);
@@ -151,11 +153,12 @@ function smsProbeKey(string $url, string $key): array
     }
 
     $base  = preg_replace('~/sms/send/?$~', '', $url);
-    $ch = curl_init($base . '/balance');
+    $uwazii = smsIsUwazii(['api_url' => $url]);
+    $ch = curl_init($uwazii ? 'https://restapi.uwaziimobile.com/v1/me' : $base . '/balance');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER     => ['Accept: application/json', 'Authorization: Bearer ' . $key],
-        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTPHEADER     => ['Accept: application/json', ($uwazii ? 'X-Access-Token: ' : 'Authorization: Bearer ') . $key],
+        CURLOPT_FOLLOWLOCATION => !$uwazii,
         CURLOPT_TIMEOUT        => 12,
     ]);
     $body  = curl_exec($ch);
@@ -179,6 +182,13 @@ function smsProbeKey(string $url, string $key): array
     }
 
     $json = json_decode((string)$body, true);
+    if ($uwazii) {
+        $out['ok'] = $http >= 200 && $http < 300 && is_array($json)
+            && ($json['status'] ?? null) === true && is_array($json['data'] ?? null);
+        $detail = $json['errors'] ?? $json['message'] ?? 'Invalid Uwazii profile response';
+        $out['message'] = $out['ok'] ? 'accepted' : (is_string($detail) ? $detail : json_encode($detail));
+        return $cache[$ck] = $out;
+    }
     $status = strtolower((string)($json['status'] ?? ''));
 
     // This provider answers "Unauthenticated." with an HTTP 200, so the status

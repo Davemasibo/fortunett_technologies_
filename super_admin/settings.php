@@ -144,7 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             trim($_POST['sms_provider'] ?? 'talksasa'),
             trim($apiKey),
             trim($_POST['sms_sender_id'] ?? ''),
-            smsNormalizeApiUrl($_POST['sms_api_url'] ?? null),
+            strtolower(trim($_POST['sms_provider'] ?? '')) === 'uwazii' ? SMS_UWAZII_URL : smsNormalizeApiUrl($_POST['sms_api_url'] ?? null),
             isset($_POST['sms_active']) ? 1 : 0,
         ]);
         $flash = 'success|SMS settings saved.';
@@ -492,6 +492,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
                                 <label>Provider</label>
                                 <select name="sms_provider">
                                     <option value="talksasa" <?= ($smsCfg['provider'] ?? '') === 'talksasa' ? 'selected' : '' ?>>TalkSasa</option>
+                                    <option value="uwazii" <?= ($smsCfg['provider'] ?? '') === 'uwazii' ? 'selected' : '' ?>>Uwazii Mobile</option>
                                     <option value="africastalking" <?= ($smsCfg['provider'] ?? '') === 'africastalking' ? 'selected' : '' ?>>Africa's Talking</option>
                                     <option value="infobip" <?= ($smsCfg['provider'] ?? '') === 'infobip' ? 'selected' : '' ?>>Infobip</option>
                                     <option value="custom" <?= ($smsCfg['provider'] ?? '') === 'custom' ? 'selected' : '' ?>>Custom API</option>

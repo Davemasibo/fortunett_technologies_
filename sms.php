@@ -250,9 +250,11 @@ include 'includes/sidebar.php';
             <input type="hidden" name="save_config" value="1">
             <label>Provider</label>
             <select name="provider">
-                <option value="talksasa">TalkSasa</option>
-                <option value="africastalking">Africa's Talking</option>
+                <option value="talksasa" <?= ($config['provider'] ?? '') === 'talksasa' ? 'selected' : '' ?>>TalkSasa</option>
+                <option value="uwazii" <?= ($config['provider'] ?? '') === 'uwazii' ? 'selected' : '' ?>>Uwazii Mobile</option>
+                <option value="africastalking" <?= ($config['provider'] ?? '') === 'africastalking' ? 'selected' : '' ?>>Africa's Talking</option>
             </select>
+            <p>For Uwazii, use https://restapi.uwaziimobile.com/v1/send and sender Uwazii-OTP for transactional messages or Uwazii for promotions. Promotional limits: 146 characters on Safaricom, 149 on Airtel before a second message is billed.</p>
             <label>API URL</label>
             <input type="text" name="api_url" value="<?php echo htmlspecialchars(smsNormalizeApiUrl($config['api_url'] ?? null)); ?>">
             <label>API Key</label>

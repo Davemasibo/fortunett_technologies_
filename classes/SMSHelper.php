@@ -164,17 +164,20 @@ class SMSHelper {
             'message'   => $message,
         ];
 
+        $uwazii = smsIsUwazii($this->config);
+        $headers = ['Content-Type: application/json', 'Accept: application/json', 'Authorization: Bearer ' . $apiKey];
+        if ($uwazii) {
+            $url = SMS_UWAZII_URL;
+            $request = smsUwaziiRequest($phone, $message, $senderId, $apiKey);
+            $data = $request['body'];
+            $headers = $request['headers'];
+        }
+
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_POST, 1);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Accept: application/json',
-            // v3 authenticates by bearer token; v1 reads api_key from the body.
-            // An endpoint that wants neither ignores the header.
-            'Authorization: Bearer ' . $apiKey,
-        ]);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_TIMEOUT, 15);
 
         // The provider answers a bare 301 when the stored api_url is out of
@@ -183,7 +186,7 @@ class SMSHelper {
         // as if it were an SMS error. POSTREDIR_ALL is what makes the retry a
         // POST as well; without it cURL silently downgrades to GET and the
         // message body is dropped.
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, !$uwazii);
         curl_setopt($ch, CURLOPT_POSTREDIR, CURL_REDIR_POST_ALL);
         curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
 
@@ -195,6 +198,10 @@ class SMSHelper {
 
         if ($curlError) {
             return ['success' => false, 'uncertain' => true, 'message' => 'Could not confirm the SMS provider response: ' . $curlError];
+        }
+
+        if ($uwazii) {
+            return smsUwaziiResponse((int)$httpCode, (string)$result, $phone);
         }
 
         // An HTML body means we reached a web page, not an API — almost always a
@@ -298,6 +305,7 @@ class SMSHelper {
         $apiKey   = trim((string)$apiKey);
         $senderId = trim((string)$senderId);
         $apiUrl   = smsNormalizeApiUrl($apiUrl);
+        if (strtolower($provider) === 'uwazii') $apiUrl = SMS_UWAZII_URL;
 
         $stmt = $this->pdo->prepare("INSERT INTO sms_configurations (tenant_id, provider, api_key, sender_id, api_url) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE provider = VALUES(provider), api_key = VALUES(api_key), sender_id = VALUES(sender_id), api_url = VALUES(api_url)");
         return $stmt->execute([$this->tenant_id, $provider, $apiKey, $senderId, $apiUrl]);
@@ -313,6 +321,9 @@ class SMSHelper {
      */
     private function authFailureHint(int $httpCode): string
     {
+        if (smsIsUwazii($this->config)) {
+            return 'Uwazii rejected the REST API token. Check the token and server IP whitelist in your Uwazii account.';
+        }
         $key    = trim((string)($this->config['api_key'] ?? ''));
         $masked = $key === ''
             ? '(empty)'

@@ -28,6 +28,49 @@
 /** The endpoint TalkSasa actually serves. */
 const SMS_API_URL_DEFAULT = 'https://bulksms.talksasa.com/api/v3/sms/send';
 
+const SMS_UWAZII_URL = 'https://restapi.uwaziimobile.com/v1/send';
+
+function smsIsUwazii(array $config): bool
+{
+    return strtolower(trim((string)($config['provider'] ?? ''))) === 'uwazii'
+        || strtolower((string)parse_url($config['api_url'] ?? '', PHP_URL_HOST)) === 'restapi.uwaziimobile.com';
+}
+
+function smsUwaziiRequest(string $phone, string $message, string $sender, string $key): array
+{
+    return [
+        'headers' => ['Content-Type: application/json; charset=UTF-8', 'Accept: application/json', 'X-Access-Token: ' . trim($key)],
+        'body' => [['number' => [$phone], 'senderID' => $sender, 'text' => $message,
+            'type' => 'sms', 'lifetime' => 86400, 'delivery' => false]],
+    ];
+}
+
+function smsUwaziiResponse(int $http, string $body, string $phone): array
+{
+    $json = json_decode($body, true);
+    $detail = $json['errors'] ?? $json['message'] ?? $json['error'] ?? 'No acceptance confirmation returned';
+    $detail = is_string($detail) ? $detail : json_encode($detail);
+    if ($http === 401 || $http === 403 || preg_match('/token|unauthenticated|unauthorized/i', $detail)) {
+        return ['success' => false, 'auth_failure' => true, 'message' => 'Uwazii authentication failed. Check your REST API token and IP whitelist.'];
+    }
+    if ($http >= 500 || !is_array($json)) {
+        return ['success' => false, 'uncertain' => true, 'message' => 'Could not confirm Uwazii acceptance. Check provider history before retrying.'];
+    }
+    if ($http >= 200 && $http < 300 && ($json['status'] ?? null) === true) {
+        $parts = $json['data'][$phone] ?? [];
+        if (is_array($parts) && count($parts) > 0) {
+            foreach ($parts as $part) {
+                if (!is_array($part) || empty($part['id_state'])) {
+                    return ['success' => false, 'uncertain' => true, 'message' => 'Uwazii returned an incomplete acceptance confirmation. Check provider history.'];
+                }
+            }
+            return ['success' => true, 'response' => $body, 'message' => 'Accepted by Uwazii'];
+        }
+        return ['success' => false, 'uncertain' => true, 'message' => 'Uwazii returned no message IDs for this number. Check provider history.'];
+    }
+    return ['success' => false, 'sender_failure' => smsSenderRejected($detail), 'message' => 'Uwazii rejected the SMS: ' . $detail];
+}
+
 /**
  * What a settings form shows instead of a stored key.
  *
@@ -147,7 +190,7 @@ function smsPlatformConfig(PDO $pdo): ?array
     }
     if (!smsConfigIsUsable($row)) return null;
 
-    $row['api_url'] = smsNormalizeApiUrl($row['api_url'] ?? null);
+    $row['api_url'] = smsIsUwazii($row) ? SMS_UWAZII_URL : smsNormalizeApiUrl($row['api_url'] ?? null);
     return $row;
 }
 
@@ -172,7 +215,7 @@ function smsResolveConfig(PDO $pdo, $tenantId): array
     }
 
     if (smsConfigIsUsable($own)) {
-        $own['api_url'] = smsNormalizeApiUrl($own['api_url'] ?? null);
+        $own['api_url'] = smsIsUwazii($own) ? SMS_UWAZII_URL : smsNormalizeApiUrl($own['api_url'] ?? null);
         return [$own, false];
     }
 
