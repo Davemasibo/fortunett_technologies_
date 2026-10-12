@@ -13,6 +13,7 @@ const strip = html => html.replace(/<\?php[\s\S]*?\?>/g,'');
   let markup = strip(source.slice(source.indexOf('<div class="main-content-wrapper">'),source.indexOf('<script>')));
   const message = 'Payment received.\nUsername: testcustomer\nPassword: 1234\nSupport: 0700123456\n' + 'Full message remains readable. '.repeat(12);
   markup = markup.replace(/(<div class="sms-message-content">).*?(<\/div>)/s,'$1'+message+'$2');
+  markup = markup.replace(/(<div class="sms-message-preview">).*?(<\/div>)/s,'$1'+message+'$2');
   const styles = inline + read('css/sms-manager.css') + read('css/responsive-app.css');
   for (const width of [320,360,390,768,1280]) {
    const page = await browser.newPage({viewport:{width,height:800}});
@@ -33,6 +34,17 @@ const strip = html => html.replace(/<\?php[\s\S]*?\?>/g,'');
    if (width===390) {
     await page.evaluate(() => document.getElementById('configModal').style.display='none');
     await page.screenshot({path:path.join(root,'artifacts/sms-mobile-preview.png'),fullPage:true});
+   }
+   await page.evaluate(() => {
+    const details = document.querySelector('.sms-message-details');
+    details.open=false;
+    details.nextElementSibling.textContent='Payment received.';
+   });
+   await page.waitForFunction(() => document.querySelector('.sms-message-details').hidden);
+   assert(!(await detail.locator('summary').isVisible()),'Short messages have no expansion control');
+   if (width<=600) {
+    await page.evaluate(() => document.querySelector('.sms-table td:last-child').classList.add('sms-no-action'));
+    assert(!(await page.locator('.sms-no-action').first().isVisible()),'Sent messages have no mobile action field');
    }
    await page.close();
    console.log('PASS SMS layout, full message and settings modal at '+width+'px');

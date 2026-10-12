@@ -77,6 +77,7 @@ try {
 } catch (Exception $e) { /* table may not exist yet */ }
 
 // Fetch Templates
+$hasOutboxActions = (bool)array_filter($sms_logs, fn($entry) => $entry['status'] === 'failed');
 $all_templates = $smsHelper->getTemplates();
 
 // Fetch Config
@@ -96,7 +97,7 @@ include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
 
-<link rel="stylesheet" href="css/sms-manager.css?v=1">
+<link rel="stylesheet" href="css/sms-manager.css?v=2">
 <style>
     :root { --neu-bg:#141414; --neu-surf:#1c1c1b; --neu-s2:#222221; --neu-border:rgba(255,255,255,.06); --neu-card:8px 8px 20px rgba(0,0,0,.45),-4px -4px 10px rgba(255,255,255,.03); }
     .main-content-wrapper { background: var(--neu-bg) !important; }
@@ -179,7 +180,7 @@ include 'includes/sidebar.php';
                             <th>MESSAGE</th>
                             <th>STATUS</th>
                             <th>DATE</th>
-                            <th>ACTION</th>
+                            <?php if ($hasOutboxActions): ?><th>ACTION</th><?php endif; ?>
                         </tr>
                     </thead>
                     <tbody>
@@ -201,7 +202,8 @@ include 'includes/sidebar.php';
                             <td data-label="Date" style="font-size:12px;color:rgba(255,255,255,.6);">
                                 <?php echo date('M d, H:i', strtotime($log['sent_at'])); ?>
                             </td>
-                            <td data-label="Action" style="min-width:180px;max-width:300px;">
+                            <?php if ($hasOutboxActions): ?>
+                            <td <?php echo $log['status'] === 'failed' ? 'data-label="Action"' : 'class="sms-no-action"'; ?> style="min-width:180px;max-width:300px;">
                                 <?php if ($log['status'] === 'failed'): ?>
                                     <?php if (empty($log['retry_status']) || $log['retry_status'] === 'failed'): ?>
                                         <button type="button" class="btn-settings sms-retry" data-id="<?php echo (int)$log['id']; ?>">Retry SMS</button>
@@ -212,10 +214,11 @@ include 'includes/sidebar.php';
                                     </div>
                                 <?php endif; ?>
                             </td>
+                            <?php endif; ?>
                         </tr>
                         <?php endforeach; ?>
                         <?php if (empty($sms_logs)): ?>
-                            <tr><td colspan="5" style="text-align:center;padding:20px;color:rgba(255,255,255,.35);">No sent messages found.</td></tr>
+                            <tr><td colspan="<?php echo $hasOutboxActions ? 5 : 4; ?>" style="text-align:center;padding:20px;color:rgba(255,255,255,.35);">No sent messages found.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -417,5 +420,5 @@ document.addEventListener('keydown', function(event) {
 });
 </script>
 
-<script src="js/sms-manager.js?v=1" defer></script>
+<script src="js/sms-manager.js?v=2" defer></script>
 <?php include 'includes/footer.php'; ?>

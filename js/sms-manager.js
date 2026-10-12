@@ -1,4 +1,21 @@
 (() => {
+    const messages = [...document.querySelectorAll('.sms-message-details')];
+    function updateMessageControls() {
+        messages.forEach(details => {
+            if (details.open) return;
+            const preview = details.nextElementSibling;
+            if (!preview?.classList.contains('sms-message-preview')) return;
+            details.hidden = preview.scrollHeight <= preview.clientHeight + 1;
+        });
+    }
+    messages.forEach(details => details.addEventListener('toggle',updateMessageControls));
+    if (typeof ResizeObserver !== 'undefined') {
+        const observer = new ResizeObserver(updateMessageControls);
+        messages.forEach(details => observer.observe(details.parentElement));
+    }
+    window.addEventListener('resize',updateMessageControls);
+    document.fonts?.ready.then(updateMessageControls);
+    updateMessageControls();
     const dialogs = ['configModal','sendModal','templateModal'].map(id => document.getElementById(id)).filter(Boolean);
     let opener = null;
     let previousOverflow = '';

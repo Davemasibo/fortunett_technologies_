@@ -7,6 +7,7 @@
 .sms-message-details[open] summary{margin-bottom:6px}
 .sms-message-preview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
 .sms-message-details[open]+.sms-message-preview{display:none}
+.sms-message-details[hidden]{display:none!important}
 .sms-table td{vertical-align:top}
 .sms-table td[data-label=Message]{min-width:220px;width:45%}
 .sms-table-scroll{overflow-x:auto}
@@ -23,6 +24,7 @@
  .sms-table td{padding:5px 0!important;min-width:0!important;max-width:none!important}
  .sms-table td[data-label]:before{content:attr(data-label);display:block;font-size:11px;font-weight:700;letter-spacing:.04em;color:#a9a9a7;margin-bottom:4px}
  .sms-table td[data-label=Message]{width:100%;margin:10px 0}
+ .sms-table td.sms-no-action{display:none}
  .sms-table-scroll{overflow:visible}
  .sms-modal-inner{padding:18px!important;width:100%!important;max-width:100%!important}
  .sms-modal-inner input,.sms-modal-inner select,.sms-modal-inner textarea{font-size:16px!important}

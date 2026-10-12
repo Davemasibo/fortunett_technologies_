@@ -4,12 +4,20 @@ require_once __DIR__ . '/includes/auth.php';
 superAdminGuard();
 require_once __DIR__ . '/../includes/sms_billing.php';
 ensureSmsUsageSchema($pdo);
+require_once __DIR__.'/../includes/plan_pricing.php';
+$_SESSION['plan_pricing_csrf'] ??= bin2hex(random_bytes(32));
 
 $successMsg = '';
 $errorMsg   = '';
+$validPlanRequest = true;
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $token=$_POST['csrf_token'] ?? '';
+    $validPlanRequest=is_string($token) && hash_equals($_SESSION['plan_pricing_csrf'],$token);
+    if (!$validPlanRequest) $errorMsg='Refresh this page and try saving again.';
+}
 
 // ── Handle form POST (save plan) ──────────────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save') {
+if ($validPlanRequest && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save') {
     $planId               = (int)($_POST['plan_id'] ?? 0);
     $name                 = trim($_POST['name'] ?? '');
     $pppoe_fee            = (float)($_POST['pppoe_fee_per_user'] ?? 0);
@@ -20,7 +28,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
     $max_routers          = ($_POST['max_routers'] ?? '') === '' ? null : (int)$_POST['max_routers'];
     $trial_days           = (int)($_POST['trial_days'] ?? 30);
 
-    if (!$planId || !$name) {
+    $validationError=planPricingValidationError($_POST);
+    if ($max_clients === 0) $max_clients=null;
+    if ($max_routers === 0) $max_routers=null;
+    $planExists=$pdo->prepare('SELECT 1 FROM platform_subscription_plans WHERE id=?');
+    $planExists->execute([$planId]);
+    if (!$planExists->fetchColumn()) {
+        $errorMsg='This plan could not be found. Refresh the page.';
+    } elseif ($validationError) {
+        $errorMsg=$validationError;
+    } elseif (!$planId || !$name) {
         $errorMsg = 'Plan ID and name are required.';
     } elseif ($pppoe_fee < 0 || $hotspot_rate < 0 || $base_fee < 0 || $sms_rate === false || !is_finite((float)$sms_rate) || $sms_rate < 0 || $sms_rate > 99999999) {
         $errorMsg = 'Fees and rates cannot be negative.';
@@ -61,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
 }
 
 // ── Handle toggle active/inactive ─────────────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggle') {
+if ($validPlanRequest && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggle') {
     $planId    = (int)($_POST['plan_id'] ?? 0);
     $newStatus = (int)($_POST['is_active'] ?? 0);
 
@@ -84,6 +101,16 @@ $plans = $pdo->query("
 
 // Stats per plan for the summary row
 $totalTenants = array_sum(array_column($plans, 'tenant_count'));
+function planEditorPayload(array $plan): string {
+    return htmlspecialchars(json_encode([
+        'id'=>(int)$plan['id'],'name'=>$plan['name'],
+        'pppoe_fee_per_user'=>(float)$plan['pppoe_fee_per_user'],
+        'hotspot_commission_rate'=>round((float)$plan['hotspot_commission_rate']*100,4),
+        'base_monthly_fee'=>(float)$plan['base_monthly_fee'],'sms_rate'=>(float)$plan['sms_rate'],
+        'max_clients'=>$plan['max_clients'],'max_routers'=>$plan['max_routers'],'trial_days'=>(int)$plan['trial_days'],
+    ]),ENT_QUOTES,'UTF-8');
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -186,6 +213,7 @@ table a:hover{color:#93c5fd;}
 @media(max-width:1100px){.stats-grid{grid-template-columns:repeat(2,1fr);}.form-grid{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:700px){.form-grid{grid-template-columns:1fr;}}
 </style>
+<link rel="stylesheet" href="css/plans.css?v=1">
 <link rel="stylesheet" href="/css/responsive-app.css?v=1">
 <script src="/js/responsive-app.js?v=1" defer></script>
 </head>
@@ -230,8 +258,10 @@ table a:hover{color:#93c5fd;}
                 <div class="value"><?= $plan['tenant_count'] ?></div>
                 <div class="sub">
                     KSH <?= number_format($plan['pppoe_fee_per_user'], 0) ?>/user &bull;
-                    <?= round($plan['hotspot_commission_rate'] * 100, 2) ?>% hotspot
+                    <?= round($plan['hotspot_commission_rate'] * 100, 2) ?>% hotspot<br>
+                    SMS: KSH <?= number_format($plan['sms_rate'],4) ?>/part
                 </div>
+                <button type="button" class="btn-sm btn-edit" style="margin-top:12px;min-height:44px" onclick="openEditPanel(<?= planEditorPayload($plan) ?>)">Edit pricing</button>
             </div>
             <?php endforeach; ?>
             <!-- Pad to 4 if fewer than 4 plans -->
@@ -251,55 +281,17 @@ table a:hover{color:#93c5fd;}
         <div class="edit-panel" id="editPanel" role="dialog" aria-modal="true" aria-labelledby="editPanelTitle">
             <div class="edit-panel-head">
                 <h3><i class="fas fa-edit me-2"></i>Edit Plan: <span id="editPanelTitle"></span></h3>
-                <button onclick="closeEditPanel()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px;"><i class="fas fa-times"></i></button>
+                <button type="button" aria-label="Close plan editor" onclick="closeEditPanel()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px;"><i class="fas fa-times"></i></button>
             </div>
             <div class="edit-panel-body">
                 <form method="POST" action="plans.php" id="editForm">
+<?php if ($errorMsg): ?><div class="plan-save-feedback" role="alert"><?= htmlspecialchars($errorMsg, ENT_QUOTES) ?></div><?php endif; ?>
+<input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['plan_pricing_csrf'], ENT_QUOTES) ?>">
                     <input type="hidden" name="action" value="save">
                     <input type="hidden" name="plan_id" id="fPlanId">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>Plan Name</label>
-                            <input type="text" name="name" id="fName" required maxlength="100">
-                        </div>
-                        <div class="form-group">
-                            <label>PPPoE Fee / User (KSH)</label>
-                            <input type="number" name="pppoe_fee_per_user" id="fPppoeFee" step="0.01" min="0" required>
-                            <div class="hint">Monthly charge per active PPPoE user</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Hotspot Commission (%)</label>
-                            <input type="number" name="hotspot_commission_rate" id="fHotspotRate" step="0.01" min="0" max="100" required>
-                            <div class="hint">Percentage of hotspot revenue collected</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Monthly Fee per MikroTik (KSH)</label>
-                            <input type="number" name="base_monthly_fee" id="fBaseFee" step="0.01" min="0" required>
-                            <div class="hint">Fixed platform fee added to every invoice</div>
-                        </div>
-                        <div class="form-group">
-                            <label>SMS rate per part (KSH)</label>
-                            <input type="number" name="sms_rate" id="fSmsRate" step="0.0001" min="0" max="99999999" required>
-                            <div class="hint">Accepted customer SMS using the platform account. Zero makes SMS free.</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Max Clients</label>
-                            <input type="number" name="max_clients" id="fMaxClients" min="0" placeholder="0 = unlimited">
-                            <div class="hint">Leave blank or 0 for unlimited</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Max Routers</label>
-                            <input type="number" name="max_routers" id="fMaxRouters" min="0" placeholder="0 = unlimited">
-                            <div class="hint">Leave blank or 0 for unlimited</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Trial Days</label>
-                            <input type="number" name="trial_days" id="fTrialDays" min="0" max="365" required>
-                            <div class="hint">Free trial period for new tenants on this plan</div>
-                        </div>
-                    </div>
+<div class="form-group"><label for="fName">Plan name</label><input name="name" id="fName" type="text" required maxlength="100" aria-describedby="fNameHint"><div class="hint" id="fNameHint">Shown to tenants in subscription settings.</div></div><fieldset class="plan-pricing-group"><legend>Usage pricing</legend><div class="form-grid"><div class="form-group"><label for="fPppoeFee">PPPoE fee per active user (KSH / month)</label><input name="pppoe_fee_per_user" id="fPppoeFee" type="number" step="0.01" min="0" max="99999999" required aria-describedby="fPppoeFeeHint"><div class="hint" id="fPppoeFeeHint">Monthly platform charge for each active PPPoE user.</div></div><div class="form-group"><label for="fHotspotRate">Hotspot commission (%)</label><input name="hotspot_commission_rate" id="fHotspotRate" type="number" step="0.01" min="0" max="100" required aria-describedby="fHotspotRateHint"><div class="hint" id="fHotspotRateHint">Enter 3 for 3% of hotspot customer collections.</div></div><div class="form-group"><label for="fSmsRate">SMS fee per part (KSH)</label><input name="sms_rate" id="fSmsRate" type="number" step="0.0001" min="0" max="99999999" required aria-describedby="fSmsRateHint"><div class="hint" id="fSmsRateHint">Only accepted SMS using the platform account. Multipart SMS costs more than one part. Zero makes SMS free.</div></div><div class="form-group"><label for="fBaseFee">Router fee per MikroTik (KSH / month)</label><input name="base_monthly_fee" id="fBaseFee" type="number" step="0.01" min="0" max="99999999" required aria-describedby="fBaseFeeHint"><div class="hint" id="fBaseFeeHint">Monthly charge per configured MikroTik. This fee is waived during trial.</div></div></div></fieldset><fieldset class="plan-pricing-group"><legend>Plan limits and trial</legend><div class="form-grid"><div class="form-group"><label for="fMaxClients">Maximum clients</label><input name="max_clients" id="fMaxClients" type="number" step="1" min="0" max="2147483647" placeholder="Unlimited" aria-describedby="fMaxClientsHint"><div class="hint" id="fMaxClientsHint">Leave blank or enter 0 for unlimited.</div></div><div class="form-group"><label for="fMaxRouters">Maximum routers</label><input name="max_routers" id="fMaxRouters" type="number" step="1" min="0" max="2147483647" placeholder="Unlimited" aria-describedby="fMaxRoutersHint"><div class="hint" id="fMaxRoutersHint">Leave blank or enter 0 for unlimited.</div></div><div class="form-group"><label for="fTrialDays">Trial duration (days)</label><input name="trial_days" id="fTrialDays" type="number" step="1" min="0" max="365" required aria-describedby="fTrialDaysHint"><div class="hint" id="fTrialDaysHint">Applied when a new tenant starts this plan.</div></div></div></fieldset><p class="plan-pricing-note">SMS rates apply to future sends; previously recorded SMS keeps its original rate. Other fee changes apply when unpaid invoices are recalculated. Paid and part-paid invoices remain unchanged.</p>
                     <div class="form-actions">
-                        <button type="submit" class="btn-save"><i class="fas fa-save"></i> Save Changes</button>
+                        <button type="submit" class="btn-save"><i class="fas fa-save"></i> Save plan pricing</button>
                         <button type="button" class="btn-cancel" onclick="closeEditPanel()">Cancel</button>
                     </div>
                 </form>
@@ -311,15 +303,16 @@ table a:hover{color:#93c5fd;}
         <div class="card">
             <div class="card-head">
                 <h3><i class="fas fa-layer-group me-2" style="color:var(--sa-dark);"></i>All Subscription Plans</h3>
-                <span style="font-size:12px;color:#94a3b8;">Click "Edit" to modify pricing — changes apply to the next billing cycle</span>
+                <span style="font-size:12px;color:#94a3b8;">Click "Edit" to modify pricing — SMS rates apply to future sends</span>
             </div>
-            <table>
+            <table class="plans-table">
                 <thead>
                     <tr>
                         <th>Plan</th>
                         <th>Slug</th>
                         <th>PPPoE Fee / User</th>
                         <th>Hotspot Commission</th>
+                        <th>SMS Fee / Part</th>
                         <th>Monthly Fee / MikroTik</th>
                         <th>Max Clients</th>
                         <th>Max Routers</th>
@@ -334,49 +327,41 @@ table a:hover{color:#93c5fd;}
                     $colors = $planColors[$plan['slug']] ?? ['bg' => '#f8fafc', 'color' => '#475569', 'dot' => '#94a3b8'];
                 ?>
                 <tr id="planRow<?= $plan['id'] ?>">
-                    <td>
+                    <td data-label="Plan">
                         <div class="plan-chip">
                             <div class="plan-dot" style="background:<?= $colors['dot'] ?>;"></div>
                             <?= htmlspecialchars($plan['name']) ?>
                         </div>
                     </td>
-                    <td><code style="background:#f1f5f9;padding:2px 7px;border-radius:4px;font-size:12px;"><?= htmlspecialchars($plan['slug']) ?></code></td>
-                    <td><strong>KSH <?= number_format($plan['pppoe_fee_per_user'], 2) ?></strong></td>
-                    <td><?= round($plan['hotspot_commission_rate'] * 100, 2) ?>%<br><small>SMS: KSH <?= number_format($plan['sms_rate'], 4) ?>/part</small></td>
-                    <td>KSH <?= number_format($plan['base_monthly_fee'], 2) ?></td>
-                    <td><?= $plan['max_clients'] !== null ? number_format($plan['max_clients']) : '<span style="color:#94a3b8;">Unlimited</span>' ?></td>
-                    <td><?= $plan['max_routers'] !== null ? number_format($plan['max_routers']) : '<span style="color:#94a3b8;">Unlimited</span>' ?></td>
-                    <td><?= (int)$plan['trial_days'] ?> days</td>
-                    <td>
+                    <td data-label="Slug"><code style="background:#f1f5f9;padding:2px 7px;border-radius:4px;font-size:12px;"><?= htmlspecialchars($plan['slug']) ?></code></td>
+                    <td data-label="PPPoE / user"><strong>KSH <?= number_format($plan['pppoe_fee_per_user'], 2) ?></strong></td>
+                    <td data-label="Hotspot commission"><?= round($plan['hotspot_commission_rate'] * 100, 2) ?>%</td>
+                    <td data-label="SMS / part">KSH <?= number_format($plan['sms_rate'], 4) ?></td>
+                    <td data-label="Monthly / router">KSH <?= number_format($plan['base_monthly_fee'], 2) ?></td>
+                    <td data-label="Max clients"><?= $plan['max_clients'] !== null ? number_format($plan['max_clients']) : '<span style="color:#94a3b8;">Unlimited</span>' ?></td>
+                    <td data-label="Max routers"><?= $plan['max_routers'] !== null ? number_format($plan['max_routers']) : '<span style="color:#94a3b8;">Unlimited</span>' ?></td>
+                    <td data-label="Trial"><?= (int)$plan['trial_days'] ?> days</td>
+                    <td data-label="Tenants">
                         <?php if ($plan['tenant_count'] > 0): ?>
                         <a href="tenants.php?plan=<?= $plan['id'] ?>" style="color:#2563eb;text-decoration:none;font-weight:600;"><?= $plan['tenant_count'] ?></a>
                         <?php else: ?>
                         <span style="color:#94a3b8;">0</span>
                         <?php endif; ?>
                     </td>
-                    <td>
+                    <td data-label="Status">
                         <?php if ($plan['is_active']): ?>
                         <span class="badge badge-active">Active</span>
                         <?php else: ?>
                         <span class="badge badge-inactive">Inactive</span>
                         <?php endif; ?>
                     </td>
-                    <td style="white-space:nowrap;">
-                        <button class="btn-sm btn-edit" onclick="openEditPanel(<?= htmlspecialchars(json_encode([
-                            'id'                     => (int)$plan['id'],
-                            'name'                   => $plan['name'],
-                            'pppoe_fee_per_user'     => (float)$plan['pppoe_fee_per_user'],
-                            'hotspot_commission_rate'=> round((float)$plan['hotspot_commission_rate'] * 100, 4),
-                            'base_monthly_fee'       => (float)$plan['base_monthly_fee'],
-                            'sms_rate' => (float)$plan['sms_rate'],
-                            'max_clients'            => $plan['max_clients'],
-                            'max_routers'            => $plan['max_routers'],
-                            'trial_days'             => (int)$plan['trial_days'],
-                        ]), ENT_QUOTES) ?>)">
-                            <i class="fas fa-edit"></i> Edit
+                    <td data-label="Actions" style="white-space:nowrap;">
+                        <button class="btn-sm btn-edit" onclick="openEditPanel(<?= planEditorPayload($plan) ?>)">
+                            <i class="fas fa-edit"></i> Edit pricing
                         </button>
                         <?php if ($plan['is_active']): ?>
                         <form method="POST" style="display:inline;" onsubmit="return confirm('Deactivate this plan? Existing tenants are not affected.');">
+<input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['plan_pricing_csrf'], ENT_QUOTES) ?>">
                             <input type="hidden" name="action" value="toggle">
                             <input type="hidden" name="plan_id" value="<?= $plan['id'] ?>">
                             <input type="hidden" name="is_active" value="0">
@@ -384,6 +369,7 @@ table a:hover{color:#93c5fd;}
                         </form>
                         <?php else: ?>
                         <form method="POST" style="display:inline;" onsubmit="return confirm('Reactivate this plan?');">
+<input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['plan_pricing_csrf'], ENT_QUOTES) ?>">
                             <input type="hidden" name="action" value="toggle">
                             <input type="hidden" name="plan_id" value="<?= $plan['id'] ?>">
                             <input type="hidden" name="is_active" value="1">
@@ -394,7 +380,7 @@ table a:hover{color:#93c5fd;}
                 </tr>
                 <?php endforeach; ?>
                 <?php if (empty($plans)): ?>
-                <tr><td colspan="11" style="text-align:center;padding:40px;color:#94a3b8;">No subscription plans found. Run the SaaS upgrade migration to seed default plans.</td></tr>
+                <tr><td colspan="12" style="text-align:center;padding:40px;color:#94a3b8;">No subscription plans found. Run the SaaS upgrade migration to seed default plans.</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -407,7 +393,7 @@ table a:hover{color:#93c5fd;}
                 <strong>Pricing changes apply to new invoices and the current unpaid invoice when the tenant opens billing.</strong>
                 Paid, part-paid, cancelled, waived, and previous-month invoices are not recalculated.
                 Max clients / routers of <strong>0</strong> or blank is treated as unlimited.
-                The hotspot commission rate is stored internally as a decimal fraction (e.g. 3% is stored as 0.0300).
+                SMS is billed per accepted part using the platform account. Existing SMS usage keeps its recorded rate.
             </span>
         </div>
 
@@ -415,7 +401,11 @@ table a:hover{color:#93c5fd;}
 </div><!-- /main -->
 
 <script>
+let planEditorOpener = null;
+let planEditorOverflow = "";
 function openEditPanel(plan) {
+    planEditorOpener = document.activeElement;
+    planEditorOverflow = document.body.style.overflow;
     document.getElementById('editPanelTitle').textContent = plan.name;
     document.getElementById('fPlanId').value          = plan.id;
     document.getElementById('fName').value            = plan.name;
@@ -423,8 +413,8 @@ function openEditPanel(plan) {
     document.getElementById('fHotspotRate').value     = plan.hotspot_commission_rate;
     document.getElementById('fBaseFee').value         = plan.base_monthly_fee;
     document.getElementById('fSmsRate').value         = plan.sms_rate || 0;
-    document.getElementById('fMaxClients').value      = plan.max_clients !== null ? plan.max_clients : '';
-    document.getElementById('fMaxRouters').value      = plan.max_routers !== null ? plan.max_routers : '';
+    document.getElementById('fMaxClients').value = Number(plan.max_clients) > 0 ? plan.max_clients : '';
+    document.getElementById('fMaxRouters').value = Number(plan.max_routers) > 0 ? plan.max_routers : '';
     document.getElementById('fTrialDays').value       = plan.trial_days;
 
     var modal = document.getElementById('editModal');
@@ -440,7 +430,8 @@ function closeEditPanel() {
     var modal = document.getElementById('editModal');
     modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
-    document.body.style.overflow = '';
+    document.body.style.overflow = planEditorOverflow;
+    planEditorOpener?.focus();
     document.getElementById('editForm').reset();
 }
 
@@ -450,11 +441,31 @@ document.addEventListener('click', function (e) {
     if (e.target.hasAttribute && e.target.hasAttribute('data-close-modal')) closeEditPanel();
 });
 document.addEventListener('keydown', function (e) {
+    if (e.key === 'Tab' && document.getElementById('editModal').classList.contains('open')) {
+        const items = [...document.querySelectorAll('#editPanel input:not([type="hidden"]),#editPanel button')];
+        const first = items[0], last = items[items.length-1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
     if ((e.key === 'Escape' || e.key === 'Esc') &&
         document.getElementById('editModal').classList.contains('open')) {
         closeEditPanel();
     }
 });
 </script>
+<?php if ($errorMsg && ($_POST['action'] ?? '') === 'save'): ?>
+<script>
+openEditPanel(<?= json_encode([
+ 'id'=>(int)($_POST['plan_id'] ?? 0), 'name'=>is_string($_POST['name'] ?? null) ? $_POST['name'] : '',
+ 'pppoe_fee_per_user'=>is_scalar($_POST['pppoe_fee_per_user'] ?? '') ? ($_POST['pppoe_fee_per_user'] ?? '') : '',
+ 'hotspot_commission_rate'=>is_scalar($_POST['hotspot_commission_rate'] ?? '') ? ($_POST['hotspot_commission_rate'] ?? '') : '',
+ 'base_monthly_fee'=>is_scalar($_POST['base_monthly_fee'] ?? '') ? ($_POST['base_monthly_fee'] ?? '') : '',
+ 'sms_rate'=>is_scalar($_POST['sms_rate'] ?? '') ? ($_POST['sms_rate'] ?? '') : '',
+ 'max_clients'=>is_scalar($_POST['max_clients'] ?? '') ? ($_POST['max_clients'] ?? '') : '',
+ 'max_routers'=>is_scalar($_POST['max_routers'] ?? '') ? ($_POST['max_routers'] ?? '') : '',
+ 'trial_days'=>is_scalar($_POST['trial_days'] ?? '') ? ($_POST['trial_days'] ?? '') : '',
+], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>);
+</script>
+<?php endif; ?>
 </body>
 </html>
