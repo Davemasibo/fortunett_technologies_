@@ -137,7 +137,7 @@ $billsStmt = $pdo->prepare("
            invoice_number,
            billing_period,
            hotspot_collections            AS total_collections,
-           base_fee, router_count, router_fee_per_router, sms_message_count, sms_units, sms_amount,
+           base_fee, router_count, router_fee_per_router, sms_message_count, sms_units, sms_amount, sms_rate,
            pppoe_subtotal,
            pppoe_user_count AS pppoe_count,
            pppoe_fee_per_user AS pppoe_rate,
@@ -648,6 +648,7 @@ include 'includes/sidebar.php';
             'sms_message_count' => (int)($currentBill['sms_message_count'] ?? 0),
             'sms_units' => (int)($currentBill['sms_units'] ?? 0),
             'sms_amount' => (float)($currentBill['sms_amount'] ?? 0),
+            'sms_rate' => (float)($currentBill['sms_rate'] ?? 0),
             'pppoe_subtotal'    => $pppoeSubtotal,
             'total_due'         => $serviceSubtotal,
             'due_date'          => $currentBill['due_date'] ?? null,
@@ -1029,7 +1030,8 @@ function openInvoiceModal(bill) {
     const total      = Number(bill.total_due ?? (base + pppoe + comm + sms));
     const smsUnits = Number(bill.sms_units || 0);
     document.getElementById("invSmsQty").textContent = smsUnits + (smsUnits === 1 ? " unit" : " units");
-    document.getElementById("invSmsRate").textContent = 'KES ' + (smsUnits ? sms / smsUnits : 0).toFixed(4) + '/unit';
+    const smsRate = Number(bill.sms_rate ?? (smsUnits ? sms / smsUnits : 0));
+    document.getElementById("invSmsRate").textContent = 'KES ' + smsRate.toFixed(4) + '/unit';
     document.getElementById("invSmsAmount").textContent = "KES " + fmt(sms);
     document.getElementById("invSmsDescription").textContent = "Accepted customer messages using platform SMS";
     const paid       = Number(bill.amount_paid ?? 0);

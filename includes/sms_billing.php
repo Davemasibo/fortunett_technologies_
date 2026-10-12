@@ -85,6 +85,7 @@ function ensureSmsInvoiceSchema(PDO $pdo): void {
     ensureColumn($pdo,'platform_invoices','sms_message_count','INT UNSIGNED NOT NULL DEFAULT 0');
     ensureColumn($pdo,'platform_invoices','sms_units','INT UNSIGNED NOT NULL DEFAULT 0');
     ensureColumn($pdo,'platform_invoices','sms_amount','DECIMAL(15,2) NOT NULL DEFAULT 0');
+    ensureColumn($pdo,'platform_invoices','sms_rate','DECIMAL(12,4) DEFAULT NULL');
     $st=$pdo->query("SELECT GENERATION_EXPRESSION FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='platform_invoices' AND COLUMN_NAME='total_due'");
     $expression=(string)$st->fetchColumn();
     if ($expression !== '' && stripos($expression,'sms_amount') === false) {

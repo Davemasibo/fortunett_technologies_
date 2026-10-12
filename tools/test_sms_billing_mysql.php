@@ -23,6 +23,11 @@ try {
     ensureSmsInvoiceSchema($pdo);
     $pdo->exec('UPDATE platform_subscription_plans SET sms_rate=1.25 WHERE id=1');
     $pdo->exec('UPDATE platform_subscription_plans SET sms_rate=2 WHERE id=2');
+    $pdo->exec("INSERT INTO tenants VALUES (3,1,'active')");
+    $pdo->exec('UPDATE platform_subscription_plans SET base_monthly_fee=10 WHERE id=1');
+    $pdo->exec("INSERT INTO mikrotik_routers VALUES (1,3,NOW(),'active',NOW())");
+    $zeroUsageInvoice=ensureCurrentPlatformInvoice($pdo,3,date('Y-m-01'));
+    smsBillCheck($zeroUsageInvoice && (int)$zeroUsageInvoice['sms_units']===0 && (float)$zeroUsageInvoice['sms_rate']===1.25 && (float)$zeroUsageInvoice['sms_amount']===0.0,'Zero-usage invoice shows configured package SMS rate without charging');
     $config=['provider'=>'uwazii']; $phone='254712345678';
     $accepted=['success'=>true,'response'=>json_encode(['status'=>true,'data'=>[$phone=>[['id_state'=>'a'],['id_state'=>'b']]]])];
     $id=beginPlatformSmsUsage($pdo,1,5,$config,$phone);

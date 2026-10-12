@@ -277,6 +277,7 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingP
             SELECT COALESCE(p.pppoe_fee_per_user, 25) AS pppoe_fee,
                    COALESCE(p.hotspot_commission_rate, 0.03) AS hotspot_rate,
                    COALESCE(p.base_monthly_fee, 0) AS base_fee,
+                   COALESCE(p.sms_rate, 0) AS sms_rate,
                    p.id AS plan_id, t.status AS tenant_status
             FROM tenants t
             LEFT JOIN platform_subscription_plans p ON p.id = t.subscription_plan_id
@@ -319,6 +320,7 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingP
         $pppoeCount = $charges['users'];
         $r['base_fee'] = $charges['base_fee'];
         $sms = platformSmsMonthUsage($pdo,$tenantId,$periodStart,$existing ? (int)$existing['id'] : null);
+        $smsInvoiceRate = $sms['units'] > 0 ? round($sms['amount'] / $sms['units'],4) : (float)($r['sms_rate'] ?? 0);
         $invoiceTotal = $pppoeCount * $r['pppoe_fee'] + $hotspotCollections * $r['hotspot_rate'] + $r['base_fee'] + $sms['amount'];
         if (((!$charges['eligible'] && $sms['amount'] <= 0) || $invoiceTotal <= 0) && !$existing) { $pdo->commit(); return null; }
 
@@ -336,13 +338,13 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingP
                 UPDATE platform_invoices
                 SET pppoe_user_count = ?, pppoe_fee_per_user = ?,
                     hotspot_collections = ?, hotspot_commission_rate = ?,
-                    base_fee = ?, router_count = ?, router_fee_per_router = ?, plan_id = ?, sms_message_count = ?, sms_units = ?, sms_amount = ?, status = ?
+                    base_fee = ?, router_count = ?, router_fee_per_router = ?, plan_id = ?, sms_message_count = ?, sms_units = ?, sms_amount = ?, sms_rate = ?, status = ?
                 WHERE id = ? AND (status IN ('pending', 'overdue') OR total_due=0) AND COALESCE(amount_paid, 0) = 0
             ")->execute([
                 $pppoeCount, $r['pppoe_fee'],
                 $hotspotCollections, $r['hotspot_rate'],
                 $r['base_fee'], $routerBase['router_count'], $routerBase['router_fee_per_router'], $r['plan_id'],
-                $sms['messages'],$sms['units'],$sms['amount'],
+                $sms['messages'],$sms['units'],$sms['amount'],$smsInvoiceRate,
                 $invoiceTotal > 0
                     ? ($existing['status'] === 'overdue' ? 'overdue' : 'pending') : 'paid',
                 $existing['id'],
@@ -353,13 +355,13 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingP
                     (invoice_number, tenant_id, billing_period, plan_id,
                      pppoe_user_count, pppoe_fee_per_user,
                      hotspot_collections, hotspot_commission_rate,
-                     base_fee, router_count, router_fee_per_router, sms_message_count, sms_units, sms_amount, status, due_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                     base_fee, router_count, router_fee_per_router, sms_message_count, sms_units, sms_amount, sms_rate, status, due_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
             ")->execute([
                 $invoiceNumber, $tenantId, $periodStart, $r['plan_id'],
                 $pppoeCount, $r['pppoe_fee'],
                 $hotspotCollections, $r['hotspot_rate'],
-                $r['base_fee'], $routerBase['router_count'], $routerBase['router_fee_per_router'], $sms['messages'],$sms['units'],$sms['amount'],$dueDate,
+                $r['base_fee'], $routerBase['router_count'], $routerBase['router_fee_per_router'], $sms['messages'],$sms['units'],$sms['amount'],$smsInvoiceRate,$dueDate,
             ]);
         }
 

@@ -52,3 +52,8 @@ context.openInvoiceModal({...bill,sms_amount:1.5,sms_units:1,sms_message_count:1
 assert.equal(elements.invSmsQty.textContent,'1 unit');
 assert.equal(elements.invSmsRate.textContent,'KES 1.5000/unit');
 console.log('PASS SMS invoice shows actual per-unit rate and singular quantity');
+context.openInvoiceModal({...bill,sms_amount:0,sms_units:0,sms_message_count:0,sms_rate:1.5});
+assert.equal(elements.invSmsQty.textContent,'0 units');
+assert.equal(elements.invSmsRate.textContent,'KES 1.5000/unit');
+assert.equal(elements.invSmsAmount.textContent,'KES 0.00');
+console.log('PASS zero usage displays package rate with zero charge');
