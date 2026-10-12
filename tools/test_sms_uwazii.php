@@ -17,3 +17,5 @@ uwaziiCheck(!empty(smsUwaziiResponse(401, '{}', $phone)['auth_failure']), 'Inval
 uwaziiCheck(!empty(smsUwaziiResponse(502, '<html>Bad gateway</html>', $phone)['uncertain']), 'Gateway failure avoids blind retry');
 uwaziiCheck(!empty(smsUwaziiResponse(400, '{"status":false,"errors":"Invalid senderID"}', $phone)['sender_failure']), 'Sender rejection supports platform fallback');
 uwaziiCheck(smsIsUwazii(['provider' => 'uwazii']) && smsIsUwazii(['api_url' => SMS_UWAZII_URL]), 'Provider and endpoint detection');
+$senderError = smsUwaziiResponse(403, '{"status":false,"errors":"Sender ID unauthorized"}', $phone);
+uwaziiCheck(!empty($senderError['sender_failure']) && empty($senderError['auth_failure']), 'Unauthorized sender is not a token failure');

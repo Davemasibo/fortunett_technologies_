@@ -50,11 +50,14 @@ function smsUwaziiResponse(int $http, string $body, string $phone): array
     $json = json_decode($body, true);
     $detail = $json['errors'] ?? $json['message'] ?? $json['error'] ?? 'No acceptance confirmation returned';
     $detail = is_string($detail) ? $detail : json_encode($detail);
-    if ($http === 401 || $http === 403 || preg_match('/token|unauthenticated|unauthorized/i', $detail)) {
+    if (smsSenderRejected($detail)) {
+        return ['success' => false, 'sender_failure' => true, 'message' => 'Uwazii rejected the SMS sender: ' . $detail];
+    }
+    if ($http === 401 || $http === 403 || preg_match('/(?:invalid|expired|missing|incorrect|revoked).*token|token.*(?:invalid|expired|missing|incorrect|revoked)|unauthenticated|unauthorized/i', $detail)) {
         return ['success' => false, 'auth_failure' => true, 'message' => 'Uwazii authentication failed. Check your REST API token and IP whitelist.'];
     }
     if ($http >= 500 || !is_array($json)) {
-        return ['success' => false, 'uncertain' => true, 'message' => 'Could not confirm Uwazii acceptance. Check provider history before retrying.'];
+        return ['success' => false, 'uncertain' => true, 'message' => 'Could not confirm Uwazii acceptance (HTTP ' . $http . ($http >= 500 ? ', provider server error' : ', invalid JSON response') . '). Check provider history before retrying.'];
     }
     if ($http >= 200 && $http < 300 && ($json['status'] ?? null) === true) {
         $parts = $json['data'][$phone] ?? [];

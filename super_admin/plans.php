@@ -2,6 +2,8 @@
 require_once __DIR__ . '/../includes/db_master.php';
 require_once __DIR__ . '/includes/auth.php';
 superAdminGuard();
+require_once __DIR__ . '/../includes/sms_billing.php';
+ensureSmsUsageSchema($pdo);
 
 $successMsg = '';
 $errorMsg   = '';
@@ -13,13 +15,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
     $pppoe_fee            = (float)($_POST['pppoe_fee_per_user'] ?? 0);
     $hotspot_rate         = (float)($_POST['hotspot_commission_rate'] ?? 0);
     $base_fee             = (float)($_POST['base_monthly_fee'] ?? 0);
+    $sms_rate = filter_var($_POST['sms_rate'] ?? '0', FILTER_VALIDATE_FLOAT);
     $max_clients          = ($_POST['max_clients'] ?? '') === '' ? null : (int)$_POST['max_clients'];
     $max_routers          = ($_POST['max_routers'] ?? '') === '' ? null : (int)$_POST['max_routers'];
     $trial_days           = (int)($_POST['trial_days'] ?? 30);
 
     if (!$planId || !$name) {
         $errorMsg = 'Plan ID and name are required.';
-    } elseif ($pppoe_fee < 0 || $hotspot_rate < 0 || $base_fee < 0) {
+    } elseif ($pppoe_fee < 0 || $hotspot_rate < 0 || $base_fee < 0 || $sms_rate === false || !is_finite((float)$sms_rate) || $sms_rate < 0 || $sms_rate > 99999999) {
         $errorMsg = 'Fees and rates cannot be negative.';
     } else {
         // Convert percentage to decimal fraction (e.g. 3 → 0.0300)
@@ -31,6 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
                 pppoe_fee_per_user = ?,
                 hotspot_commission_rate = ?,
                 base_monthly_fee = ?,
+                sms_rate = ?,
                 max_clients = ?,
                 max_routers = ?,
                 trial_days = ?
@@ -41,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
             $pppoe_fee,
             $hotspot_rate_decimal,
             $base_fee,
+            $sms_rate,
             $max_clients,
             $max_routers,
             $trial_days,
@@ -271,6 +276,11 @@ table a:hover{color:#93c5fd;}
                             <div class="hint">Fixed platform fee added to every invoice</div>
                         </div>
                         <div class="form-group">
+                            <label>SMS rate per part (KSH)</label>
+                            <input type="number" name="sms_rate" id="fSmsRate" step="0.0001" min="0" max="99999999" required>
+                            <div class="hint">Accepted customer SMS using the platform account. Zero makes SMS free.</div>
+                        </div>
+                        <div class="form-group">
                             <label>Max Clients</label>
                             <input type="number" name="max_clients" id="fMaxClients" min="0" placeholder="0 = unlimited">
                             <div class="hint">Leave blank or 0 for unlimited</div>
@@ -330,7 +340,7 @@ table a:hover{color:#93c5fd;}
                     </td>
                     <td><code style="background:#f1f5f9;padding:2px 7px;border-radius:4px;font-size:12px;"><?= htmlspecialchars($plan['slug']) ?></code></td>
                     <td><strong>KSH <?= number_format($plan['pppoe_fee_per_user'], 2) ?></strong></td>
-                    <td><?= round($plan['hotspot_commission_rate'] * 100, 2) ?>%</td>
+                    <td><?= round($plan['hotspot_commission_rate'] * 100, 2) ?>%<br><small>SMS: KSH <?= number_format($plan['sms_rate'], 4) ?>/part</small></td>
                     <td>KSH <?= number_format($plan['base_monthly_fee'], 2) ?></td>
                     <td><?= $plan['max_clients'] !== null ? number_format($plan['max_clients']) : '<span style="color:#94a3b8;">Unlimited</span>' ?></td>
                     <td><?= $plan['max_routers'] !== null ? number_format($plan['max_routers']) : '<span style="color:#94a3b8;">Unlimited</span>' ?></td>
@@ -356,6 +366,7 @@ table a:hover{color:#93c5fd;}
                             'pppoe_fee_per_user'     => (float)$plan['pppoe_fee_per_user'],
                             'hotspot_commission_rate'=> round((float)$plan['hotspot_commission_rate'] * 100, 4),
                             'base_monthly_fee'       => (float)$plan['base_monthly_fee'],
+                            'sms_rate' => (float)$plan['sms_rate'],
                             'max_clients'            => $plan['max_clients'],
                             'max_routers'            => $plan['max_routers'],
                             'trial_days'             => (int)$plan['trial_days'],
@@ -409,6 +420,7 @@ function openEditPanel(plan) {
     document.getElementById('fPppoeFee').value        = plan.pppoe_fee_per_user;
     document.getElementById('fHotspotRate').value     = plan.hotspot_commission_rate;
     document.getElementById('fBaseFee').value         = plan.base_monthly_fee;
+    document.getElementById('fSmsRate').value         = plan.sms_rate || 0;
     document.getElementById('fMaxClients').value      = plan.max_clients !== null ? plan.max_clients : '';
     document.getElementById('fMaxRouters').value      = plan.max_routers !== null ? plan.max_routers : '';
     document.getElementById('fTrialDays').value       = plan.trial_days;

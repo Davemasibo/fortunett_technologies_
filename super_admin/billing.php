@@ -4,6 +4,7 @@ require_once __DIR__ . '/includes/auth.php';
 superAdminGuard();
 require_once __DIR__ . '/../includes/platform_billing.php';
 ensurePlatformBillingSchema($pdo);
+ensureSmsInvoiceSchema($pdo);
 foreach ($pdo->query("SELECT id FROM tenants WHERE status='trial'")->fetchAll(PDO::FETCH_COLUMN) as $trialId) {
     repairUnpaidTrialInvoices($pdo, (int)$trialId);
 }
@@ -181,7 +182,8 @@ table a:hover{color:#93c5fd;}
 
 <div class="main">
     <div class="topbar">
-        <h1><?= $invoiceDetail ? 'Invoice Detail' : 'Platform Billing' ?></h1>
+        <p><a href="sms_usage.php">Tenant SMS usage</a></p>
+<h1><?= $invoiceDetail ? 'Invoice Detail' : 'Platform Billing' ?></h1>
         <div style="display:flex;gap:10px;align-items:center;">
             <form method="POST" action="../api/super_admin/billing.php" style="display:inline;">
                 <input type="hidden" name="action" value="generate_month">
@@ -211,6 +213,7 @@ table a:hover{color:#93c5fd;}
                 <span class="badge badge-<?= $invoiceDetail['status'] ?>" style="font-size:14px;padding:6px 16px;"><?= ucfirst($invoiceDetail['status']) ?></span>
             </div>
 
+            <p><a href="sms_usage.php">View tenant SMS usage and charges</a></p>
             <!-- Line items -->
             <div class="inv-lines">
                 <div class="line-item">
@@ -227,6 +230,10 @@ table a:hover{color:#93c5fd;}
                     <strong>KSH <?= number_format($invoiceDetail['base_fee'], 2) ?></strong>
                 </div>
                 <?php endif; ?>
+                <div class="line-item">
+                    <span>Platform SMS (<?= (int)$invoiceDetail['sms_message_count'] ?> messages / <?= (int)$invoiceDetail['sms_units'] ?> parts)</span>
+                    <strong>KSH <?= number_format($invoiceDetail['sms_amount'], 2) ?></strong>
+                </div>
                 <div class="line-total">
                     <span>Total Due</span>
                     <span>KSH <?= number_format($invoiceDetail['total_due'], 2) ?></span>

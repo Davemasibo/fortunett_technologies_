@@ -8,6 +8,7 @@ class SMSHelper {
     private $tenant_id;
     private $config;
     private $using_platform = false;
+    private $billing_client = null;
 
     public function __construct($pdo, $tenant_id) {
         $this->pdo = $pdo;
@@ -44,6 +45,7 @@ class SMSHelper {
     }
 
     public function send($phone, $message, $clientId = null, $log = true) {
+        $this->billing_client = $clientId;
         if (preg_match('/\{\{?\s*[a-z_][a-z0-9_]*\s*\}\}?|\[\s*[a-z_][a-z0-9_]*\s*\]/i', $message)) {
             $response = ['success'=>false,'message'=>'SMS contains an unresolved variable. Open the customer SMS form and correct the template before sending.'];
             if ($log) $this->logMessage($clientId, $phone, $message, $response);
@@ -65,8 +67,9 @@ class SMSHelper {
         // the whole point of a platform fallback -- use it rather than let the
         // customer go untold that their payment landed.
         if (empty($response['success']) && empty($response['uncertain'])
-            && (!empty($response['auth_failure']) || !empty($response['sender_failure'])) && !$this->using_platform) {
+            && !$this->using_platform) {
             $senderFailure = !empty($response['sender_failure']);
+            $authFailure = !empty($response['auth_failure']);
             $platform = smsPlatformConfig($this->pdo);
             if ($platform) {
                 $ownCfg = $this->config;
@@ -75,7 +78,7 @@ class SMSHelper {
 
                 $retry = $this->sendViaTalkSasa($phone, $message);
                 if (!empty($retry['success'])) {
-                    error_log('[sms] tenant ' . $this->tenant_id . ' SMS configuration rejected; accepted using platform configuration');
+                    error_log('[sms] tenant ' . $this->tenant_id . ' SMS failed; accepted using platform configuration');
                     $retry['fell_back'] = true;
                     $response = $retry;
                 } else {
@@ -87,10 +90,19 @@ class SMSHelper {
                     $this->using_platform = false;
                     // Preserve the fallback's actual failure: a sender/credit
                     // rejection does not mean the platform token was rejected.
+                    $tenantError = $response['message'] ?? ($senderFailure ? 'Tenant sender rejected' : 'Tenant token rejected');
                     $response = smsFallbackFailure($retry, $senderFailure);
+                    if (!$senderFailure && !$authFailure) {
+                        // A credit or request rejection is not a token diagnosis.
+                        unset($response['tenant_auth_failure']);
+                        $response['tenant_failure'] = true;
+                        $response['message'] = $tenantError . '. Platform fallback: ' . ($retry['message'] ?? 'No provider confirmation returned.');
+                    }
+                    $response['tenant_error'] = $tenantError;
                     if (!empty($retry['uncertain'])) {
                         $response['uncertain'] = true;
-                        $response['message'] = 'The tenant SMS configuration was rejected and the platform fallback delivery could not be confirmed.';
+                        $response['message'] = $response['tenant_error'] . '. Platform fallback could not be confirmed: '
+                            . ($retry['message'] ?? 'No provider confirmation returned.') . ' Check provider history before retrying.';
                     }
                 }
             }
@@ -129,6 +141,30 @@ class SMSHelper {
     }
 
     protected function sendViaTalkSasa($phone, $message) {
+        $usageId = null;
+        if ($this->using_platform && $this->tenant_id && trim((string)($this->config['api_key'] ?? '')) !== 'TEST_KEY') {
+            require_once __DIR__ . '/../includes/sms_billing.php';
+            try {
+                $usageId = beginPlatformSmsUsage($this->pdo, (int)$this->tenant_id,
+                    $this->billing_client ? (int)$this->billing_client : null, $this->config, $phone);
+            } catch (Throwable $e) {
+                error_log('SMS usage reservation: ' . $e->getMessage());
+                return ['success'=>false,'message'=>'Platform SMS usage could not be recorded. Contact the platform administrator.'];
+            }
+        }
+        try { $result = $this->sendProviderHttp($phone, $message); }
+        catch (Throwable $e) {
+            $result = ['success'=>false,'uncertain'=>true,'message'=>'SMS outcome could not be confirmed. Check provider history.'];
+            error_log('SMS transport: ' . $e->getMessage());
+        }
+        if ($usageId) {
+            try { finishPlatformSmsUsage($this->pdo,$usageId,$result,$phone,$message,smsIsUwazii($this->config)); }
+            catch (Throwable $e) { error_log('SMS usage completion requires reconciliation, usage ' . $usageId . ': ' . $e->getMessage()); }
+        }
+        return $result;
+    }
+
+    protected function sendProviderHttp($phone, $message) {
         $url      = smsNormalizeApiUrl($this->config['api_url'] ?? null);
         // Trimmed because a token pasted from a dashboard very often carries a
         // trailing newline or space, and a bearer header with one is rejected

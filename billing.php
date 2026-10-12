@@ -87,6 +87,10 @@ $issueDate     = date('d M Y');
 // platform_invoices row they were never shown. One table now, one truth.
 require_once __DIR__ . '/includes/platform_billing.php';
 ensureCurrentPlatformInvoice($pdo, $tenant_id);
+$smsUsageStatement = $pdo->prepare("SELECT COUNT(*) AS messages,COALESCE(SUM(sms_units),0) AS units,COALESCE(SUM(amount),0) AS amount FROM platform_sms_usage WHERE tenant_id=? AND status='accepted' AND created_at>=? AND created_at<?");
+$smsUsageStatement->execute([$tenant_id,$currentMonthStart,date('Y-m-01',strtotime($currentMonthStart.' +1 month'))]);
+$smsMonthUsage=$smsUsageStatement->fetch(PDO::FETCH_ASSOC);
+
 if (($tenant['status'] ?? '') === 'trial') {
     $baseMonthlyFee = 0;
     $pppoeSubtotal = 0;
@@ -133,7 +137,7 @@ $billsStmt = $pdo->prepare("
            invoice_number,
            billing_period,
            hotspot_collections            AS total_collections,
-           base_fee, router_count, router_fee_per_router,
+           base_fee, router_count, router_fee_per_router, sms_message_count, sms_units, sms_amount,
            pppoe_subtotal,
            pppoe_user_count AS pppoe_count,
            pppoe_fee_per_user AS pppoe_rate,
@@ -616,6 +620,7 @@ include 'includes/sidebar.php';
     <div class="billing-header">
         <h2>Billing &amp; Invoices</h2>
         <p>View your subscription invoices and pay your FortuNett Technologies platform fee.</p>
+        <p>Platform SMS this month: <strong><?= (int)$smsMonthUsage['messages'] ?> accepted messages / <?= (int)$smsMonthUsage['units'] ?> parts</strong> ? KES <?= number_format($smsMonthUsage['amount'],2) ?>. Only platform-funded sends are charged. Usage after an invoice is paid carries forward to the next open invoice.</p>
     </div>
 
     <div class="bill-summary-card">
@@ -640,6 +645,9 @@ include 'includes/sidebar.php';
             'router_count'      => $currentBill ? $currentBill['router_count'] : $routerBase['router_count'],
             'router_fee_per_router' => $currentBill ? $currentBill['router_fee_per_router'] : $routerBase['router_fee_per_router'],
             'show_router_fee'   => $showBaseFees,
+            'sms_message_count' => (int)($currentBill['sms_message_count'] ?? 0),
+            'sms_units' => (int)($currentBill['sms_units'] ?? 0),
+            'sms_amount' => (float)($currentBill['sms_amount'] ?? 0),
             'pppoe_subtotal'    => $pppoeSubtotal,
             'total_due'         => $serviceSubtotal,
             'due_date'          => $currentBill['due_date'] ?? null,
@@ -690,6 +698,7 @@ include 'includes/sidebar.php';
                         <th class="text-end">Revenue Collected</th>
                         <th class="text-end">PPPoE Fee</th>
                         <?php if ($showBaseFees): ?><th class="text-end">Monthly Fee</th><?php endif; ?>
+                        <th class="text-end">SMS</th>
                         <th class="text-end">Hotspot Commission</th>
                         <th class="text-end">Total Due</th>
                         <th class="text-center">Status</th>
@@ -707,6 +716,7 @@ include 'includes/sidebar.php';
                         <td class="text-end"><?php echo $collectionError ? 'Unavailable' : 'KES ' . number_format($collectionMonths[$bill['billing_period']]['collected'] ?? 0, 2); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['pppoe_subtotal'], 2); ?></td>
                         <?php if ($showBaseFees): ?><td class="text-end">KES <?php echo number_format($bill['base_fee'], 2); ?></td><?php endif; ?>
+                        <td class="text-end"><?php echo (int)$bill['sms_units']; ?> parts / KES <?php echo number_format($bill['sms_amount'], 2); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['commission_amount'], 2); ?></td>
                         <td class="text-end" style="font-weight:700; color:#e2e2e0;">KES <?php echo number_format($bTotal, 2); ?></td>
                         <td class="text-center">
@@ -824,6 +834,10 @@ include 'includes/sidebar.php';
                     <td id="invCommRate"><?php echo round($hotspotRate * 100, 2); ?>%</td>
                     <td>1</td>
                     <td id="invCommAmt">KES <?php echo number_format($hotspotFee, 2); ?></td>
+                </tr>
+                <tr id="invSmsRow">
+                    <td><div class="desc-main">Platform SMS</div><div class="desc-sub" id="invSmsDescription">Accepted customer messages</div></td>
+                    <td>Rates recorded at send time</td><td id="invSmsQty">0 parts</td><td id="invSmsAmount">KES 0.00</td>
                 </tr>
             </tbody>
             <tfoot>
@@ -1011,7 +1025,11 @@ function openInvoiceModal(bill) {
     const base       = parseFloat(bill.base_fee || 0);
     const pppoe      = parseFloat(bill.pppoe_subtotal || 0);
     const comm       = parseFloat(bill.commission_amount || 0);
-    const total      = Number(bill.total_due ?? (base + pppoe + comm));
+    const sms = Number(bill.sms_amount || 0);
+    const total      = Number(bill.total_due ?? (base + pppoe + comm + sms));
+    document.getElementById("invSmsQty").textContent = Number(bill.sms_units || 0) + " parts";
+    document.getElementById("invSmsAmount").textContent = "KES " + fmt(sms);
+    document.getElementById("invSmsDescription").textContent = Number(bill.sms_message_count || 0) + " accepted messages using platform SMS";
     const paid       = Number(bill.amount_paid ?? 0);
     const balance    = Number(bill.balance_due ?? Math.max(total - paid, 0));
     const rate       = Number(bill.commission_rate ?? 0.03) * 100;

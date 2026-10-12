@@ -233,11 +233,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $senderId  = trim($_POST['sms_sender_id'] ?? '');
         // Never store the dead v1 endpoint, whatever the form posts back.
         $apiUrl    = smsNormalizeApiUrl($_POST['sms_api_url'] ?? null);
+        if (strtolower($provider) === 'uwazii') $apiUrl = SMS_UWAZII_URL;
         if ($apiKey === '' || $apiKey === SMS_KEY_MASK) {
             $sRow = $pdo->prepare("SELECT api_key FROM sms_configurations WHERE tenant_id=? LIMIT 1");
             $sRow->execute([$tenant_id]);
             $apiKey = $sRow->fetchColumn() ?: '';
         }
+        if (isset($_POST['sms_use_platform'])) $apiKey = '';
         try {
             $pdo->prepare("INSERT INTO sms_configurations (tenant_id,provider,api_key,sender_id,api_url) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE provider=VALUES(provider),api_key=VALUES(api_key),sender_id=VALUES(sender_id),api_url=VALUES(api_url)")
                 ->execute([$tenant_id, $provider, $apiKey, $senderId, $apiUrl]);
@@ -1122,17 +1124,17 @@ input:checked + .set-slider:before { transform:translateX(20px);background:#fff;
                 <?php if ($smsEffective === null): ?>
                 <div class="set-info-banner warn">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <div><strong>No SMS configured</strong> — SMS notifications will not be delivered. Either your FortuNett admin has not set up the shared SMS account, or you need your own TalkSasa API token below.</div>
+                    <div><strong>No SMS configured</strong> — SMS notifications will not be delivered. Either your FortuNett admin has not set up the shared SMS account, or you need your own SMS provider token below.</div>
                 </div>
                 <?php elseif ($smsUsingPlatform): ?>
                 <div class="set-info-banner success">
                     <i class="fas fa-check-circle"></i>
-                    <div><strong>Using platform SMS</strong> — messages are sent via FortuNett's shared TalkSasa account with sender ID <strong><?php echo htmlspecialchars($smsEffective['sender_id'] ?: '?'); ?></strong>. You do not need to configure anything. Add your own API token below only if you want your own sender ID and credit balance.</div>
+                    <div><strong>Using platform SMS</strong> — messages are sent via FortuNett's shared SMS account with sender ID <strong><?php echo htmlspecialchars($smsEffective['sender_id'] ?: '?'); ?></strong>. You do not need to configure anything. Add your own API token below only if you want your own sender ID and credit balance.</div>
                 </div>
                 <?php else: ?>
                 <div class="set-info-banner success">
                     <i class="fas fa-check-circle"></i>
-                    <div><strong>Sending with your own credentials</strong> — <strong><?php echo htmlspecialchars(ucfirst($smsEffective['provider'] ?? 'talksasa')); ?></strong>, sender ID <strong><?php echo htmlspecialchars($smsEffective['sender_id'] ?: '?'); ?></strong>. Clear the API key to fall back to the platform account.</div>
+                    <div><strong>Sending with your own credentials</strong> — <strong><?php echo htmlspecialchars(ucfirst($smsEffective['provider'] ?? 'talksasa')); ?></strong>, sender ID <strong><?php echo htmlspecialchars($smsEffective['sender_id'] ?: '?'); ?></strong>. Select Use platform SMS below to switch to the shared account.</div>
                 </div>
                 <?php endif; ?>
 
@@ -1146,6 +1148,7 @@ input:checked + .set-slider:before { transform:translateX(20px);background:#fff;
                                 <label class="set-label">Provider</label>
                                 <select name="sms_provider" class="set-input set-select">
                                     <option value="talksasa" <?php echo ($smsCfg['provider'] ?? 'talksasa') === 'talksasa' ? 'selected' : ''; ?>>TalkSasa</option>
+                                    <option value="uwazii" <?php echo ($smsCfg['provider'] ?? '') === 'uwazii' ? 'selected' : ''; ?>>Uwazii Mobile</option>
                                     <option value="africastalking" <?php echo ($smsCfg['provider'] ?? '') === 'africastalking' ? 'selected' : ''; ?>>Africa's Talking</option>
                                     <option value="other" <?php echo ($smsCfg['provider'] ?? '') === 'other' ? 'selected' : ''; ?>>Other (custom URL)</option>
                                 </select>
@@ -1161,7 +1164,7 @@ input:checked + .set-slider:before { transform:translateX(20px);background:#fff;
                                 <label class="set-label">API Key</label>
                                 <div class="sec-wrap">
                                     <input type="password" name="sms_api_key" id="sms_api_key" class="set-input"
-                                           placeholder="<?php echo !empty($smsCfg['api_key']) ? '••••••••' : 'Your TalkSasa API key'; ?>"
+                                           placeholder="<?php echo !empty($smsCfg['api_key']) ? '••••••••' : 'Your SMS provider token'; ?>"
                                            autocomplete="new-password">
                                     <button type="button" class="sec-toggle" onclick="toggleVis('sms_api_key',this)"><i class="fas fa-eye"></i></button>
                                 </div>
@@ -1174,14 +1177,15 @@ input:checked + .set-slider:before { transform:translateX(20px);background:#fff;
                                 <input type="url" name="sms_api_url" class="set-input"
                                        value="<?php echo htmlspecialchars(smsNormalizeApiUrl($smsCfg['api_url'] ?? null)); ?>"
                                        placeholder="<?php echo SMS_API_URL_DEFAULT; ?>">
-                                <div class="set-hint">Leave as default for TalkSasa</div>
+                                <div class="set-hint">Uwazii uses https://restapi.uwaziimobile.com/v1/send automatically. Use sender Uwazii-OTP for transactional messages or Uwazii for promotions.</div>
                             </div>
                         </div>
                     </div>
 
+                    <label class="set-hint"><input type="checkbox" name="sms_use_platform" value="1"> Use platform SMS instead of my own credentials (clears my saved SMS token).</label>
                     <div style="display:flex;align-items:center;gap:12px;">
                         <button type="submit" class="set-save-btn"><i class="fas fa-save"></i> Save SMS Settings</button>
-                        <?php if(!empty($smsCfg)): ?>
+                        <?php if(!empty($smsEffective)): ?>
                         <button type="button" class="btn btn-sm" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7);border-radius:7px;" onclick="testSMS()">
                             <i class="fas fa-sms me-1"></i> Send Test SMS
                         </button>

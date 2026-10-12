@@ -83,6 +83,8 @@ foreach ($tenants as $tenant) {
         $pppoeCount = (int)$invoice['pppoe_user_count'];
         $hotspotCollections = (float)$invoice['hotspot_collections'];
         $tenant['base_fee'] = (float)$invoice['base_fee'];
+        $tenant['sms_units'] = (int)$invoice['sms_units'];
+        $tenant['sms_amount'] = (float)$invoice['sms_amount'];
         $tenant['router_count']=(int)($invoice['router_count']??0);
         $tenant['router_fee_per_router']=(float)($invoice['router_fee_per_router']??0);
         $tenant['pppoe_fee'] = (float)$invoice['pppoe_fee_per_user'];
@@ -123,6 +125,7 @@ function sendInvoiceEmail(PDO $pdo, array $tenant, string $invoiceNumber, string
 
     $rows=['Invoice number'=>$invoiceNumber,'Billing period'=>$periodLabel,'PPPoE users'=>$pppoeCount.' x KSH '.number_format($pppoeRate,2).' = KSH '.number_format($pppoeSubtotal,2),'Hotspot commission'=>$commissionPct.'% of KSH '.number_format($hotspotCollections,2).' = KSH '.number_format($hotspotCommission,2)];
     if ($baseFee>0) $rows['Monthly router fee']=($tenant['router_count'] ?? 0).' routers x KSH '.number_format($tenant['router_fee_per_router'] ?? 0,2).' = KSH '.number_format($baseFee,2);
+    $rows['Platform SMS']=($tenant['sms_units'] ?? 0).' parts = KSH '.number_format($tenant['sms_amount'] ?? 0,2);
     $rows['Total due']='KSH '.number_format($totalDue,2); $rows['Due date']=$dueDateFmt;
     $body=fortunettEmail('Your monthly invoice is ready',
         '<p>Hello <strong>'.fortunettEmailEscape($tenant['admin_username']).'</strong>,</p><p>Review your platform invoice and pay by the due date to keep your workspace active.</p>'
