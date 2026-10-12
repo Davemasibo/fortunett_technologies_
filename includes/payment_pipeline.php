@@ -374,10 +374,14 @@ function process_payment_success(
     $notificationId = null;
     try {
       if (!empty($client['phone'])) {
-        $msg = 'KSH ' . number_format($amount, 2) . ' received for ' . ($package['name'] ?? 'your plan')
-            . '. Valid to ' . ($expiryDate ? date('d M Y H:i', strtotime($expiryDate)) : 'pending activation')
-            . '. If not connected, open the Wi-Fi login page. Username: ' . $creds['username']
-            . ' Password: ' . $creds['password'] . '. Ref ' . $receipt . '.';
+        require_once __DIR__.'/sms_templates.php';
+        $notificationClient=array_replace($client,[
+            'payment_amount'=>$amount,'expiry_date'=>$expiryDate,
+            'mikrotik_username'=>$creds['username'],'mikrotik_password'=>$creds['password'],
+        ]);
+        $paymentTemplate=smsDefaultTemplates()['payment_received'][1]
+            . "\nUsername: {username}\nPassword: {password}\nIf not connected, open the Wi-Fi login page.";
+        $msg=smsRenderCustomerTemplate($paymentTemplate,$notificationClient,smsTenantTemplateContext($pdo,$tenantId));
         $notificationId = queuePaymentNotification($pdo, $tenantId, $clientId, $paymentId, $receipt, $client['phone'], $msg);
         $results['steps']['sms'] = false;
       }

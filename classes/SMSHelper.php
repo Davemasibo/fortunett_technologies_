@@ -417,10 +417,14 @@ class SMSHelper {
     public function renderPlaceholders(string $message, array $client): string
     {
         $context = [];
-        if (preg_match('/(?:\{|\[)\s*(?:support|support_phone|support_contact|paybill|paybill_number)\s*(?:\}|\])/i', $message)) {
+        if ($this->tenant_id || preg_match('/(?:\{|\[)\s*(?:support|support_phone|support_contact|support_line|paybill|paybill_number|payment_instructions|payment_details|portal_url|portal_link|company)\s*(?:\}|\])/i', $message)) {
             $context = smsTenantTemplateContext($this->pdo, (int)$this->tenant_id);
         }
-        return smsRenderCustomerTemplate($message, $client, $context);
+        $rendered = smsRenderCustomerTemplate($message, $client, $context);
+        if (!empty($context['portal_url']) && !str_contains($rendered, $context['portal_url'])) {
+            $rendered .= "\nCustomer portal: " . $context['portal_url'];
+        }
+        return $rendered;
     }
 }
 ?>

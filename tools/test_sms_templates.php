@@ -26,7 +26,7 @@ class TemplateStatement extends PDOStatement {
     public function fetchAll(int $mode=PDO::FETCH_DEFAULT,mixed ...$args):array{return [];}
 }
 $templates=smsAvailableTemplates(new TemplatePDO(),9);
-templateCheck($templates[0]['template_key']==='login_credentials','Credentials template exists even with no saved templates');
+templateCheck(in_array('login_credentials',array_column($templates,'template_key'),true),'Credentials template exists even with no saved templates');
 class TemplateSender extends SMSHelper { public function __construct(){} }
 $result=(new TemplateSender())->send('254712345678','Hello {unknown}',null,false);
 templateCheck(!$result['success'],'Provider boundary blocks raw placeholders without contacting provider');

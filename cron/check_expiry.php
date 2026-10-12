@@ -52,19 +52,6 @@ try {
     if (!in_array('expiry_reminder_1d_sent', $cols)) { $pdo->exec("ALTER TABLE clients ADD COLUMN expiry_reminder_1d_sent TINYINT(1) NOT NULL DEFAULT 0"); }
 } catch (Throwable $_) {}
 
-// Resolved BEFORE the reminder block, not after it. This lookup used to sit
-// below, next to the expiry sweep that also needs it — so the 3-day and 1-day
-// reminders interpolated an undefined $platformDomain and texted every
-// expiring customer a renewal link of the form https://demo./customer/renew.php.
-// A dead link in the one message whose whole purpose is to get them to pay.
-$platformDomain = 'fortunetttech.site';
-try {
-    $pdStmt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key = 'platform_domain' LIMIT 1");
-    $pd = $pdStmt ? trim((string)$pdStmt->fetchColumn()) : '';
-    // A blank setting is not an override. It is how the link lost its host.
-    if ($pd !== '') $platformDomain = $pd;
-} catch (Throwable $_e) {}
-
 // ── 0. Pre-expiry SMS reminders (3-day and 1-day warnings) ───────────────────
 try {
     $reminders = [
@@ -106,30 +93,7 @@ try {
                 $sms = new SMSHelper($pdo, $tenantId);
                 if (!$sms->hasConfig()) continue;
 
-                $subdomain     = $client['subdomain'] ?? '';
-                $renewUrl      = 'https://' . $subdomain . '.' . $platformDomain . '/customer/renew.php';
-                $accNo         = $client['account_number'] ?? '';
-                $pkgPrice      = isset($client['pkg_price']) ? 'KES ' . number_format((float)$client['pkg_price'], 0) : '';
-                $company       = $client['tenant_name'] ?? 'Your ISP';
-                $firstName     = explode(' ', trim($client['full_name']))[0];
-                $expiryHuman   = date('d M H:i', strtotime($client['expiry_date']));
-
-                require_once __DIR__ . '/../includes/credential_helper.php';
-                $paybill = '';
-                try {
-                    $gwSt = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1 LIMIT 1");
-                    $gwSt->execute([$tenantId]);
-                    $gwRow = $gwSt->fetch(PDO::FETCH_ASSOC);
-                    if ($gwRow) { $paybill = decrypt_gateway_credentials($gwRow['credentials'])['shortcode'] ?? ''; }
-                } catch (Throwable $_e) {}
-
-                if ($paybill && $accNo && $pkgPrice) {
-                    $msg = "Hi {$firstName}, your {$company} internet expires {$expiryHuman}. Renew now: M-Pesa Paybill {$paybill} Acc {$accNo} {$pkgPrice}.";
-                } else {
-                    $msg = "Hi {$firstName}, your {$company} internet expires {$expiryHuman}. Renew at {$renewUrl}";
-                }
-                if (strlen($msg) > 160) $msg = substr($msg, 0, 157) . '...';
-
+                $msg = $sms->renderPlaceholders(smsDefaultTemplates()['account_expiring'][1], $client);
                 $smsResult = $sms->send($client['phone'], $msg, $clientId);
                 $sent = $smsResult['success'] ?? false;
 
@@ -308,29 +272,7 @@ foreach ($byTenant as $tenantId => $clients) {
             try {
                 $sms = new SMSHelper($pdo, $tenantId);
                 if ($sms->hasConfig()) {
-                    $renewUrl  = 'https://' . ($client['subdomain'] ?? '') . '.' . $platformDomain . '/customer/renew.php';
-                    $accNo     = $client['account_number'] ?? '';
-                    $pkgPrice  = isset($client['pkg_price']) ? 'KES ' . number_format((float)$client['pkg_price'], 0) : '';
-                    $company   = $client['tenant_name'] ?? 'Your ISP';
-                    $firstName = explode(' ', $name)[0];
-
-                    // Fetch paybill for this tenant
-                    require_once __DIR__ . '/../includes/credential_helper.php';
-                    $paybill = '';
-                    try {
-                        $gwSt = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1 LIMIT 1");
-                        $gwSt->execute([$tenantId]);
-                        $gwRow = $gwSt->fetch(PDO::FETCH_ASSOC);
-                        if ($gwRow) { $paybill = decrypt_gateway_credentials($gwRow['credentials'])['shortcode'] ?? ''; }
-                    } catch (Throwable $_e) {}
-
-                    if ($paybill && $accNo && $pkgPrice) {
-                        $msg = "Hi {$firstName}, your {$company} internet has expired. Renew: M-Pesa Paybill {$paybill} Acc {$accNo} {$pkgPrice}. Or visit {$renewUrl}";
-                    } else {
-                        $msg = "Hi {$firstName}, your {$company} internet has expired. Visit {$renewUrl} to renew.";
-                    }
-                    if (strlen($msg) > 160) $msg = substr($msg, 0, 157) . '...';
-
+                    $msg = $sms->renderPlaceholders(smsDefaultTemplates()['account_expired'][1], $client);
                     $smsResult = $sms->send($client['phone'], $msg, $clientId);
                     $log("  [{$tenantId}] #{$clientId} {$name} — expiry SMS " . ($smsResult['success'] ? 'sent' : 'failed'));
                 }

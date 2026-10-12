@@ -34,31 +34,10 @@ $log = function(string $msg) {
 
 $log("=== Expiry Reminders: " . date('Y-m-d') . " ===");
 
-$platformDomain = 'fortunetttech.site';
-try {
-    $pdStmt = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key = 'platform_domain' LIMIT 1");
-    $pd = $pdStmt ? $pdStmt->fetchColumn() : null;
-    if ($pd) $platformDomain = $pd;
-} catch (Throwable $_) {}
-
 $sent   = 0;
 $errors = 0;
 
 // ── Helper: fetch M-Pesa shortcode for a tenant ───────────────────────────────
-$shortcodeCache = [];
-$getShortcode = function(int $tenantId) use ($pdo, &$shortcodeCache): string {
-    if (isset($shortcodeCache[$tenantId])) return $shortcodeCache[$tenantId];
-    try {
-        $st = $pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id = ? AND gateway_type = 'mpesa_api' AND is_active = 1 LIMIT 1");
-        $st->execute([$tenantId]);
-        $row = $st->fetch(PDO::FETCH_ASSOC);
-        $sc  = $row ? (json_decode($row['credentials'], true)['shortcode'] ?? '') : '';
-    } catch (Throwable $_) { $sc = ''; }
-    $shortcodeCache[$tenantId] = $sc;
-    return $sc;
-};
-
-// ── Process each reminder window ──────────────────────────────────────────────
 $windows = [
     ['days' => 3, 'flag_col' => 'expiry_reminder_3d_sent', 'label' => '3-day'],
     ['days' => 1, 'flag_col' => 'expiry_reminder_1d_sent', 'label' => '1-day'],
@@ -96,23 +75,7 @@ foreach ($windows as $window) {
     foreach ($clients as $client) {
         $tenantId  = (int)$client['tenant_id'];
         $clientId  = (int)$client['id'];
-        $firstName = explode(' ', $client['full_name'])[0];
-        $accNo     = $client['account_number'] ?? '';
-        $company   = $client['tenant_name'] ?? 'Your ISP';
-        $renewUrl  = 'https://' . ($client['subdomain'] ?? '') . '.' . $platformDomain . '/customer/renew.php';
-        $paybill   = $getShortcode($tenantId);
-        $pkgPrice  = isset($client['pkg_price']) ? 'KES ' . number_format((float)$client['pkg_price'], 0) : '';
-        $expiryFmt = date('d M', strtotime($client['expiry_date']));
-        $daysWord  = $daysAhead === 1 ? 'tomorrow' : "in {$daysAhead} days";
-
-        if ($paybill && $accNo && $pkgPrice) {
-            $msg = "Hi {$firstName}, your {$company} internet expires {$daysWord} ({$expiryFmt}). Renew: M-Pesa Paybill {$paybill} Acc {$accNo} {$pkgPrice}. Stay connected!";
-        } else {
-            $msg = "Hi {$firstName}, your {$company} internet expires {$daysWord} ({$expiryFmt}). Renew at {$renewUrl} to stay connected.";
-        }
-
-        if (strlen($msg) > 160) $msg = substr($msg, 0, 157) . '...';
-
+        $firstName = explode(' ', trim($client['full_name']))[0];
         try {
             $sms = new SMSHelper($pdo, $tenantId);
             if (!$sms->hasConfig()) {
@@ -122,6 +85,7 @@ foreach ($windows as $window) {
                 continue;
             }
 
+            $msg = $sms->renderPlaceholders(smsDefaultTemplates()['account_expiring'][1], $client);
             $result = $sms->send($client['phone'], $msg, $clientId);
 
             // Mark reminder sent regardless of delivery status (avoid spam on transient errors)

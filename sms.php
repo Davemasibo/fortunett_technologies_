@@ -334,7 +334,8 @@ include 'includes/sidebar.php';
             <input type="text" name="template_key" id="tplKey" required>
             <label>Template Name</label>
             <input type="text" name="template_name" id="tplName" required>
-            <label>Content (Variables: {name}, {amount}, {account_number})</label>
+            <label>Message content</label>
+            <p style="font-size:12px;line-height:1.6;">Customer details: {name}, {amount}, {expiry}, {account_number}. Use {payment_instructions} for the tenant's payment method, {portal_url} for customer login, and {support_line} for help.</p>
             <textarea name="template_content" id="tplContent" rows="4" required></textarea>
             <div style="text-align:right;margin-top:4px;">
                 <button type="button" onclick="document.getElementById('templateModal').style.display='none'" class="sms-modal-cancel">Cancel</button>
