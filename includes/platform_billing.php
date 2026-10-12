@@ -270,6 +270,7 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingP
             $pdo->commit();
             return $existing;
         }
+        repriceCurrentPlatformSmsUsage($pdo, $tenantId);
 
         // Plan rates
         $rate = $pdo->prepare("

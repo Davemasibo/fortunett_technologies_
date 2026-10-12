@@ -30,21 +30,30 @@ try {
     finishPlatformSmsUsage($pdo,$id,$accepted,$phone,'Hello',true);
     finishPlatformSmsUsage($pdo,$id,['success'=>false],$phone,'Hello',true);
     $row=$pdo->query("SELECT * FROM platform_sms_usage WHERE id=$id")->fetch(PDO::FETCH_ASSOC);
-    smsBillCheck($row['status']==='accepted' && (int)$row['sms_units']===2 && (float)$row['amount']===2.5,'Provider parts, send-time rate and duplicate completion protection');
+    smsBillCheck($row['status']==='accepted' && (int)$row['sms_units']===1 && (float)$row['amount']===1.25,'Multipart provider response still bills one SMS unit, with duplicate completion protection');
     foreach ([['success'=>false],['uncertain'=>true]] as $result) {
         $failed=beginPlatformSmsUsage($pdo,1,null,$config,$phone); finishPlatformSmsUsage($pdo,$failed,$result,$phone,'Hello',true);
     }
     $other=beginPlatformSmsUsage($pdo,2,null,$config,$phone);finishPlatformSmsUsage($pdo,$other,$accepted,$phone,'Hello',true);
     $period=date('Y-m-01');
     $invoice=ensureCurrentPlatformInvoice($pdo,1,$period);
-    smsBillCheck($invoice && (float)$invoice['total_due']===2.5 && (int)$invoice['sms_units']===2 && (int)$invoice['sms_message_count']===1,'Monthly invoice includes only tenant accepted usage');
+    smsBillCheck($invoice && (float)$invoice['total_due']===3.0 && (int)$invoice['sms_units']===1 && (int)$invoice['sms_message_count']===1,'Monthly invoice includes only tenant accepted usage');
     smsBillCheck(ensureCurrentPlatformInvoice($pdo,1,$period)['total_due']===$invoice['total_due'],'Invoice regeneration does not double charge');
     $pdo->exec('UPDATE platform_invoices SET amount_paid=total_due,status=\'paid\' WHERE id='.(int)$invoice['id']);
     $late=beginPlatformSmsUsage($pdo,1,null,$config,$phone);finishPlatformSmsUsage($pdo,$late,['success'=>true],$phone,'Hello',false);
-    smsBillCheck((float)ensureCurrentPlatformInvoice($pdo,1,$period)['total_due']===2.5,'Paid invoice stays frozen');
+    smsBillCheck((float)ensureCurrentPlatformInvoice($pdo,1,$period)['total_due']===3.0,'Paid invoice stays frozen');
     $next=ensureCurrentPlatformInvoice($pdo,1,date('Y-m-01',strtotime($period.' +1 month')));
     smsBillCheck($next && (float)$next['sms_amount']===3.0 && (int)$next['sms_units']===1,'Unbilled sends after payment carry to next invoice');
-    smsBillCheck((float)ensureCurrentPlatformInvoice($pdo,2,$period)['sms_amount']===4.0,'Second tenant uses its own package SMS rate');
+    smsBillCheck((float)ensureCurrentPlatformInvoice($pdo,2,$period)['sms_amount']===2.0,'Second tenant uses its own package SMS rate');
+    $pdo->exec('UPDATE platform_subscription_plans SET sms_rate=0 WHERE id=2');
+    $free=beginPlatformSmsUsage($pdo,2,null,$config,$phone);finishPlatformSmsUsage($pdo,$free,$accepted,$phone,'Hello',true);
+    ensureCurrentPlatformInvoice($pdo,2,$period);
+    $pdo->exec('UPDATE platform_subscription_plans SET sms_rate=1.5 WHERE id=2');
+    $repriced=ensureCurrentPlatformInvoice($pdo,2,$period);
+    smsBillCheck((float)$repriced['sms_amount']===3.0 && (int)$repriced['sms_units']===2,'Previously zero-rate current unpaid SMS reflects updated package pricing');
+    $pdo->exec('UPDATE platform_invoices SET amount_paid=1 WHERE id='.(int)$repriced['id']);
+    $pdo->exec('UPDATE platform_subscription_plans SET sms_rate=10 WHERE id=2');
+    smsBillCheck((float)ensureCurrentPlatformInvoice($pdo,2,$period)['sms_amount']===3.0,'Part-paid invoice remains frozen after rate update');
     require_once __DIR__.'/../classes/SMSHelper.php';
     $pdo->exec("CREATE TABLE sms_configurations (tenant_id INT,provider VARCHAR(50),api_key VARCHAR(255),sender_id VARCHAR(50),api_url VARCHAR(255),is_active INT)");
     $pdo->exec("CREATE TABLE platform_sms_config (id INT,provider VARCHAR(50),api_key VARCHAR(255),sender_id VARCHAR(50),api_url VARCHAR(255),is_active INT)");

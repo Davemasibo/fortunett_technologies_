@@ -620,7 +620,7 @@ include 'includes/sidebar.php';
     <div class="billing-header">
         <h2>Billing &amp; Invoices</h2>
         <p>View your subscription invoices and pay your FortuNett Technologies platform fee.</p>
-        <p>Platform SMS this month: <strong><?= (int)$smsMonthUsage['messages'] ?> accepted messages / <?= (int)$smsMonthUsage['units'] ?> parts</strong> ? KES <?= number_format($smsMonthUsage['amount'],2) ?>. Only platform-funded sends are charged. Usage after an invoice is paid carries forward to the next open invoice.</p>
+        <p>Platform SMS this month: <strong><?= (int)$smsMonthUsage['messages'] ?> accepted messages / <?= (int)$smsMonthUsage['units'] ?> units</strong> ? KES <?= number_format($smsMonthUsage['amount'],2) ?>. Only platform-funded sends are charged. Usage after an invoice is paid carries forward to the next open invoice.</p>
     </div>
 
     <div class="bill-summary-card">
@@ -716,7 +716,7 @@ include 'includes/sidebar.php';
                         <td class="text-end"><?php echo $collectionError ? 'Unavailable' : 'KES ' . number_format($collectionMonths[$bill['billing_period']]['collected'] ?? 0, 2); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['pppoe_subtotal'], 2); ?></td>
                         <?php if ($showBaseFees): ?><td class="text-end">KES <?php echo number_format($bill['base_fee'], 2); ?></td><?php endif; ?>
-                        <td class="text-end"><?php echo (int)$bill['sms_units']; ?> parts / KES <?php echo number_format($bill['sms_amount'], 2); ?></td>
+                        <td class="text-end"><?php echo (int)$bill['sms_units']; ?> units / KES <?php echo number_format($bill['sms_amount'], 2); ?></td>
                         <td class="text-end">KES <?php echo number_format($bill['commission_amount'], 2); ?></td>
                         <td class="text-end" style="font-weight:700; color:#e2e2e0;">KES <?php echo number_format($bTotal, 2); ?></td>
                         <td class="text-center">
@@ -837,7 +837,7 @@ include 'includes/sidebar.php';
                 </tr>
                 <tr id="invSmsRow">
                     <td><div class="desc-main">Platform SMS</div><div class="desc-sub" id="invSmsDescription">Accepted customer messages</div></td>
-                    <td>Rates recorded at send time</td><td id="invSmsQty">0 parts</td><td id="invSmsAmount">KES 0.00</td>
+                    <td id="invSmsRate">KES 0.00/unit</td><td id="invSmsQty">0 units</td><td id="invSmsAmount">KES 0.00</td>
                 </tr>
             </tbody>
             <tfoot>
@@ -1027,9 +1027,11 @@ function openInvoiceModal(bill) {
     const comm       = parseFloat(bill.commission_amount || 0);
     const sms = Number(bill.sms_amount || 0);
     const total      = Number(bill.total_due ?? (base + pppoe + comm + sms));
-    document.getElementById("invSmsQty").textContent = Number(bill.sms_units || 0) + " parts";
+    const smsUnits = Number(bill.sms_units || 0);
+    document.getElementById("invSmsQty").textContent = smsUnits + (smsUnits === 1 ? " unit" : " units");
+    document.getElementById("invSmsRate").textContent = 'KES ' + (smsUnits ? sms / smsUnits : 0).toFixed(4) + '/unit';
     document.getElementById("invSmsAmount").textContent = "KES " + fmt(sms);
-    document.getElementById("invSmsDescription").textContent = Number(bill.sms_message_count || 0) + " accepted messages using platform SMS";
+    document.getElementById("invSmsDescription").textContent = "Accepted customer messages using platform SMS";
     const paid       = Number(bill.amount_paid ?? 0);
     const balance    = Number(bill.balance_due ?? Math.max(total - paid, 0));
     const rate       = Number(bill.commission_rate ?? 0.03) * 100;

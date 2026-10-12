@@ -233,7 +233,7 @@ table a:hover{color:#93c5fd;}
                 </div>
                 <?php endif; ?>
                 <div class="line-item">
-                    <span>Platform SMS (<?= (int)$invoiceDetail['sms_message_count'] ?> messages / <?= (int)$invoiceDetail['sms_units'] ?> parts)</span>
+                    <span>Platform SMS (<?= (int)$invoiceDetail['sms_message_count'] ?> messages / <?= (int)$invoiceDetail['sms_units'] ?> units)</span>
                     <strong>KSH <?= number_format($invoiceDetail['sms_amount'], 2) ?></strong>
                 </div>
                 <div class="line-total">

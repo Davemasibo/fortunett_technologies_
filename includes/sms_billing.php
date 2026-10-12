@@ -1,5 +1,5 @@
 <?php
-/** Platform-funded SMS only. Rates are captured before contacting the provider. */
+/** One accepted platform-funded customer message is one billable SMS unit. */
 function ensureSmsUsageSchema(PDO $pdo): void {
     require_once __DIR__ . '/schema_guard.php';
     ensureColumn($pdo, 'platform_subscription_plans', 'sms_rate', 'DECIMAL(12,4) NOT NULL DEFAULT 0');
@@ -16,7 +16,7 @@ function ensureSmsUsageSchema(PDO $pdo): void {
     ensureColumn($pdo,'platform_sms_usage','invoice_id','INT NULL');
 }
 
-function smsMessageUnits(string $message): int {
+function smsProviderSegments(string $message): int {
     // GSM extension characters consume two septets; other text uses UTF-16 units.
     $basic = "@£\$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
     $extension = "\f^{}\\[~]|€";
@@ -53,9 +53,21 @@ function finishPlatformSmsUsage(PDO $pdo, int $id, array $result, string $phone,
         $json = json_decode($result['response'] ?? '', true);
         $ids = array_column($json['data'][$phone] ?? [], 'id_state');
     }
-    $units = $state === 'accepted' ? ($ids ? count($ids) : smsMessageUnits($message)) : 0;
+    $units = $state === 'accepted' ? 1 : 0;
     $pdo->prepare("UPDATE platform_sms_usage SET status=?,sms_units=?,amount=rate*?,provider_ids=?,completed_at=NOW() WHERE id=? AND status='sending'")
         ->execute([$state,$units,$units,$ids ? json_encode($ids) : null,$id]);
+}
+
+/** Current unpaid usage follows its recorded package's configured SMS rate. */
+function repriceCurrentPlatformSmsUsage(PDO $pdo, int $tenant): void {
+    $pdo->prepare("UPDATE platform_sms_usage u
+        JOIN platform_subscription_plans p ON p.id=u.plan_id
+        LEFT JOIN platform_invoices i ON i.id=u.invoice_id AND i.tenant_id=u.tenant_id
+        SET u.sms_units=1,u.rate=p.sms_rate,u.amount=p.sms_rate
+        WHERE u.tenant_id=? AND u.status='accepted' AND u.created_at>=? AND u.created_at<?
+          AND (u.invoice_id IS NULL OR ((i.status IN ('pending','overdue') OR i.total_due=0)
+            AND COALESCE(i.amount_paid,0)=0 AND i.billing_period=?))")
+        ->execute([$tenant,date('Y-m-01'),date('Y-m-01',strtotime('first day of next month')),date('Y-m-01')]);
 }
 
 function platformSmsMonthUsage(PDO $pdo, int $tenant, string $period, ?int $invoiceId = null): array {

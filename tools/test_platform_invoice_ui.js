@@ -43,7 +43,12 @@ assert.equal(elements.invRouterFeeRow.style.display,'none');
 console.log('PASS trial/no-router rows hidden; quantity times unit rate matches invoice base charge');
 console.log('PASS invoice breakdown, stored rates, totals, part-payments and paid invoices');
 context.openInvoiceModal({...bill,sms_amount:12.5,sms_units:10,sms_message_count:7,total_due:592.5,balance_due:492.5});
-assert.equal(elements.invSmsQty.textContent,'10 parts');
+assert.equal(elements.invSmsQty.textContent,'10 units');
 assert.equal(elements.invSmsAmount.textContent,'KES 12.50');
 assert.equal(elements.invServiceSubtotal.textContent,'KES 592.50');
 console.log('PASS platform SMS appears in invoice breakdown and total');
+
+context.openInvoiceModal({...bill,sms_amount:1.5,sms_units:1,sms_message_count:1,total_due:581.5,balance_due:481.5});
+assert.equal(elements.invSmsQty.textContent,'1 unit');
+assert.equal(elements.invSmsRate.textContent,'KES 1.5000/unit');
+console.log('PASS SMS invoice shows actual per-unit rate and singular quantity');

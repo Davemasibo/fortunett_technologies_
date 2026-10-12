@@ -28,11 +28,11 @@ function smsUsageEscape($value):string { return htmlspecialchars((string)$value,
 <script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body><main><nav><a href="billing.php">Billing</a> · <a href="plans.php">Package SMS rates</a></nav>
-<h1>Tenant SMS usage</h1><p>Only accepted customer SMS funded by the platform are charged. Multipart messages count as multiple SMS parts. Rates are saved at send time; unresolved sends await provider verification.</p>
+<h1>Tenant SMS usage</h1><p>Only accepted customer SMS funded by the platform are charged. One accepted customer message is one SMS unit. Current unpaid usage follows its package rate; unresolved sends await provider verification.</p>
 <form><label>Month <input type="month" name="month" value="<?= smsUsageEscape($month) ?>" required></label><label>Tenant ID <input type="number" name="tenant" min="0" value="<?= $tenant ?>"></label><button>View usage</button></form>
-<section><table><thead><tr><th>Tenant</th><th>Accepted messages</th><th>SMS parts</th><th>Charge (KSH)</th><th>Unresolved sends</th></tr></thead><tbody>
+<section><table><thead><tr><th>Tenant</th><th>Accepted messages</th><th>SMS units</th><th>Charge (KSH)</th><th>Unresolved sends</th></tr></thead><tbody>
 <?php foreach($rows as $row): ?><tr><td><a href="?month=<?= smsUsageEscape($month) ?>&amp;tenant=<?= (int)$row['tenant_id'] ?>"><?= smsUsageEscape($row['company_name']) ?></a></td><td><?= (int)$row['messages'] ?></td><td><?= (int)$row['units'] ?></td><td><?= number_format($row['amount'],2) ?></td><td><?= (int)$row['unresolved'] ?></td></tr><?php endforeach; ?>
 <?php if (!$rows): ?><tr><td colspan="5">No platform SMS usage recorded this month.</td></tr><?php endif; ?></tbody></table></section>
-<h2>Latest 200 sends</h2><section><table><thead><tr><th>Time</th><th>Tenant</th><th>Recipient</th><th>Status</th><th>Parts</th><th>Rate (KSH)</th><th>Charge (KSH)</th><th>Invoice</th></tr></thead><tbody>
+<h2>Latest 200 sends</h2><section><table><thead><tr><th>Time</th><th>Tenant</th><th>Recipient</th><th>Status</th><th>Units</th><th>Rate (KSH)</th><th>Charge (KSH)</th><th>Invoice</th></tr></thead><tbody>
 <?php foreach($recent as $row): ?><tr><td><?= smsUsageEscape($row['created_at']) ?></td><td><?= smsUsageEscape($row['company_name']) ?></td><td><?= smsUsageEscape($row['recipient']) ?></td><td><?= smsUsageEscape($row['status']) ?></td><td><?= (int)$row['sms_units'] ?></td><td><?= number_format($row['rate'],4) ?></td><td><?= number_format($row['amount'],2) ?></td><td><?= $row['invoice_id'] ? '<a href="billing.php?all=1&amp;invoice='.(int)$row['invoice_id'].'">View invoice</a>' : 'Unbilled' ?></td></tr><?php endforeach; ?>
 </tbody></table></section></main></body></html>

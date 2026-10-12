@@ -70,6 +70,14 @@ if ($validPlanRequest && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['actio
         ]);
 
         if ($ok && $stmt->rowCount() >= 0) {
+            require_once __DIR__.'/../includes/platform_billing.php';
+            $affected=$pdo->prepare("SELECT DISTINCT i.tenant_id FROM platform_invoices i
+                JOIN tenants t ON t.id=i.tenant_id WHERE t.subscription_plan_id=? AND i.billing_period=?
+                AND (i.status IN ('pending','overdue') OR i.total_due=0) AND COALESCE(i.amount_paid,0)=0");
+            $affected->execute([$planId,date('Y-m-01')]);
+            foreach ($affected->fetchAll(PDO::FETCH_COLUMN) as $billingTenant) {
+                ensureCurrentPlatformInvoice($pdo,(int)$billingTenant);
+            }
             $successMsg = 'Plan "' . htmlspecialchars($name) . '" saved successfully.';
         } else {
             $errorMsg = 'Failed to update plan. Please try again.';
@@ -259,7 +267,7 @@ table a:hover{color:#93c5fd;}
                 <div class="sub">
                     KSH <?= number_format($plan['pppoe_fee_per_user'], 0) ?>/user &bull;
                     <?= round($plan['hotspot_commission_rate'] * 100, 2) ?>% hotspot<br>
-                    SMS: KSH <?= number_format($plan['sms_rate'],4) ?>/part
+                    SMS: KSH <?= number_format($plan['sms_rate'],4) ?>/unit
                 </div>
                 <button type="button" class="btn-sm btn-edit" style="margin-top:12px;min-height:44px" onclick="openEditPanel(<?= planEditorPayload($plan) ?>)">Edit pricing</button>
             </div>
@@ -289,7 +297,7 @@ table a:hover{color:#93c5fd;}
 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['plan_pricing_csrf'], ENT_QUOTES) ?>">
                     <input type="hidden" name="action" value="save">
                     <input type="hidden" name="plan_id" id="fPlanId">
-<div class="form-group"><label for="fName">Plan name</label><input name="name" id="fName" type="text" required maxlength="100" aria-describedby="fNameHint"><div class="hint" id="fNameHint">Shown to tenants in subscription settings.</div></div><fieldset class="plan-pricing-group"><legend>Usage pricing</legend><div class="form-grid"><div class="form-group"><label for="fPppoeFee">PPPoE fee per active user (KSH / month)</label><input name="pppoe_fee_per_user" id="fPppoeFee" type="number" step="0.01" min="0" max="99999999" required aria-describedby="fPppoeFeeHint"><div class="hint" id="fPppoeFeeHint">Monthly platform charge for each active PPPoE user.</div></div><div class="form-group"><label for="fHotspotRate">Hotspot commission (%)</label><input name="hotspot_commission_rate" id="fHotspotRate" type="number" step="0.01" min="0" max="100" required aria-describedby="fHotspotRateHint"><div class="hint" id="fHotspotRateHint">Enter 3 for 3% of hotspot customer collections.</div></div><div class="form-group"><label for="fSmsRate">SMS fee per part (KSH)</label><input name="sms_rate" id="fSmsRate" type="number" step="0.0001" min="0" max="99999999" required aria-describedby="fSmsRateHint"><div class="hint" id="fSmsRateHint">Only accepted SMS using the platform account. Multipart SMS costs more than one part. Zero makes SMS free.</div></div><div class="form-group"><label for="fBaseFee">Router fee per MikroTik (KSH / month)</label><input name="base_monthly_fee" id="fBaseFee" type="number" step="0.01" min="0" max="99999999" required aria-describedby="fBaseFeeHint"><div class="hint" id="fBaseFeeHint">Monthly charge per configured MikroTik. This fee is waived during trial.</div></div></div></fieldset><fieldset class="plan-pricing-group"><legend>Plan limits and trial</legend><div class="form-grid"><div class="form-group"><label for="fMaxClients">Maximum clients</label><input name="max_clients" id="fMaxClients" type="number" step="1" min="0" max="2147483647" placeholder="Unlimited" aria-describedby="fMaxClientsHint"><div class="hint" id="fMaxClientsHint">Leave blank or enter 0 for unlimited.</div></div><div class="form-group"><label for="fMaxRouters">Maximum routers</label><input name="max_routers" id="fMaxRouters" type="number" step="1" min="0" max="2147483647" placeholder="Unlimited" aria-describedby="fMaxRoutersHint"><div class="hint" id="fMaxRoutersHint">Leave blank or enter 0 for unlimited.</div></div><div class="form-group"><label for="fTrialDays">Trial duration (days)</label><input name="trial_days" id="fTrialDays" type="number" step="1" min="0" max="365" required aria-describedby="fTrialDaysHint"><div class="hint" id="fTrialDaysHint">Applied when a new tenant starts this plan.</div></div></div></fieldset><p class="plan-pricing-note">SMS rates apply to future sends; previously recorded SMS keeps its original rate. Other fee changes apply when unpaid invoices are recalculated. Paid and part-paid invoices remain unchanged.</p>
+<div class="form-group"><label for="fName">Plan name</label><input name="name" id="fName" type="text" required maxlength="100" aria-describedby="fNameHint"><div class="hint" id="fNameHint">Shown to tenants in subscription settings.</div></div><fieldset class="plan-pricing-group"><legend>Usage pricing</legend><div class="form-grid"><div class="form-group"><label for="fPppoeFee">PPPoE fee per active user (KSH / month)</label><input name="pppoe_fee_per_user" id="fPppoeFee" type="number" step="0.01" min="0" max="99999999" required aria-describedby="fPppoeFeeHint"><div class="hint" id="fPppoeFeeHint">Monthly platform charge for each active PPPoE user.</div></div><div class="form-group"><label for="fHotspotRate">Hotspot commission (%)</label><input name="hotspot_commission_rate" id="fHotspotRate" type="number" step="0.01" min="0" max="100" required aria-describedby="fHotspotRateHint"><div class="hint" id="fHotspotRateHint">Enter 3 for 3% of hotspot customer collections.</div></div><div class="form-group"><label for="fSmsRate">SMS fee per unit (KSH)</label><input name="sms_rate" id="fSmsRate" type="number" step="0.0001" min="0" max="99999999" required aria-describedby="fSmsRateHint"><div class="hint" id="fSmsRateHint">Only accepted SMS using the platform account. One accepted customer message is one SMS unit, regardless of length. Zero makes SMS free.</div></div><div class="form-group"><label for="fBaseFee">Router fee per MikroTik (KSH / month)</label><input name="base_monthly_fee" id="fBaseFee" type="number" step="0.01" min="0" max="99999999" required aria-describedby="fBaseFeeHint"><div class="hint" id="fBaseFeeHint">Monthly charge per configured MikroTik. This fee is waived during trial.</div></div></div></fieldset><fieldset class="plan-pricing-group"><legend>Plan limits and trial</legend><div class="form-grid"><div class="form-group"><label for="fMaxClients">Maximum clients</label><input name="max_clients" id="fMaxClients" type="number" step="1" min="0" max="2147483647" placeholder="Unlimited" aria-describedby="fMaxClientsHint"><div class="hint" id="fMaxClientsHint">Leave blank or enter 0 for unlimited.</div></div><div class="form-group"><label for="fMaxRouters">Maximum routers</label><input name="max_routers" id="fMaxRouters" type="number" step="1" min="0" max="2147483647" placeholder="Unlimited" aria-describedby="fMaxRoutersHint"><div class="hint" id="fMaxRoutersHint">Leave blank or enter 0 for unlimited.</div></div><div class="form-group"><label for="fTrialDays">Trial duration (days)</label><input name="trial_days" id="fTrialDays" type="number" step="1" min="0" max="365" required aria-describedby="fTrialDaysHint"><div class="hint" id="fTrialDaysHint">Applied when a new tenant starts this plan.</div></div></div></fieldset><p class="plan-pricing-note">SMS rate changes apply to this month's unpaid usage and future sends. Other fee changes apply when unpaid invoices are recalculated. Paid and part-paid invoices remain unchanged.</p>
                     <div class="form-actions">
                         <button type="submit" class="btn-save"><i class="fas fa-save"></i> Save plan pricing</button>
                         <button type="button" class="btn-cancel" onclick="closeEditPanel()">Cancel</button>
@@ -303,7 +311,7 @@ table a:hover{color:#93c5fd;}
         <div class="card">
             <div class="card-head">
                 <h3><i class="fas fa-layer-group me-2" style="color:var(--sa-dark);"></i>All Subscription Plans</h3>
-                <span style="font-size:12px;color:#94a3b8;">Click "Edit" to modify pricing — SMS rates apply to future sends</span>
+                <span style="font-size:12px;color:#94a3b8;">Click "Edit" to modify pricing — SMS rates update current unpaid usage</span>
             </div>
             <table class="plans-table">
                 <thead>
@@ -312,7 +320,7 @@ table a:hover{color:#93c5fd;}
                         <th>Slug</th>
                         <th>PPPoE Fee / User</th>
                         <th>Hotspot Commission</th>
-                        <th>SMS Fee / Part</th>
+                        <th>SMS Fee / Unit</th>
                         <th>Monthly Fee / MikroTik</th>
                         <th>Max Clients</th>
                         <th>Max Routers</th>
@@ -336,7 +344,7 @@ table a:hover{color:#93c5fd;}
                     <td data-label="Slug"><code style="background:#f1f5f9;padding:2px 7px;border-radius:4px;font-size:12px;"><?= htmlspecialchars($plan['slug']) ?></code></td>
                     <td data-label="PPPoE / user"><strong>KSH <?= number_format($plan['pppoe_fee_per_user'], 2) ?></strong></td>
                     <td data-label="Hotspot commission"><?= round($plan['hotspot_commission_rate'] * 100, 2) ?>%</td>
-                    <td data-label="SMS / part">KSH <?= number_format($plan['sms_rate'], 4) ?></td>
+                    <td data-label="SMS / unit">KSH <?= number_format($plan['sms_rate'], 4) ?></td>
                     <td data-label="Monthly / router">KSH <?= number_format($plan['base_monthly_fee'], 2) ?></td>
                     <td data-label="Max clients"><?= $plan['max_clients'] !== null ? number_format($plan['max_clients']) : '<span style="color:#94a3b8;">Unlimited</span>' ?></td>
                     <td data-label="Max routers"><?= $plan['max_routers'] !== null ? number_format($plan['max_routers']) : '<span style="color:#94a3b8;">Unlimited</span>' ?></td>
@@ -393,7 +401,7 @@ table a:hover{color:#93c5fd;}
                 <strong>Pricing changes apply to new invoices and the current unpaid invoice when the tenant opens billing.</strong>
                 Paid, part-paid, cancelled, waived, and previous-month invoices are not recalculated.
                 Max clients / routers of <strong>0</strong> or blank is treated as unlimited.
-                SMS is billed per accepted part using the platform account. Existing SMS usage keeps its recorded rate.
+                One accepted message is one SMS unit. Current unpaid SMS charges follow the package rate.
             </span>
         </div>
 
