@@ -5,6 +5,14 @@ $client=['full_name'=>'Alex','mikrotik_username'=>'alex123','mikrotik_password'=
 templateCheck(smsRenderCustomerTemplate('Hello {name}: {username} / {password}',$client)==='Hello Alex: alex123 / wifi456','Credentials fill from saved router details');
 templateCheck(smsRenderCustomerTemplate('{{ customer_name }} [login_username] {MIKROTIK_PASSWORD}',$client)==='Alex alex123 wifi456','Legacy aliases, double braces, brackets and case are supported');
 templateCheck(str_contains(smsRenderCustomerTemplate('{expiry_date}',$client),'14:30'),'Short-package expiry includes time');
+templateCheck(smsRenderCustomerTemplate('Hi {name}, pay {paybill}. Call {{ support }}.', $client, ['support'=>'0700123456','paybill'=>'123456']) === 'Hi Alex, pay 123456. Call 0700123456.', 'Tenant support and paybill fill alongside customer fields');
+templateCheck(smsRenderCustomerTemplate('[support_phone] {paybill_number}', $client, ['support'=>'0700123456','paybill'=>'123456']) === '0700123456 123456', 'Tenant variable aliases supported');
+foreach (['support','paybill'] as $key) {
+    $failed = false;
+    try { smsRenderCustomerTemplate('{'.$key.'}', $client); }
+    catch (InvalidArgumentException $e) { $failed = str_contains($e->getMessage(), 'Tenant '.$key.' is not configured'); }
+    templateCheck($failed, 'Missing tenant '.$key.' gives settings guidance');
+}
 foreach(['{unknown}','{account_number}'] as $input){$failed=false;try{smsRenderCustomerTemplate($input,$client);}catch(InvalidArgumentException $e){$failed=true;}templateCheck($failed,'Unresolved or missing field blocks sending');}
 $bad=$client;unset($bad['mikrotik_password']);$bad['auth_password']='hashed-secret';$failed=false;
 try{smsRenderCustomerTemplate('{password}',$bad);}catch(InvalidArgumentException $e){$failed=true;}

@@ -380,7 +380,11 @@ class SMSHelper {
      */
     public function renderPlaceholders(string $message, array $client): string
     {
-        return smsRenderCustomerTemplate($message, $client);
+        $context = [];
+        if (preg_match('/(?:\{|\[)\s*(?:support|support_phone|support_contact|paybill|paybill_number)\s*(?:\}|\])/i', $message)) {
+            $context = smsTenantTemplateContext($this->pdo, (int)$this->tenant_id);
+        }
+        return smsRenderCustomerTemplate($message, $client, $context);
     }
 }
 ?>
