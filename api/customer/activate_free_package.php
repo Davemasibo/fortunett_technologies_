@@ -37,8 +37,8 @@ try {
     }
     
     // Get package details
-    $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND status = 'active'");
-    $stmt->execute([$packageId]);
+    $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND tenant_id = ? AND status = 'active'");
+    $stmt->execute([$packageId,$client['tenant_id']]);
     $package = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$package) {
@@ -46,6 +46,10 @@ try {
         exit;
     }
     
+require_once __DIR__.'/../../includes/customer_packages.php';
+try { assertCustomerPackageCompatible($client,$package); }
+catch (InvalidArgumentException $e) { echo json_encode(['success'=>false,'message'=>$e->getMessage()]); exit; }
+
     // Verify package is free
     if ($package['price'] > 0) {
         echo json_encode(['success' => false, 'message' => 'This package requires payment']);
@@ -63,7 +67,7 @@ try {
             subscription_plan = ?,
             expiry_date = ?,
             status = 'active'
-        WHERE id = ?
+        WHERE id = ? AND tenant_id = ?
     ");
     
     $stmt->execute([
@@ -71,7 +75,7 @@ try {
         $package['price'],
         $package['name'],
         $expiryDate,
-        $client['id']
+        $client['id'], $client['tenant_id']
     ]);
     
     // Log activity

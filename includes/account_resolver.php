@@ -66,12 +66,10 @@ function resolveAccountRef(PDO $pdo, string $ref, string $phone = '', ?int $tena
             continue;
         }
 
-        // Duplicates inside ONE tenant are fine — we still know which ISP gets
-        // the money, so take the active/newest row. Only a phone that spans
-        // different tenants is truly ambiguous, and there we must refuse rather
-        // than credit the wrong ISP.
+        // A till provides no account reference: multiple customers sharing a
+        // phone must be reviewed instead of selecting the newest package.
         $tenants = array_unique(array_map(static fn($r) => (int)$r['tenant_id'], $rows));
-        if (count($tenants) > 1) {
+        if (count($tenants) > 1 || count($rows) > 1) {
             error_log("resolveAccountRef: phone '$tail' matches clients in tenants " . implode(',', $tenants));
             continue;
         }
@@ -79,7 +77,7 @@ function resolveAccountRef(PDO $pdo, string $ref, string $phone = '', ?int $tena
         return [
             'tenant_id'  => (int)$rows[0]['tenant_id'],
             'client_id'  => (int)$rows[0]['id'],
-            'matched_by' => count($rows) > 1 ? 'phone(newest of ' . count($rows) . ')' : 'phone',
+            'matched_by' => 'phone',
         ];
     }
 

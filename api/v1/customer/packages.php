@@ -12,15 +12,14 @@ require_once __DIR__ . '/../../../includes/customer_auth.php';
 $auth     = require_customer_auth();
 $tenantId = $auth['tenant_id'];
 
-$type = $_GET['type'] ?? '';
-
-$where  = ["p.tenant_id = ?", "p.status = 'active'"];
-$params = [$tenantId];
-
-if (in_array($type, ['pppoe', 'hotspot'], true)) {
-    $where[]  = "(COALESCE(NULLIF(p.connection_type,''), NULLIF(p.type,''), 'pppoe') = ?)";
-    $params[] = $type;
-}
+require_once __DIR__.'/../../../includes/customer_packages.php';
+$account=$pdo->prepare('SELECT connection_type FROM clients WHERE id=? AND tenant_id=?');
+$account->execute([$auth['client_id'],$tenantId]);
+$client=$account->fetch(PDO::FETCH_ASSOC);
+if (!$client) { http_response_code(404); echo json_encode(['error'=>'Account not found']); exit; }
+$type=customerConnectionType($client);
+$where=["p.tenant_id = ?","p.status = 'active'","LOWER(TRIM(COALESCE(NULLIF(p.connection_type,''),NULLIF(p.type,''),'hotspot')))=?"];
+$params=[$tenantId,$type];
 
 $whereClause = 'WHERE ' . implode(' AND ', $where);
 
@@ -29,7 +28,7 @@ try {
         SELECT p.id, p.name, p.price, p.description,
                p.download_speed, p.upload_speed, p.data_limit,
                p.validity_value, p.validity_unit, p.device_limit,
-               COALESCE(NULLIF(p.connection_type,''), NULLIF(p.type,''), 'pppoe') AS connection_type
+               COALESCE(NULLIF(p.connection_type,''), NULLIF(p.type,''), 'hotspot') AS connection_type
         FROM packages p
         $whereClause
         ORDER BY p.price ASC

@@ -88,6 +88,8 @@ try {
         exit;
     }
 
+    require_once __DIR__.'/../../includes/customer_packages.php';
+    assertCustomerPackageCompatible(['tenant_id'=>$tenantId,'connection_type'=>'hotspot'],$package);
     require_once __DIR__ . '/../../includes/payment_terms.php';
     $purchaseTerms = preparePaymentTerms($pdo, $packageId, $tenantId);
     $isFree = (float)$package['price'] == 0;
@@ -335,7 +337,7 @@ try {
             exit;
         }
         // Find client
-        $clSt = $pdo->prepare("SELECT id, phone, account_number, mikrotik_username, mikrotik_password FROM clients WHERE tenant_id = ? AND (account_number = ? OR phone = ?) LIMIT 1");
+        $clSt = $pdo->prepare("SELECT id, phone, account_number, mikrotik_username, mikrotik_password FROM clients WHERE tenant_id = ? AND connection_type='hotspot' AND (account_number = ? OR phone = ?) LIMIT 1");
         $clSt->execute([$tenantId, $accountOrPhone, $accountOrPhone]);
         $renewClient = $clSt->fetch(PDO::FETCH_ASSOC);
         if (!$renewClient) {

@@ -18,6 +18,12 @@ if ($selectedPackageId) {
     $package = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
+require_once __DIR__.'/../includes/customer_packages.php';
+if ($package) {
+    try { assertCustomerPackageCompatible($customer,$package); }
+    catch (InvalidArgumentException $e) { http_response_code(400); exit(htmlspecialchars($e->getMessage(),ENT_QUOTES)); }
+} elseif ($selectedPackageId) { http_response_code(404); exit('Package not found.'); }
+
 $packagePrice   = $package ? (float)$package['price'] : 0;
 $accountBalance = (float)($customer['account_balance'] ?? 0);
 $purchasePeriods = max(1, min(24, (int)($_GET['periods'] ?? 1)));

@@ -108,6 +108,14 @@ try {
 
     require_once __DIR__ . '/../../includes/payment_terms.php';
     $selectedPackageId = (int)($_POST['package_id'] ?? $customer['package_id']);
+    require_once __DIR__ . '/../../includes/customer_packages.php';
+    if ($type !== 'topup') {
+        $availablePackage=$pdo->prepare('SELECT * FROM packages WHERE id=? AND tenant_id=?');
+        $availablePackage->execute([$selectedPackageId,$tenantId]);
+        $chosen=$availablePackage->fetch(PDO::FETCH_ASSOC);
+        if (!$chosen) throw new RuntimeException('Package not found.');
+        assertCustomerPackageCompatible($customer,$chosen);
+    }
     $purchaseTerms = $type === 'topup' ? null : preparePaymentTerms($pdo, $selectedPackageId, $tenantId);
     if ($purchaseTerms && isset($_POST['periods'])) {
         $periods = filter_var($_POST['periods'], FILTER_VALIDATE_INT);

@@ -80,7 +80,7 @@ try {
         exit;
     }
 
-    $pkgStmt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL) LIMIT 1");
+    $pkgStmt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND tenant_id = ? LIMIT 1");
     $pkgStmt->execute([$resolvedPackageId, $tenantId]);
     $package = $pkgStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -92,6 +92,8 @@ try {
 
     require_once __DIR__ . '/../../../includes/payment_terms.php';
     $purchaseTerms = preparePaymentTerms($pdo, (int)$resolvedPackageId, $tenantId);
+    require_once __DIR__ . '/../../../includes/customer_packages.php';
+    assertCustomerPackageCompatible($client,$package);
     $periods = filter_var($body['periods'] ?? 1, FILTER_VALIDATE_INT);
     if (!$periods || $periods < 1 || $periods > 24) throw new RuntimeException('Choose between 1 and 24 package periods.');
     $amount = round((float)$purchaseTerms['price'] * $periods, 2);

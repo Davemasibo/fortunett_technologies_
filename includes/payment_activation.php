@@ -44,6 +44,10 @@ function activatePaidSubscription(PDO $pdo, int $clientId, int $tenantId, string
         }
 
         $hotspot = ($client['connection_type'] ?? '') === 'hotspot';
+        if ($package && (isset($package['conn_type']) || isset($package['connection_type']) || isset($package['type']))) {
+            require_once __DIR__.'/customer_packages.php';
+            assertCustomerPackageCompatible($client,$package,false);
+        }
         if ($package && $hotspot) $package['conn_type'] = 'hotspot';
         $purchase = $package && $amount !== null
             ? subscriptionPurchase($package, $amount, (float)($client['account_balance'] ?? 0))

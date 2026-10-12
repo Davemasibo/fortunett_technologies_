@@ -55,6 +55,8 @@ try {
     $purchaseTerms = preparePaymentTerms($pdo, (int)$packageId, (int)$customer['tenant_id']);
     if ((float)$amount < (float)$purchaseTerms['price']) throw new RuntimeException('Payment is less than the selected package price');
 
+    require_once __DIR__ . '/../../includes/customer_packages.php';
+    assertCustomerPackageCompatible($customer,$package);
     // Initiate M-Pesa STK Push
     // Pass tenant_id from customer record (multi-tenancy support)
     $mpesa = new MpesaAPI($pdo, $customer['tenant_id']);

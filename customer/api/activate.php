@@ -65,6 +65,10 @@ if (!$client) {
     exit;
 }
 
+require_once __DIR__.'/../../includes/customer_packages.php';
+try { assertCustomerPackageCompatible($client,$package); }
+catch (InvalidArgumentException $e) { echo json_encode(['success'=>false,'message'=>$e->getMessage()]); exit; }
+
 $packagePrice   = round((float)$package['price'] * $periods, 2);
 if ($packagePrice <= 0) {
     echo json_encode(['success' => false, 'message' => 'Package price must be positive.']);
@@ -83,9 +87,11 @@ if ($accountBalance < $packagePrice) {
 
 try {
     $pdo->beginTransaction();
-    $locked = $pdo->prepare('SELECT account_balance, expiry_date, status FROM clients WHERE id = ? AND tenant_id = ? FOR UPDATE');
+    $locked = $pdo->prepare('SELECT account_balance, expiry_date, status, connection_type FROM clients WHERE id = ? AND tenant_id = ? FOR UPDATE');
     $locked->execute([$clientId, $tenantId]);
     $currentClient = $locked->fetch(PDO::FETCH_ASSOC);
+    if (!$currentClient) throw new RuntimeException("Customer not found.");
+    assertCustomerPackageCompatible($currentClient,$package);
     if (!$currentClient) throw new RuntimeException('Customer no longer exists');
     $accountBalance = (float)$currentClient['account_balance'];
     if ($accountBalance < $packagePrice) throw new RuntimeException('Insufficient current balance');

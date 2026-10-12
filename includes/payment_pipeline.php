@@ -110,7 +110,7 @@ function process_payment_success(
         $pkgSt = $pdo->prepare("
             SELECT id, name, price, validity_value, validity_unit,
                    download_speed, upload_speed, mikrotik_profile,
-                   COALESCE(NULLIF(type,''), connection_type, 'hotspot') AS conn_type
+                   LOWER(TRIM(COALESCE(NULLIF(connection_type,''), NULLIF(type,''), 'hotspot'))) AS conn_type
             FROM packages WHERE id = ? AND tenant_id = ?
         ");
         $pkgSt->execute([$resolvedPackageId, $tenantId]);
@@ -121,6 +121,10 @@ function process_payment_success(
         $package['validity_value'] = $purchaseTerms['validity_value'];
         $package['validity_unit'] = $purchaseTerms['validity_unit'];
         $package['price'] = $purchaseTerms['package_price'] ?? $package['price'];
+    }
+    if ($package) {
+        require_once __DIR__.'/customer_packages.php';
+        assertCustomerPackageCompatible($client,$package,false);
     }
 
     $results['client_name']  = $client['full_name'] ?: ($client['name'] ?? '');

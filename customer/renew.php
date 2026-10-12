@@ -95,16 +95,8 @@ if (!$client && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['lookup'])
 $packages = [];
 if ($tenantId) {
     try {
-        $connType = $client['connection_type'] ?? 'hotspot';
-        $pkgSt = $pdo->prepare("SELECT id, name, price, download_speed, upload_speed, validity_value, validity_unit, connection_type FROM packages WHERE tenant_id = ? AND status = 'active' AND COALESCE(NULLIF(connection_type,''), 'hotspot') = ? ORDER BY price ASC, name ASC");
-        $pkgSt->execute([$tenantId, $connType === 'pppoe' ? 'pppoe' : 'hotspot']);
-        $packages = $pkgSt->fetchAll(PDO::FETCH_ASSOC);
-        if (empty($packages)) {
-            // Fallback: all active packages
-            $pkgSt2 = $pdo->prepare("SELECT id, name, price, download_speed, upload_speed, validity_value, validity_unit FROM packages WHERE tenant_id = ? AND status = 'active' ORDER BY price ASC LIMIT 12");
-            $pkgSt2->execute([$tenantId]);
-            $packages = $pkgSt2->fetchAll(PDO::FETCH_ASSOC);
-        }
+        require_once __DIR__.'/../includes/customer_packages.php';
+        $packages=customerAvailablePackages($pdo,(int)$tenantId,$client ?: ['connection_type'=>'hotspot']);
     } catch (Exception $_e) {}
 }
 

@@ -4,9 +4,14 @@ $customer = requireCustomerLogin();
 
 $package = null;
 if ($customer['package_id']) {
-    $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ?");
-    $stmt->execute([$customer['package_id']]);
+    $stmt = $pdo->prepare("SELECT * FROM packages WHERE id = ? AND tenant_id = ?");
+    $stmt->execute([$customer['package_id'],$customer['tenant_id']]);
     $package = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($package) {
+        require_once __DIR__.'/../includes/customer_packages.php';
+        try { assertCustomerPackageCompatible($customer,$package,false); }
+        catch (InvalidArgumentException $e) { $package=null; }
+    }
 }
 
 include 'includes/header.php';
