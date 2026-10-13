@@ -57,6 +57,15 @@ class SMSHelper {
             return $response;
         }
 
+        if ($clientId && $this->tenant_id) {
+            $st=$this->pdo->prepare('SELECT connection_type FROM clients WHERE id=? AND tenant_id=?');
+            $st->execute([(int)$clientId,(int)$this->tenant_id]);
+            $client=$st->fetch(PDO::FETCH_ASSOC);
+            if (!$client) return ['success'=>false,'message'=>'Customer not found for this tenant.'];
+            $message=smsWithoutPppoeCredentials($message,$client);
+            if (trim($message)==='') return ['success'=>false,'message'=>'PPPoE credentials are excluded from SMS. Enter account or payment information instead.'];
+        }
+
         $phone    = $this->formatPhone($phone);
         $response = $this->sendViaTalkSasa($phone, $message);
 

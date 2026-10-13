@@ -383,8 +383,10 @@ function process_payment_success(
             'payment_amount'=>$amount,'expiry_date'=>$expiryDate,
             'mikrotik_username'=>$creds['username'],'mikrotik_password'=>$creds['password'],
         ]);
-        $paymentTemplate=smsDefaultTemplates()['payment_received'][1]
-            . "\nUsername: {username}\nPassword: {password}\nIf not connected, open the Wi-Fi login page.";
+        $paymentTemplate=smsDefaultTemplates()['payment_received'][1];
+        if (($client['connection_type'] ?? 'hotspot') !== 'pppoe') {
+            $paymentTemplate .= "\nUsername: {username}\nPassword: {password}\nIf not connected, open the Wi-Fi login page.";
+        }
         $msg=smsRenderCustomerTemplate($paymentTemplate,$notificationClient,smsTenantTemplateContext($pdo,$tenantId));
         $notificationId = queuePaymentNotification($pdo, $tenantId, $clientId, $paymentId, $receipt, $client['phone'], $msg);
         $results['steps']['sms'] = false;

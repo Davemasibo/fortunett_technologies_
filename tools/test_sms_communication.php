@@ -19,7 +19,7 @@ class CommunicationStatement extends PDOStatement {
 $db=new CommunicationPDO();$context=smsTenantTemplateContext($db,1);
 $client=['full_name'=>'Dave','account_number'=>'GH001','package_price'=>500,'payment_amount'=>1000,'expiry_date'=>'2026-10-13 15:00:00','mikrotik_username'=>'dave','mikrotik_password'=>'1234'];
 $message=smsRenderCustomerTemplate(smsDefaultTemplates()['account_expired'][1],$client,$context);
-communicationCheck(str_contains($message,'Pay KES 500.00 via M-Pesa Paybill 123456, Account GH001.'),'Renewal gives actual tenant paybill, package price and customer account');
+communicationCheck(str_contains($message,'M-Pesa Paybill 123456. Account Number GH001. Amount: KSh 500.00.'),'Renewal gives actual tenant paybill, package price and saved customer account');
 communicationCheck(str_contains($message,'https://tenant1.fortunetttech.site/customer/login.php'),'Portal URL uses saved tenant subdomain');
 $db->gateway['credentials']='{"shortcode":"654321","shortcode_type":"till"}';$till=smsTenantTemplateContext($db,2);
 $message=smsRenderCustomerTemplate(smsDefaultTemplates()['account_expiring'][1],$client,$till);
@@ -35,3 +35,15 @@ foreach(smsDefaultTemplates() as $key=>[$name,$template]) {
     $rendered=smsRenderCustomerTemplate($template,$client,$context);
     communicationCheck(str_contains($rendered,$context['portal_url']) && !preg_match('/\{[a-z_]+\}/i',$rendered),'Complete portal-linked '.$key.' template');
 }
+$welcome=smsRenderCustomerTemplate(smsDefaultTemplates()['welcome'][1],$client,$context);
+communicationCheck(str_starts_with($welcome,'Welcome to Example ISP Network Solutions, Dave!'),'Welcome uses tenant network name and saved customer name');
+communicationCheck(smsNetworkName('Ecoland Attic Network')==='Ecoland Attic Network Solutions' && smsNetworkName('Example Network Solutions')==='Example Network Solutions','Network suffix is not duplicated');
+$pppoe=array_replace($client,['connection_type'=>'pppoe']);
+$credentials=smsRenderCustomerTemplate(smsDefaultTemplates()['login_credentials'][1],$pppoe,$context);
+communicationCheck(!str_contains($credentials,'dave') && !str_contains($credentials,'1234') && !str_contains($credentials,'Username:') && !str_contains($credentials,'Password:') && str_contains($credentials,$context['portal_url']),'PPPoE templates omit router login credentials and retain portal details');
+$queued="Paid KES 1000.00. Active until 13 Nov.\nUsername: dave\nPassword: 1234\nReceipt ABC123";
+$stripped=smsWithoutPppoeCredentials($queued,$pppoe);
+communicationCheck(!str_contains($stripped,'dave') && !str_contains($stripped,'1234') && str_contains($stripped,'Paid KES 1000.00') && str_contains($stripped,'Receipt ABC123'),'Queued PPPoE messages lose credential lines while retaining payment details');
+communicationCheck(smsWithoutPppoeCredentials($queued,array_replace($client,['connection_type'=>'hotspot']))===$queued,'Hotspot credentials stay intact');
+$platform=['payment_kind'=>'portal','platform_till'=>'7198572'];
+communicationCheck(str_contains(smsPaymentInstructions($platform,$client),'For immediate activation, pay KSh 500.00 through your customer portal using M-Pesa Till 7198572.'),'Platform till instruction uses checkout for attribution and real package amount');

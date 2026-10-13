@@ -28,7 +28,7 @@ function smsDefaultTemplates(): array {
         'account_expiring'=>['Account Expiring','Dear {name}, your internet subscription expires on {expiry}. Renew before then to stay connected. {payment_instructions} Packages and renewal: {portal_url}. {support_line}'],
         'payment_reminder'=>['Payment Reminder','Dear {name}, your internet renewal is due on {expiry}. {payment_instructions} View packages and renew: {portal_url}. {support_line}'],
         'payment_received'=>['Payment Received','Dear {name}, we received your payment of KES {amount}. Your internet is active until {expiry}. View your account and packages: {portal_url}. {support_line}'],
-        'welcome'=>['Welcome Message','Dear {name}, welcome to {company}. Your account number is {account_number}. {payment_instructions} Log in to choose a package: {portal_url}. {support_line}'],
+        'welcome'=>['Welcome Message','Welcome to {network_name}, {name}! {payment_instructions} {account_line} Log in to choose a package: {portal_url}. {support_line}'],
         'login_credentials'=>['Login Credentials',"Dear {name}, your internet login details are:\nUsername: {username}\nPassword: {password}\nView your account and packages: {portal_url}. {support_line}"],
     ];
 }
@@ -70,6 +70,23 @@ function smsTenantTemplateContext(PDO $pdo, int $tenant): array {
         }
     }
     if ($context['payment_kind']==='paybill') $context['paybill']=$context['payment_number'];
+    // Use the actual platform till only through checkout, where the payment is
+    // attributed to this tenant and customer. Never invent a till/account.
+    try {
+        $platform=$pdo->query('SELECT shortcode,shortcode_type,environment FROM platform_mpesa_config LIMIT 1')->fetch(PDO::FETCH_ASSOC);
+        if ($platform && in_array(strtolower($platform['environment'] ?? ''), ['live','production'], true)
+            && ($platform['shortcode_type'] ?? '')==='till' && !empty($platform['shortcode'])) {
+            require_once __DIR__.'/credential_helper.php';
+            $own=$pdo->prepare("SELECT credentials FROM payment_gateways WHERE tenant_id=? AND gateway_type='mpesa_api' AND is_active=1");
+            $own->execute([$tenant]);
+            $hasOwnApi=false;
+            foreach ($own->fetchAll(PDO::FETCH_ASSOC) as $gateway) {
+                $creds=decrypt_gateway_credentials((string)$gateway['credentials']);
+                if (!empty($creds['consumer_key']) && !empty($creds['consumer_secret']) && !empty($creds['passkey']) && !empty($creds['shortcode'])) $hasOwnApi=true;
+            }
+            if (!$hasOwnApi) $context['platform_till']=(string)$platform['shortcode'];
+        }
+    } catch (PDOException $e) { if (($e->errorInfo[1] ?? 0)!==1146) throw $e; }
     return $context;
 }
 
@@ -77,16 +94,37 @@ function smsPaymentInstructions(array $context, array $client): string {
     $number=trim((string)($context['payment_number'] ?? ''));
     $account=trim((string)($client['account_number'] ?? ''));
     $price=$client['package_price'] ?? $client['pkg_price'] ?? null;
-    $pay=$price!==null && (float)$price>0 ? 'Pay KES '.number_format((float)$price,2,'.','').' via ' : 'Pay via ';
-    if (($context['payment_kind'] ?? '')==='paybill' && $number!=='' && $account!=='') return $pay.'M-Pesa Paybill '.$number.', Account '.$account.'.';
-    if (($context['payment_kind'] ?? '')==='till' && $number!=='') return $pay.'M-Pesa Buy Goods, Till '.$number.'.';
+    $amount=$price!==null && (float)$price>0 ? ' KSh '.number_format((float)$price,2,'.','') : '';
+    if (($context['payment_kind'] ?? '')==='paybill' && $number!=='' && $account!=='') return 'Please pay for internet through M-Pesa Paybill '.$number.'. Account Number '.$account.'.'.($amount!=='' ? ' Amount:'. $amount.'.' : '') . (!empty($context['platform_till']) ? ' For immediate activation, pay'.$amount.' through your customer portal using platform M-Pesa Till '.$context['platform_till'].'.' : '');
+    if (($context['payment_kind'] ?? '')==='till' && $number!=='') return 'Please pay for internet through M-Pesa Buy Goods, Till '.$number.'.'.($amount!=='' ? ' Amount:'.$amount.'.' : '');
+    if (!empty($context['platform_till'])) return 'For immediate activation, pay'.$amount.' through your customer portal using M-Pesa Till '.$context['platform_till'].'.';
     return 'Log in to your customer portal to choose a package and pay using the available payment options.';
 }
 
+function smsNetworkName(string $company): string {
+    $company=trim($company);
+    if (preg_match('/network solutions$/i',$company)) return $company;
+    return $company.(preg_match('/network$/i',$company) ? ' Solutions' : ' Network Solutions');
+}
+
+/** Also sanitizes already-rendered queued messages before provider delivery. */
+function smsWithoutPppoeCredentials(string $message, array $client): string {
+    if (strtolower(trim((string)($client['connection_type'] ?? ''))) !== 'pppoe') return $message;
+    $message=preg_replace('/\b(?:Username|Password)\s*:\s*(?:\{\{?\s*[a-z_]+\s*\}\}?|\[\s*[a-z_]+\s*\]|[^\s\r\n]+)[ \t]*/i','',$message);
+    $message=preg_replace('/\bLogin\s*:\s*[^\r\n]+/i','',$message);
+    $message=preg_replace('/(?:\{\{\s*|\{\s*|\[\s*)(?:username|password|mikrotik_username|mikrotik_password|login_username|login_password)\s*(?:\}\}|\}|\])/i','',$message);
+    $message=str_replace('your internet login details are:', 'your internet account details are:', $message);
+    return trim(preg_replace('/\n[ \t]*\n+/',"\n",$message));
+}
+
 function smsRenderCustomerTemplate(string $message, array $client, array $tenantContext = []): string {
+    $message=smsWithoutPppoeCredentials($message,$client);
+    if (str_contains($message,'{account_line}') && empty($client['account_number'])) throw new InvalidArgumentException('Customer is missing account_number. Update their general information before sending this template.');
     $first=function(array $keys) use($client) { foreach($keys as $key) if(isset($client[$key]) && trim((string)$client[$key])!=='') return (string)$client[$key]; return ''; };
     // Never use auth_password/password: these can contain password hashes.
     $map=['portal_url'=>(string)($tenantContext['portal_url'] ?? ''),'company'=>(string)($tenantContext['company'] ?? ''),
+        'network_name'=>smsNetworkName((string)($tenantContext['company'] ?? 'your internet provider')),
+        'account_line'=>($tenantContext['payment_kind'] ?? '')==='paybill' && !empty($tenantContext['payment_number']) && $first(['account_number'])!=='' ? '' : 'Your customer Account Number is '.$first(['account_number']).'.',
         'payment_instructions'=>smsPaymentInstructions($tenantContext,$client),
         'support_line'=>empty($tenantContext['support']) ? '' : 'Need help? Contact '.$tenantContext['support'].'.',
         'support'=>trim((string)($tenantContext['support'] ?? '')), 'paybill'=>trim((string)($tenantContext['paybill'] ?? '')),
@@ -102,7 +140,7 @@ function smsRenderCustomerTemplate(string $message, array $client, array $tenant
         $key=strtolower($match[1] ?: ($match[2] ?: ($match[3] ?? ''))); $key=$aliases[$key] ?? $key;
         if(!array_key_exists($key,$map)) throw new InvalidArgumentException('Unknown SMS variable: '.$key.'. Edit the template before sending.');
         if ($map[$key] === '' && in_array($key, ['support','paybill'], true)) throw new InvalidArgumentException('Tenant '.$key.' is not configured. Set '.($key === 'support' ? 'the support phone in Hotspot settings or your account contact phone' : 'the paybill in Hotspot settings or an active payment gateway').' before sending this template.');
-        if($map[$key]==='' && $key!=='support_line') throw new InvalidArgumentException('Customer is missing '.$key.'. Update their details before sending this template.');
+        if($map[$key]==='' && !in_array($key,['support_line','account_line'],true)) throw new InvalidArgumentException('Customer is missing '.$key.'. Update their details before sending this template.');
         return $map[$key];
     },$message);
 }
