@@ -109,6 +109,7 @@ table.sms-table tr:last-child td{border-bottom:none;}
 .rep-note code{background:rgba(255,255,255,.08);padding:2px 7px;border-radius:5px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#cbd5e1;}
 </style>
 <link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<link rel="stylesheet" href="/assets/diagnostics.css?v=20261013">
 <script src="/js/responsive-app.js?v=1" defer></script>
 </head>
 <body class="sa-shell">
@@ -119,18 +120,23 @@ table.sms-table tr:last-child td{border-bottom:none;}
         <h1>Platform Diagnostics</h1>
         <div style="display:flex;gap:10px;">
             <button class="btn" id="preview"><i class="fas fa-list-check"></i> Preview repairs</button>
-            <button class="btn btn-fix" id="fixall"><i class="fas fa-wrench"></i> Fix what can be fixed</button>
+            <button class="btn btn-fix" id="fixall"><i class="fas fa-wrench"></i> Apply available repairs</button>
             <button class="btn" id="reload"><i class="fas fa-rotate"></i> Re-run</button>
         </div>
     </div>
-    <div class="content" id="sa-main-content">
+    <div class="content hd-container diagnostics-platform" id="sa-main-content">
+        <div class="hd-title">
+            <div class="hd-eyebrow">Network health / Platform</div>
+            <h1>Keep payments and access working</h1>
+            <p class="hd-subtitle">Shared payment services, background jobs and messaging. Review findings and preview available repairs before applying them. Tenant router checks are on Hotspot Diagnostics.</p>
+        </div>
 
-        <div class="verdict loading" id="verdict">
+        <div class="verdict loading" id="verdict" role="status" aria-live="polite">
             <div class="vi"><i class="fas fa-circle-notch spin"></i></div>
             <div><h4>Checking the shared chain…</h4><p>Reading platform credentials, cron heartbeats, schema and tenant collection modes.</p></div>
         </div>
 
-        <div class="card" id="repair">
+        <div class="card" id="repair" role="status" aria-live="polite">
             <div class="card-head"><h3 id="repair-title">Repair</h3><span class="pill ok" id="repair-pill">&nbsp;</span></div>
             <div id="repair-steps"></div>
             <div class="rep-note" id="repair-note"></div>
@@ -219,7 +225,7 @@ async function run() {
         if (!grp.checks.length) continue;
         const lvl = worst(grp.checks);
         html += `<div class="card"><div class="card-head"><h3>${esc(grp.title)}</h3><span class="pill ${lvl}">${lvl}</span></div>`;
-        for (const c of grp.checks) {
+        for (const c of [...grp.checks].sort((a,b)=>({fail:0,warn:1,ok:2}[a.level] ?? 3)-({fail:0,warn:1,ok:2}[b.level] ?? 3))) {
             html += `<div class="chk">
                 <i class="fas ${ICON[c.level]}" style="color:${COL[c.level]};font-size:15px;margin-top:2px;"></i>
                 <div style="flex:1;min-width:0;">

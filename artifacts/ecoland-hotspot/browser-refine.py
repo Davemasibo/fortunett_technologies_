@@ -1,0 +1,4 @@
+from pathlib import Path
+p=Path('artifacts/ecoland-hotspot/browser-check.js');s=p.read_text();s=s.replace("return route.fulfill({body:'',contentType:url.pathname.endsWith('.css')?'text/css':'text/javascript'});", "const local=path.resolve('.',url.pathname.slice(1));\n    if(url.hostname==='diagnostics.test' && /\\.(css|js)$/.test(local) && fs.existsSync(local)) return route.fulfill({body:fs.readFileSync(local),contentType:local.endsWith('.css')?'text/css':'text/javascript'});\n    return route.fulfill({body:'',contentType:url.pathname.endsWith('.css')?'text/css':'text/javascript'});")
+s=s.replace("assert.equal(errors.length,0,errors.join('\\n'));", "assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false,'Whole page must fit viewport');\n   assert.equal(errors.length,0,errors.join('\\n'));")
+p.write_text(s)

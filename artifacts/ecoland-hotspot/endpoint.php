@@ -1,0 +1,3 @@
+<?php
+if(PHP_SAPI!=='cli')exit;chdir('/var/www/html/fortunett_technologies_');session_start();$_SESSION['user_id']=6;$_SESSION['role']='admin';$_SESSION['hotspot_diagnostics_csrf']='local-verification-token';$_POST=['router_id'=>12,'service'=>'hotspot','csrf_token'=>'local-verification-token'];$_SERVER['REQUEST_METHOD']='POST';$_SERVER['HTTP_HOST']='ecolandattic.fortunetttech.site';$_SERVER['HTTPS']='on';$_SERVER['SCRIPT_NAME']='/hotspot_diagnostics.php';if (($argv[2]??'')==='other-tenant') $_POST['router_id']=19;if (($argv[2]??'')==='bad-csrf') $_POST['csrf_token']='invalid';include $argv[1];
+

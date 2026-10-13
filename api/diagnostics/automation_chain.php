@@ -40,7 +40,11 @@ if (!isset($_SESSION['user_id'])) {
 $t = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $t->execute([$_SESSION['user_id']]);
 $tenantId = (int)$t->fetchColumn();
+session_write_close();
 if (!$tenantId) { ob_clean(); echo json_encode(['success' => false, 'error' => 'No tenant']); exit; }
+
+$hotspotOnly = ($_POST['service'] ?? '') === 'hotspot';
+$clientScope = $hotspotOnly ? " AND COALESCE(NULLIF(c.connection_type,''),'hotspot') = 'hotspot'" : '';
 
 $groups = [
     'collection' => ['title' => 'Collecting the money', 'checks' => []],
@@ -181,7 +185,7 @@ try {
     $rs = $pdo->prepare("SELECT id, name, status, vpn_ip, ip_address, api_port FROM mikrotik_routers WHERE tenant_id = ? ORDER BY id");
     $rs->execute([$tenantId]);
     $routers = $rs->fetchAll(PDO::FETCH_ASSOC);
-    $active  = array_values(array_filter($routers, fn($r) => $r['status'] === 'active'));
+    $active  = array_values(array_filter($routers, fn($r) => in_array($r['status'], ['active', 'online'], true)));
 
     if (!$routers) {
         $add('activation', 'Provisioning target', 'fail', 'No routers registered.',
@@ -215,7 +219,8 @@ try {
 }
 
 try {
-    $ps = $pdo->prepare("SELECT COUNT(*) FROM packages WHERE tenant_id = ? AND COALESCE(download_speed,0) <= 0");
+    $packageScope = $hotspotOnly ? " AND COALESCE(NULLIF(connection_type,''),'hotspot')='hotspot' AND status='active'" : '';
+    $ps = $pdo->prepare("SELECT COUNT(*) FROM packages WHERE tenant_id = ? AND COALESCE(download_speed,0) <= 0 $packageScope");
     $ps->execute([$tenantId]);
     $noSpeed = (int)$ps->fetchColumn();
     if ($noSpeed > 0) {
@@ -234,59 +239,54 @@ try {
 // are waiting; whether it drains is a cron, i.e. platform. Report the backlog
 // here and leave the cron to the platform row below.
 try {
-    $qs = $pdo->prepare("SELECT COUNT(*) FROM pending_provisions WHERE tenant_id = ?");
+    $queueScope = $hotspotOnly ? " AND EXISTS (SELECT 1 FROM clients c WHERE c.id=pending_provisions.client_id AND c.tenant_id=pending_provisions.tenant_id $clientScope)" : '';
+    $qs = $pdo->prepare("SELECT COUNT(*) FROM pending_provisions WHERE tenant_id = ? $queueScope");
     $qs->execute([$tenantId]);
     $queued = (int)$qs->fetchColumn();
-} catch (Throwable $e) { $queued = 0; }
+} catch (Throwable $e) { $queued = null; }
 
-if ($queued > 0) {
+if ($queued === null) {
+    $add('activation', 'Customers waiting to be connected', 'warn', 'Could not read the provisioning queue. Queue health is unverified.', 'Contact FortuNett support to check the provisioning table.');
+} elseif ($queued > 0) {
     $add('activation', 'Customers waiting to be connected', 'fail',
         $queued . ' customer(s) paid while their router was unreachable and are queued for retry. They are retried '
         . 'automatically every 5 minutes once the router answers.',
         'Bring the router back online — the queue drains on its own.');
 } else {
-    $add('activation', 'Customers waiting to be connected', 'ok', 'Nobody is queued — every payment provisioned.');
+    $add('activation', 'Customers waiting to be connected', 'ok', 'No pending provisioning jobs. Check live router sessions separately.');
 }
 
 // ═══ C. Evidence — what the last 7 days actually did ══════════════════════════
 
 try {
-    $ev = $pdo->prepare("
-        SELECT COUNT(*) AS total,
-               SUM(CASE WHEN c.status = 'active' AND c.expiry_date > NOW() THEN 1 ELSE 0 END) AS activated
-        FROM payments p
-        JOIN clients  c ON c.id = p.client_id AND c.tenant_id = p.tenant_id
-        WHERE p.tenant_id = ? AND p.status = 'completed'
-          AND p.payment_date >= NOW() - INTERVAL 7 DAY
-    ");
+    $ev = $pdo->prepare("SELECT COUNT(DISTINCT c.id) AS total,
+        COUNT(DISTINCT CASE WHEN c.expiry_date > NOW() AND c.status='active' THEN c.id END) AS active_now,
+        COUNT(DISTINCT CASE WHEN c.expiry_date > NOW() AND c.status<>'active' THEN c.id END) AS needs_review,
+        COUNT(DISTINCT CASE WHEN c.expiry_date IS NULL OR c.expiry_date <= NOW() THEN c.id END) AS expired
+        FROM payments p JOIN clients c ON c.id=p.client_id AND c.tenant_id=p.tenant_id
+        WHERE p.tenant_id=? AND p.status='completed' AND p.payment_date>=NOW()-INTERVAL 7 DAY $clientScope");
     $ev->execute([$tenantId]);
-    $row  = $ev->fetch(PDO::FETCH_ASSOC) ?: ['total' => 0, 'activated' => 0];
-    $tot  = (int)$row['total'];
-    $act  = (int)$row['activated'];
-    $gap  = $tot - $act;
+    $row = $ev->fetch(PDO::FETCH_ASSOC);
+    $total = (int)$row['total']; $review = (int)$row['needs_review'];
+    $add('evidence', 'Paid customer access records', $review ? 'fail' : ($total ? 'ok' : 'warn'),
+        $total ? $row['active_now'] . ' customer(s) have active, unexpired access; ' . $row['expired']
+            . ' have expired or unrecorded access; ' . $review . ' have a future expiry but are not active. '
+            . 'These are account records, not proof of router login. Expired access and part payments do not prove activation failed.'
+            : 'No completed ' . ($hotspotOnly ? 'hotspot ' : '') . 'payments in the last 7 days. End-to-end purchase remains unverified.',
+        $review ? 'Review these customers in Clients, then check their router provisioning.' : null);
 
-    if ($tot === 0) {
-        $add('evidence', 'Payments that produced access', 'warn',
-            'No completed payments in the last 7 days — nothing to verify against. Make one live payment to prove the '
-            . 'chain end to end, then re-run this check.');
-    } elseif ($gap === 0) {
-        $add('evidence', 'Payments that produced access', 'ok',
-            "{$tot}/{$tot} completed payments left the customer active with a future expiry. Full automation is working.");
-    } else {
-        $add('evidence', 'Payments that produced access', 'fail',
-            "{$act}/{$tot} completed payments left the customer active. {$gap} customer(s) paid and are not connected.",
-            'Check the Provisioning target above first; if that is green, contact FortuNett support with this figure.');
-    }
 } catch (Throwable $e) {
     $add('evidence', 'Payments that produced access', 'warn', $e->getMessage());
 }
 
 try {
+    $transactionScope = $hotspotOnly ? " AND EXISTS (SELECT 1 FROM clients c WHERE c.id=mpesa_transactions.client_id AND c.tenant_id=mpesa_transactions.tenant_id $clientScope)" : '';
     $st = $pdo->prepare("
         SELECT COUNT(*) FROM mpesa_transactions
         WHERE tenant_id = ?
-          AND (result_code IS NULL OR result_code = '')
-          AND created_at BETWEEN NOW() - INTERVAL 7 DAY AND NOW() - INTERVAL 10 MINUTE
+          AND status = 'pending'
+          AND (result_code IS NULL OR CAST(result_code AS CHAR) = '')
+          AND created_at BETWEEN NOW() - INTERVAL 7 DAY AND NOW() - INTERVAL 10 MINUTE $transactionScope
     ");
     $st->execute([$tenantId]);
     $stuck = (int)$st->fetchColumn();
@@ -377,13 +377,12 @@ if ($counts['fail'] > 0) {
                         : 'Payments will not reliably turn into internet access until these are cleared.')];
 } elseif ($counts['warn'] > 0) {
     $verdict = ['level' => 'warn',
-                'title' => 'Automation working, ' . $counts['warn'] . ' caveat' . ($counts['warn'] === 1 ? '' : 's'),
-                'message' => 'Nothing is blocking activation, but the items below will cause trouble under load or over time.'];
+                'title' => 'Review ' . $counts['warn'] . ' caveat' . ($counts['warn'] === 1 ? '' : 's'),
+                'message' => 'Review the warnings below. A configuration check cannot prove a customer purchase and Internet access.'];
 } else {
     $verdict = ['level' => 'ok',
-                'title' => 'Full automation verified',
-                'message' => 'Money arrives, is recorded without faults, and turns into router access without anyone '
-                           . 'intervening.'];
+                'title' => 'Recorded checks passed',
+                'message' => 'No recorded blocker was found. Verify a real hotspot purchase, router login and browsing on a phone.'];
 }
 
 ob_clean();
@@ -393,4 +392,6 @@ echo json_encode([
     'counts'          => $counts,
     'collection_mode' => $mode,
     'groups'          => $groups,
+    'scope' => $hotspotOnly ? 'hotspot' : 'all',
+    'checked_at' => date(DATE_ATOM),
 ]);

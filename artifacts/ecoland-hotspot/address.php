@@ -1,0 +1,2 @@
+<?php
+if(PHP_SAPI!=='cli')exit;require '/var/www/html/fortunett_technologies_/includes/db_master.php';require '/var/www/html/fortunett_technologies_/classes/MikrotikAPI.php';$r=$pdo->query('SELECT * FROM mikrotik_routers WHERE id=12 AND tenant_id=5')->fetch();$a=new MikrotikAPI($r['vpn_ip'],$r['username'],$r['password'],$r['api_port']);$a->connect();echo json_encode($a->comm('/ip/address/print',['?address=10.5.50.1/24']),JSON_PRETTY_PRINT);$a->disconnect();

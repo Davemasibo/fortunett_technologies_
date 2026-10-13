@@ -25,154 +25,38 @@ $clientSt = $pdo->prepare("
 ");
 $clientSt->execute([$tenantId]);
 $hotspotClients = $clientSt->fetchAll(PDO::FETCH_ASSOC);
+$packageSt = $pdo->prepare("SELECT id,name,price,download_speed,upload_speed,validity_value,validity_unit,device_limit FROM packages WHERE tenant_id=? AND status='active' AND COALESCE(NULLIF(connection_type,''),'hotspot')='hotspot' ORDER BY price,id");
+$packageSt->execute([$tenantId]);
+$hotspotPackages = $packageSt->fetchAll(PDO::FETCH_ASSOC);
 
+if (empty($_SESSION['hotspot_diagnostics_csrf'])) $_SESSION['hotspot_diagnostics_csrf'] = bin2hex(random_bytes(32));
 $pageTitle = 'Hotspot Diagnostics';
 require_once 'includes/header.php';
 require_once 'includes/sidebar.php';
 ?>
 
-<style>
-    :root { --neu-bg:#141414; --neu-surf:#1c1c1b; --neu-s2:#222221; --neu-border:rgba(255,255,255,.06); --neu-card:8px 8px 20px rgba(0,0,0,.45),-4px -4px 10px rgba(255,255,255,.03); }
-    .main-content-wrapper { background: var(--neu-bg) !important; }
-
-    /* Force native controls (select popups, scrollbars, autofill) to render dark
-       instead of the OS default white — this is the usual source of stray white. */
-    #mainContent, #mainContent select, #mainContent input, #mainContent textarea { color-scheme: dark; }
-    #mainContent select option { background: #222221 !important; color: #e2e2e0 !important; }
-    /* Belt-and-suspenders: neutralise any themed card class (from premium-theme.css /
-       page-layout.css) that defaults to a white background if it ever leaks in here. */
-    #mainContent .stat-card, #mainContent .content-card, #mainContent .metric-card,
-    #mainContent .stat-card-premium, #mainContent .card { background: var(--neu-s2) !important; color: #e2e2e0 !important; border-color: var(--neu-border) !important; }
-
-    .hd-container { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
-    .hd-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-    .hd-title h1 { font-size: 28px; font-weight: 600; color: #e2e2e0; margin: 0 0 4px 0; }
-    .hd-subtitle { font-size: 14px; color: rgba(255,255,255,.4); margin: 0; }
-    .hd-btn { padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; border: 1px solid var(--neu-border); background: var(--neu-s2); color: rgba(255,255,255,.75); transition: all .18s; }
-    .hd-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
-    .hd-btn.primary { background: linear-gradient(135deg, var(--primary-dark,#1e3a5f) 0%, var(--primary-color,#3B6EA5) 100%); color: #fff; border: none; }
-    .hd-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.4); }
-
-    .hd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 20px; }
-    .hd-card { background: var(--neu-s2); border-radius: 10px; border: 1px solid var(--neu-border); box-shadow: var(--neu-card); overflow: hidden; }
-    .hd-card-header { padding: 16px 20px; border-bottom: 1px solid var(--neu-border); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-    .hd-router-info { display: flex; align-items: center; gap: 11px; min-width: 0; }
-    .hd-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
-    .hd-dot.online  { background: #10B981; box-shadow: 0 0 0 3px rgba(16,185,129,.2); }
-    .hd-dot.active  { background: #F59E0B; box-shadow: 0 0 0 3px rgba(245,158,11,.2); }
-    .hd-dot.offline { background: #6B7280; box-shadow: 0 0 0 3px rgba(107,114,128,.2); }
-    .hd-router-name { font-weight: 600; font-size: 15px; color: #e2e2e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .hd-router-meta { font-size: 12px; color: rgba(255,255,255,.4); margin-top: 2px; }
-
-    .hd-card-body { padding: 18px 20px 20px; }
-
-    /* Overall verdict banner */
-    .hd-verdict { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 10px; border: 1px solid; margin-bottom: 16px; }
-    .hd-verdict .v-icon { font-size: 24px; flex-shrink: 0; }
-    .hd-verdict h4 { font-size: 14px; font-weight: 700; margin: 0 0 2px; }
-    .hd-verdict p  { font-size: 12px; margin: 0; color: rgba(255,255,255,.5); line-height: 1.45; }
-    .hd-verdict.ok      { background: rgba(52,211,153,.08);  border-color: rgba(52,211,153,.25); }
-    .hd-verdict.ok      .v-icon, .hd-verdict.ok h4   { color: #6ee7b7; }
-    .hd-verdict.warn    { background: rgba(245,158,11,.08); border-color: rgba(245,158,11,.25); }
-    .hd-verdict.warn    .v-icon, .hd-verdict.warn h4 { color: #fbbf24; }
-    .hd-verdict.fail    { background: rgba(239,68,68,.08);  border-color: rgba(239,68,68,.25); }
-    .hd-verdict.fail    .v-icon, .hd-verdict.fail h4 { color: #fca5a5; }
-    .hd-verdict.loading { background: rgba(255,255,255,.03); border-color: var(--neu-border); }
-    .hd-verdict.loading h4 { color: rgba(255,255,255,.6); }
-
-    /* Check rows */
-    .hd-check { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--neu-border); }
-    .hd-check:last-child { border-bottom: none; }
-    .hd-check .lbl { flex: 1 1 auto; font-size: 13px; color: #d4d4d2; font-weight: 500; }
-    .hd-check .val { font-size: 12px; color: rgba(255,255,255,.4); text-align: right; }
-
-    .hd-badge { padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; flex-shrink: 0; }
-    .hd-badge.ok   { background: rgba(52,211,153,.15); color: #6ee7b7; }
-    .hd-badge.fail { background: rgba(239,68,68,.15);  color: #fca5a5; }
-    .hd-badge.warn { background: rgba(245,158,11,.15); color: #fbbf24; }
-    .hd-badge.skip { background: rgba(255,255,255,.06); color: rgba(255,255,255,.4); }
-
-    .hd-spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.15); border-top-color: var(--primary-color,#3B6EA5); border-radius: 50%; animation: hd-spin .7s linear infinite; }
-    @keyframes hd-spin { to { transform: rotate(360deg); } }
-
-    /* Walled garden */
-    .hd-wg { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--neu-border); }
-    .hd-wg-title { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .09em; color: rgba(255,255,255,.35); margin-bottom: 8px; }
-    .hd-wg ul { list-style: none; margin: 0; padding: 0; }
-    .hd-wg li { font-family: ui-monospace, monospace; font-size: 11px; color: rgba(255,255,255,.5); padding: 2px 0; }
-    .hd-wg .empty { color: #fca5a5; }
-
-    .hd-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
-    .hd-act { flex: 1; min-width: 120px; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all .18s; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.06); color: rgba(255,255,255,.65); }
-    .hd-act:hover { background: rgba(255,255,255,.12); color: #fff; }
-    .hd-act.primary { background: linear-gradient(135deg, var(--primary-dark,#1e3a5f) 0%, var(--primary-color,#3B6EA5) 100%); color: #fff; border: none; }
-    .hd-act.deploy  { background: rgba(245,158,11,.1); color: #fbbf24; border-color: rgba(245,158,11,.3); }
-    .hd-act.deploy:hover { background: rgba(245,158,11,.2); color: #fcd34d; }
-
-    /* Client lookup */
-    .hd-lookup { background: var(--neu-s2); border: 1px solid var(--neu-border); box-shadow: var(--neu-card); border-radius: 10px; padding: 22px 24px; margin-top: 24px; }
-    .hd-lookup h3 { font-size: 16px; font-weight: 600; color: #e2e2e0; margin: 0 0 4px; }
-    .hd-lookup .sub { font-size: 13px; color: rgba(255,255,255,.4); margin: 0 0 16px; }
-    .hd-lookup-row { display: flex; gap: 10px; flex-wrap: wrap; }
-    .hd-select { flex: 1; min-width: 240px; padding: 9px 12px; border: 1px solid var(--neu-border); border-radius: 8px; background: var(--neu-surf); color: #d4d4d2; font-size: 14px; box-shadow: inset 3px 3px 7px rgba(0,0,0,.3); }
-    .hd-select option { background: #222221; }
-    .lr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
-    .lr-cell { background: var(--neu-surf); border: 1px solid var(--neu-border); border-radius: 8px; padding: 11px 14px; }
-    .lr-cell .lc-label { font-size: 10px; color: rgba(255,255,255,.35); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 5px; }
-    .lr-cell .lc-val   { font-size: 13px; font-weight: 600; color: #e2e2e0; }
-    .lr-cell .lc-sub   { font-size: 11px; color: rgba(255,255,255,.35); margin-top: 2px; }
-
-    .hd-alert { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.25); color: #fbbf24; border-radius: 10px; padding: 16px 18px; font-size: 14px; }
-    .hd-alert a { color: #fcd34d; font-weight: 600; }
-
-    /* Sub-sections inside a router card (coexistence, VPN tunnel) */
-    .hd-sec { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--neu-border); }
-    .hd-sec-title { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .09em; color: rgba(255,255,255,.35); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .hd-sec-title .hd-mini { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: none; padding: 4px 10px; border-radius: 6px; cursor: pointer; border: 1px solid rgba(245,158,11,.3); background: rgba(245,158,11,.1); color: #fbbf24; }
-    .hd-sec-title .hd-mini:hover { background: rgba(245,158,11,.2); }
-    .hd-sec-title .hd-mini[disabled] { opacity: .5; cursor: default; }
-    .hd-check .fixhint { display: block; font-size: 11px; color: rgba(255,255,255,.3); margin-top: 3px; font-style: italic; }
-    /* Detail text can be a full sentence — let it wrap instead of squeezing the badge */
-    .hd-check.wrap { align-items: flex-start; }
-    .hd-check.wrap .val { text-align: left; flex: 2 1 60%; line-height: 1.45; }
-    .hd-check.wrap .lbl { flex: 1 1 34%; }
-
-    /* Automation chain panel */
-    .hd-auto { background: var(--neu-s2); border: 1px solid var(--neu-border); box-shadow: var(--neu-card); border-radius: 10px; padding: 22px 24px; margin-bottom: 24px; }
-    .hd-auto h3 { font-size: 16px; font-weight: 600; color: #e2e2e0; margin: 0 0 4px; }
-    .hd-auto .sub { font-size: 13px; color: rgba(255,255,255,.4); margin: 0 0 16px; }
-    .hd-auto-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; margin-top: 16px; }
-    .hd-auto-group { background: var(--neu-surf); border: 1px solid var(--neu-border); border-radius: 8px; padding: 14px 16px; }
-    .hd-auto-group h5 { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: rgba(255,255,255,.4); margin: 0 0 8px; }
-    .hd-act-hint { font-size: 11px; color: #93c5fd; margin-top: 4px; display: block; }
-
-    @media (max-width: 600px) { .hd-container { padding: 16px; } .lr-grid { grid-template-columns: 1fr; } .hd-check.wrap { flex-direction: column; align-items: flex-start; gap: 4px; } }
-</style>
+<link rel="stylesheet" href="assets/diagnostics.css?v=20261013">
 
 <div class="main-content-wrapper" id="mainContent">
 <div class="hd-container">
 
   <div class="hd-header">
     <div class="hd-title">
-      <h1>Hotspot Diagnostics</h1>
-      <p class="hd-subtitle">Verify each router's hotspot server, login page, and client provisioning in real time.</p>
+      <div class="hd-eyebrow">Network health / Hotspot</div><h1>Get hotspot customers connected</h1>
+      <p class="hd-subtitle">Check the LAN, payment portal and paid access separately. Each failed check shows the next action.</p>
     </div>
     <button class="hd-btn primary" onclick="runAllChecks()">
-      <i class="fas fa-arrows-rotate"></i> Verify All
+      <i class="fas fa-arrows-rotate"></i> Run all checks
     </button>
   </div>
 
-  <!-- Payment → Access automation chain (tenant-wide, independent of any router) -->
-  <div class="hd-auto">
-    <h3><i class="fas fa-bolt me-2" style="color:var(--primary-color)"></i>Payment → Access Automation</h3>
-    <p class="sub">Every link that has to hold for a customer to pay and be connected without anyone touching anything. Checks are scoped to how <em>you</em> collect — anything shared across all ISPs is grouped separately and reported to FortuNett, not to you.</p>
-    <div class="hd-verdict loading" id="auto-verdict">
-      <span class="v-icon"><span class="hd-spinner"></span></span>
-      <div><h4>Checking the chain…</h4><p>How you collect, your routers and packages, and the last 7 days of live payments.</p></div>
-    </div>
-    <div class="hd-auto-groups" id="auto-groups"></div>
+  <div class="hd-guide" aria-label="Diagnostic workflow">
+    <strong>Check in this order</strong>
+    <span><span class="step">1</span>Router &amp; customer IP</span>
+    <span><span class="step">2</span>Portal &amp; packages</span>
+    <span><span class="step">3</span>Payment &amp; access</span>
+    <span><span class="step">4</span>Verify on Wi-Fi</span>
   </div>
-
   <?php if (empty($routers)): ?>
     <div class="hd-alert">No routers configured yet. <a href="mikrotik.php">Add a router</a> to begin.</div>
   <?php else: ?>
@@ -209,7 +93,7 @@ require_once 'includes/sidebar.php';
         </div>
 
         <!-- Hotspot + PPPoE coexistence on the same bridge -->
-        <div class="hd-sec">
+        <details class="hd-sec hd-details"><summary>Hotspot + PPPoE compatibility</summary>
           <div class="hd-sec-title">
             <span>Hotspot + PPPoE on one bridge</span>
             <button class="hd-mini" id="coexfix-<?= (int)$r['id'] ?>" style="display:none;"
@@ -220,19 +104,21 @@ require_once 'includes/sidebar.php';
             <div><h4>Checking coexistence…</h4><p>Pools, NAT, DHCP and interface bindings.</p></div>
           </div>
           <div id="coex-<?= (int)$r['id'] ?>"></div>
-        </div>
+        </details>
 
         <!-- WireGuard management tunnel -->
-        <div class="hd-sec">
+        <details class="hd-sec hd-details"><summary>Management VPN details</summary>
           <div class="hd-sec-title"><span>WireGuard management tunnel</span></div>
           <div class="hd-verdict loading" id="vpnverdict-<?= (int)$r['id'] ?>">
             <span class="v-icon"><span class="hd-spinner"></span></span>
             <div><h4>Checking tunnel…</h4><p>Peer, handshake and API reachability.</p></div>
           </div>
           <div id="vpn-<?= (int)$r['id'] ?>"></div>
-        </div>
+        </details>
 
+        <div class="hd-result" id="repair-result-<?= (int)$r['id'] ?>" role="status" aria-live="polite"></div>
         <div class="hd-actions">
+          <button class="hd-act deploy" id="portal-repair-<?= (int)$r['id'] ?>" hidden onclick="repairPortal(<?= (int)$r['id'] ?>, this)">Repair portal access</button>
           <button class="hd-act primary" onclick="recheck(<?= (int)$r['id'] ?>)">
             <i class="fas fa-stethoscope"></i> Verify Hotspot
           </button>
@@ -248,12 +134,41 @@ require_once 'includes/sidebar.php';
   <?php endforeach; ?>
   </div>
 
-  <!-- Client Router Lookup -->
+  <div class="hd-auto">
+    <h3>Packages customers can buy</h3>
+    <p class="sub">Active hotspot packages for this tenant. Prices, duration and device limits come from your package settings.</p>
+    <?php if (!$hotspotPackages): ?>
+      <div class="hd-alert">No active hotspot packages. <a href="packages.php">Create a hotspot package</a> before testing a purchase.</div>
+    <?php else: ?>
+      <div class="lr-grid">
+      <?php foreach ($hotspotPackages as $package): ?>
+        <div class="lr-cell">
+          <div class="lc-val"><?= htmlspecialchars($package['name']) ?></div>
+          <div class="lc-sub">KSh <?= number_format((float)$package['price'], 2) ?> &middot; <?= (int)$package['validity_value'] ?> <?= htmlspecialchars($package['validity_unit']) ?></div>
+          <div class="lc-sub"><?= (int)$package['download_speed'] ?> Mbps down / <?= (int)$package['upload_speed'] ?> Mbps up &middot; <?= (int)$package['device_limit'] ?> device(s)</div>
+          <?php if ((int)$package['download_speed'] <= 0 || (int)$package['validity_value'] <= 0): ?><span class="hd-badge fail">Review speed / duration</span><?php endif; ?>
+        </div>
+      <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+    <div class="hd-actions"><a class="hd-btn" href="packages.php">Manage packages</a></div>
+  </div>
+  <!-- Payment → Access automation chain (tenant-wide, independent of any router) -->
+  <div class="hd-auto">
+    <h3><i class="fas fa-bolt me-2" style="color:var(--primary-color)"></i>Payment &amp; access records</h3>
+    <p class="sub">Hotspot payment evidence for this tenant. Expired access is shown separately from current access problems; platform issues show who handles them.</p>
+    <div class="hd-verdict loading" id="auto-verdict">
+      <span class="v-icon"><span class="hd-spinner"></span></span>
+      <div><h4>Checking the chain…</h4><p>How you collect, your routers and packages, and the last 7 days of live payments.</p></div>
+    </div>
+    <div class="hd-auto-groups" id="auto-groups"></div>
+  </div>
+
   <div class="hd-lookup">
     <h3><i class="fas fa-user-check me-2" style="color:var(--primary-color)"></i>Client Router Lookup</h3>
     <p class="sub">Search a hotspot client to see their provisioning status and live session on the router.</p>
     <div class="hd-lookup-row">
-      <select id="clientSelect" class="hd-select">
+      <select id="clientSelect" class="hd-select" aria-label="Hotspot client">
         <option value="">— Select a client —</option>
         <?php foreach ($hotspotClients as $c): ?>
         <option value="<?= (int)$c['id'] ?>">
@@ -265,6 +180,17 @@ require_once 'includes/sidebar.php';
       <button class="hd-btn primary" onclick="lookupClient()"><i class="fas fa-magnifying-glass"></i> Check on Router</button>
     </div>
     <div id="lookupResult"></div>
+  </div>
+
+  <div class="hd-auto">
+    <h3>Verify the customer experience on Wi-Fi</h3>
+    <p class="sub">Connect a phone to a LAN access point in bridge mode. It should receive a hotspot IP, open this tenant's portal, show the packages above, and allow a paid customer to log in and browse. An access point that runs its own DHCP or NAT can hide customer devices from this router.</p>
+    <div class="hd-guide">
+      <span><span class="step">1</span>Get a hotspot IP</span>
+      <span><span class="step">2</span>Open the portal</span>
+      <span><span class="step">3</span>Buy or use paid login</span>
+      <span><span class="step">4</span>Browse &amp; check live session</span>
+    </div>
   </div>
 
   <?php endif; ?>
@@ -280,6 +206,7 @@ function recheck(routerId) {
     const checks  = document.getElementById('checks-' + routerId);
     const verdict = document.getElementById('verdict-' + routerId);
     checks.innerHTML = '';
+    document.getElementById('portal-repair-' + routerId).hidden = true;
     document.getElementById('wg-' + routerId).style.display = 'none';
     setVerdict(verdict, 'loading', '<span class="hd-spinner"></span>', 'Checking hotspot…', 'Contacting the router API.');
 
@@ -296,7 +223,8 @@ function recheck(routerId) {
 
 function setVerdict(el, cls, icon, title, msg) {
     el.className = 'hd-verdict ' + cls;
-    el.innerHTML = '<span class="v-icon">' + icon + '</span><div><h4>' + title + '</h4><p>' + (msg || '') + '</p></div>';
+    el.setAttribute('role', 'status');
+    el.innerHTML = '<span class="v-icon" aria-hidden="true">' + icon + '</span><div><h4>' + escHtml(title) + '</h4><p>' + escHtml(msg || '') + '</p></div>';
 }
 
 function renderChecks(routerId, d) {
@@ -306,93 +234,28 @@ function renderChecks(routerId, d) {
     // ── Router unreachable ────────────────────────────────────────────────
     if (!d.success && !d.reachable) {
         setVerdict(verdict, 'fail', '<i class="fas fa-plug-circle-xmark"></i>',
-            'Router unreachable', d.error || 'The API port is not reachable from the server.');
+            'Router unreachable', d.error || d.message || 'The API port is not reachable from the server.');
         checks.innerHTML = row('Router API', 'fail', d.error || 'Unreachable');
         return;
     }
 
-    let html = '';
-    html += row('Router API', d.api_ok ? 'ok' : 'fail', d.api_ok ? 'Connected' : (d.error || 'Auth failed'));
-
-    // Derived flags for the hotspot verdict
-    const serverRunning = !!d.hotspot_server;
-    const onBridge      = d.bridge && d.hotspot_server && d.hotspot_server.indexOf(' on ' + d.bridge) !== -1;
-    const hasPortal     = d.walled_garden && d.walled_garden.length > 0;
-
-    if (d.api_ok) {
-        // Bridge
-        html += d.bridge
-            ? row('Bridge Interface', 'ok', d.bridge)
-            : row('Bridge Interface', 'fail', 'No bridge found');
-
-        // Hotspot server — the core check
-        if (d.hotspot_server) {
-            html += row('Hotspot Server', onBridge ? 'ok' : 'warn', d.hotspot_server + (onBridge ? '' : ' — not on bridge'));
-        } else if (d.hotspot_server === false) {
-            html += row('Hotspot Server', 'fail', 'No server running' + (d.bridge ? ' — add one on ' + d.bridge : ''));
-        } else {
-            html += row('Hotspot Server', 'skip', 'N/A');
-        }
-
-        // Login page
-        html += d.login_deployed
-            ? row('Login Page', 'ok', 'Deployed' + (d.login_size ? ' (' + (Math.round(d.login_size / 1024 * 10) / 10) + ' KB)' : ''))
-            : row('Login Page', 'fail', 'login.html not on flash');
-
-        // Walled garden portal
-        html += hasPortal
-            ? row('Captive Portal', 'ok', 'Reachable (' + d.walled_garden.length + ' walled-garden entr' + (d.walled_garden.length === 1 ? 'y' : 'ies') + ')')
-            : row('Captive Portal', 'warn', 'No walled-garden entries — clients may not reach the portal to pay');
-
-        // User counts
-        const routerU = d.router_users !== null ? d.router_users : '?';
-        html += row('User Counts', (d.router_users !== null && d.router_users < d.db_active) ? 'warn' : 'ok',
-            routerU + ' on router · ' + d.db_active + ' active / ' + d.db_total + ' total in DB');
-
-        if (d.unprovisioned > 0) {
-            html += row('Unprovisioned', 'warn', d.unprovisioned + ' active client(s) missing a router username');
-        }
-        if (d.active_sessions !== null) {
-            html += row('Live Sessions', 'ok', d.active_sessions + ' online now');
-        }
-
-        // Walled garden list
-        const wgSection = document.getElementById('wg-' + routerId);
-        const wgList    = document.getElementById('wg-list-' + routerId);
-        if (hasPortal) {
-            wgList.innerHTML = d.walled_garden.map(e => '<li>' + escHtml(e) + '</li>').join('');
-        } else {
-            wgList.innerHTML = '<li class="empty">No walled garden entries configured</li>';
-        }
-        wgSection.style.display = 'block';
-    }
-
-    checks.innerHTML = html;
-
-    // ── Overall verdict — is the hotspot actually working? ────────────────
-    if (!d.api_ok) {
-        setVerdict(verdict, 'fail', '<i class="fas fa-plug-circle-xmark"></i>',
-            'Router API failed', d.error || 'Could not authenticate to the router.');
-    } else if (d.hotspot_server === false) {
-        setVerdict(verdict, 'fail', '<i class="fas fa-circle-xmark"></i>',
-            'Hotspot NOT running', 'No hotspot server is active on this router. Re-run the provisioning script from the Routers page to create one on the bridge.');
-    } else if (!d.login_deployed) {
-        setVerdict(verdict, 'warn', '<i class="fas fa-triangle-exclamation"></i>',
-            'Login page missing', 'The hotspot is running but login.html is not on the router. Use "Re-deploy Login Page" below.');
-    } else if (!onBridge) {
-        setVerdict(verdict, 'warn', '<i class="fas fa-triangle-exclamation"></i>',
-            'Hotspot not on the bridge', 'The hotspot server is not bound to the bridge interface, so PPPoE + hotspot may conflict. Re-run provisioning.');
-    } else if (!hasPortal) {
-        setVerdict(verdict, 'warn', '<i class="fas fa-triangle-exclamation"></i>',
-            'Portal unreachable', 'No walled-garden entry for your portal — unauthenticated clients cannot open the payment page.');
+    if (d.checks && d.verdict) {
+        const v = d.verdict;
+        setVerdict(verdict, v.level, VERDICT_ICON[v.level] || VERDICT_ICON.warn, v.title, v.message);
+        checks.innerHTML = row('Router API', 'ok', 'Authenticated') + d.checks.map(c => rowWide(c.label, c.level, c.detail, c.action)).join('');
+        checks.insertAdjacentHTML('beforeend', row('Hotspot accounts', 'skip', (d.router_users ?? '?') + ' on router; ' + d.db_active + ' active accounts in tenant')
+            + row('Live hotspot sessions', 'skip', d.active_sessions === null ? 'Could not read sessions' : d.active_sessions + ' connected now'));
+        const portal = d.checks.find(c => c.id === 'portal');
+        document.getElementById('portal-repair-' + routerId).hidden = !portal || portal.level !== 'fail';
+        if (d.checked_at) checks.insertAdjacentHTML('beforeend', '<div class="hd-timestamp">Checked ' + escHtml(new Date(d.checked_at).toLocaleString()) + '</div>');
     } else {
-        setVerdict(verdict, 'ok', '<i class="fas fa-circle-check"></i>',
-            'Hotspot operational', 'Server running on ' + d.bridge + ', login page deployed, and the portal is reachable.');
+        setVerdict(verdict, 'warn', VERDICT_ICON.warn, 'Incomplete diagnostic response', 'Reload this page and run the checks again.');
     }
+
 }
 
 function row(label, badge, val) {
-    return '<div class="hd-check"><span class="lbl">' + label + '</span><span class="val">' + escHtml(val) + '</span><span class="hd-badge ' + badge + '">' + badge.toUpperCase() + '</span></div>';
+    return '<div class="hd-check"><span class="lbl">' + escHtml(label) + '</span><span class="val">' + escHtml(val) + '</span><span class="hd-badge ' + badge + '">' + statusLabel(badge) + '</span></div>';
 }
 
 // Wrapping variant — coexistence/VPN details are full sentences, not values.
@@ -400,7 +263,7 @@ function rowWide(label, level, detail, hint) {
     return '<div class="hd-check wrap"><span class="lbl">' + escHtml(label) + '</span>'
          + '<span class="val">' + escHtml(detail)
          + (hint ? '<span class="fixhint">' + escHtml(hint) + '</span>' : '')
-         + '</span><span class="hd-badge ' + level + '">' + level.toUpperCase() + '</span></div>';
+         + '</span><span class="hd-badge ' + level + '">' + statusLabel(level) + '</span></div>';
 }
 
 const VERDICT_ICON = {
@@ -431,6 +294,7 @@ function checkCoex(routerId) {
             const v = d.verdict || { level: 'warn', title: '—', message: '' };
             setVerdict(verdict, v.level, VERDICT_ICON[v.level] || VERDICT_ICON.warn, v.title, v.message);
 
+            if ((d.checks || []).some(c => c.level === 'fail')) body.closest('details').open = true;
             body.innerHTML = (d.checks || []).map(c =>
                 rowWide(c.label, c.level, c.detail, c.fixable && c.level !== 'ok' ? 'Repairable from this page.' : null)
             ).join('');
@@ -478,6 +342,7 @@ function fixCoex(routerId, btn) {
             btn.disabled = false;
             btn.textContent = orig;
             const lines = [].concat(d.applied || [], d.skipped || [], d.failed || []);
+            document.getElementById('repair-result-' + routerId).textContent = [d.message || d.error, ...lines].filter(Boolean).join(' ');
             if (typeof showToast === 'function') {
                 showToast(d.message || d.error || (lines[0] || 'Done'), d.success ? 'success' : 'error');
             }
@@ -509,6 +374,7 @@ function checkVpn(routerId) {
             }
             const v = d.verdict || { level: 'warn', title: '—', message: '' };
             setVerdict(verdict, v.level, VERDICT_ICON[v.level] || VERDICT_ICON.warn, v.title, v.message);
+            if ((d.checks || []).some(c => c.level === 'fail')) body.closest('details').open = true;
             body.innerHTML = (d.checks || []).map(c => rowWide(c.label, c.level, c.detail)).join('');
         })
         .catch(e => setVerdict(verdict, 'fail', VERDICT_ICON.fail, 'Request failed', e.message));
@@ -517,12 +383,13 @@ function checkVpn(routerId) {
 // ─── Payment → Access automation chain ───────────────────────────────────────
 function checkAutomation() {
     const verdict = document.getElementById('auto-verdict');
+    if (!verdict) return;
     const groups  = document.getElementById('auto-groups');
     groups.innerHTML = '';
     setVerdict(verdict, 'loading', '<span class="hd-spinner"></span>', 'Checking the chain…',
         'Gateway, callbacks, schema, routers and the last 7 days of live payments.');
 
-    fetch('api/diagnostics/automation_chain.php', { method: 'POST' })
+    fetch('api/diagnostics/automation_chain.php', { method: 'POST', body: new URLSearchParams({service: 'hotspot'}) })
         .then(r => r.json())
         .then(d => {
             if (!d.success) {
@@ -537,7 +404,7 @@ function checkAutomation() {
                 const g = d.groups[key];
                 if (!g.checks.length) return;
                 html += '<div class="hd-auto-group"><h5>' + escHtml(g.title) + '</h5>'
-                     +  g.checks.map(c => rowWide(c.label, c.level, c.detail, c.action)).join('')
+                     +  g.checks.map(c => rowWide(c.label, c.level, c.detail, c.action) + actionLink(c)).join('')
                      + '</div>';
             });
             groups.innerHTML = html;
@@ -569,6 +436,7 @@ function redeploy(routerId, btn) {
             btn.disabled = false;
             btn.innerHTML = orig;
             if (typeof showToast === 'function') showToast(d.message || (d.success ? 'Deployed successfully' : 'Deploy failed'), d.success ? 'success' : 'error');
+            document.getElementById('repair-result-' + routerId).textContent = d.message || 'Deployment finished; run checks to verify.';
             if (d.success) setTimeout(() => recheck(routerId), 1000);
         })
         .catch(e => {
@@ -603,7 +471,7 @@ function renderLookup(container, d) {
         return;
     }
 
-    const mkUser   = d.db_username || '<em style="color:#fca5a5;">not set</em>';
+    const mkUser   = d.db_username ? escHtml(d.db_username) : '<em style="color:#fca5a5;">not set</em>';
     const dbStatus = pill(d.db_status, d.db_status === 'active' ? 'ok' : (d.db_status === 'suspended' ? 'fail' : 'warn'));
     const onRouter = d.router_ok ? '<span class="hd-badge ok">YES</span>' : '<span class="hd-badge fail">NO</span>';
     const onlineB  = d.is_online ? '<span class="hd-badge ok">ONLINE</span>' : '<span class="hd-badge skip">OFFLINE</span>';
@@ -642,6 +510,29 @@ function renderLookup(container, d) {
 function pill(text, type) { return '<span class="hd-badge ' + type + '">' + escHtml(text) + '</span>'; }
 function escHtml(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+const diagnosticsCsrf = <?= json_encode($_SESSION['hotspot_diagnostics_csrf']) ?>;
+function statusLabel(level) { return ({ok:'PASS', warn:'REVIEW', fail:'FIX', skip:'INFO'})[level] || 'INFO'; }
+function actionLink(c) {
+    if (c.level === 'ok') return '';
+    let url = '', text = '';
+    if (/credentials|callback|collect|C2B/i.test(c.label)) { url='settings.php'; text='Open payment settings'; }
+    else if (/package|speed/i.test(c.label)) { url='packages.php'; text='Review packages'; }
+    else if (/customer|access records/i.test(c.label)) { url='clients.php'; text='Review clients'; }
+    else if (/matched|transactions/i.test(c.label)) { url='payments.php'; text='Review payments'; }
+    else if (/target/i.test(c.label)) { url='mikrotik.php'; text='Open routers'; }
+    return url ? '<a class="hd-btn" href="' + url + '">' + text + '</a>' : '';
+}
+function repairPortal(routerId, btn) {
+    const output = document.getElementById('repair-result-' + routerId);
+    btn.disabled = true; output.className='hd-result'; output.textContent='Updating portal allow rules…';
+    fetch(checkUrl('repair_hotspot_portal.php'), {method:'POST', body:new URLSearchParams({router_id:routerId, csrf_token:diagnosticsCsrf})})
+        .then(r=>r.json()).then(d=>{
+            output.className='hd-result' + (d.success ? '' : ' error');
+            output.textContent=[d.message, ...(d.applied || [])].join(' ');
+            recheck(routerId);
+        }).catch(e=>{output.className='hd-result error'; output.textContent='Repair failed: ' + e.message;})
+        .finally(()=>{btn.disabled=false;});
+}
 // Auto-run on load
 document.addEventListener('DOMContentLoaded', runAllChecks);
 </script>

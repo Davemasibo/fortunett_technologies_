@@ -1,0 +1,1750 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FortuNett Technologies - ISP Management System</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="shortcut icon" href="/favicon.svg">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="css/modern-design.css" rel="stylesheet">
+    <link href="css/page-layout.css" rel="stylesheet">
+    <link href="css/premium-theme.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&family=Work+Sans:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --primary-color: #0f3460;
+            --primary: #0f3460;
+            --primary-dark: #000c38;
+            --primary-light: #375c88;
+            --brand-font: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', sans-serif;
+            --secondary-color: #764ba2;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --info-color: #17a2b8;
+            --light-bg: #f8f9fa;
+            --dark-text: #333;
+            --sidebar-width: 250px;
+            --sidebar-collapsed-width: 72px;
+            --navbar-height: 60px;
+        }
+        
+        /* Force Bootstrap to use Brand Color */
+        .btn-primary { background-color: var(--primary-color) !important; border-color: var(--primary-color) !important; color: white !important; }
+        .btn-outline-primary { color: var(--primary-color) !important; border-color: var(--primary-color) !important; }
+        .btn-outline-primary:hover { background-color: var(--primary-color) !important; color: white !important; }
+        .text-primary { color: var(--primary-color) !important; }
+        .bg-primary { background-color: var(--primary-color) !important; }
+        .border-primary { border-color: var(--primary-color) !important; }
+        
+        /* Override other button variants to use brand color - with high specificity */
+        .btn.btn-success, 
+        button.btn-success,
+        a.btn-success { 
+            background-color: var(--primary-color) !important; 
+            border-color: var(--primary-color) !important; 
+            color: white !important; 
+        }
+        .btn.btn-success:hover,
+        button.btn-success:hover,
+        a.btn-success:hover {
+            background-color: var(--primary-dark) !important; 
+            border-color: var(--primary-dark) !important; 
+        }
+        .btn.btn-info, 
+        button.btn-info,
+        a.btn-info { 
+            background-color: var(--primary-color) !important; 
+            border-color: var(--primary-color) !important; 
+            color: white !important; 
+        }
+        .btn.btn-info:hover,
+        button.btn-info:hover,
+        a.btn-info:hover {
+            background-color: var(--primary-dark) !important; 
+            border-color: var(--primary-dark) !important; 
+        }
+        .btn.btn-warning, 
+        button.btn-warning,
+        a.btn-warning { 
+            background-color: var(--primary-color) !important; 
+            border-color: var(--primary-color) !important; 
+            color: white !important; 
+        }
+        .btn.btn-warning:hover,
+        button.btn-warning:hover,
+        a.btn-warning:hover {
+            background-color: var(--primary-dark) !important; 
+            border-color: var(--primary-dark) !important; 
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #aaa; }
+
+        /* ─── Mobile Responsive Tables ─────────────────────────────── */
+        /* Only explicit wrapper classes get the block+scroll treatment.
+           Individual table classes are handled by their own overflow-x wrapper divs. */
+        .table-responsive-auto,
+        .table-wrap {
+            display: block;
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        @media (max-width: 768px) {
+            /* Force ALL content tables to scroll */
+            .main-content-wrapper table:not(.no-scroll) {
+                display: block;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                white-space: nowrap;
+            }
+
+            /* Condensed padding on mobile table cells */
+            .main-content-wrapper table th,
+            .main-content-wrapper table td {
+                padding: 10px 12px !important;
+                font-size: 13px !important;
+            }
+
+            /* Stats cards stack vertically */
+            .stats-row {
+                grid-template-columns: 1fr 1fr !important;
+                gap: 12px !important;
+            }
+
+            /* Filters column on mobile */
+            .filters-grid {
+                grid-template-columns: 1fr !important;
+            }
+
+            /* Stat values slightly smaller */
+            .stat-value { font-size: 22px !important; }
+
+            /* Page paddings */
+            .payments-container,
+            .clients-container,
+            .packages-container {
+                padding: 16px !important;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stats-row {
+                grid-template-columns: 1fr !important;
+            }
+        }
+        /* ─── End Mobile Table styles ────────────────────────────────── */
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: var(--brand-font);
+            background: #141414;
+            color: #e2e2e0;
+        }
+        .navbar {
+            background: var(--primary-color) !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            height: var(--navbar-height);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+        }
+        .navbar .container-fluid {
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+
+        .navbar-brand {
+            margin-left: 60px !important;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .main-layout {
+            padding-top: var(--navbar-height);
+            display: flex;
+            min-height: calc(100vh - var(--navbar-height));
+        }
+        .sidebar {
+            width: var(--sidebar-width);
+            background: linear-gradient(180deg, #0d1117 0%, #131920 55%, #182030 100%);
+            position: fixed;
+            left: 0;
+            top: var(--navbar-height);
+            bottom: 0;
+            overflow-y: auto;
+            box-shadow: 4px 0 24px rgba(0,0,0,.3);
+            z-index: 999;
+            transition: width 0.3s ease, transform 0.3s ease;
+        }
+
+        .sidebar.collapsed {
+            width: var(--sidebar-collapsed-width);
+        }
+
+        .sidebar.hidden {
+            transform: translateX(-100%);
+            display: none;
+        }
+
+        .sidebar-menu {
+            list-style: none;
+            padding: 8px 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: auto;
+        }
+
+        .sidebar-menu li {
+            margin: 0;
+        }
+
+        .sidebar-menu a {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            color: rgba(255,255,255,.72);
+            text-decoration: none;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+            gap: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            border-radius: 0 8px 8px 0;
+            margin: 1px 8px 1px 0;
+            font-size: 13.5px;
+            font-weight: 500;
+        }
+
+        .sidebar-menu a:hover {
+            background: rgba(255,255,255,.08);
+            color: #fff;
+            border-left-color: rgba(255,255,255,.4);
+        }
+
+        .sidebar-menu a.active {
+            background: rgba(255,255,255,.15);
+            color: #fff;
+            border-left-color: #fff;
+            font-weight: 600;
+        }
+
+        .sidebar-menu a i {
+            width: 20px;
+            text-align: center;
+            flex: 0 0 auto;
+            font-size: 16px;
+        }
+
+        .sidebar-menu a span {
+            display: inline-block;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .sidebar.collapsed .sidebar-menu a span {
+            display: none;
+        }
+
+        .main-content-wrapper {
+            margin-left: var(--sidebar-width);
+            width: calc(100% - var(--sidebar-width));
+            min-height: calc(100vh - var(--navbar-height));
+            background: #141414;
+            display: block;
+            transition: margin-left 0.3s ease, width 0.3s ease;
+        }
+
+        .main-content-wrapper.sidebar-collapsed {
+            margin-left: var(--sidebar-collapsed-width);
+            width: calc(100% - var(--sidebar-collapsed-width));
+        }
+
+        .main-content-wrapper.sidebar-hidden {
+            margin-left: 0;
+            width: 100%;
+        }
+
+        /* Force all page containers to span full available width */
+        .main-content-wrapper > div {
+            width: 100%;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 24px 32px 60px !important;
+            box-sizing: border-box;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s;
+            }
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            .main-content-wrapper {
+                margin-left: 0;
+                width: 100%;
+            }
+            .main-content-wrapper > div {
+                padding: 16px 16px 40px !important;
+            }
+        }
+
+        /* Scrollbar styling */
+        .sidebar-menu::-webkit-scrollbar {
+            width: 6px;
+        }
+        .sidebar-menu::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .sidebar-menu::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,.15);
+            border-radius: 3px;
+        }
+        .sidebar-menu::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,.3);
+        }
+        .sidebar-menu a i { color: rgba(255,255,255,.6); }
+        .sidebar-menu a:hover i, .sidebar-menu a.active i { color: #fff; }
+    </style>
+<link rel="stylesheet" href="/css/responsive-app.css?v=1">
+<script src="/js/responsive-app.js?v=1" defer></script>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="dashboard.php">
+                            <i class="fas fa-wifi me-2"></i>
+                        Ecoland Attic Network Solutions        </a>
+        
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto align-items-center gap-2 d-none d-lg-flex">
+                                                <li class="nav-item">
+                    <a class="nav-link d-flex align-items-center gap-2" href="profile.php" style="padding-right:4px;">
+                        <div class="nav-user-avatar">U</div>
+                        <span style="font-size:13px;">User</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="logout.php" style="opacity:.85;">
+                        <i class="fas fa-sign-out-alt me-1"></i>Logout
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<div class="main-layout">
+<!-- Toggle button positioned in navbar area via CSS -->
+<button id="sidebarToggle" aria-label="Toggle sidebar" aria-expanded="true" title="Toggle sidebar">
+    <i class="fas fa-bars" aria-hidden="true"></i>
+</button>
+
+<aside class="sidebar" id="appSidebar">
+    
+    <ul class="sidebar-menu">
+        <li>
+            <a href="dashboard.php" class="">
+                <i class="fas fa-th-large"></i> <span>Dashboard</span>
+            </a>
+        </li>
+
+        <li class="sidebar-section-label"><span>Customers</span></li>
+        <li>
+            <a href="clients.php" class="">
+                <i class="fas fa-user-friends"></i> <span>Customers</span>
+            </a>
+        </li>
+        <li>
+            <a href="online_customers.php" class="">
+                <i class="fas fa-circle" style="font-size:8px;vertical-align:middle;"></i> <span>Active Sessions</span>
+            </a>
+        </li>
+        <li>
+            <a href="vouchers.php" class="">
+                <i class="fas fa-ticket-alt"></i> <span>Vouchers</span>
+            </a>
+        </li>
+
+        <li class="sidebar-section-label"><span>Network</span></li>
+        <li>
+            <a href="mikrotik.php" class="">
+                <i class="fas fa-network-wired"></i> <span>Routers</span>
+            </a>
+        </li>
+        <li>
+            <a href="hotspot_diagnostics.php" class="">
+                <i class="fas fa-stethoscope"></i> <span>Hotspot Diagnostics</span>
+            </a>
+        </li>
+        <li>
+            <a href="hotspot_locations.php" class="">
+                <i class="fas fa-map-marker-alt"></i> <span>Hotspot Locations</span>
+            </a>
+        </li>
+        <li>
+            <a href="packages.php" class="">
+                <i class="fas fa-cube"></i> <span>Packages</span>
+            </a>
+        </li>
+
+        <li class="sidebar-section-label"><span>Finance</span></li>
+        <li>
+            <a href="payments.php" class="">
+                <i class="fas fa-credit-card"></i> <span>Payments</span>
+            </a>
+        </li>
+        <li>
+            <a href="billing.php" class="">
+                <i class="fas fa-file-invoice-dollar"></i> <span>Billing</span>
+            </a>
+        </li>
+        <li>
+            <a href="reports.php" class="">
+                <i class="fas fa-chart-line"></i> <span>Reports</span>
+            </a>
+        </li>
+
+        <li class="sidebar-section-label"><span>Communication</span></li>
+        <li>
+            <a href="sms.php" class="">
+                <i class="fas fa-comment-dots"></i> <span>SMS</span>
+            </a>
+        </li>
+        <li>
+            <a href="emails.php" class="">
+                <i class="fas fa-envelope-open"></i> <span>Emails</span>
+            </a>
+        </li>
+
+        <li class="sidebar-section-label"><span>Settings</span></li>
+        <li>
+            <a href="settings.php" class="">
+                <i class="fas fa-sliders-h"></i> <span>Settings</span>
+            </a>
+        </li>
+        <!-- Preview Customer Portal — opens a demo session in a new tab -->
+        <li class="sidebar-preview-item">
+            <a href="#" onclick="openCustomerPortalPreview(event)" title="Preview the customer portal as a demo user">
+                <i class="fas fa-eye"></i> <span>Preview Portal</span>
+            </a>
+        </li>
+        <li class="sidebar-profile-item">
+            <a href="profile.php" class="">
+                <i class="fas fa-user-circle"></i> <span>Profile</span>
+            </a>
+        </li>
+        <li class="sidebar-logout-item">
+            <a href="logout.php" style="color:rgba(255,100,100,.85);">
+                <i class="fas fa-sign-out-alt"></i> <span>Logout</span>
+            </a>
+        </li>
+    </ul>
+
+                <div class="sidebar-tenant-footer">
+                <div class="plan-badge">
+                    <i class="fas fa-layer-group"></i>
+                    Starter                                    </div>
+                                <div class="trial-bar-wrap">
+                    <div class="trial-bar " style="width:40%"></div>
+                </div>
+                <div class="trial-label">11 days remaining</div>
+                                                            </div>
+            </aside>
+
+<!-- Mobile sidebar overlay -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<style>
+    /* Toggle button - fixed in top-left navbar area */
+    #sidebarToggle {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 1050;
+        background: rgba(255,255,255,.12);
+        border: 1px solid rgba(255,255,255,.18);
+        border-radius: 6px;
+        padding: 8px 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.2s ease, transform 0.15s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,.4);
+        font-size: 16px;
+        color: #fff;
+        height: 40px;
+        width: 40px;
+    }
+
+    #sidebarToggle:hover {
+        background: rgba(255,255,255,.22);
+        transform: scale(1.05);
+    }
+
+    #sidebarToggle:active {
+        transform: scale(0.95);
+    }
+
+    /* Sidebar container - full vertical height */
+    .sidebar {
+        position: fixed;
+        left: 0;
+        top: var(--navbar-height);
+        bottom: 0;
+        width: var(--sidebar-width);
+        background: linear-gradient(180deg, #0d1117 0%, #131920 55%, #182030 100%);
+        box-shadow: 4px 0 24px rgba(0,0,0,.5);
+        z-index: 999;
+        transition: transform 0.3s ease, width 0.3s ease, opacity 0.3s ease;
+        transform: translateX(0);
+        opacity: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .sidebar.collapsed {
+        width: var(--sidebar-collapsed-width);
+    }
+
+    .sidebar.hidden {
+        transform: translateX(-100%);
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    /* Sidebar menu - fills entire vertical space with proper distribution */
+    .sidebar-menu {
+        list-style: none;
+        padding: 8px 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        justify-content: flex-start;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    .sidebar-menu li {
+        margin: 0;
+        flex: 0 0 auto;
+    }
+
+    .sidebar-menu a {
+        display: flex;
+        align-items: center;
+        padding: 14px 16px;
+        color: rgba(255, 255, 255, 0.85);
+        text-decoration: none;
+        transition: all 0.2s ease;
+        border-left: 4px solid transparent;
+        gap: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 14px;
+    }
+
+    .sidebar-menu a:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-left-color: var(--primary-light);
+        color: white;
+    }
+
+    .sidebar-menu a.active {
+        background: rgba(255, 255, 255, 0.15);
+        color: white;
+        border-left-color: var(--primary-light);
+        font-weight: 600;
+    }
+
+    .sidebar-menu a i {
+        width: 20px;
+        text-align: center;
+        flex: 0 0 auto;
+        font-size: 16px;
+    }
+
+    .sidebar-menu a span {
+        display: inline-block;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+    }
+
+    .sidebar.collapsed .sidebar-menu a span {
+        display: none;
+    }
+
+    .sidebar.collapsed .sidebar-menu a {
+        justify-content: center;
+        padding: 14px 0;
+    }
+
+    /* Scrollbar styling */
+    .sidebar-menu::-webkit-scrollbar {
+        width: 6px;
+    }
+    .sidebar-menu::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .sidebar-menu::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,.18);
+        border-radius: 3px;
+    }
+    .sidebar-menu::-webkit-scrollbar-thumb:hover {
+        background: rgba(255,255,255,.32);
+    }
+
+    /* Content wrapper adjustments */
+    .main-content-wrapper {
+        margin-left: var(--sidebar-width);
+        width: calc(100% - var(--sidebar-width));
+        padding: 30px 0;
+        min-height: calc(100vh - 60px);
+        background: #141414;
+        display: flex;
+        justify-content: center;
+        transition: margin-left 0.3s ease, width 0.3s ease;
+    }
+
+    .main-content-wrapper > div {
+        width: 100%;
+        max-width: 1350px;
+        padding: 0 40px;
+    }
+
+    .main-content-wrapper.sidebar-collapsed {
+        margin-left: var(--sidebar-collapsed-width);
+        width: calc(100% - var(--sidebar-collapsed-width));
+    }
+
+    .main-content-wrapper.sidebar-collapsed > div {
+        padding: 0 40px;
+    }
+
+    .main-content-wrapper.sidebar-hidden {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    /* Mobile overlay backdrop */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,.55);
+        z-index: 998;
+        opacity: 0;
+        transition: opacity .3s;
+    }
+    .sidebar-overlay.show {
+        display: block;
+        opacity: 1;
+    }
+
+    /* Section labels */
+    .sidebar-section-label {
+        padding: 12px 16px 4px;
+        flex: 0 0 auto;
+    }
+    .sidebar-section-label span {
+        font-size: 9.5px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .1em;
+        color: rgba(255,255,255,.22);
+        display: block;
+        border-top: 1px solid rgba(255,255,255,.06);
+        padding-top: 10px;
+    }
+    .sidebar.collapsed .sidebar-section-label { display: none; }
+
+    /* Sidebar profile item — subtle separator above it */
+    .sidebar-profile-item {
+        margin-top: auto;
+        border-top: 1px solid rgba(255,255,255,.07);
+        padding-top: 4px;
+    }
+    .sidebar-profile-item a {
+        opacity: .85;
+    }
+    .sidebar-profile-item a:hover { opacity: 1; }
+
+    /* Preview Portal item — teal/cyan accent */
+    .sidebar-preview-item {
+        border-top: 1px solid rgba(255,255,255,.07);
+        padding-top: 4px;
+    }
+    .sidebar-preview-item a {
+        color: rgba(99,235,200,.85) !important;
+        opacity: .85;
+    }
+    .sidebar-preview-item a:hover {
+        background: rgba(99,235,200,.1) !important;
+        color: rgba(99,235,200,1) !important;
+        border-left-color: rgba(99,235,200,.5) !important;
+        opacity: 1;
+    }
+
+    /* Logout item — red tint, below profile */
+    .sidebar-logout-item a {
+        opacity: .8;
+    }
+    .sidebar-logout-item a:hover {
+        background: rgba(255,80,80,.1) !important;
+        color: rgba(255,120,120,1) !important;
+        border-left-color: rgba(255,80,80,.5) !important;
+        opacity: 1;
+    }
+
+    @media (max-width: 768px) {
+        .sidebar {
+            transform: translateX(-100%);
+            z-index: 1000;
+        }
+        .sidebar.show {
+            transform: translateX(0);
+        }
+        .main-content-wrapper {
+            margin-left: 0 !important;
+            width: 100% !important;
+        }
+        .main-content-wrapper > div {
+            padding: 0 12px;
+        }
+    }
+</style>
+
+<script>
+(function(){
+    const SIDEBAR_KEY = 'sidebar-state';
+    const sidebar = document.getElementById('appSidebar');
+    const toggle = document.getElementById('sidebarToggle');
+
+    let currentState = 0;
+
+    function applyState(state, save = true) {
+        if (!sidebar) return;
+        currentState = Number(state) || 0;
+
+        sidebar.classList.remove('collapsed', 'hidden');
+        if (currentState === 1) sidebar.classList.add('collapsed');
+        if (currentState === 2) sidebar.classList.add('hidden');
+
+        // Update main content wrapper
+        const mainContent = document.querySelector('.main-content-wrapper');
+        if (mainContent) {
+            mainContent.classList.remove('sidebar-collapsed', 'sidebar-hidden');
+            if (currentState === 1) mainContent.classList.add('sidebar-collapsed');
+            if (currentState === 2) mainContent.classList.add('sidebar-hidden');
+        }
+
+        // Sync footer padding with sidebar state
+        const footer = document.querySelector('.main-layout > footer');
+        if (footer) {
+            const pl = currentState === 1
+                ? 'var(--sidebar-collapsed-width, 72px)'
+                : currentState === 2 ? '0'
+                : 'var(--sidebar-width, 250px)';
+            footer.style.paddingLeft = pl;
+        }
+
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', currentState === 0 ? 'true' : 'false');
+        }
+
+        if (save) localStorage.setItem(SIDEBAR_KEY, String(currentState));
+    }
+
+    document.addEventListener('DOMContentLoaded', function(){
+        if (!sidebar || !toggle) return;
+
+        // Load saved state
+        const stored = localStorage.getItem(SIDEBAR_KEY);
+        const state = stored === null ? 0 : (stored === '2' ? 2 : (stored === '1' ? 1 : 0));
+        applyState(state, false);
+
+        // Single-click: toggle between expanded and collapsed
+        let clickTimer = null;
+        toggle.addEventListener('click', function(e){
+            e.preventDefault();
+
+            // Mobile handling: Toggle visibility
+            if (window.innerWidth <= 768) {
+                const isOpen = sidebar.classList.toggle('show');
+                const overlay = document.getElementById('sidebarOverlay');
+                if (overlay) overlay.classList.toggle('show', isOpen);
+                return;
+            }
+
+            if (clickTimer) return;
+            
+            clickTimer = setTimeout(function(){
+                clickTimer = null;
+                if (currentState === 2) {
+                    applyState(0, true);
+                } else {
+                    applyState(currentState === 1 ? 0 : 1, true);
+                }
+            }, 220);
+        });
+
+        // Double-click: toggle hidden
+        toggle.addEventListener('dblclick', function(e){
+            e.preventDefault();
+            if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+            const newState = currentState === 2 ? 0 : 2;
+            applyState(newState, true);
+        });
+        // Tap overlay to close sidebar on mobile
+        const overlay = document.getElementById('sidebarOverlay');
+        if (overlay) {
+            overlay.addEventListener('click', function() {
+                sidebar.classList.remove('show');
+                overlay.classList.remove('show');
+            });
+        }
+    });
+})();
+
+// ── Preview Customer Portal ──────────────────────────────────────────────────
+async function openCustomerPortalPreview(e) {
+    e.preventDefault();
+    const link = e.currentTarget;
+    const origHtml = link.innerHTML;
+    link.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Opening…</span>';
+    link.style.pointerEvents = 'none';
+
+    try {
+        const res  = await fetch('/api/admin/demo_customer_login.php', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            window.open(data.login_url, '_blank', 'noopener');
+        } else {
+            alert('Could not open preview: ' + (data.message || 'Unknown error'));
+        }
+    } catch (err) {
+        alert('Connection error. Please try again.');
+    } finally {
+        link.innerHTML = origHtml;
+        link.style.pointerEvents = '';
+    }
+}
+</script>
+
+
+<link rel="stylesheet" href="assets/diagnostics.css?v=20261013">
+
+<div class="main-content-wrapper" id="mainContent">
+<div class="hd-container">
+
+  <div class="hd-header">
+    <div class="hd-title">
+      <div class="hd-eyebrow">Network health / Hotspot</div><h1>Get hotspot customers connected</h1>
+      <p class="hd-subtitle">Check the LAN, payment portal and paid access separately. Each failed check shows the next action.</p>
+    </div>
+    <button class="hd-btn primary" onclick="runAllChecks()">
+      <i class="fas fa-arrows-rotate"></i> Run all checks
+    </button>
+  </div>
+
+  <div class="hd-guide" aria-label="Diagnostic workflow">
+    <strong>Check in this order</strong>
+    <span><span class="step">1</span>Router &amp; customer IP</span>
+    <span><span class="step">2</span>Portal &amp; packages</span>
+    <span><span class="step">3</span>Payment &amp; access</span>
+    <span><span class="step">4</span>Verify on Wi-Fi</span>
+  </div>
+  
+  <div class="hd-grid" id="hd-grid">
+        <div class="hd-card" id="card-12">
+      <div class="hd-card-header">
+        <div class="hd-router-info">
+          <span class="hd-dot active"></span>
+          <div style="min-width:0;">
+            <div class="hd-router-name">RB4011</div>
+            <div class="hd-router-meta">10.200.200.8 (VPN) &middot; Port 8728</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hd-card-body">
+        <div class="hd-verdict loading" id="verdict-12">
+          <span class="v-icon"><span class="hd-spinner"></span></span>
+          <div><h4>Checking hotspot…</h4><p>Contacting the router API.</p></div>
+        </div>
+
+        <div id="checks-12"></div>
+
+        <div class="hd-wg" id="wg-12" style="display:none;">
+          <div class="hd-wg-title">Walled Garden</div>
+          <ul id="wg-list-12"></ul>
+        </div>
+
+        <!-- Hotspot + PPPoE coexistence on the same bridge -->
+        <details class="hd-sec hd-details"><summary>Hotspot + PPPoE compatibility</summary>
+          <div class="hd-sec-title">
+            <span>Hotspot + PPPoE on one bridge</span>
+            <button class="hd-mini" id="coexfix-12" style="display:none;"
+                    onclick="fixCoex(12, this)">Repair conflicts</button>
+          </div>
+          <div class="hd-verdict loading" id="coexverdict-12">
+            <span class="v-icon"><span class="hd-spinner"></span></span>
+            <div><h4>Checking coexistence…</h4><p>Pools, NAT, DHCP and interface bindings.</p></div>
+          </div>
+          <div id="coex-12"></div>
+        </details>
+
+        <!-- WireGuard management tunnel -->
+        <details class="hd-sec hd-details"><summary>Management VPN details</summary>
+          <div class="hd-sec-title"><span>WireGuard management tunnel</span></div>
+          <div class="hd-verdict loading" id="vpnverdict-12">
+            <span class="v-icon"><span class="hd-spinner"></span></span>
+            <div><h4>Checking tunnel…</h4><p>Peer, handshake and API reachability.</p></div>
+          </div>
+          <div id="vpn-12"></div>
+        </details>
+
+        <div class="hd-result" id="repair-result-12" role="status" aria-live="polite"></div>
+        <div class="hd-actions">
+          <button class="hd-act deploy" id="portal-repair-12" hidden onclick="repairPortal(12, this)">Repair portal access</button>
+          <button class="hd-act primary" onclick="recheck(12)">
+            <i class="fas fa-stethoscope"></i> Verify Hotspot
+          </button>
+          <button class="hd-act primary" onclick="checkCoex(12); checkVpn(12)">
+            <i class="fas fa-diagram-project"></i> Re-check Coexistence + VPN
+          </button>
+          <button class="hd-act deploy" onclick="redeploy(12, this)">
+            <i class="fas fa-cloud-arrow-up"></i> Re-deploy Login Page
+          </button>
+        </div>
+      </div>
+    </div>
+    </div>
+
+  <div class="hd-auto">
+    <h3>Packages customers can buy</h3>
+    <p class="sub">Active hotspot packages for this tenant. Prices, duration and device limits come from your package settings.</p>
+          <div class="lr-grid">
+              <div class="lr-cell">
+          <div class="lc-val">1 hour 4 mbps</div>
+          <div class="lc-sub">KSh 10.00 &middot; 1 hours</div>
+          <div class="lc-sub">4 Mbps down / 4 Mbps up &middot; 1 device(s)</div>
+                  </div>
+              <div class="lr-cell">
+          <div class="lc-val">1 Day 4 mbps 1 Device</div>
+          <div class="lc-sub">KSh 50.00 &middot; 1 days</div>
+          <div class="lc-sub">4 Mbps down / 4 Mbps up &middot; 1 device(s)</div>
+                  </div>
+              <div class="lr-cell">
+          <div class="lc-val">7 Days 4 mbps 3 Devices </div>
+          <div class="lc-sub">KSh 400.00 &middot; 7 days</div>
+          <div class="lc-sub">4 Mbps down / 4 Mbps up &middot; 3 device(s)</div>
+                  </div>
+              <div class="lr-cell">
+          <div class="lc-val">1 month 4 mbps 3 devices </div>
+          <div class="lc-sub">KSh 750.00 &middot; 1 months</div>
+          <div class="lc-sub">4 Mbps down / 4 Mbps up &middot; 3 device(s)</div>
+                  </div>
+            </div>
+        <div class="hd-actions"><a class="hd-btn" href="packages.php">Manage packages</a></div>
+  </div>
+  <!-- Payment → Access automation chain (tenant-wide, independent of any router) -->
+  <div class="hd-auto">
+    <h3><i class="fas fa-bolt me-2" style="color:var(--primary-color)"></i>Payment &amp; access records</h3>
+    <p class="sub">Hotspot payment evidence for this tenant. Expired access is shown separately from current access problems; platform issues show who handles them.</p>
+    <div class="hd-verdict loading" id="auto-verdict">
+      <span class="v-icon"><span class="hd-spinner"></span></span>
+      <div><h4>Checking the chain…</h4><p>How you collect, your routers and packages, and the last 7 days of live payments.</p></div>
+    </div>
+    <div class="hd-auto-groups" id="auto-groups"></div>
+  </div>
+
+  <div class="hd-lookup">
+    <h3><i class="fas fa-user-check me-2" style="color:var(--primary-color)"></i>Client Router Lookup</h3>
+    <p class="sub">Search a hotspot client to see their provisioning status and live session on the router.</p>
+    <div class="hd-lookup-row">
+      <select id="clientSelect" class="hd-select" aria-label="Hotspot client">
+        <option value="">— Select a client —</option>
+              </select>
+      <button class="hd-btn primary" onclick="lookupClient()"><i class="fas fa-magnifying-glass"></i> Check on Router</button>
+    </div>
+    <div id="lookupResult"></div>
+  </div>
+
+  <div class="hd-auto">
+    <h3>Verify the customer experience on Wi-Fi</h3>
+    <p class="sub">Connect a phone to a LAN access point in bridge mode. It should receive a hotspot IP, open this tenant's portal, show the packages above, and allow a paid customer to log in and browse. An access point that runs its own DHCP or NAT can hide customer devices from this router.</p>
+    <div class="hd-guide">
+      <span><span class="step">1</span>Get a hotspot IP</span>
+      <span><span class="step">2</span>Open the portal</span>
+      <span><span class="step">3</span>Buy or use paid login</span>
+      <span><span class="step">4</span>Browse &amp; check live session</span>
+    </div>
+  </div>
+
+  </div>
+</div>
+
+<script>
+// Endpoints are relative to the web root (this page lives at the root).
+function checkUrl(p) { return 'api/mikrotik/' + p; }
+
+// ─── Per-router hotspot verification ─────────────────────────────────────────
+function recheck(routerId) {
+    const checks  = document.getElementById('checks-' + routerId);
+    const verdict = document.getElementById('verdict-' + routerId);
+    checks.innerHTML = '';
+    document.getElementById('portal-repair-' + routerId).hidden = true;
+    document.getElementById('wg-' + routerId).style.display = 'none';
+    setVerdict(verdict, 'loading', '<span class="hd-spinner"></span>', 'Checking hotspot…', 'Contacting the router API.');
+
+    const fd = new FormData();
+    fd.append('router_id', routerId);
+
+    fetch(checkUrl('hotspot_status.php'), { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => renderChecks(routerId, d))
+        .catch(e => {
+            setVerdict(verdict, 'fail', '<i class="fas fa-triangle-exclamation"></i>', 'Request failed', e.message);
+        });
+}
+
+function setVerdict(el, cls, icon, title, msg) {
+    el.className = 'hd-verdict ' + cls;
+    el.setAttribute('role', 'status');
+    el.innerHTML = '<span class="v-icon" aria-hidden="true">' + icon + '</span><div><h4>' + escHtml(title) + '</h4><p>' + escHtml(msg || '') + '</p></div>';
+}
+
+function renderChecks(routerId, d) {
+    const checks  = document.getElementById('checks-' + routerId);
+    const verdict = document.getElementById('verdict-' + routerId);
+
+    // ── Router unreachable ────────────────────────────────────────────────
+    if (!d.success && !d.reachable) {
+        setVerdict(verdict, 'fail', '<i class="fas fa-plug-circle-xmark"></i>',
+            'Router unreachable', d.error || d.message || 'The API port is not reachable from the server.');
+        checks.innerHTML = row('Router API', 'fail', d.error || 'Unreachable');
+        return;
+    }
+
+    if (d.checks && d.verdict) {
+        const v = d.verdict;
+        setVerdict(verdict, v.level, VERDICT_ICON[v.level] || VERDICT_ICON.warn, v.title, v.message);
+        checks.innerHTML = row('Router API', 'ok', 'Authenticated') + d.checks.map(c => rowWide(c.label, c.level, c.detail, c.action)).join('');
+        checks.insertAdjacentHTML('beforeend', row('Hotspot accounts', 'skip', (d.router_users ?? '?') + ' on router; ' + d.db_active + ' active accounts in tenant')
+            + row('Live hotspot sessions', 'skip', d.active_sessions === null ? 'Could not read sessions' : d.active_sessions + ' connected now'));
+        const portal = d.checks.find(c => c.id === 'portal');
+        document.getElementById('portal-repair-' + routerId).hidden = !portal || portal.level !== 'fail';
+        if (d.checked_at) checks.insertAdjacentHTML('beforeend', '<div class="hd-timestamp">Checked ' + escHtml(new Date(d.checked_at).toLocaleString()) + '</div>');
+    } else {
+        setVerdict(verdict, 'warn', VERDICT_ICON.warn, 'Incomplete diagnostic response', 'Reload this page and run the checks again.');
+    }
+
+}
+
+function row(label, badge, val) {
+    return '<div class="hd-check"><span class="lbl">' + escHtml(label) + '</span><span class="val">' + escHtml(val) + '</span><span class="hd-badge ' + badge + '">' + statusLabel(badge) + '</span></div>';
+}
+
+// Wrapping variant — coexistence/VPN details are full sentences, not values.
+function rowWide(label, level, detail, hint) {
+    return '<div class="hd-check wrap"><span class="lbl">' + escHtml(label) + '</span>'
+         + '<span class="val">' + escHtml(detail)
+         + (hint ? '<span class="fixhint">' + escHtml(hint) + '</span>' : '')
+         + '</span><span class="hd-badge ' + level + '">' + statusLabel(level) + '</span></div>';
+}
+
+const VERDICT_ICON = {
+    ok:   '<i class="fas fa-circle-check"></i>',
+    warn: '<i class="fas fa-triangle-exclamation"></i>',
+    fail: '<i class="fas fa-circle-xmark"></i>'
+};
+
+// ─── Hotspot + PPPoE coexistence ─────────────────────────────────────────────
+function checkCoex(routerId) {
+    const body    = document.getElementById('coex-' + routerId);
+    const verdict = document.getElementById('coexverdict-' + routerId);
+    const fixBtn  = document.getElementById('coexfix-' + routerId);
+    body.innerHTML = '';
+    fixBtn.style.display = 'none';
+    setVerdict(verdict, 'loading', '<span class="hd-spinner"></span>', 'Checking coexistence…', 'Pools, NAT, DHCP and interface bindings.');
+
+    const fd = new FormData();
+    fd.append('router_id', routerId);
+
+    fetch(checkUrl('coexistence_check.php'), { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) {
+                setVerdict(verdict, 'fail', VERDICT_ICON.fail, 'Check failed', d.error || 'Unknown error');
+                return;
+            }
+            const v = d.verdict || { level: 'warn', title: '—', message: '' };
+            setVerdict(verdict, v.level, VERDICT_ICON[v.level] || VERDICT_ICON.warn, v.title, v.message);
+
+            if ((d.checks || []).some(c => c.level === 'fail')) body.closest('details').open = true;
+            body.innerHTML = (d.checks || []).map(c =>
+                rowWide(c.label, c.level, c.detail, c.fixable && c.level !== 'ok' ? 'Repairable from this page.' : null)
+            ).join('');
+
+            // Summary line — the two servers side by side, which is what the
+            // question "can both run on this bridge" actually asks.
+            if (d.bridge) {
+                const hs = d.hotspot, pp = d.pppoe;
+                body.insertAdjacentHTML('afterbegin',
+                    '<div class="lr-grid" style="margin-bottom:12px">'
+                    + '<div class="lr-cell"><div class="lc-label">Hotspot server</div><div class="lc-val">'
+                    + (hs.present ? escHtml(hs.name || 'unnamed') : '—')
+                    + '</div><div class="lc-sub">' + (hs.present ? 'on ' + escHtml(hs.interface || '?')
+                        + (hs.cidr ? ' · ' + escHtml(hs.cidr) : '')
+                        + (hs.sessions !== null ? ' · ' + hs.sessions + ' online' : '') : 'not configured') + '</div></div>'
+                    + '<div class="lr-cell"><div class="lc-label">PPPoE server</div><div class="lc-val">'
+                    + (pp.present ? escHtml(pp.service_name || 'unnamed') : '—')
+                    + '</div><div class="lc-sub">' + (pp.present ? 'on ' + escHtml(pp.interface || '?')
+                        + (pp.cidr ? ' · ' + escHtml(pp.cidr) : '')
+                        + (pp.sessions !== null ? ' · ' + pp.sessions + ' online' : '') : 'not configured') + '</div></div>'
+                    + '</div>');
+            }
+
+            if (d.fixes && d.fixes.length) {
+                fixBtn.style.display = '';
+                fixBtn.dataset.fixes = d.fixes.join(',');
+                fixBtn.textContent = 'Repair ' + d.fixes.length + ' conflict' + (d.fixes.length === 1 ? '' : 's');
+            }
+        })
+        .catch(e => setVerdict(verdict, 'fail', VERDICT_ICON.fail, 'Request failed', e.message));
+}
+
+function fixCoex(routerId, btn) {
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Repairing…';
+
+    const fd = new FormData();
+    fd.append('router_id', routerId);
+    fd.append('fixes', btn.dataset.fixes || 'all');
+
+    fetch(checkUrl('fix_coexistence.php'), { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            btn.disabled = false;
+            btn.textContent = orig;
+            const lines = [].concat(d.applied || [], d.skipped || [], d.failed || []);
+            document.getElementById('repair-result-' + routerId).textContent = [d.message || d.error, ...lines].filter(Boolean).join(' ');
+            if (typeof showToast === 'function') {
+                showToast(d.message || d.error || (lines[0] || 'Done'), d.success ? 'success' : 'error');
+            }
+            setTimeout(() => checkCoex(routerId), 800);
+        })
+        .catch(e => {
+            btn.disabled = false;
+            btn.textContent = orig;
+            if (typeof showToast === 'function') showToast('Repair failed: ' + e.message, 'error');
+        });
+}
+
+// ─── WireGuard tunnel ────────────────────────────────────────────────────────
+function checkVpn(routerId) {
+    const body    = document.getElementById('vpn-' + routerId);
+    const verdict = document.getElementById('vpnverdict-' + routerId);
+    body.innerHTML = '';
+    setVerdict(verdict, 'loading', '<span class="hd-spinner"></span>', 'Checking tunnel…', 'Peer, handshake and API reachability.');
+
+    const fd = new FormData();
+    fd.append('router_id', routerId);
+
+    fetch('api/routers/wireguard_status.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) {
+                setVerdict(verdict, 'fail', VERDICT_ICON.fail, 'Check failed', d.error || 'Unknown error');
+                return;
+            }
+            const v = d.verdict || { level: 'warn', title: '—', message: '' };
+            setVerdict(verdict, v.level, VERDICT_ICON[v.level] || VERDICT_ICON.warn, v.title, v.message);
+            if ((d.checks || []).some(c => c.level === 'fail')) body.closest('details').open = true;
+            body.innerHTML = (d.checks || []).map(c => rowWide(c.label, c.level, c.detail)).join('');
+        })
+        .catch(e => setVerdict(verdict, 'fail', VERDICT_ICON.fail, 'Request failed', e.message));
+}
+
+// ─── Payment → Access automation chain ───────────────────────────────────────
+function checkAutomation() {
+    const verdict = document.getElementById('auto-verdict');
+    if (!verdict) return;
+    const groups  = document.getElementById('auto-groups');
+    groups.innerHTML = '';
+    setVerdict(verdict, 'loading', '<span class="hd-spinner"></span>', 'Checking the chain…',
+        'Gateway, callbacks, schema, routers and the last 7 days of live payments.');
+
+    fetch('api/diagnostics/automation_chain.php', { method: 'POST', body: new URLSearchParams({service: 'hotspot'}) })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) {
+                setVerdict(verdict, 'fail', VERDICT_ICON.fail, 'Check failed', d.error || 'Unknown error');
+                return;
+            }
+            const v = d.verdict;
+            setVerdict(verdict, v.level, VERDICT_ICON[v.level] || VERDICT_ICON.warn, v.title, v.message);
+
+            let html = '';
+            Object.keys(d.groups).forEach(key => {
+                const g = d.groups[key];
+                if (!g.checks.length) return;
+                html += '<div class="hd-auto-group"><h5>' + escHtml(g.title) + '</h5>'
+                     +  g.checks.map(c => rowWide(c.label, c.level, c.detail, c.action) + actionLink(c)).join('')
+                     + '</div>';
+            });
+            groups.innerHTML = html;
+        })
+        .catch(e => setVerdict(verdict, 'fail', VERDICT_ICON.fail, 'Request failed', e.message));
+}
+
+function runAllChecks() {
+    checkAutomation();
+        recheck(12);
+    checkCoex(12);
+    checkVpn(12);
+    }
+
+// ─── Re-deploy login page ────────────────────────────────────────────────────
+function redeploy(routerId, btn) {
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="hd-spinner"></span> Deploying…';
+
+    const fd = new FormData();
+    fd.append('router_id', routerId);
+
+    fetch(checkUrl('deploy_hotspot_login.php'), { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            if (typeof showToast === 'function') showToast(d.message || (d.success ? 'Deployed successfully' : 'Deploy failed'), d.success ? 'success' : 'error');
+            document.getElementById('repair-result-' + routerId).textContent = d.message || 'Deployment finished; run checks to verify.';
+            if (d.success) setTimeout(() => recheck(routerId), 1000);
+        })
+        .catch(e => {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            if (typeof showToast === 'function') showToast('Request failed: ' + e.message, 'error');
+        });
+}
+
+// ─── Client lookup ───────────────────────────────────────────────────────────
+function lookupClient() {
+    const sel    = document.getElementById('clientSelect');
+    const result = document.getElementById('lookupResult');
+    const cId    = sel.value;
+
+    if (!cId) { result.innerHTML = '<p style="font-size:13px;color:rgba(255,255,255,.4);margin-top:12px;">Select a client first.</p>'; return; }
+
+    result.innerHTML = '<div style="padding:14px 0;font-size:13px;color:rgba(255,255,255,.5);"><span class="hd-spinner"></span> Checking router…</div>';
+
+    const fd = new FormData();
+    fd.append('client_id', cId);
+
+    fetch(checkUrl('verify_user.php'), { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => renderLookup(result, d))
+        .catch(e => { result.innerHTML = '<p style="font-size:13px;color:#fca5a5;margin-top:12px;">Request failed: ' + escHtml(e.message) + '</p>'; });
+}
+
+function renderLookup(container, d) {
+    if (!d.success) {
+        container.innerHTML = '<p style="font-size:13px;color:#fca5a5;margin-top:12px;">' + escHtml(d.message || 'Error') + '</p>';
+        return;
+    }
+
+    const mkUser   = d.db_username ? escHtml(d.db_username) : '<em style="color:#fca5a5;">not set</em>';
+    const dbStatus = pill(d.db_status, d.db_status === 'active' ? 'ok' : (d.db_status === 'suspended' ? 'fail' : 'warn'));
+    const onRouter = d.router_ok ? '<span class="hd-badge ok">YES</span>' : '<span class="hd-badge fail">NO</span>';
+    const onlineB  = d.is_online ? '<span class="hd-badge ok">ONLINE</span>' : '<span class="hd-badge skip">OFFLINE</span>';
+    const profB    = d.router_ok
+        ? (d.profile_match ? '<span class="hd-badge ok">' + escHtml(d.router_profile) + '</span>'
+                           : '<span class="hd-badge warn">' + escHtml(d.router_profile) + ' (expected ' + escHtml(d.expected_profile) + ')</span>')
+        : '—';
+
+    let sessHtml = '';
+    if (d.is_online && d.session) {
+        const s = d.session;
+        sessHtml = '<div class="lr-grid" style="margin-top:10px">'
+            + '<div class="lr-cell"><div class="lc-label">Uptime</div><div class="lc-val">' + escHtml(s.uptime || '—') + '</div></div>'
+            + '<div class="lr-cell"><div class="lc-label">IP Address</div><div class="lc-val">' + escHtml(s.address || '—') + '</div></div>'
+            + '<div class="lr-cell"><div class="lc-label">Download</div><div class="lc-val">' + escHtml(String(s.rx_mb)) + ' MB</div></div>'
+            + '<div class="lr-cell"><div class="lc-label">Upload</div><div class="lc-val">' + escHtml(String(s.tx_mb)) + ' MB</div></div>'
+            + '</div>';
+    }
+
+    let errorNote = '';
+    if (d.router_error) {
+        errorNote = '<div class="hd-alert" style="margin-top:12px;font-size:12px;">' + escHtml(d.router_error) + '</div>';
+    }
+
+    container.innerHTML =
+        '<div class="lr-grid">'
+        + '<div class="lr-cell"><div class="lc-label">DB Status</div><div class="lc-val">' + dbStatus + '</div></div>'
+        + '<div class="lr-cell"><div class="lc-label">MikroTik Username</div><div class="lc-val">' + mkUser + '</div><div class="lc-sub">Connection: ' + escHtml(d.db_connection || 'hotspot') + '</div></div>'
+        + '<div class="lr-cell"><div class="lc-label">Exists on Router</div><div class="lc-val">' + onRouter + '</div></div>'
+        + '<div class="lr-cell"><div class="lc-label">Profile</div><div class="lc-val">' + profB + '</div></div>'
+        + '<div class="lr-cell"><div class="lc-label">Live Session</div><div class="lc-val">' + onlineB + '</div></div>'
+        + '<div class="lr-cell"><div class="lc-label">Router IP</div><div class="lc-val">' + escHtml(d.router_ip || '—') + '</div></div>'
+        + '</div>' + sessHtml + errorNote;
+}
+
+function pill(text, type) { return '<span class="hd-badge ' + type + '">' + escHtml(text) + '</span>'; }
+function escHtml(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+const diagnosticsCsrf = "de78379eff2aae63e616ef7eda98ae3eda57f7ff3e9c0f001d65f35955297d3c";
+function statusLabel(level) { return ({ok:'PASS', warn:'REVIEW', fail:'FIX', skip:'INFO'})[level] || 'INFO'; }
+function actionLink(c) {
+    if (c.level === 'ok') return '';
+    let url = '', text = '';
+    if (/credentials|callback|collect|C2B/i.test(c.label)) { url='settings.php'; text='Open payment settings'; }
+    else if (/package|speed/i.test(c.label)) { url='packages.php'; text='Review packages'; }
+    else if (/customer|access records/i.test(c.label)) { url='clients.php'; text='Review clients'; }
+    else if (/matched|transactions/i.test(c.label)) { url='payments.php'; text='Review payments'; }
+    else if (/target/i.test(c.label)) { url='mikrotik.php'; text='Open routers'; }
+    return url ? '<a class="hd-btn" href="' + url + '">' + text + '</a>' : '';
+}
+function repairPortal(routerId, btn) {
+    const output = document.getElementById('repair-result-' + routerId);
+    btn.disabled = true; output.className='hd-result'; output.textContent='Updating portal allow rules…';
+    fetch(checkUrl('repair_hotspot_portal.php'), {method:'POST', body:new URLSearchParams({router_id:routerId, csrf_token:diagnosticsCsrf})})
+        .then(r=>r.json()).then(d=>{
+            output.className='hd-result' + (d.success ? '' : ' error');
+            output.textContent=[d.message, ...(d.applied || [])].join(' ');
+            recheck(routerId);
+        }).catch(e=>{output.className='hd-result error'; output.textContent='Repair failed: ' + e.message;})
+        .finally(()=>{btn.disabled=false;});
+}
+// Auto-run on load
+document.addEventListener('DOMContentLoaded', runAllChecks);
+</script>
+
+    <footer class="text-center py-4 text-muted small">
+        <div class="container">
+            <p class="mb-1">&copy; 2026 FN Tech. All rights reserved.</p>
+                    </div>
+    </footer>
+</div> <!-- End main-layout -->
+<!-- Dark neumorphism: injected after all page inline styles so !important wins -->
+<style id="dark-neu-theme">
+:root{--neu-bg:#141414;--neu-surf:#1c1c1b;--neu-s2:#222221;--neu-border:rgba(255,255,255,.06);
+--neu-card:14px 14px 28px rgba(0,0,0,.5),-7px -7px 18px rgba(255,255,255,.035),0 0 0 1px rgba(255,255,255,.06);
+--neu-inset:inset 3px 3px 8px rgba(0,0,0,.55),inset -2px -2px 5px rgba(255,255,255,.05);
+--neu-text:#e2e2e0;--neu-muted:#9a9a95;--neu-input:#1a1a19;}
+
+/* ── Navbar keep brand color, just fix text ─── */
+.navbar .navbar-brand,.navbar .nav-link{color:#fff !important;}
+
+/* ── Page & layout ─────────────────────────────── */
+body,html{background:var(--neu-bg) !important;color:var(--neu-text) !important;}
+.main-layout,#main-content,.content-area,.page-wrapper{background:var(--neu-bg) !important;}
+.main-content-wrapper{background:var(--neu-bg) !important;color:var(--neu-text) !important;}
+.main-layout > footer{background:var(--neu-surf) !important;border-top:1px solid var(--neu-border) !important;color:var(--neu-muted) !important;}
+.text-muted{color:var(--neu-muted) !important;}
+h1,h2,h3,h4,h5,h6,.h1,.h2,.h3,.h4,.h5,.h6{color:var(--neu-text) !important;}
+.text-dark{color:var(--neu-text) !important;}.text-secondary{color:var(--neu-muted) !important;}
+p{color:var(--neu-muted);}
+hr{border-color:var(--neu-border) !important;}
+
+/* ── Navbar/topbar ─────────────────────────────── */
+.navbar,nav.navbar{background:var(--neu-surf) !important;border-bottom:1px solid var(--neu-border) !important;box-shadow:0 2px 16px rgba(0,0,0,.4) !important;}
+.navbar-brand,.navbar .nav-link,.navbar-text{color:var(--neu-text) !important;}
+
+/* ── Cards ─────────────────────────────────────── */
+.card,.metric-card,.stat-card-premium,.dashboard-card,.stat-card,.info-card,.chart-card,.activity-card,.payment-card,.table-card{background:var(--neu-s2) !important;border:1px solid var(--neu-border) !important;border-radius:16px !important;box-shadow:var(--neu-card) !important;color:var(--neu-text) !important;}
+.card-header,.card-footer{background:rgba(255,255,255,.03) !important;border-color:var(--neu-border) !important;color:var(--neu-text) !important;}
+.card-title,.card-header h5,.card-header h6{color:#fff !important;}
+.metric-card:hover,.stat-card-premium:hover{transform:translateY(-3px) !important;box-shadow:18px 18px 36px rgba(0,0,0,.6),-8px -8px 22px rgba(255,255,255,.04),0 0 0 1px var(--neu-border) !important;}
+.metric-icon,.stat-icon{background:rgba(255,255,255,.06) !important;border-radius:12px !important;}
+.metric-value,.stat-value,.metric-card h3,.metric-card .display-6{color:#fff !important;}
+.metric-label,.stat-label,.metric-card p,.metric-card .text-muted{color:var(--neu-muted) !important;}
+
+/* ── Inline page backgrounds ───────────────────── */
+/* These override the per-page <style> blocks with hardcoded colors */
+[style*="background:#F3F4F6"],[style*="background: #F3F4F6"],
+[style*="background:#fff"],[style*="background: #fff"],
+[style*="background:#ffffff"],[style*="background: #ffffff"],
+[style*="background:#f8f9fa"],[style*="background: #f8f9fa"],
+[style*="background:#f1f5f9"],[style*="background: #f1f5f9"],
+[style*="background-color:#fff"],[style*="background-color: #fff"],
+[style*="background-color:white"],[style*="background-color: white"]{
+  /* Can't override inline style attribute with external CSS — handled via JS below */
+}
+
+/* ── Tables ─────────────────────────────────────── */
+.table,table{color:var(--neu-text) !important;}
+.table thead th,table thead th{background:rgba(255,255,255,.05) !important;border-color:var(--neu-border) !important;color:var(--neu-muted) !important;font-size:11px;text-transform:uppercase;letter-spacing:.06em;}
+.table tbody tr,table tbody tr{border-color:var(--neu-border) !important;}
+.table tbody tr:hover,table tbody tr:hover{background:rgba(255,255,255,.04) !important;}
+.table tbody td,table tbody td{border-color:var(--neu-border) !important;color:var(--neu-text) !important;vertical-align:middle;}
+.table-striped>tbody>tr:nth-child(odd){background:rgba(255,255,255,.02) !important;}
+.table-hover tbody tr:hover{background:rgba(255,255,255,.04) !important;}
+.dataTables_wrapper .dataTables_length,.dataTables_wrapper .dataTables_filter,.dataTables_wrapper .dataTables_info,.dataTables_wrapper .dataTables_paginate{color:var(--neu-muted) !important;}
+.dataTables_wrapper .dataTables_paginate .paginate_button{color:var(--neu-muted) !important;border-radius:6px !important;}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,.dataTables_wrapper .dataTables_paginate .paginate_button:hover{background:var(--primary-color,#3B6EA5) !important;color:#fff !important;border-color:transparent !important;}
+
+/* ── Forms ──────────────────────────────────────── */
+.form-control,.form-select,input[type="text"],input[type="email"],input[type="password"],input[type="number"],input[type="tel"],input[type="url"],input[type="date"],input[type="time"],input[type="search"],textarea,select{background:var(--neu-input) !important;border:1px solid rgba(255,255,255,.08) !important;border-radius:9px !important;color:var(--neu-text) !important;box-shadow:var(--neu-inset) !important;}
+.form-control:focus,.form-select:focus,input:focus,textarea:focus,select:focus{background:var(--neu-input) !important;border-color:var(--primary-color,#3B6EA5) !important;color:#fff !important;box-shadow:var(--neu-inset),0 0 0 3px rgba(59,110,165,.25) !important;outline:none !important;}
+.form-control::placeholder,input::placeholder,textarea::placeholder{color:rgba(255,255,255,.3) !important;}
+.form-label,label{color:var(--neu-muted) !important;}
+.input-group-text{background:rgba(255,255,255,.06) !important;border:1px solid rgba(255,255,255,.08) !important;color:var(--neu-muted) !important;}
+.form-check-input{background-color:var(--neu-input) !important;border-color:rgba(255,255,255,.15) !important;}
+.form-check-input:checked{background-color:var(--primary-color,#3B6EA5) !important;border-color:var(--primary-color,#3B6EA5) !important;}
+.form-check-label{color:var(--neu-text) !important;}
+.form-text{color:var(--neu-muted) !important;}
+
+/* ── Buttons ─────────────────────────────────────── */
+.btn-secondary,.btn-outline-secondary{background:rgba(255,255,255,.08) !important;border:1px solid rgba(255,255,255,.12) !important;color:var(--neu-text) !important;}
+.btn-secondary:hover,.btn-outline-secondary:hover{background:rgba(255,255,255,.14) !important;color:#fff !important;}
+.btn-light,.btn-outline-light{background:rgba(255,255,255,.08) !important;border-color:rgba(255,255,255,.12) !important;color:var(--neu-text) !important;}
+.btn-light:hover{background:rgba(255,255,255,.15) !important;color:#fff !important;}
+.btn-outline-primary{border-color:var(--primary-color,#3B6EA5) !important;color:var(--primary-color,#3B6EA5) !important;}
+.btn-outline-primary:hover{background:var(--primary-color,#3B6EA5) !important;color:#fff !important;}
+
+/* ── Modals ──────────────────────────────────────── */
+.modal-content{background:var(--neu-s2) !important;border:1px solid var(--neu-border) !important;border-radius:18px !important;box-shadow:var(--neu-card) !important;color:var(--neu-text) !important;}
+.modal-header{border-bottom:1px solid var(--neu-border) !important;background:rgba(255,255,255,.03) !important;}
+.modal-footer{border-top:1px solid var(--neu-border) !important;background:rgba(255,255,255,.03) !important;}
+.modal-title{color:#fff !important;}
+.btn-close{filter:invert(1) grayscale(1) !important;}
+
+/* ── Dropdowns ───────────────────────────────────── */
+.dropdown-menu{background:var(--neu-surf) !important;border:1px solid var(--neu-border) !important;border-radius:12px !important;box-shadow:var(--neu-card) !important;}
+.dropdown-item{color:var(--neu-text) !important;border-radius:8px;margin:2px 6px;width:calc(100% - 12px);}
+.dropdown-item:hover,.dropdown-item:focus{background:rgba(255,255,255,.08) !important;color:#fff !important;}
+.dropdown-divider{border-color:var(--neu-border) !important;}
+
+/* ── Alerts ──────────────────────────────────────── */
+.alert-info{background:rgba(59,130,246,.12) !important;border-color:rgba(59,130,246,.25) !important;color:#93c5fd !important;}
+.alert-success{background:rgba(16,185,129,.12) !important;border-color:rgba(16,185,129,.25) !important;color:#6ee7b7 !important;}
+.alert-warning{background:rgba(245,158,11,.12) !important;border-color:rgba(245,158,11,.25) !important;color:#fcd34d !important;}
+.alert-danger{background:rgba(239,68,68,.12) !important;border-color:rgba(239,68,68,.25) !important;color:#fca5a5 !important;}
+
+/* ── Nav tabs ────────────────────────────────────── */
+.nav-tabs{border-bottom:1px solid var(--neu-border) !important;}
+.nav-tabs .nav-link{color:var(--neu-muted) !important;border:none !important;border-bottom:2px solid transparent !important;}
+.nav-tabs .nav-link:hover{color:var(--neu-text) !important;background:rgba(255,255,255,.04) !important;}
+.nav-tabs .nav-link.active{background:transparent !important;color:var(--primary-color,#3B6EA5) !important;border-bottom-color:var(--primary-color,#3B6EA5) !important;}
+.nav-pills .nav-link{color:var(--neu-muted) !important;border-radius:8px !important;}
+.nav-pills .nav-link.active{background:var(--primary-color,#3B6EA5) !important;color:#fff !important;}
+
+/* ── Badges ──────────────────────────────────────── */
+.badge.bg-light{background:rgba(255,255,255,.1) !important;color:var(--neu-text) !important;}
+.badge.bg-secondary{background:rgba(255,255,255,.12) !important;color:var(--neu-text) !important;}
+
+/* ── Status badges ───────────────────────────────── */
+.status-badge.active{background:rgba(16,185,129,.15) !important;color:#6ee7b7 !important;border:1px solid rgba(16,185,129,.3) !important;}
+.status-badge.inactive{background:rgba(107,114,128,.15) !important;color:#9ca3af !important;border:1px solid rgba(107,114,128,.3) !important;}
+.status-badge.suspended{background:rgba(239,68,68,.15) !important;color:#fca5a5 !important;border:1px solid rgba(239,68,68,.3) !important;}
+.status-badge.expired{background:rgba(245,158,11,.15) !important;color:#fcd34d !important;border:1px solid rgba(245,158,11,.3) !important;}
+
+/* ── List groups ─────────────────────────────────── */
+.list-group-item{background:var(--neu-s2) !important;border-color:var(--neu-border) !important;color:var(--neu-text) !important;}
+.list-group-item:hover{background:rgba(255,255,255,.05) !important;}
+.list-group-item.active{background:var(--primary-color,#3B6EA5) !important;border-color:var(--primary-color,#3B6EA5) !important;}
+
+/* ── Progress ────────────────────────────────────── */
+.progress{background:rgba(255,255,255,.08) !important;border-radius:10px !important;}
+
+/* ── Pagination ──────────────────────────────────── */
+.page-link{background:var(--neu-s2) !important;border-color:var(--neu-border) !important;color:var(--neu-muted) !important;}
+.page-link:hover{background:rgba(255,255,255,.08) !important;color:var(--neu-text) !important;}
+.page-item.active .page-link{background:var(--primary-color,#3B6EA5) !important;border-color:var(--primary-color,#3B6EA5) !important;color:#fff !important;}
+.page-item.disabled .page-link{background:rgba(255,255,255,.03) !important;color:rgba(255,255,255,.2) !important;}
+
+/* ── Settings page ───────────────────────────────── */
+.set-card{background:var(--neu-s2) !important;border:1px solid var(--neu-border) !important;box-shadow:var(--neu-card) !important;color:var(--neu-text) !important;}
+.set-section-title{color:var(--neu-muted) !important;border-bottom-color:var(--neu-border) !important;}
+.set-input,.set-select{background:var(--neu-input) !important;border-color:rgba(255,255,255,.08) !important;color:var(--neu-text) !important;}
+.gw-card{background:var(--neu-surf) !important;border:1px solid var(--neu-border) !important;box-shadow:var(--neu-inset) !important;}
+
+/* ── Dashboard specific ──────────────────────────── */
+.dashboard-header,.dashboard-title{color:var(--neu-text) !important;}
+.dashboard-subtitle,.breadcrumb{color:var(--neu-muted) !important;}
+.breadcrumb a{color:var(--primary-color,#3B6EA5) !important;}
+.section-title{color:var(--neu-text) !important;}
+.dashboard-container{background:transparent !important;}
+
+/* Status card (used for charts + router/alert panels on dashboard) */
+.status-card{background:var(--neu-s2) !important;border:1px solid var(--neu-border) !important;
+  border-radius:14px !important;box-shadow:var(--neu-card) !important;color:var(--neu-text) !important;}
+.status-card h5,.status-card h6,.status-card .card-title{color:#fff !important;}
+.status-card p,.status-card .text-muted{color:var(--neu-muted) !important;}
+
+/* Metric icons — remove light pastel backgrounds */
+.metric-icon,.metric-icon.revenue,.metric-icon.users,.metric-icon.growth,
+.metric-icon.warning,.metric-icon.info,.metric-icon.danger{
+  background:rgba(255,255,255,.07) !important;color:rgba(255,255,255,.8) !important;
+  border-radius:12px !important;}
+
+/* Router list inside status cards */
+.router-item{border-bottom:1px solid var(--neu-border) !important;}
+.router-name{color:#fff !important;font-weight:600;}
+.router-ip,.router-uptime{color:var(--neu-muted) !important;}
+.router-status-dot,.status-indicator{filter:none !important;}
+
+/* Alert items */
+.alert-item,.alert-item.warning,.alert-item.info,.alert-item.danger{
+  background:rgba(255,255,255,.04) !important;border-left-color:inherit !important;
+  border-radius:8px !important;}
+.alert-item.warning{border-left:3px solid #f59e0b !important;background:rgba(245,158,11,.08) !important;}
+.alert-item.info{border-left:3px solid #3b82f6 !important;background:rgba(59,130,246,.08) !important;}
+.alert-item.danger{border-left:3px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;}
+.alert-item .alert-title,.alert-item strong{color:#fff !important;}
+.alert-item .alert-desc,.alert-item small{color:var(--neu-muted) !important;}
+
+/* Chart select dropdowns on dashboard */
+select.chart-select,[id$="-period"],[id$="Period"]{
+  background:var(--neu-input) !important;border:1px solid rgba(255,255,255,.1) !important;
+  color:var(--neu-text) !important;border-radius:7px !important;}
+
+/* Quick action buttons */
+.action-btn,.quick-action-btn{color:#fff !important;}
+.action-btn .action-label,.action-btn span{color:rgba(255,255,255,.9) !important;}
+
+/* ── Page-specific containers (clients, packages, payments, etc.) ─ */
+.customers-container,.clients-container,.packages-container,
+.payments-container,.mikrotik-container,.billing-container,
+.reports-container,.sms-container,.emails-container,
+.dashboard-container,.page-container,.content-section{
+  background:transparent !important;color:var(--neu-text) !important;}
+
+/* ── Table containers ─────────────────────────────────────────── */
+.table-container,.table-wrapper,.table-card,.data-table-wrap{
+  background:var(--neu-s2) !important;border:1px solid var(--neu-border) !important;
+  border-radius:14px !important;box-shadow:var(--neu-card) !important;overflow:hidden;}
+.table-header,.table-info,.table-actions{
+  background:rgba(255,255,255,.03) !important;border-color:var(--neu-border) !important;
+  color:var(--neu-text) !important;}
+.table-info p,.table-header p,.table-header span{color:var(--neu-muted) !important;}
+
+/* ── All tables (including page-specific class names) ─────────── */
+.customer-table,.packages-table,.payments-table,.clients-table,
+.routers-table,.billing-table,.reports-table,
+.table,table{color:var(--neu-text) !important;background:transparent !important;}
+.customer-table thead tr,.packages-table thead tr,.table thead tr,table thead tr,
+thead tr{background:rgba(255,255,255,.05) !important;}
+.customer-table thead th,.packages-table thead th,.table thead th,table thead th,
+thead th{background:rgba(255,255,255,.05) !important;border-color:var(--neu-border) !important;
+  color:var(--neu-muted) !important;font-size:11px !important;text-transform:uppercase;letter-spacing:.06em;}
+.customer-table tbody tr,.packages-table tbody tr,.table tbody tr,table tbody tr,
+tbody tr{background:transparent !important;border-color:var(--neu-border) !important;}
+.customer-table tbody tr:hover,.table tbody tr:hover,table tbody tr:hover,
+tbody tr:hover{background:rgba(255,255,255,.04) !important;}
+.customer-table tbody td,.packages-table tbody td,.table tbody td,table tbody td,
+tbody td{border-color:var(--neu-border) !important;color:var(--neu-text) !important;vertical-align:middle;}
+.table-striped>tbody>tr:nth-child(odd),tbody tr:nth-child(odd).striped{background:rgba(255,255,255,.02) !important;}
+
+/* ── Stat cards on clients/billing pages ─────────────────────── */
+.stat-card{background:var(--neu-s2) !important;border:1px solid var(--neu-border) !important;
+  border-radius:14px !important;box-shadow:var(--neu-card) !important;}
+.stat-card:hover{transform:translateY(-3px) !important;
+  box-shadow:18px 18px 36px rgba(0,0,0,.6),-8px -8px 22px rgba(255,255,255,.04),0 0 0 1px var(--neu-border) !important;}
+.stat-card .stat-value,.stat-card h3,.stat-card .count{color:#fff !important;}
+.stat-card .stat-label,.stat-card p,.stat-card small{color:var(--neu-muted) !important;}
+.stat-icon-box,.stat-card .icon-wrap{background:rgba(255,255,255,.07) !important;border-radius:10px !important;}
+
+/* ── Client/billing specific cards ───────────────────────────── */
+.client-card,.billing-card,.package-card-item,.router-card{
+  background:var(--neu-s2) !important;border-color:var(--neu-border) !important;}
+.client-name,.billing-amount,.router-name{color:#fff !important;}
+.client-info,.billing-info{color:var(--neu-muted) !important;}
+
+/* ── Filter bars & search ──────────────────────────────────────── */
+.filters-bar,.filter-bar,.search-bar,.filters-section{
+  background:var(--neu-s2) !important;border-color:var(--neu-border) !important;
+  border-radius:12px !important;}
+.clear-filters-btn{background:rgba(255,255,255,.07) !important;
+  border-color:var(--neu-border) !important;color:var(--neu-text) !important;}
+.clear-filters-btn:hover{background:rgba(255,255,255,.12) !important;color:#fff !important;}
+.filters-grid select,.search-input{background:var(--neu-input) !important;
+  border-color:rgba(255,255,255,.08) !important;color:var(--neu-text) !important;}
+
+/* ── DataTables controls ──────────────────────────────────────── */
+.dataTables_wrapper .dataTables_length,.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,.dataTables_wrapper .dataTables_paginate{color:var(--neu-muted) !important;}
+.dataTables_wrapper .dataTables_paginate .paginate_button{color:var(--neu-muted) !important;border-radius:6px !important;}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover{
+  background:var(--primary-color,#3B6EA5) !important;color:#fff !important;border-color:transparent !important;}
+.dataTables_wrapper select,.dataTables_wrapper input{
+  background:var(--neu-input) !important;border-color:rgba(255,255,255,.08) !important;color:var(--neu-text) !important;}
+
+/* ── Chart areas ─────────────────────────────────────────────── */
+.chart-card,.chart-container,.chart-wrapper,.chart-section{
+  background:var(--neu-s2) !important;border:1px solid var(--neu-border) !important;
+  border-radius:14px !important;box-shadow:var(--neu-card) !important;}
+.chart-card .card-header,.chart-container .header{
+  background:rgba(255,255,255,.03) !important;border-color:var(--neu-border) !important;color:var(--neu-text) !important;}
+.chart-title,.chart-card h5,.chart-card h6{color:var(--neu-text) !important;}
+
+/* ── Scrollbar ───────────────────────────────────── */
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:var(--neu-bg);}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22);}
+</style>
+
+<script>
+/* Dark theme: patch inline style="background:..." attributes */
+(function(){
+  var lightBgs = ['#f3f4f6','#f9fafb','#ffffff','#fff','#f8f9fa','#f1f5f9','#f0f4f8','#fafafa','white','#e5e7eb','#eff0f2'];
+  var lightClrs = ['#111827','#1e293b','#374151','#1f2937','#0f172a','#000000','#333','#333333','black'];
+  var lightBordClrs = ['#e5e7eb','#d1d5db','#dee2e6'];
+  document.querySelectorAll('[style]').forEach(function(el){
+    var s = el.getAttribute('style') || '';
+    var low = s.toLowerCase().replace(/\s/g,'');
+    var changed = false;
+    lightBgs.forEach(function(c){
+      var lc = c.toLowerCase().replace(/\s/g,'');
+      if(low.includes('background:'+lc)||low.includes('background-color:'+lc)){
+        var re = new RegExp('(background(?:-color)?)\\s*:\\s*'+lc.replace('#','\\#').replace('(','\(').replace(')','\\)'),'gi');
+        s = s.replace(re,'$1:#1c1c1b');
+        changed = true;
+      }
+    });
+    lightClrs.forEach(function(c){
+      var lc = c.toLowerCase().replace(/\s/g,'');
+      /* Only match standalone color: not background-color: */
+      if(low.includes('color:'+lc)&&!low.includes('background-color:'+lc)){
+        var re = new RegExp('(?<![a-z-])color\\s*:\\s*'+lc.replace('#','\\#'),'gi');
+        s = s.replace(re,'color:#e2e2e0');
+        changed = true;
+      }
+    });
+    lightBordClrs.forEach(function(c){
+      var lc = c.toLowerCase().replace(/\s/g,'');
+      if(low.includes('border-color:'+lc)||low.includes('border:1px solid '+lc)||low.includes('border:1.5px solid '+lc)){
+        s = s.replace(new RegExp(c,'gi'),'rgba(255,255,255,.1)');
+        changed = true;
+      }
+    });
+    if(changed) el.setAttribute('style',s);
+  });
+})();
+</script>
+
+<!-- Chart.js global dark defaults — applied before charts are built (Chart.js v4) -->
+<script>
+(function applyChartDarkDefaults(){
+  if(typeof Chart === 'undefined'){ return; }
+  /* Global text/border color */
+  Chart.defaults.color = 'rgba(255,255,255,0.6)';
+  /* Grid lines for all registered scale types */
+  var scaleTypes = ['linear','logarithmic','category','time','timeseries','radialLinear'];
+  scaleTypes.forEach(function(t){
+    var s = Chart.defaults.scales && Chart.defaults.scales[t];
+    if(!s) return;
+    s.grid = s.grid || {};
+    s.grid.color = 'rgba(255,255,255,0.07)';
+    s.ticks = s.ticks || {};
+    s.ticks.color = 'rgba(255,255,255,0.55)';
+  });
+  /* Legend label color */
+  if(Chart.defaults.plugins && Chart.defaults.plugins.legend){
+    Chart.defaults.plugins.legend.labels = Chart.defaults.plugins.legend.labels || {};
+    Chart.defaults.plugins.legend.labels.color = 'rgba(255,255,255,0.7)';
+  }
+  /* Also re-apply to any already-created chart instances */
+  function patchLive(){
+    if(!Chart.instances) return;
+    Object.values(Chart.instances).forEach(function(ch){
+      if(!ch || !ch.options) return;
+      var scales = ch.options.scales || {};
+      Object.values(scales).forEach(function(ax){
+        ax.grid = ax.grid || {};
+        ax.grid.color = 'rgba(255,255,255,0.07)';
+        ax.ticks = ax.ticks || {};
+        ax.ticks.color = 'rgba(255,255,255,0.55)';
+      });
+      var leg = (ch.options.plugins||{}).legend;
+      if(leg){ leg.labels = leg.labels||{}; leg.labels.color='rgba(255,255,255,0.7)'; }
+      try{ ch.update('none'); }catch(e){}
+    });
+  }
+  /* Run now (for any synchronously-built charts) and again on DOMContentLoaded */
+  patchLive();
+  document.addEventListener('DOMContentLoaded', patchLive);
+  /* Also expose so dashboard refresh can call it */
+  window.__patchChartsDark = patchLive;
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Scroll-to-top button -->
+<button id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">
+    <i class="fas fa-arrow-up"></i>
+</button>
+
+<!-- Toast notification container -->
+<div id="toast-container"></div>
+
+<script>
+/* ── Scroll-to-top visibility ────────────────── */
+window.addEventListener('scroll', function(){
+    const btn = document.getElementById('scrollTopBtn');
+    if (btn) btn.classList.toggle('visible', window.scrollY > 320);
+}, { passive: true });
+
+/* ── Global toast helper  ────────────────────────
+   Usage:  showToast('Saved!', 'success')
+           showToast('Error occurred', 'error')
+           showToast('Processing…', 'info')
+   ─────────────────────────────────────────────── */
+window.showToast = function(msg, type = 'info', duration = 3500) {
+    const icons = { success: 'fa-check-circle', error: 'fa-times-circle', info: 'fa-info-circle', warning: 'fa-exclamation-triangle' };
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = 'toast-msg ' + type;
+    el.innerHTML = '<i class="fas ' + (icons[type] || 'fa-info-circle') + '"></i><span>' + msg + '</span>';
+    el.onclick = () => el.remove();
+    container.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(30px)'; el.style.transition = 'all .3s'; setTimeout(() => el.remove(), 300); }, duration);
+};
+
+/* ── Auto-show flash messages as toasts ──────── */
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[data-toast]').forEach(function(el) {
+        const msg  = el.dataset.toast;
+        const type = el.dataset.toastType || 'info';
+        if (msg) showToast(msg, type);
+        el.remove();
+    });
+});
+</script>
+</body>
+</html>

@@ -29,6 +29,7 @@ ini_set('display_errors', 0);
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/db_master.php';
 require_once __DIR__ . '/../../classes/MikrotikAPI.php';
+require_once __DIR__ . '/../../includes/hotspot_diagnostic_snapshot.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user_id'])) {
@@ -38,6 +39,7 @@ if (!isset($_SESSION['user_id'])) {
 $t = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $t->execute([$_SESSION['user_id']]);
 $tenantId = (int)$t->fetchColumn();
+session_write_close();
 
 $routerId = (int)($_POST['router_id'] ?? 0);
 $rq = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE id = ? AND tenant_id = ?");
@@ -212,7 +214,7 @@ try {
 
     if ($hsRow) {
         $out['hotspot']['present']   = true;
-        $out['hotspot']['enabled']   = ($hsRow['disabled'] ?? 'true') !== 'true';
+        $out['hotspot']['enabled']   = ($hsRow['disabled'] ?? 'true') !== 'true' && ($hsRow['invalid'] ?? 'false') !== 'true';
         $out['hotspot']['name']      = $hsRow['name'] ?? null;
         $out['hotspot']['interface'] = $hsRow['interface'] ?? null;
         $out['hotspot']['pool']      = $hsRow['address-pool'] ?? null;
@@ -372,8 +374,9 @@ try {
         $check('dhcp_unique', 'One DHCP server on the bridge', 'ok', 'No hotspot — PPPoE does not use DHCP.');
     } elseif (count($bridgeDhcp) === 1) {
         $d = $bridgeDhcp[0];
-        $check('dhcp_unique', 'One DHCP server on the bridge', 'ok',
-            ($d['name'] ?? '?') . ' → pool ' . ($d['address-pool'] ?? '?'));
+        $valid = ($d['invalid'] ?? 'false') !== 'true' && ($d['address-pool'] ?? '') === ($out['hotspot']['pool'] ?? '');
+        $check('dhcp_unique', 'One DHCP server on the bridge', $valid ? 'ok' : 'fail',
+            ($d['name'] ?? '?') . ' → pool ' . ($d['address-pool'] ?? '?') . ($valid ? '' : '. Invalid DHCP or a pool that differs from the hotspot. Repair the gateway and DHCP configuration.'));
     } elseif (count($bridgeDhcp) === 0) {
         $check('dhcp_unique', 'One DHCP server on the bridge', 'fail',
             "No DHCP server on {$bridgeName}. Hotspot clients never get an IP and the portal cannot load.");
@@ -468,20 +471,15 @@ try {
         $wgHostRows = [];
         try { $wgHostRows = ce_rows($api->comm('/ip/hotspot/walled-garden/print')); } catch (Throwable $_e) {}
 
-        $hasIp   = (bool)array_filter($wgIpRows, fn($r) => !empty($r['dst-address']) && ($r['disabled'] ?? 'false') === 'false');
-        $hasHost = (bool)array_filter($wgHostRows, fn($r) => !empty($r['dst-host']) && ($r['disabled'] ?? 'false') === 'false');
-
-        if ($hasIp && $hasHost) {
-            $check('walled_garden', 'Portal reachable before login (HTTP + HTTPS)', 'ok',
-                count($wgHostRows) . ' host entr(ies) + ' . count($wgIpRows) . ' IP entr(ies).');
-        } elseif ($hasHost) {
-            $check('walled_garden', 'Portal reachable before login (HTTP + HTTPS)', 'fail',
-                'Only dst-host entries exist. Those match the plaintext HTTP Host header, so HTTPS to the portal — '
-                . 'and therefore the M-Pesa STK push from the login page — is blocked.', true);
-        } else {
-            $check('walled_garden', 'Portal reachable before login (HTTP + HTTPS)', 'fail',
-                'No walled-garden entries at all. Unauthenticated clients cannot open the payment page.', true);
+        $ts = $pdo->prepare('SELECT subdomain FROM tenants WHERE id=?'); $ts->execute([$tenantId]);
+        $domain = 'fortunetttech.site';
+        try { $domain = $pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='platform_domain'")->fetchColumn() ?: $domain; } catch (Throwable $e) {}
+        $portalHost = $ts->fetchColumn() . '.' . $domain;
+        $snapshot = hotspotDiagnosticSnapshot(['garden'=>$wgHostRows, 'garden_ip'=>$wgIpRows], $portalHost, gethostbynamel($portalHost) ?: []);
+        foreach ($snapshot['checks'] as $portalCheck) if ($portalCheck['id']==='portal') {
+            $check('walled_garden', 'Portal HTTP + HTTPS allow rules', $portalCheck['level'], $portalCheck['detail'] . ($portalCheck['level']==='fail' ? ' Use Repair portal access in the main hotspot checks.' : ''));
         }
+
     } else {
         $check('walled_garden', 'Portal reachable before login (HTTP + HTTPS)', 'ok', 'No hotspot — not applicable.');
     }
