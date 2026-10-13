@@ -246,6 +246,41 @@ function hotspotSyncInstallerRsc(string $pageUrl, string $verUrl, string $interv
 RSC;
 }
 
+/** A branded login page needs native redirect servlets in the same directory. */
+function ensureHotspotServletFiles($api, array $directories): int
+{
+    $redirect = '$(if http-status == 302)Hotspot login required$(endif)' . "\n"
+        . '$(if http-header == "Location")$(link-redirect)$(endif)' . "\n"
+        . '<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=$(link-redirect)"><title>Hotspot sign in</title></head><body><a href="$(link-redirect)">Continue to sign in</a></body></html>';
+    $fallbacks = ['rlogin.html'=>$redirect,'redirect.html'=>$redirect,'alogin.html'=>$redirect,
+        'api.json'=>'{"captive":$(if logged-in == \'yes\')false$(else)true$(endif),"user-portal-url":"$(link-login-only)"}'];
+    $map=[];
+    foreach (routerCheckedCommand($api,'/file/print') as $file) if (isset($file['.id'],$file['name'])) $map[$file['name']]=$file;
+    $copied=0;
+    foreach (array_unique($directories) as $directory) {
+        foreach (['rlogin.html','redirect.html','alogin.html','api.json','error.html','errors.txt','status.html','logout.html'] as $name) {
+            $path=rtrim($directory,'/').'/'.$name;
+            if (isset($map[$path])) continue; // Preserve existing customized servlets.
+            $content=$fallbacks[$name] ?? null;
+            $original=$map['hotspot/'.$name] ?? null;
+            if ($original) {
+                foreach (routerCheckedCommand($api,'/file/get',['=number='.$original['.id'],'=value-name=contents']) as $row) if (isset($row['ret'])) $content=$row['ret'];
+                if ($content===null || (isset($original['size']) && strlen($content)!==(int)$original['size'])) throw new RuntimeException('Could not read the default hotspot servlet '.$name);
+            }
+            if ($content===null) continue;
+            routerCheckedCommand($api,'/file/add',['=name='.$path,'=contents='.$content]);
+            $created=null;
+            foreach (routerCheckedCommand($api,'/file/print',['?name='.$path]) as $file) if (($file['name'] ?? '')===$path) $created=$file;
+            if (!$created || !isset($created['.id'])) throw new RuntimeException('Hotspot servlet creation failed: '.$path);
+            $readback=null;
+            foreach (routerCheckedCommand($api,'/file/get',['=number='.$created['.id'],'=value-name=contents']) as $row) if (isset($row['ret'])) $readback=$row['ret'];
+            if ($readback===null || !hash_equals(hash('sha256',$content),hash('sha256',$readback))) throw new RuntimeException('Hotspot servlet verification failed: '.$path);
+            $copied++;
+        }
+    }
+    return $copied;
+}
+
 /** Push the current catalog without changing Hotspot, DHCP or customer sessions. */
 function syncHotspotCatalogPage($api, string $html, string $pageUrl): int
 {
@@ -285,6 +320,7 @@ function syncHotspotCatalogPage($api, string $html, string $pageUrl): int
         }
         if (!hash_equals(hash('sha256',$html),hash('sha256',$contents))) throw new RuntimeException('Portal catalog verification failed: '.$name);
     }
+    ensureHotspotServletFiles($api,$dirs);
     return count($paths);
 }
 

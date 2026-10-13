@@ -852,6 +852,11 @@ function _uploadHotspotLoginPage(PDO $pdo, array $router, int $tenantId): void
         // login.html or a tenant's packages never requires touching a router
         // again — including routers behind CGNAT the server can't dial into.
         $urls = hotspotPortalUrls($pdo, $tenantId);
+        $servletApi=new MikrotikAPI(...$mkArgs);
+        try {
+            $servletApi->connect();
+            ensureHotspotServletFiles($servletApi,array_unique($effectiveDirs));
+        } finally { $servletApi->disconnect(); }
         if ($urls) {
             try {
                 $mk5 = new MikrotikAPI(...$mkArgs);

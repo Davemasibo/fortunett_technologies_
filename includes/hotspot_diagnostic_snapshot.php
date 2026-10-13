@@ -37,6 +37,14 @@ function hotspotDiagnosticSnapshot(array $data, string $portalHost, array $porta
         $login = null;
         foreach ($data['files'] ?? [] as $f) if (in_array($f['name'] ?? '', $paths, true) && (int)($f['size'] ?? 0) > 0) $login = $f;
         $add('login', 'Login page used by this server', !isset($data['files'], $data['profiles']) ? 'warn' : ($login ? 'ok' : 'fail'), $login ? $login['name'] . ' (' . (int)$login['size'] . ' bytes). File presence does not verify its branding.' : 'No nonempty login.html in the active profile directory ' . ($dir ?: '(unknown)') . '.', $login ? null : 'Use Re-deploy Login Page, then run this check again.');
+        $redirect=false;
+        foreach ($data['files'] ?? [] as $file) {
+            foreach ($paths as $path) {
+                $base=substr($path,0,-strlen('login.html'));
+                if (in_array($file['name'] ?? '',[$base.'rlogin.html',$base.'redirect.html'],true) && (int)($file['size'] ?? 0)>0) $redirect=true;
+            }
+        }
+        $add('redirect', 'Automatic login redirect files', !isset($data['files'], $data['profiles']) ? 'warn' : ($redirect ? 'ok' : 'fail'), $redirect ? 'The active directory has a redirect servlet. Verify the sign-in prompt on a phone.' : 'The active directory has neither rlogin.html nor redirect.html. A login.html file alone does not complete captive detection.', $redirect ? null : 'Re-deploy Login Page to restore the supporting hotspot servlet files.');
     }
     $dns = $data['dns'][0] ?? [];
     $dnsOk = ($dns['allow-remote-requests'] ?? '') === 'true';

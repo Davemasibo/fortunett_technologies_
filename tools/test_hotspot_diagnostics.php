@@ -8,7 +8,7 @@ $data=[
  'dhcp'=>[['name'=>'dhcp','interface'=>'bridge','address-pool'=>'pool']],
  'networks'=>[['address'=>'10.5.50.0/24','gateway'=>'10.5.50.1']],
  'dns'=>[['allow-remote-requests'=>'true']],
- 'files'=>[['name'=>'flash/hotspot/login.html','size'=>'1000']],
+ 'files'=>[['name'=>'flash/hotspot/login.html','size'=>'1000'],['name'=>'flash/hotspot/rlogin.html','size'=>'400']],
  'garden'=>[['dst-host'=>$host,'action'=>'allow']],
  'garden_ip'=>array_map(fn($ip)=>['dst-address'=>$ip.'/32','protocol'=>'tcp','dst-port'=>'80,443','action'=>'accept'],$ips)
 ];
@@ -21,6 +21,10 @@ function diagnosticTest(array $data,string $id,string $expected):void {
  $checks++;
 }
 diagnosticTest($data,'server','ok');diagnosticTest($data,'portal','ok');
+diagnosticTest($data,'redirect','ok');
+$bad=$data;array_pop($bad['files']);diagnosticTest($bad,'redirect','fail');
+$bad=$data;$bad['files'][1]['name']='hotspot/rlogin.html';diagnosticTest($bad,'redirect','fail');
+$bad=$data;$bad['files'][1]['name']='flash/hotspot/redirect.html';diagnosticTest($bad,'redirect','ok');
 $bad=$data;$bad['servers'][0]['invalid']='true';diagnosticTest($bad,'server','fail');
 $bad=$data;$bad['servers']=[];diagnosticTest($bad,'server','fail');
 $bad=$data;unset($bad['servers']);diagnosticTest($bad,'server','warn');
