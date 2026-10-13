@@ -1,0 +1,2 @@
+<?php
+if(PHP_SAPI!=='cli')exit;require '/var/www/html/fortunett_technologies_/includes/db_master.php';$out=[];$out['templates']=$pdo->query("SELECT tenant_id,template_key,template_content,is_global FROM sms_templates WHERE tenant_id=5 OR is_global=1")->fetchAll();$p=$pdo->query('SELECT shortcode,shortcode_type,environment FROM platform_mpesa_config LIMIT 1')->fetch();$out['platform_payment']=$p;echo json_encode($out,JSON_PRETTY_PRINT);
