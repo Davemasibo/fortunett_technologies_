@@ -9,6 +9,13 @@ class SMSHelper {
     private $config;
     private $using_platform = false;
     private $billing_client = null;
+    private bool $welcome_credentials = false;
+
+    public function sendWelcomeCredentials($phone, string $message, int $clientId): array {
+        $this->welcome_credentials = true;
+        try { return $this->send($phone, $message, $clientId); }
+        finally { $this->welcome_credentials = false; }
+    }
 
     public function __construct($pdo, $tenant_id) {
         $this->pdo = $pdo;
@@ -62,7 +69,7 @@ class SMSHelper {
             $st->execute([(int)$clientId,(int)$this->tenant_id]);
             $client=$st->fetch(PDO::FETCH_ASSOC);
             if (!$client) return ['success'=>false,'message'=>'Customer not found for this tenant.'];
-            $message=smsWithoutPppoeCredentials($message,$client);
+            if (!$this->welcome_credentials) $message=smsWithoutPppoeCredentials($message,$client);
             if (trim($message)==='') return ['success'=>false,'message'=>'PPPoE credentials are excluded from SMS. Enter account or payment information instead.'];
         }
 

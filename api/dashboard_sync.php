@@ -21,7 +21,9 @@ try {
     $stmt = $pdo->prepare('SELECT COUNT(*) AS pending, COALESCE(SUM(attempts>0),0) AS waiting FROM dashboard_sync_jobs WHERE tenant_id=? AND applied_at IS NULL');
     $stmt->execute([$tenant]);
     $status = $stmt->fetch(PDO::FETCH_ASSOC);
-    echo json_encode(['success' => true, 'pending' => (int)$status['pending'], 'waiting' => (int)$status['waiting']]);
+    $errors = $pdo->prepare('SELECT j.kind,j.entity_id,j.attempts,j.last_error,r.name AS router_name FROM dashboard_sync_jobs j LEFT JOIN mikrotik_routers r ON r.id=j.router_id AND r.tenant_id=j.tenant_id WHERE j.tenant_id=? AND j.applied_at IS NULL AND j.last_error IS NOT NULL ORDER BY j.next_retry_at,j.id LIMIT 3');
+    $errors->execute([$tenant]);
+    echo json_encode(['success' => true, 'pending' => (int)$status['pending'], 'waiting' => (int)$status['waiting'], 'errors'=>$errors->fetchAll(PDO::FETCH_ASSOC)]);
 } catch (Throwable $e) {
     error_log('Dashboard sync status: ' . $e->getMessage());
     http_response_code(503); echo json_encode(['success' => false, 'message' => 'Update status is temporarily unavailable. Saved changes will retry automatically.']);

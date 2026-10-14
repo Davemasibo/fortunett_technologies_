@@ -44,6 +44,12 @@ window.DashboardSync = (() => {
                 message(result.waiting
                     ? `Saved. ${result.pending} update(s) pending; some could not be applied. Retrying automatically.`
                     : `Saved. Applying ${result.pending} update(s) to routers…`);
+                if (result.errors?.length) {
+                    const detail = document.createElement('div');
+                    detail.style.cssText = 'margin-top:8px;font-size:12px;white-space:pre-line';
+                    detail.textContent = result.errors.map(error => `${error.router_name || 'Unassigned router'}: ${error.kind} #${error.entity_id} — ${error.last_error}`).join('\n');
+                    panel.appendChild(detail);
+                }
                 delay = result.waiting === result.pending ? 10000 : 300;
             } else if (hadPending) {
                 hadPending = false;

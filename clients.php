@@ -1160,7 +1160,7 @@ include 'includes/sidebar.php';
 <script src="sms-retry.js"></script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="dashboard-sync.js" data-csrf="<?= htmlspecialchars($_SESSION['dashboard_sync_csrf'], ENT_QUOTES) ?>"></script>
+<script src="dashboard-sync.js?v=20261014" data-csrf="<?= htmlspecialchars($_SESSION['dashboard_sync_csrf'], ENT_QUOTES) ?>"></script>
 <script>
 let currentCustomer = null;
 let clientPaymentChart = null;
@@ -1673,6 +1673,9 @@ function handleFormSubmit(e) {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
+            if (btn) btn.disabled = false;
+            closeFormModal();
+            if (data.welcome_sms_status && data.welcome_sms_status !== 'sent') showToast('Customer saved. Welcome SMS: ' + (data.welcome_sms_message || data.welcome_sms_status), 'warning');
             const isNew = !formData.get('id');
             if (isNew && (data.auto_gen_username || data.auto_gen_password)) {
                 // Show credentials modal so admin can copy before page reloads
@@ -1739,6 +1742,12 @@ function showCredentialsResult(data) {
             </div>
             <button onclick="document.getElementById('credModal').remove();location.reload();" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--primary-dark,#1e3a5f) 0%,var(--primary-color,#3B6EA5) 100%);color:white;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">Done</button>
         </div>`;
+    if (data.welcome_sms_status) {
+        const notice = document.createElement('p');
+        notice.style.cssText = 'font-size:12px;color:#a5f3fc;line-height:1.5';
+        notice.textContent = 'Welcome SMS: ' + (data.welcome_sms_message || data.welcome_sms_status);
+        el.firstElementChild.insertBefore(notice, el.firstElementChild.lastElementChild);
+    }
     document.body.appendChild(el);
 }
 
@@ -2376,6 +2385,9 @@ setInterval(refreshLastSeenCells, 60000);
 // Auto-open add customer modal when navigated from quick actions
 if (new URLSearchParams(window.location.search).get('open_modal') === '1') {
     openAddModal();
+    const customerUrl = new URL(window.location.href);
+    customerUrl.searchParams.delete('open_modal');
+    history.replaceState(null, '', customerUrl.pathname + customerUrl.search + customerUrl.hash);
 }
 
 /* ── Bulk selection ────────────────────────────────────────── */

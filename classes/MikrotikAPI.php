@@ -34,6 +34,45 @@ class MikrotikAPI {
         return false;
     }
 
+    /** Older RouterOS lacks /file/read; use its existing FTP service for full readback. */
+    public function readFileViaFtp(string $path): string {
+        return $this->transferFileViaFtp($path);
+    }
+
+    public function writeFileViaFtp(string $path, string $contents): void {
+        $this->transferFileViaFtp($path,$contents);
+    }
+
+    private function transferFileViaFtp(string $path, ?string $upload = null): string {
+        if (!function_exists('ftp_connect')) throw new RuntimeException('PHP FTP support is required to verify large files on this RouterOS version.');
+        $service = null;
+        foreach ($this->comm('/ip/service/print',['?name=ftp']) as $row) if (($row['name'] ?? '') === 'ftp') $service=$row;
+        if (!$service || ($service['disabled'] ?? 'false') === 'true') throw new RuntimeException('This RouterOS lacks large-file API readback and its FTP service is disabled. Update RouterOS or provide FTP access over the router VPN.');
+        $ftp = @ftp_connect($this->host,(int)($service['port'] ?? 21),8);
+        if (!$ftp) throw new RuntimeException('Router FTP readback is unreachable.');
+        $stream = null;
+        try {
+            if (!@ftp_login($ftp,$this->username,$this->password)) throw new RuntimeException('Router FTP readback login failed.');
+            @ftp_pasv($ftp,true);
+            $stream = fopen('php://temp','w+b');
+            if (!$stream) throw new RuntimeException('Portal transfer buffer is unavailable.');
+            if ($upload !== null) {
+                fwrite($stream,$upload);
+                rewind($stream);
+                if (!@ftp_fput($ftp,$path,$stream,FTP_BINARY)) throw new RuntimeException('Router FTP could not upload the portal file.');
+                return '';
+            }
+            if (!@ftp_fget($ftp,$stream,$path,FTP_BINARY)) throw new RuntimeException('Router FTP could not read the portal file.');
+            rewind($stream);
+            $contents = stream_get_contents($stream);
+            if ($contents === false) throw new RuntimeException('Router FTP readback failed.');
+            return $contents;
+        } finally {
+            if (is_resource($stream)) fclose($stream);
+            ftp_close($ftp);
+        }
+    }
+
     public function connect() {
         if ($this->connected) {
             return true;

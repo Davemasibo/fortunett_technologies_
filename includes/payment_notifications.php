@@ -55,11 +55,12 @@ function queuePaymentNotification(PDO $pdo, int $tenant, int $client, int $payme
 }
 
 /** Durable sending state prevents another worker replaying an uncertain send. */
-function deliverPaymentNotification(PDO $pdo, int $id, ?callable $sender = null): string {
-    $st = $pdo->prepare("UPDATE payment_notifications SET status='sending',attempts=attempts+1 WHERE id=? AND status IN ('pending','failed') AND next_retry_at<=NOW()");
+function deliverPaymentNotification(PDO $pdo, int $id, ?callable $sender = null, bool $welcome = false): string {
+    $table = $welcome ? 'customer_welcome_notifications' : 'payment_notifications';
+    $st = $pdo->prepare("UPDATE $table SET status='sending',attempts=attempts+1 WHERE id=? AND status IN ('pending','failed') AND next_retry_at<=NOW()");
     $st->execute([$id]);
     if (!$st->rowCount()) return 'skipped';
-    $st = $pdo->prepare('SELECT * FROM payment_notifications WHERE id=?');
+    $st = $pdo->prepare("SELECT * FROM $table WHERE id=?");
     $st->execute([$id]);
     $row = $st->fetch(PDO::FETCH_ASSOC);
     $configHash = null;
@@ -70,7 +71,7 @@ function deliverPaymentNotification(PDO $pdo, int $id, ?callable $sender = null)
             $helper = new SMSHelper($pdo, (int)$row['tenant_id']);
             $configHash = paymentNotificationConfigHash($pdo, (int)$row['tenant_id']);
             $missingConfig = !$helper->hasConfig();
-            $sender = fn($phone,$message,$client) => $helper->send($phone,$message,$client);
+            $sender = $welcome ? fn($phone,$message,$client) => $helper->sendWelcomeCredentials($phone,$message,$client) : fn($phone,$message,$client) => $helper->send($phone,$message,$client);
         }
         $res = $sender($row['phone'],$row['message'],(int)$row['client_id']);
         $state = !empty($res['success']) ? 'sent' : (!empty($res['uncertain']) ? 'unknown' : 'failed');
@@ -81,7 +82,7 @@ function deliverPaymentNotification(PDO $pdo, int $id, ?callable $sender = null)
         $state = 'unknown';
         $res = ['message'=>'SMS outcome uncertain: ' . $e->getMessage()];
     }
-    $pdo->prepare('UPDATE payment_notifications SET status=?,last_error=?,config_hash=?,next_retry_at=NOW()+INTERVAL 1 MINUTE WHERE id=?')
+    $pdo->prepare("UPDATE $table SET status=?,last_error=?,config_hash=?,next_retry_at=NOW()+INTERVAL 1 MINUTE WHERE id=?")
         ->execute([$state,$res['message'] ?? null,$configHash,$id]);
     return $state;
 }

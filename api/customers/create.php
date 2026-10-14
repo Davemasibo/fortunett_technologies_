@@ -11,6 +11,7 @@ require_once '../../includes/db_master.php';
 require_once '../../includes/account_number_generator.php';
 require_once '../../includes/auto_provision.php';
 require_once __DIR__ . '/../../includes/validity.php';
+require_once __DIR__ . '/../../includes/customer_welcome.php';
 
 // Auth check first
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -44,6 +45,7 @@ require_once __DIR__ . '/../../includes/customer_router.php';
 try {
     $router_id = customerCreationRouter($pdo, (int)$tenant_id, $_POST['router_id'] ?? '');
     ensureColumn($pdo, 'clients', 'assigned_router_id', 'INT NULL DEFAULT NULL');
+    customerWelcomeSchema($pdo);
 } catch (Throwable $e) {
     ob_clean();
     http_response_code(422);
@@ -52,6 +54,10 @@ try {
 }
 
 $routerOwnership = $_POST['router_ownership'] ?? 'unknown';
+if ($phone === '') {
+    ob_clean(); http_response_code(422);
+    echo json_encode(['success'=>false,'message'=>'Enter a phone number so the customer can receive their welcome SMS.']); exit;
+}
 if (!in_array($routerOwnership, ['unknown','isp','customer'], true)) {
     ob_clean(); echo json_encode(['success'=>false,'message'=>'Invalid router ownership']); exit;
 }
@@ -172,6 +178,9 @@ try {
         $package_id, $package['name'], $expiry_date, $initialStatus, $connection_type, $routerOwnership, $router_id ?: null
     ]);
     $client_id = $pdo->lastInsertId();
+    // Saved atomically with the customer, so interrupted requests retain the notice.
+    $pdo->prepare("INSERT INTO customer_welcome_notifications (tenant_id,client_id,phone,message,status) VALUES (?,?,?,'','preparing')")
+        ->execute([$tenant_id,$client_id,$phone]);
 
     // 4. Commit the main transaction BEFORE account number generation
     //    (AccountNumberGenerator uses LOCK TABLES which auto-commits InnoDB txn)
@@ -188,6 +197,13 @@ try {
     }
 
     // 6. Sync to MikroTik via autoProvisionClient (non-fatal — client saved regardless)
+    $welcomeStatus = 'failed';
+    $welcomeMessage = 'Welcome SMS could not be queued. Check customer SMS history.';
+    try {
+        $welcomeId = queueCustomerWelcome($pdo,(int)$tenant_id,(int)$client_id);
+        $welcomeStatus = deliverPaymentNotification($pdo,$welcomeId,null,true);
+        $welcomeMessage = $welcomeStatus === 'sent' ? 'Accepted by the SMS provider.' : 'Queued for retry, or awaiting provider/configuration confirmation. Check SMS history.';
+    } catch (Throwable $e) { error_log('Customer welcome SMS: '.$e->getMessage()); }
     $provResult = $initialStatus === 'pending' ? ['success'=>false,'message'=>'Awaiting payment'] : autoProvisionClient($pdo, $client_id, $tenant_id,$router_id,false);
     $mikrotikSynced = $provResult['success'];
     $mikrotikError  = $provResult['success'] ? null : ($provResult['message'] ?? 'Provisioning failed');
@@ -203,6 +219,8 @@ try {
     ob_clean();
     echo json_encode([
         'success'           => true,
+        'welcome_sms_status'=> $welcomeStatus,
+        'welcome_sms_message'=> $welcomeMessage,
         'payment_required'  => $initialStatus === 'pending',
         'message'           => $initialStatus === 'pending' ? 'Customer saved. Internet activates after payment.' : 'Customer saved.',
         'client_id'         => $client_id,

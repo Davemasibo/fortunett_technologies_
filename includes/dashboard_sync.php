@@ -11,6 +11,7 @@ function dashboardSyncSchema(PDO $pdo): void {
         attempts INT NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         INDEX due_jobs (applied_at, next_retry_at), INDEX tenant_jobs (tenant_id, applied_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    ensureColumn($pdo, 'dashboard_sync_jobs', 'last_error', 'TEXT NULL');
 }
 
 function dashboardQueueCustomer(PDO $pdo, int $tenant, int $id, array $old = []): void {
@@ -58,6 +59,13 @@ function dashboardDisableUser($api, string $service, string $username): void {
     }
 }
 
+function dashboardCustomerUsername(array $client, array $job = []): string {
+    foreach (['mikrotik_username','username'] as $key) {
+        if (trim((string)($client[$key] ?? '')) !== '') return trim((string)$client[$key]);
+    }
+    return trim((string)($job['old_username'] ?? ''));
+}
+
 function dashboardApplyJob(PDO $pdo, array $job): void {
     $tenant = (int)$job['tenant_id'];
     // Deny RADIUS reconnects even while the router itself is unreachable.
@@ -65,8 +73,14 @@ function dashboardApplyJob(PDO $pdo, array $job): void {
         $state = $pdo->prepare('SELECT * FROM clients WHERE tenant_id=? AND id=?');
         $state->execute([$tenant, $job['entity_id']]);
         $current = $state->fetch(PDO::FETCH_ASSOC);
+        if (!$current) return; // Deleted customers have no remaining change to apply.
+        if (!(int)$job['router_id']) {
+            require_once __DIR__ . '/hotspot_device.php';
+            $job['router_id'] = resolveClientRouter($pdo,$current,$tenant);
+        }
         if ($current && ($current['status'] !== 'active' || empty($current['expiry_date']) || strtotime($current['expiry_date']) <= time())) {
-            if (radius_is_available($pdo) && !radius_disable_client($pdo, $current['mikrotik_username'])) throw new RuntimeException('RADIUS suspension failed');
+            $radiusUsername = dashboardCustomerUsername($current,$job);
+            if ($radiusUsername !== '' && radius_is_available($pdo) && !radius_disable_client($pdo, $radiusUsername)) throw new RuntimeException('RADIUS suspension failed');
         }
     }
     $stmt = $pdo->prepare('SELECT * FROM mikrotik_routers WHERE tenant_id=? AND (?=0 OR id=?) ORDER BY id LIMIT 1');
@@ -97,7 +111,7 @@ function dashboardApplyJob(PDO $pdo, array $job): void {
         $stmt->execute([$tenant, $job['entity_id']]);
         $client = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$client) return;
-        $username = $client['mikrotik_username'];
+        $username = dashboardCustomerUsername($client,$job);
         $service = $client['connection_type'];
         if (!in_array($service, ['hotspot', 'pppoe'], true)) throw new RuntimeException('Unsupported service');
         if ($job['old_username'] && ($job['old_username'] !== $username || $job['old_service'] !== $service)) {
@@ -109,7 +123,7 @@ function dashboardApplyJob(PDO $pdo, array $job): void {
             }
         }
         if ($client['status'] !== 'active' || empty($client['expiry_date']) || strtotime($client['expiry_date']) <= time()) {
-            radius_disable_client($pdo, $username);
+            if ($username !== '') radius_disable_client($pdo, $username);
             dashboardDisableUser($api, $service, $username);
             $serviceStatus = !empty($client['expiry_date']) && strtotime($client['expiry_date']) > time() ? 'suspended' : 'expired';
             $pdo->prepare('UPDATE router_services SET status=? WHERE tenant_id=? AND client_id=? AND router_id=?')->execute([$serviceStatus, $tenant, $client['id'], $router['id']]);
@@ -123,7 +137,7 @@ function dashboardApplyJob(PDO $pdo, array $job): void {
 
 // Both browser polling and the minute cron drain the same durable queue.
 function dashboardProcessSync(PDO $pdo, ?int $tenant = null, int $limit = 1): void {
-    $stmt = $pdo->prepare('SELECT * FROM dashboard_sync_jobs WHERE applied_at IS NULL AND next_retry_at<=NOW()' . ($tenant === null ? '' : ' AND tenant_id=?') . ' ORDER BY id LIMIT ' . max(1, min(30, $limit)));
+    $stmt = $pdo->prepare('SELECT * FROM dashboard_sync_jobs WHERE applied_at IS NULL AND next_retry_at<=NOW()' . ($tenant === null ? '' : ' AND tenant_id=?') . ' ORDER BY next_retry_at,id LIMIT ' . max(1, min(30, $limit)));
     $stmt->execute($tenant === null ? [] : [$tenant]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $job) {
         $lockName = $job['kind'] === 'customer' ? 'payment-client-' . $job['tenant_id'] . '-' . $job['entity_id'] : 'dashboard-package-' . $job['tenant_id'] . '-' . $job['entity_id'];
@@ -133,11 +147,23 @@ function dashboardProcessSync(PDO $pdo, ?int $tenant = null, int $limit = 1): vo
             $check = $pdo->prepare('SELECT id FROM dashboard_sync_jobs WHERE id=? AND applied_at IS NULL AND next_retry_at<=NOW()');
             $check->execute([$job['id']]);
             if (!$check->fetchColumn()) continue;
+            $snapshotId = (int)$job['id'];
+            if (in_array($job['kind'],['portal','package'],true)) {
+                // These jobs apply the current catalog/profile, so repeated saves
+                // on the same router can share one verified application.
+                $snapshot = $pdo->prepare('SELECT MAX(id) FROM dashboard_sync_jobs WHERE tenant_id=? AND kind=? AND entity_id=? AND router_id=? AND applied_at IS NULL');
+                $snapshot->execute([$job['tenant_id'],$job['kind'],$job['entity_id'],$job['router_id']]);
+                $snapshotId = (int)$snapshot->fetchColumn() ?: $snapshotId;
+            }
             dashboardApplyJob($pdo, $job);
-            $pdo->prepare('UPDATE dashboard_sync_jobs SET applied_at=NOW() WHERE id=?')->execute([$job['id']]);
+            $pdo->prepare('UPDATE dashboard_sync_jobs SET applied_at=NOW(),last_error=NULL WHERE id=?')->execute([$job['id']]);
+            if (in_array($job['kind'],['portal','package'],true)) {
+                $pdo->prepare('UPDATE dashboard_sync_jobs SET applied_at=NOW(),last_error=NULL WHERE tenant_id=? AND kind=? AND entity_id=? AND router_id=? AND id<=? AND applied_at IS NULL')
+                    ->execute([$job['tenant_id'],$job['kind'],$job['entity_id'],$job['router_id'],$snapshotId]);
+            }
         } catch (Throwable $e) {
             error_log('Dashboard sync ' . $job['id'] . ': ' . $e->getMessage());
-            $pdo->prepare('UPDATE dashboard_sync_jobs SET attempts=attempts+1,next_retry_at=DATE_ADD(NOW(), INTERVAL 30 SECOND) WHERE id=?')->execute([$job['id']]);
+            $pdo->prepare('UPDATE dashboard_sync_jobs SET attempts=attempts+1,last_error=?,next_retry_at=DATE_ADD(NOW(), INTERVAL 30 SECOND) WHERE id=?')->execute([substr($e->getMessage(),0,2000),$job['id']]);
         } finally { $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]); }
     }
 }

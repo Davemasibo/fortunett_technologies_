@@ -695,7 +695,7 @@ include 'includes/sidebar.php';
 </div>
 </div>
 
-<script src="dashboard-sync.js" data-csrf="<?= htmlspecialchars($_SESSION['dashboard_sync_csrf'], ENT_QUOTES) ?>"></script>
+<script src="dashboard-sync.js?v=20261014" data-csrf="<?= htmlspecialchars($_SESSION['dashboard_sync_csrf'], ENT_QUOTES) ?>"></script>
 <script>
 /* ── Connection type pills ── */
 function setConnType(type) {

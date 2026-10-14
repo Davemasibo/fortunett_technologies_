@@ -281,6 +281,42 @@ function ensureHotspotServletFiles($api, array $directories): int
     return $copied;
 }
 
+/** Match reported profile paths to the file listing, including RouterOS flash aliases. */
+function hotspotCatalogDirectory(string $directory, array $fileNames): string {
+    $directory = trim($directory,'/');
+    if (in_array($directory.'/login.html',$fileNames,true)) return $directory;
+    $candidate = $directory;
+    while (str_starts_with($candidate,'flash/flash/')) {
+        $candidate = substr($candidate,6);
+        if (in_array($candidate.'/login.html',$fileNames,true)) return $candidate;
+    }
+    if (!str_starts_with($candidate,'flash/') && in_array('flash/'.$candidate.'/login.html',$fileNames,true)) return 'flash/'.$candidate;
+    throw new RuntimeException('Hotspot login file missing in '.$directory.'; complete service setup first');
+}
+
+/** Verify full bytes, never equate a successful fetch or file size with success. */
+function readHotspotCatalogFile($api,string $name,string $id,int $expectedSize): string {
+    try {
+        if ($expectedSize <= 60000) {
+            foreach (routerCheckedCommand($api,'/file/get',['=number='.$id,'=value-name=contents']) as $row) {
+                if (isset($row['ret']) && strlen($row['ret']) === $expectedSize) return $row['ret'];
+            }
+        }
+        $contents = '';
+        while (strlen($contents) < $expectedSize) {
+            $chunk='';
+            foreach (routerCheckedCommand($api,'/file/read',['=file='.$name,'=offset='.strlen($contents),'=chunk-size=32768']) as $row) if (isset($row['data'])) $chunk.=$row['data'];
+            if ($chunk === '') throw new RuntimeException('Portal file could not be verified');
+            $contents.=$chunk;
+        }
+        return $contents;
+    } catch (Throwable $e) {
+        if (!preg_match('/no such command|bad command name|could not be verified/i',$e->getMessage())) throw $e;
+        if (!method_exists($api,'readFileViaFtp')) throw new RuntimeException('RouterOS file readback is unsupported; full portal verification requires FTP or newer RouterOS.',0,$e);
+        return $api->readFileViaFtp($name);
+    }
+}
+
 /** Push the current catalog without changing Hotspot, DHCP or customer sessions. */
 function syncHotspotCatalogPage($api, string $html, string $pageUrl): int
 {
@@ -290,10 +326,13 @@ function syncHotspotCatalogPage($api, string $html, string $pageUrl): int
     if (!$profiles) return 0; // A PPPoE-only router has no customer Hotspot page.
     $dirs=[];
     foreach (routerCheckedCommand($api, '/ip/hotspot/profile/print') as $profile) {
-        if (in_array($profile['name'] ?? '',$profiles,true) && !empty($profile['html-directory'])) $dirs[]=$profile['html-directory'];
+        $directory = trim(($profile['html-directory-override'] ?? '') ?: ($profile['html-directory'] ?? ''));
+        if (in_array($profile['name'] ?? '',$profiles,true) && $directory !== '') $dirs[]=$directory;
     }
     if (!$dirs) throw new RuntimeException('Hotspot HTML directory could not be determined');
     $files=routerCheckedCommand($api, '/file/print');
+    $fileNames = array_column($files,'name');
+    $dirs = array_values(array_unique(array_map(fn($dir)=>hotspotCatalogDirectory($dir,$fileNames),$dirs)));
     $paths=[];
     foreach ($files as $file) {
         $name=$file['name'] ?? '';
@@ -302,23 +341,21 @@ function syncHotspotCatalogPage($api, string $html, string $pageUrl): int
     }
     foreach ($dirs as $dir) if (!isset($paths[rtrim($dir,'/').'/login.html'])) throw new RuntimeException('Hotspot login file missing; complete service setup first');
     foreach ($paths as $name=>$id) {
-        if (strlen($html)<=60000) {
-            routerCheckedCommand($api,'/file/set',['=.id='.$id,'=contents='.$html]);
-        } else {
-            routerCheckedCommand($api,'/tool/fetch',['=url='.$pageUrl,'=dst-path='.$name,'=check-certificate=no']);
-        }
-        $contents='';
-        if (strlen($html)<=60000) {
-            foreach (routerCheckedCommand($api,'/file/get',['=number='.$id,'=value-name=contents']) as $row) if (isset($row['ret'])) $contents=$row['ret'];
-        } else {
-            for ($offset=0;$offset<strlen($html);$offset+=32768) {
-                $chunk='';
-                foreach (routerCheckedCommand($api,'/file/read',['=file='.$name,'=offset='.$offset,'=chunk-size=32768']) as $row) if (isset($row['data'])) $chunk.=$row['data'];
-                if ($chunk==='') throw new RuntimeException('Portal file could not be verified');
-                $contents.=$chunk;
+        try {
+            if (strlen($html)<=60000) {
+                routerCheckedCommand($api,'/file/set',['=.id='.$id,'=contents='.$html]);
+            } else {
+                routerCheckedCommand($api,'/tool/fetch',['=url='.$pageUrl,'=dst-path='.$name,'=check-certificate=no']);
             }
+            $contents=readHotspotCatalogFile($api,$name,$id,strlen($html));
+            if (!hash_equals(hash('sha256',$html),hash('sha256',$contents))) throw new RuntimeException('Portal catalog verification failed: '.$name);
+        } catch (Throwable $e) {
+            if (!method_exists($api,'writeFileViaFtp') || !method_exists($api,'readFileViaFtp')) throw $e;
+            // Covers old file-size limits and routers unable to fetch from the server.
+            $api->writeFileViaFtp($name,$html);
+            $contents=$api->readFileViaFtp($name);
+            if (!hash_equals(hash('sha256',$html),hash('sha256',$contents))) throw new RuntimeException('Portal FTP verification failed: '.$name);
         }
-        if (!hash_equals(hash('sha256',$html),hash('sha256',$contents))) throw new RuntimeException('Portal catalog verification failed: '.$name);
     }
     ensureHotspotServletFiles($api,$dirs);
     return count($paths);

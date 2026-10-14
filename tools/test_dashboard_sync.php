@@ -64,6 +64,11 @@ dashboardQueueCustomer($db, 2, 4, ['mikrotik_username'=>'old-name','connection_t
 checkSync(count($db->writes) === 2 && $db->writes[0][1] === [2,4,7,'old-name','hotspot'] && $db->writes[1][1][2] === 8, 'Customer edits queue every assigned router and preserve old identity for removal');
 $db = new DashboardQueuePDO();
 dashboardProcessSync($db, 2);
+checkSync(dashboardCustomerUsername(['mikrotik_username'=>null,'username'=>'legacy-user']) === 'legacy-user', 'Legacy customer without router username uses saved portal identity');
+checkSync(dashboardCustomerUsername(['mikrotik_username'=>null],['old_username'=>'old-user']) === 'old-user', 'Suspension retains old identity when current username is missing');
+checkSync(dashboardCustomerUsername(['mikrotik_username'=>null]) === '', 'Missing legacy identity returns a string and never reaches RADIUS as null');
 checkSync(str_contains($db->reads[0][0], 'AND tenant_id=?') && $db->reads[0][1] === [2], 'Dashboard worker only selects authenticated tenant jobs');
+checkSync(str_contains($db->reads[0][0], 'ORDER BY next_retry_at,id'), 'Old failed jobs yield to work whose retry is due earlier');
 checkSync(count($db->writes) === 1 && str_contains($db->writes[0][0], 'next_retry_at=') && !str_contains($db->writes[0][0], 'applied_at='), 'Unavailable router leaves the saved update pending for retry');
+checkSync(str_contains($db->writes[0][0], 'last_error=?') && $db->writes[0][1][0] === 'Router not configured', 'Failed jobs retain the exact cause for tenant diagnostics');
 echo "All dashboard sync checks passed.\n";

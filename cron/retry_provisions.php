@@ -21,6 +21,8 @@ require_once __DIR__ . '/../includes/cron_heartbeat.php';
 cron_heartbeat($pdo, 'retry_provisions');
 require_once __DIR__ . '/../includes/payment_notifications.php';
 retryPaymentNotifications($pdo);
+require_once __DIR__ . '/../includes/customer_welcome.php';
+retryCustomerWelcomes($pdo);
 require_once __DIR__ . '/../includes/dashboard_sync.php';
 dashboardSyncSchema($pdo);
 dashboardProcessSync($pdo, null, 30);
@@ -88,7 +90,7 @@ foreach ($due as $row) {
     $attempt  = (int)$row['attempts'];
 
     // Skip if client is inactive (payment reversed, package changed, etc.)
-    if ($row['client_status'] === 'inactive') {
+    if ($row['client_status'] === null || $row['client_status'] === 'inactive') {
         $pdo->prepare("DELETE FROM pending_provisions WHERE id = ?")->execute([$row['id']]);
         $log("  DROP #{$row['id']} client {$clientId} — client is inactive");
         continue;
