@@ -16,7 +16,7 @@
     window.addEventListener('resize',updateMessageControls);
     document.fonts?.ready.then(updateMessageControls);
     updateMessageControls();
-    const dialogs = ['configModal','sendModal','templateModal'].map(id => document.getElementById(id)).filter(Boolean);
+    const dialogs = ['configModal','sendModal','templateModal','bulkSmsModal'].map(id => document.getElementById(id)).filter(Boolean);
     let opener = null;
     let previousOverflow = '';
     const visible = dialog => dialog.style.display !== 'none';

@@ -1025,6 +1025,16 @@ include 'includes/sidebar.php';
             </div>
 
             <!-- Section: Service Details -->
+            <div id="formRouterPicker" style="margin-bottom:14px;">
+                <label for="formRouterId" style="display:block;margin-bottom:5px;">MikroTik router</label>
+                <select name="router_id" id="formRouterId" <?php echo count($provisionRouterChoices) > 1 ? 'required' : ''; ?> style="width:100%;padding:9px;border-radius:8px;">
+                    <option value=""><?php echo empty($provisionRouterChoices) ? 'No router configured' : 'Select MikroTik'; ?></option>
+                    <?php foreach ($provisionRouterChoices as $router): ?>
+                    <option value="<?php echo (int)$router['id']; ?>" <?php echo count($provisionRouterChoices) === 1 ? 'selected' : ''; ?>><?php echo htmlspecialchars($router['name'], ENT_QUOTES); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <p style="font-size:12px;opacity:.65;">Choose the MikroTik that will serve this customer.</p>
+            </div>
             <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.07);margin-top:6px;">Service Details</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
                 <div>
@@ -1593,6 +1603,8 @@ function editUser() {
 function openAddModal() {
     document.getElementById('formModalTitle').textContent = 'Add New Customer';
     document.getElementById('customerForm').reset();
+    document.getElementById('formRouterPicker').hidden = false;
+    document.getElementById('formRouterId').disabled = false;
     document.getElementById('formId').value = '';
     filterPackagesByType('pppoe');
     document.getElementById('customerFormModal').style.display = 'flex';
@@ -1601,6 +1613,8 @@ function openAddModal() {
 function openEditModal(customer) {
     document.getElementById('formModalTitle').textContent = 'Edit Customer';
     document.getElementById('customerForm').reset();
+    document.getElementById('formRouterPicker').hidden = true;
+    document.getElementById('formRouterId').disabled = true;
     
     document.getElementById('formId').value = customer.id;
     document.getElementById('formName').value = customer.full_name || customer.name;

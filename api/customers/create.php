@@ -40,6 +40,16 @@ $mikrotik_password = trim($_POST['mikrotik_password'] ?? '');
 $package_id        = (int)($_POST['package_id']       ?? 0);
 $address           = trim($_POST['address']           ?? '');
 $connection_type   = $_POST['connection_type']        ?? 'pppoe';
+require_once __DIR__ . '/../../includes/customer_router.php';
+try {
+    $router_id = customerCreationRouter($pdo, (int)$tenant_id, $_POST['router_id'] ?? '');
+    ensureColumn($pdo, 'clients', 'assigned_router_id', 'INT NULL DEFAULT NULL');
+} catch (Throwable $e) {
+    ob_clean();
+    http_response_code(422);
+    echo json_encode(['success'=>false, 'message'=>$e instanceof InvalidArgumentException ? $e->getMessage() : 'Unable to save router assignment. Please try again.']);
+    exit;
+}
 
 $routerOwnership = $_POST['router_ownership'] ?? 'unknown';
 if (!in_array($routerOwnership, ['unknown','isp','customer'], true)) {
@@ -154,12 +164,12 @@ try {
     $stmt = $pdo->prepare("INSERT INTO clients
         (tenant_id, full_name, name, email, phone, address, username, auth_password,
          mikrotik_username, mikrotik_password, package_id, subscription_plan,
-         expiry_date, status, connection_type, router_ownership)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+         expiry_date, status, connection_type, router_ownership, assigned_router_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     $stmt->execute([
         $tenant_id, $name, $name, $email, $phone, $address,
         $username, $hashed_password, $mikrotik_username, $mikrotik_password,
-        $package_id, $package['name'], $expiry_date, $initialStatus, $connection_type, $routerOwnership
+        $package_id, $package['name'], $expiry_date, $initialStatus, $connection_type, $routerOwnership, $router_id ?: null
     ]);
     $client_id = $pdo->lastInsertId();
 
@@ -178,7 +188,7 @@ try {
     }
 
     // 6. Sync to MikroTik via autoProvisionClient (non-fatal — client saved regardless)
-    $provResult = $initialStatus === 'pending' ? ['success'=>false,'message'=>'Awaiting payment'] : autoProvisionClient($pdo, $client_id, $tenant_id,0,false);
+    $provResult = $initialStatus === 'pending' ? ['success'=>false,'message'=>'Awaiting payment'] : autoProvisionClient($pdo, $client_id, $tenant_id,$router_id,false);
     $mikrotikSynced = $provResult['success'];
     $mikrotikError  = $provResult['success'] ? null : ($provResult['message'] ?? 'Provisioning failed');
     $noRouter       = (strpos($mikrotikError ?? '', 'No active router') !== false);

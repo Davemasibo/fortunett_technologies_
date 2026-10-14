@@ -150,6 +150,7 @@ include 'includes/sidebar.php';
                 <p style="color: rgba(255,255,255,.45); font-size: 14px;">Manage templates, configuration, and messaging.</p>
             </div>
             <div class="sms-heading-actions">
+                <button onclick="document.getElementById('bulkSmsModal').style.display='flex'" class="btn-settings"><i class="fas fa-users"></i> Bulk SMS</button>
                 <button onclick="openConfigModal()" class="btn-settings">
                     <i class="fas fa-cog"></i> Settings
                 </button>
@@ -324,6 +325,41 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
+<div id="bulkSmsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;">
+    <div class="sms-modal-inner" style="width:560px;max-width:95vw;max-height:90vh;overflow:auto;">
+        <h3>Bulk SMS</h3>
+        <form id="bulkSmsForm">
+            <label for="bulkSmsAudience">Recipients</label>
+            <select id="bulkSmsAudience"><option value="all">All customers with a phone number</option><option value="selected">Selected customers</option></select>
+            <select id="bulkSmsRecipients" multiple size="7" aria-label="Select customers" hidden>
+                <?php foreach ($clients as $c): if (trim($c['phone'] ?? '') === '') continue; ?>
+                <option value="<?php echo (int)$c['id']; ?>" data-phone="<?php echo htmlspecialchars($c['phone'], ENT_QUOTES); ?>"><?php echo htmlspecialchars(($c['full_name'] ?? '') . ' (' . $c['phone'] . ')', ENT_QUOTES); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <p id="bulkSmsCount" style="font-size:13px;"></p>
+            <label for="bulkSmsPreset">Message starter</label>
+            <select id="bulkSmsPreset">
+                <option value="">Write your own message</option>
+                <option value="Hello {name}, we are experiencing a service outage in [area]. Our team is working to restore service. Expected restoration: [time]. Thank you for your patience.">Outage notice</option>
+                <option value="Hello {name}, service has been restored. Thank you for your patience. Contact {support_line} if you still need help.">Service restored</option>
+                <option value="Hello {name}, enjoy our latest offer: [offer details]. Available until [date]. Contact {support_line} to learn more.">Special offer</option>
+                <?php foreach ($all_templates as $tpl): ?>
+                <option value="<?php echo htmlspecialchars($tpl['template_content'], ENT_QUOTES); ?>"><?php echo htmlspecialchars($tpl['template_name'], ENT_QUOTES); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <label for="bulkSmsMessage">Message</label>
+            <textarea id="bulkSmsMessage" rows="5" required maxlength="2000" placeholder="Type your announcement. Use {name} to personalize it."></textarea>
+            <p style="font-size:12px;">Replace starter details in square brackets before sending. Each customer's details are filled automatically. Messages use your existing SMS settings and billing. Keep this page open while sending.</p>
+            <div id="bulkSmsProgress" role="status" aria-live="polite"></div>
+            <ul id="bulkSmsResults" style="max-height:180px;overflow:auto;font-size:12px;"></ul>
+            <div style="text-align:right;">
+                <button type="button" id="bulkSmsClose" class="sms-modal-cancel" onclick="document.getElementById('bulkSmsModal').style.display='none'">Close</button>
+                <button type="submit" id="bulkSmsSend" class="btn-settings" style="display:inline-flex;">Review and send</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Template Modal -->
 <div id="templateModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;">
     <div class="sms-modal-inner" style="width:450px;max-width:95vw;">
@@ -349,6 +385,7 @@ include 'includes/sidebar.php';
 const smsRetryCsrf = <?php echo json_encode($_SESSION['sms_retry_csrf']); ?>;
 </script>
 <script src="sms-retry.js"></script>
+<script src="js/bulk-sms.js?v=1" defer></script>
 <script>
 function openConfigModal() {
     document.getElementById('configModal').style.display = 'flex';

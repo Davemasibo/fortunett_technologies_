@@ -63,6 +63,13 @@ function recoverPaidHotspotSessions(PDO $pdo, $api, int $tenant, int $router, ca
 
 /** Resolve the router actually seeing the device; never guess among several routers. */
 function resolveClientRouter(PDO $pdo, array $client, int $tenant): int {
+    if (!empty($client['assigned_router_id'])) {
+        $assignment = $pdo->prepare('SELECT id FROM mikrotik_routers WHERE id=? AND tenant_id=?');
+        $assignment->execute([(int)$client['assigned_router_id'], $tenant]);
+        $id = (int)$assignment->fetchColumn();
+        if (!$id) throw new RuntimeException('Assigned customer router is no longer available in this account');
+        return $id;
+    }
     $mac = $client['bound_mac_address'] ?? '';
     try {
         $st = $pdo->prepare('SELECT mac_address FROM hotspot_device_context WHERE tenant_id=? AND client_id=? AND updated_at>NOW()-INTERVAL 1 DAY');
