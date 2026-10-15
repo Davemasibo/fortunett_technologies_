@@ -4,6 +4,7 @@ function checkSync(bool $condition, string $label): void {
     if (!$condition) throw new RuntimeException($label);
     echo "PASS: $label\n";
 }
+checkSync(function_exists('ensureColumn'), 'Dashboard sync loads the schema helper required by expiry changes');
 class DashboardRouterDouble {
     public array $calls = [];
     public bool $disabled = false, $active = true, $cookie = true, $reject = false, $ignore = false;

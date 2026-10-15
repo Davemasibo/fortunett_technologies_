@@ -63,7 +63,16 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
         // ── Find the tenant's first active router ─────────────────────────────
         if (!$routerId) {
             require_once __DIR__ . '/hotspot_device.php';
-            $routerId = resolveClientRouter($pdo, $client, $tenantId);
+            $routingClient = $client;
+            if ($reconnectMac !== null && ($client['connection_type'] ?? '') === 'hotspot') {
+                $roaming = $pdo->prepare("SELECT setting_value FROM tenant_settings WHERE tenant_id=? AND setting_key='roaming_radius_enabled' LIMIT 1");
+                $roaming->execute([$tenantId]);
+                if ($roaming->fetchColumn()==='1') {
+                    unset($routingClient['assigned_router_id']);
+                    $routingClient['bound_mac_address'] = $reconnectMac;
+                }
+            }
+            $routerId = resolveClientRouter($pdo, $routingClient, $tenantId);
         }
         $stmt = $pdo->prepare("
             SELECT * FROM mikrotik_routers

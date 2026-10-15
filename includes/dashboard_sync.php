@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/schema_guard.php';
 require_once __DIR__ . '/auto_provision.php';
 
 // Create outside save transactions: MySQL DDL implicitly commits.
