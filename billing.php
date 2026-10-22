@@ -6,9 +6,10 @@ redirectIfNotLoggedIn();
 // Get tenant context
 if (session_status() === PHP_SESSION_NONE) session_start();
 $user_id = $_SESSION['user_id'] ?? 0;
-$stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
+$stmt = $pdo->prepare("SELECT tenant_id,role FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
-$tenant_id = $stmt->fetchColumn();
+$billingUser=$stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+$tenant_id = $billingUser['tenant_id'] ?? 0;
 
 // --- Fetch Tenant & Admin User Details ---
 $tenantStmt = $pdo->prepare("
@@ -217,6 +218,19 @@ try {
     }
 } catch (Exception $e) {}
 
+require_once __DIR__.'/includes/tenant_payouts.php';
+require_once __DIR__.'/includes/payment_routing.php';
+$collectionRoute=tenantCollectionProfile($pdo,(int)$tenant_id);
+$withdrawal=null;$payoutBatches=[];
+$canWithdraw=(int)($tenant['admin_user_id'] ?? 0)===(int)$user_id || ($billingUser['role'] ?? '')==='admin';
+try {
+    $withdrawal=tenantWithdrawalState($pdo,(int)$tenant_id);
+    $st=$pdo->prepare('SELECT id,sent_amount,status,created_at,transaction_id FROM isp_payout_batches WHERE tenant_id=? ORDER BY id DESC LIMIT 10');$st->execute([$tenant_id]);$payoutBatches=$st->fetchAll(PDO::FETCH_ASSOC);
+    $st=$pdo->prepare("SELECT COALESCE(SUM(sent_amount),0) FROM isp_payout_batches WHERE tenant_id=? AND status='paid' AND completed_at>=? AND completed_at<?");$st->execute([$tenant_id,$currentMonthStart,date('Y-m-01',strtotime($currentMonthStart.' +1 month'))]);$monthlyDisbursed+=(float)$st->fetchColumn();
+}catch(Throwable $e){error_log('Billing withdrawal state: '.$e->getMessage());}
+$_SESSION['billing_csrf'] ??= bin2hex(random_bytes(24));
+$payoutRequest=bin2hex(random_bytes(16));$_SESSION['payout_requests'][$payoutRequest]=['amount'=>$withdrawal['send_amount'] ?? 0,'phone'=>$withdrawal['phone'] ?? ''];
+$_SESSION['payout_requests']=array_slice($_SESSION['payout_requests'],-10,null,true);
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
@@ -228,6 +242,23 @@ include 'includes/sidebar.php';
 
 .billing-header h2 { font-size: 28px; font-weight: 700; color: #e2e2e0; margin: 0 0 4px 0; }
 .billing-header p  { font-size: 14px; color: #9a9a95; margin: 0 0 24px 0; }
+.collection-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-bottom:24px; }
+.collection-stat { padding:20px; border:1px solid rgba(255,255,255,.08); border-radius:12px; background:#222221; }
+.collection-stat span { display:block; font-size:13px; color:#9a9a95; margin-bottom:10px; }
+.collection-stat strong { display:block; font-size:24px; color:#e2e2e0; font-variant-numeric:tabular-nums; }
+.billing-details { margin-bottom:24px; }
+.billing-details summary { cursor:pointer; padding:18px 20px; color:#d4d4d2; font-weight:600; }
+.billing-details .history-card-header { border-top:1px solid rgba(255,255,255,.06); }
+.withdrawal-card { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:20px; margin-bottom:24px; background:#222221; border:1px solid rgba(255,255,255,.08); border-radius:12px; }
+.withdrawal-card h3 { margin:0 0 6px; font-size:16px; color:#e2e2e0; }
+.withdrawal-card p { margin:0; color:#9a9a95; font-size:13px; }
+.withdrawal-card button:disabled { opacity:.5; cursor:default; }
+#withdrawalDialog { width:min(420px,calc(100% - 32px)); box-sizing:border-box; color:#e2e2e0; background:#222221; border:1px solid #454545; border-radius:14px; padding:24px; }
+#withdrawalDialog::backdrop { background:rgba(0,0,0,.65); }
+#withdrawalDialog p { color:#aaa; line-height:1.6; }
+.withdrawal-actions { display:flex; gap:12px; margin-top:24px; }
+@media(max-width:640px) { .collection-grid {grid-template-columns:1fr;} .collection-stat {padding:16px;} }
+@media(max-width:640px) { .withdrawal-card {flex-direction:column;align-items:stretch;} }
 
 /* Current bill card */
 .bill-summary-card { background: #222221; border-radius: 12px; border: 1px solid rgba(255,255,255,.06); padding: 24px 28px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; gap: 20px; box-shadow: 8px 8px 20px rgba(0,0,0,.4), -4px -4px 10px rgba(255,255,255,.03); }
@@ -618,16 +649,15 @@ include 'includes/sidebar.php';
 
     <!-- Header -->
     <div class="billing-header">
-        <h2>Billing &amp; Invoices</h2>
-        <p>View your subscription invoices and pay your FortuNett Technologies platform fee.</p>
-        <p>Platform SMS this month: <strong><?= (int)$smsMonthUsage['messages'] ?> accepted messages / <?= (int)$smsMonthUsage['units'] ?> units</strong> ? KES <?= number_format($smsMonthUsage['amount'],2) ?>. Only platform-funded sends are charged. Usage after an invoice is paid carries forward to the next open invoice.</p>
+        <h2>Billing</h2>
+        <p><?php echo date('F Y'); ?></p>
     </div>
 
     <div class="bill-summary-card">
         <div class="bill-icon-wrap"><i class="fas fa-file-invoice-dollar"></i></div>
         <div class="bill-info" style="flex:1;">
             <h3>Current Month – <?php echo date('F Y'); ?></h3>
-            <p>Invoice: <strong><?php echo htmlspecialchars($invoiceNumber); ?></strong> &nbsp;|&nbsp; Due: <strong><?php echo $dueDate; ?></strong></p>
+            <p><?php echo $currentBill && $currentBill['due_date'] ? 'Due '.htmlspecialchars(date('d M Y',strtotime($currentBill['due_date']))) : 'Your platform subscription'; ?></p>
         </div>
         <div class="bill-amount-wrap">
             <div class="bill-amount"><span>KES </span><?php echo number_format($totalDue, 2); ?></div>
@@ -663,32 +693,49 @@ include 'includes/sidebar.php';
         ];
         ?>
         <button class="view-invoice-btn" onclick='openInvoiceModal(<?php echo json_encode($viewBill); ?>)'>
-            <i class="fas fa-eye"></i> View Invoice
+            <i class="fas fa-file-invoice"></i> <?php echo $totalDue>0 ? 'View & pay' : 'View invoice'; ?>
         </button>
     </div>
 
     <!-- Invoice History -->
-    <div class="history-card" style="margin-bottom:24px;">
-        <div class="history-card-header">Collections &amp; disbursements - <?php echo date('F Y'); ?></div>
-        <div style="padding:20px;color:#d4d4d2;line-height:1.8;">
         <?php if ($collectionError): ?>
-            Collections are temporarily unavailable. Please refresh later.
+            <p role="status">Collections are temporarily unavailable. Please refresh later.</p>
         <?php else: ?>
-            <div>Revenue collected this month: <strong>KES <?php echo number_format($collectionMonths[$currentMonthStart]['collected'] ?? 0, 2); ?></strong></div>
-            <div>Collected through the platform this month: <strong>KES <?php echo number_format($collectionMonths[$currentMonthStart]['platform_collected'] ?? 0, 2); ?></strong></div>
-            <div>Awaiting disbursement (including previous months, before fees): <strong>KES <?php echo number_format($outstandingPayout, 2); ?></strong></div>
-            <div>Manually disbursed this month: <strong>KES <?php echo number_format($monthlyDisbursed, 2); ?></strong></div>
-            <p style="color:#9a9a95;">Monthly collections start fresh on the first of each month. Outstanding payouts carry forward until settled. Invoices explicitly settled from collections reduce the awaiting payout balance; separately paid invoices do not.</p>
-        <?php endif; ?>
+        <div class="collection-grid">
+            <div class="collection-stat"><span>Collected this month</span><strong>KES <?php echo number_format($collectionMonths[$currentMonthStart]['collected'] ?? 0, 2); ?></strong></div>
+            <div class="collection-stat"><span>Held by platform · before fees</span><strong>KES <?php echo number_format($outstandingPayout, 2); ?></strong></div>
+            <div class="collection-stat"><span>Paid out this month</span><strong>KES <?php echo number_format($monthlyDisbursed, 2); ?></strong></div>
         </div>
-        <div class="history-card-header">Payout and invoice deduction history (KES)</div>
+        <?php endif; ?>
+    <div class="withdrawal-card">
+        <div>
+            <h3>M-Pesa payout · KES <?= number_format($withdrawal['send_amount'] ?? 0,2) ?></h3>
+            <p><?= htmlspecialchars($withdrawal ? ($withdrawal['reason'] ?: 'Send your available balance to '.$withdrawal['phone'].'.') : 'Payouts are temporarily unavailable.') ?></p>
+        </div>
+        <?php if($canWithdraw): ?><button type="button" class="view-invoice-btn" <?= empty($withdrawal['ready'])?'disabled':'' ?> onclick="document.getElementById('withdrawalDialog').showModal()">Withdraw</button><?php endif; ?>
+    </div>
+    <p id="payoutFeedback" role="status" style="color:#d4d4d2;"></p>
+    <details class="history-card billing-details">
+        <summary>Collection &amp; payout details</summary>
+        <div style="padding:0 20px 16px;color:#9a9a95;font-size:13px;line-height:1.8;">
+            Customer payments: <?= $collectionRoute['stk_own'] ? 'Direct to your M-Pesa account' : 'Collected through the platform' ?> · <a href="settings.php#payments">Payment settings</a><br>
+            Platform collections this month: <strong><?php echo $collectionError ? 'Unavailable' : 'KES '.number_format($collectionMonths[$currentMonthStart]['platform_collected'] ?? 0, 2); ?></strong><br>
+            SMS this month: <?= (int)$smsMonthUsage['units'] ?> units · KES <?= number_format($smsMonthUsage['amount'],2) ?>
+        </div>
+        <div class="history-card-header">Payout history</div>
         <div style="overflow-x:auto;"><table class="billing-history-table"><thead><tr><th>Date</th><th>Transfer reference</th><th>Collections settled</th><th>Cash received</th><th>Fees / invoice deduction</th><th>Notes</th></tr></thead><tbody>
         <?php foreach ($disbursementHistory as $disbursement): ?>
             <tr><td><?php echo htmlspecialchars($disbursement['disbursed_at']); ?></td><td><?php echo htmlspecialchars($disbursement['reference']); ?></td><td><?php echo number_format($disbursement['gross_amount'], 2); ?></td><td><?php echo number_format($disbursement['cash_amount'], 2); ?></td><td><?php echo number_format($disbursement['fees_amount'], 2); ?></td><td><?php echo htmlspecialchars($disbursement['notes']); ?></td></tr>
         <?php endforeach; ?>
-        <?php if (!$disbursementHistory): ?><tr><td colspan="6">No manual disbursements recorded yet.</td></tr><?php endif; ?>
+        <?php if (!$disbursementHistory): ?><tr><td colspan="6">No payouts yet.</td></tr><?php endif; ?>
         </tbody></table></div>
-    </div>
+        <?php if($payoutBatches): ?>
+        <div class="history-card-header">M-Pesa payouts</div>
+        <div style="overflow-x:auto;"><table class="billing-history-table"><thead><tr><th>Date</th><th>Amount</th><th>Status</th><th>Reference</th></tr></thead><tbody>
+        <?php foreach($payoutBatches as $batch): ?><tr><td><?= htmlspecialchars($batch['created_at']) ?></td><td>KES <?= number_format($batch['sent_amount'],2) ?></td><td><?= htmlspecialchars(match($batch['status']){'paid'=>'Paid','failed'=>'Failed','unknown'=>'Awaiting confirmation',default=>'Processing'}) ?></td><td><?= htmlspecialchars($batch['transaction_id'] ?: '#'.$batch['id']) ?></td></tr><?php endforeach; ?>
+        </tbody></table></div>
+        <?php endif; ?>
+    </details>
     <div class="history-card">
         <div class="history-card-header">Invoice History</div>
         <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
@@ -696,12 +743,7 @@ include 'includes/sidebar.php';
                 <thead>
                     <tr>
                         <th>Period</th>
-                        <th class="text-end">Revenue Collected</th>
-                        <th class="text-end">PPPoE Fee</th>
-                        <?php if ($showBaseFees): ?><th class="text-end">Monthly Fee</th><?php endif; ?>
-                        <th class="text-end">SMS</th>
-                        <th class="text-end">Hotspot Commission</th>
-                        <th class="text-end">Total Due</th>
+                        <th class="text-end">Amount</th>
                         <th class="text-center">Status</th>
                         <th class="text-end">Action</th>
                     </tr>
@@ -714,11 +756,6 @@ include 'includes/sidebar.php';
                     ?>
                     <tr>
                         <td style="font-weight:600; color:#e2e2e0;"><?php echo date('F Y', strtotime($bill['billing_period'])); ?></td>
-                        <td class="text-end"><?php echo $collectionError ? 'Unavailable' : 'KES ' . number_format($collectionMonths[$bill['billing_period']]['collected'] ?? 0, 2); ?></td>
-                        <td class="text-end">KES <?php echo number_format($bill['pppoe_subtotal'], 2); ?></td>
-                        <?php if ($showBaseFees): ?><td class="text-end">KES <?php echo number_format($bill['base_fee'], 2); ?></td><?php endif; ?>
-                        <td class="text-end"><?php echo (int)$bill['sms_units']; ?> units / KES <?php echo number_format($bill['sms_amount'], 2); ?></td>
-                        <td class="text-end">KES <?php echo number_format($bill['commission_amount'], 2); ?></td>
                         <td class="text-end" style="font-weight:700; color:#e2e2e0;">KES <?php echo number_format($bTotal, 2); ?></td>
                         <td class="text-center">
                             <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;
@@ -745,6 +782,26 @@ include 'includes/sidebar.php';
 </div>
 
 <!-- ========================= INVOICE MODAL ========================= -->
+<dialog id="withdrawalDialog" aria-labelledby="withdrawalTitle">
+    <h3 id="withdrawalTitle">Confirm M-Pesa payout</h3>
+    <p>Send <strong>KES <?= number_format($withdrawal['send_amount'] ?? 0,2) ?></strong> to <strong><?= htmlspecialchars($withdrawal['phone'] ?? '') ?></strong>?</p>
+    <p>Platform commission is already deducted. Any balance below KES 1 stays available for your next payout.</p>
+    <div class="withdrawal-actions"><button type="button" class="view-invoice-btn" id="confirmWithdrawal">Confirm payout</button><button type="button" onclick="document.getElementById('withdrawalDialog').close()">Cancel</button></div>
+</dialog>
+<script>
+document.getElementById('confirmWithdrawal').addEventListener('click',async function(){
+    const feedback=document.getElementById('payoutFeedback');this.disabled=true;
+    feedback.textContent='Submitting your payout…';
+    const body=new FormData();body.append('csrf',<?= json_encode($_SESSION['billing_csrf']) ?>);body.append('request_id',<?= json_encode($payoutRequest) ?>);body.append('confirmed','1');
+    try {
+        const response=await fetch('api/tenant_payout.php',{method:'POST',body});const data=await response.json();
+        feedback.textContent=data.message || 'Could not read payout status. Refresh billing before trying again.';
+        document.getElementById('withdrawalDialog').close();
+        if(data.success)setTimeout(()=>location.reload(),4000);
+        else this.disabled=false;
+    }catch(error){feedback.textContent='Confirmation is delayed. Refresh billing to check payout history before trying again.';document.getElementById('withdrawalDialog').close();}
+});
+</script>
 <div class="inv-overlay" id="invoiceModal" onclick="closeIfBg(event, 'invoiceModal')">
 <div class="inv-box">
     <!-- Modal Header -->

@@ -49,6 +49,7 @@ function reconcileCustomerStk(PDO $pdo, array $tx, bool $allowQuery = true): str
     $tenant = (int)$tx['tenant_id'];
     $client = (int)$tx['client_id'];
     if (!$client || !$tenant || !$checkout) return 'pending';
+    if(paymentWasReset($pdo,$tenant,$checkout,(string)($tx['mpesa_receipt_number'] ?? '')))return 'completed';
     // Initiating a prompt is not confirmation, even on old rows with result_code=0.
     $confirmed = $tx['status'] === 'completed' && (string)($tx['result_code'] ?? '') === '0';
     $query = ['result_code' => 0, 'raw' => [], 'result_desc' => $tx['result_desc'] ?? 'Confirmed'];

@@ -32,6 +32,7 @@ require_once __DIR__ . '/payment_activation.php';
 require_once __DIR__ . '/payment_terms.php';
 require_once __DIR__ . '/payment_identity.php';
 require_once __DIR__ . '/payment_notifications.php';
+require_once __DIR__ . '/payment_resets.php';
 
 /**
  * @param PDO    $pdo
@@ -71,6 +72,10 @@ function process_payment_success(
         'steps'        => [],
     ];
 
+    if(paymentWasReset($pdo,$tenantId,$receipt,$activationKey ?? '')) {
+        $results['steps']['reset_receipt_ignored']=true;
+        return $results;
+    }
     // Ensure all required tables and columns exist before any pipeline step runs
     _pipeline_ensure_tables($pdo);
 

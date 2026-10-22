@@ -46,21 +46,23 @@ try {
     $conversation = (string)($result['ConversationID'] ?? '');
     $resultCode   = $result['ResultCode'] ?? null;
     $resultDesc   = (string)($result['ResultDesc'] ?? '');
+    if($resultCode===null || !is_numeric($resultCode))$ok('ignored — missing result code');
 
     if ($originatorId === '' && $conversation === '') {
         error_log('b2c_result: callback with no conversation identifiers');
         $ok('ignored — no conversation id');
     }
-
+    $pdo->beginTransaction();
     $bSt = $pdo->prepare("
         SELECT * FROM isp_payout_batches
         WHERE originator_conversation_id = ? OR (conversation_id = ? AND conversation_id <> '')
-        ORDER BY id DESC LIMIT 1
+        ORDER BY id DESC LIMIT 1 FOR UPDATE
     ");
     $bSt->execute([$originatorId, $conversation]);
     $batch = $bSt->fetch(PDO::FETCH_ASSOC);
 
     if (!$batch) {
+        $pdo->rollBack();
         // Never invent a batch from a callback. An unmatched result means money
         // may have moved for something we have no record of — that is a human
         // problem, and the raw log above is the evidence.
@@ -69,6 +71,7 @@ try {
     }
 
     if (in_array($batch['status'], ['paid', 'failed'], true)) {
+        $pdo->commit();
         $ok('already final');
     }
 
@@ -100,6 +103,7 @@ try {
     if ($success) {
         $note = 'Disbursed via M-Pesa B2C' . ($receipt ? ' — ' . $receipt : '');
         $n = settlePayoutBatch($pdo, $batch, $note);
+        $pdo->commit();
         error_log("b2c_result: batch {$batch['id']} PAID, {$n} payment(s) released");
         $ok('settled');
     }
@@ -116,9 +120,11 @@ try {
     }
 
     error_log("b2c_result: batch {$batch['id']} FAILED ($resultCode) $resultDesc — returned to queue");
+    $pdo->commit();
     $ok('failed, requeued');
 
 } catch (Throwable $e) {
+    if($pdo->inTransaction())$pdo->rollBack();
     error_log('b2c_result fatal: ' . $e->getMessage());
     echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'logged']);
 }

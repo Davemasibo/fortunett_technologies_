@@ -38,7 +38,10 @@ function ensurePayoutTables(PDO $pdo): void
 {
     static $done = false;
     if ($done) return;
-    $done = true;
+    require_once __DIR__.'/schema_guard.php';
+    foreach(['initiator_name'=>'VARCHAR(120) DEFAULT NULL','security_credential'=>'TEXT DEFAULT NULL','b2c_shortcode'=>'VARCHAR(20) DEFAULT NULL'] as $column=>$definition) {
+        if(!ensureColumn($pdo,'platform_mpesa_config',$column,$definition))throw new RuntimeException('Platform payout configuration needs a schema update.');
+    }
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS tenant_payout_settings (
@@ -92,6 +95,7 @@ function ensurePayoutTables(PDO $pdo): void
     ] as $sql) {
         try { $pdo->exec($sql); } catch (Throwable $e) { /* already present */ }
     }
+    $done=true;
 }
 
 /** Read a platform_settings key. */
@@ -238,22 +242,31 @@ function settlePayoutBatch(PDO $pdo, array $batch, string $note): int
 
     $in = implode(',', array_fill(0, count($ids), '?'));
 
-    $pdo->prepare("
-        UPDATE isp_payout_queue
-        SET status = 'paid', processed_at = NOW(),
-            notes = CONCAT(COALESCE(notes,''), ' | ', ?)
-        WHERE id IN ($in)
-    ")->execute(array_merge([$note], $ids));
-
-    // Stamp the payments themselves so the ISP's own pages stop showing the
-    // money as awaiting disbursement.
-    $st = $pdo->prepare("
-        UPDATE payments p
-        JOIN isp_payout_queue q ON q.payment_id = p.id
-        SET p.released_at = NOW(), p.release_note = ?
-        WHERE q.id IN ($in) AND p.released_at IS NULL
-    ");
-    $st->execute(array_merge([substr($note, 0, 255)], $ids));
-
-    return $st->rowCount();
+    $st=$pdo->prepare("SELECT * FROM isp_payout_queue WHERE tenant_id=? AND batch_id=? AND id IN ($in) AND status='processing' ORDER BY id FOR UPDATE");
+    $st->execute(array_merge([(int)$batch['tenant_id'],(int)$batch['id']],$ids));$rows=$st->fetchAll(PDO::FETCH_ASSOC);
+    if(!$rows)return 0;
+    $cash=(int)round((float)$batch['sent_amount']*100);$count=0;
+    foreach($rows as $row) {
+        $net=(int)round((float)$row['net_amount']*100);$fee=(int)round((float)$row['commission_amount']*100);
+        $paid=min($net,$cash);$cash-=$paid;$remaining=$net-$paid;
+        $settled=$paid+$fee;
+        $payment=$pdo->prepare('SELECT amount,disbursed_amount FROM payments WHERE id=? AND tenant_id=? FOR UPDATE');$payment->execute([$row['payment_id'],$batch['tenant_id']]);$p=$payment->fetch(PDO::FETCH_ASSOC);
+        if(!$p)throw new RuntimeException('Payout payment is missing.');
+        $settledTotal=(int)round((float)$p['disbursed_amount']*100)+$settled;
+        if($settledTotal>(int)round((float)$p['amount']*100))throw new RuntimeException('Payout exceeds the remaining collection.');
+        $pdo->prepare('UPDATE payments SET disbursed_amount=?,released_at=IF(?,NOW(),NULL),release_note=? WHERE id=? AND tenant_id=?')
+            ->execute([$settledTotal/100,$settledTotal===(int)round((float)$p['amount']*100),substr($note,0,255),$row['payment_id'],$batch['tenant_id']]);
+        if($remaining>0) {
+            // M-Pesa sends whole shillings. Keep unsent cents available for the
+            // next withdrawal, with commission already accounted for.
+            $pdo->prepare("UPDATE isp_payout_queue SET status='pending',batch_id=NULL,gross_amount=?,commission_amount=0,net_amount=?,notes=?,last_error=NULL WHERE id=? AND tenant_id=? AND batch_id=?")
+                ->execute([$remaining/100,$remaining/100,substr($note.'; fractional balance carried forward',0,255),$row['id'],$batch['tenant_id'],$batch['id']]);
+        }else {
+            $pdo->prepare("UPDATE isp_payout_queue SET status='paid',processed_at=NOW(),notes=? WHERE id=? AND tenant_id=? AND batch_id=?")
+                ->execute([substr($note,0,255),$row['id'],$batch['tenant_id'],$batch['id']]);
+        }
+        $count++;
+    }
+    if($cash!==0)throw new RuntimeException('Payout allocation does not match the confirmed transfer.');
+    return $count;
 }
