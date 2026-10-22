@@ -79,6 +79,14 @@ function disbursementPayments(PDO $pdo, int $tenantId, string $cutoff, bool $loc
     return $st->fetchAll(PDO::FETCH_ASSOC);
 }
 
+/** Payout is the total liability settled; transaction cost comes out of that total. */
+function manualPayoutAmounts(array $input): array {
+    $gross=disbursementMoney((string)($input['payout_amount'] ?? ''));
+    $cost=disbursementMoney(trim((string)($input['fees_amount'] ?? '')) ?: '0');
+    if($gross<=0 || $cost>=$gross)throw new InvalidArgumentException('Enter a payout greater than zero and a transaction cost smaller than the payout.');
+    return ['gross'=>$gross,'cash'=>$gross-$cost,'fees'=>$cost];
+}
+
 function recordDisbursement(PDO $pdo, int $tenantId, int $actorId, array $input, ?int $invoiceId = null): int
 {
     $reference = $invoiceId !== null ? 'COLLECTIONS-INVOICE-' . $invoiceId : trim($input['reference'] ?? '');
@@ -89,8 +97,13 @@ function recordDisbursement(PDO $pdo, int $tenantId, int $actorId, array $input,
     if ($tenantId <= 0 || $actorId <= 0 || $reference === '' || strlen($reference) > 100 || strlen($notes) > 255) {
         throw new InvalidArgumentException('A tenant and transfer reference are required (reference: 100 characters; notes: 255).');
     }
-    $cash = disbursementMoney((string)($input['cash_amount'] ?? ''));
-    $fees = disbursementMoney(trim((string)($input['fees_amount'] ?? '')) ?: '0');
+    if($invoiceId===null && array_key_exists('payout_amount',$input)) {
+        $amounts=manualPayoutAmounts($input);$cash=$amounts['cash'];$fees=$amounts['fees'];
+        if($fees>0 && $notes==='')$notes='Manual payout; transaction cost deducted: KES '.number_format($fees/100,2);
+    } else {
+        $cash = disbursementMoney((string)($input['cash_amount'] ?? ''));
+        $fees = disbursementMoney(trim((string)($input['fees_amount'] ?? '')) ?: '0');
+    }
     $platformCost = disbursementMoney(trim((string)($input['platform_cost'] ?? '')) ?: '0');
     $expected = disbursementMoney((string)($input['expected_gross'] ?? ''));
     if (($invoiceId === null ? $cash <= 0 : ($cash !== 0 || $fees <= 0 || $platformCost !== 0)) || ($fees > 0 && $notes === '')) {

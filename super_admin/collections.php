@@ -312,7 +312,7 @@ tr:hover td{background:rgba(255,255,255,.03);}
                     <td class="muted"><?= (int)$h['unreleased_count'] ?></td>
                     <td class="muted"><?= $h['oldest_unreleased'] ? date('d M Y', strtotime($h['oldest_unreleased'])) : '—' ?></td>
                     <td class="pos">KSH <?= number_format((float)$h['released'], 2) ?></td>
-                    <td><a href="disbursements.php?tenant_id=<?= (int)$h['id'] ?>" class="tab" style="padding:4px 12px;font-size:12px;">Record / view disbursements</a></td>
+                    <td><a href="disbursements.php?tenant_id=<?= (int)$h['id'] ?>" class="tab" style="padding:4px 12px;font-size:12px;">Record payout</a> <a href="disbursements.php?tenant_id=<?= (int)$h['id'] ?>#history-heading" style="font-size:12px;">View history</a></td>
                 </tr>
                 <?php endforeach; ?>
                 <?php if (!$held): ?>

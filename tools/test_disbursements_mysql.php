@@ -4,7 +4,8 @@ if (PHP_SAPI !== 'cli') exit;
 require __DIR__ . '/../includes/disbursements.php';
 date_default_timezone_set('Africa/Nairobi');
 $port = (int)(getenv('DISBURSEMENT_TEST_PORT') ?: 3306);
-$pdo = new PDO("mysql:host=127.0.0.1;port=$port;charset=utf8mb4", 'root', '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$dsn=in_array('--root-socket',$argv,true)?'mysql:host=localhost;charset=utf8mb4':"mysql:host=127.0.0.1;port=$port;charset=utf8mb4";
+$pdo = new PDO($dsn, 'root', '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $schema = 'fortunett_disbursement_test_' . bin2hex(random_bytes(5));
 $pdo->exec("CREATE DATABASE `$schema`");
 $pdo->exec("USE `$schema`");
@@ -137,5 +138,14 @@ try {
     recordDisbursement($pdo,1,9,array_merge($offset,['fees_amount'=>'16.52','expected_gross'=>'216.52']),13);
     checkDisbursement($pdo->query('SELECT status FROM platform_invoices WHERE id=13')->fetchColumn() === 'paid', 'unpaid invoice can also be settled from collections');
     checkDisbursement($pdo->query('SELECT status FROM tenants WHERE id=1')->fetchColumn() === 'suspended', 'other open invoice prevents reactivation');
+    $manual=array_merge($offset,['reference'=>'NET-PAYOUT','payout_amount'=>'100','fees_amount'=>'5','cash_amount'=>'99999','notes'=>'','expected_gross'=>'200']);
+    $manualId=recordDisbursement($pdo,1,9,$manual);
+    $netRecord=$pdo->query('SELECT * FROM tenant_disbursements WHERE id='.$manualId)->fetch(PDO::FETCH_ASSOC);
+    checkDisbursement($netRecord['gross_amount']==='100.00' && $netRecord['cash_amount']==='95.00' && $netRecord['fees_amount']==='5.00','gross payout deducts transaction cost server-side and ignores a forged net amount');
+    $balanceQuery->execute([1]);
+    checkDisbursement((float)$balanceQuery->fetchColumn()===100.0,'tenant balance reduces by gross payout, including withheld transaction cost');
+    checkDisbursement(str_contains($netRecord['notes'],'5.00'),'transaction cost is recorded even without optional notes');
+    checkDisbursement(rejectDisbursement(fn()=>manualPayoutAmounts(['payout_amount'=>'100','fees_amount'=>'100'])),'transaction cost cannot consume the whole payout');
+    checkDisbursement(rejectDisbursement(fn()=>manualPayoutAmounts(['payout_amount'=>'100','fees_amount'=>'101'])),'transaction cost cannot exceed payout');
     echo "$checks checks passed.\n";
 } finally { $pdo->exec("DROP DATABASE `$schema`"); }

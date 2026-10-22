@@ -11,7 +11,7 @@ $name = $st->fetchColumn();
 if (!$name) { http_response_code(404); exit('Tenant not found.'); }
 $today = (new DateTimeImmutable('now', new DateTimeZone('Africa/Nairobi')))->format('Y-m-d');
 $nowLocal = (new DateTimeImmutable('now', new DateTimeZone('Africa/Nairobi')))->format('Y-m-d\TH:i');
-$form = array_merge(['cutoff_date'=>$nowLocal, 'disbursed_at'=>$nowLocal, 'cash_amount'=>'',
+$form = array_merge(['cutoff_date'=>$nowLocal, 'disbursed_at'=>$nowLocal, 'cash_amount'=>'', 'payout_amount'=>'',
     'fees_amount'=>'0', 'platform_cost'=>'0', 'reference'=>'', 'notes'=>''], $_POST);
 $error = ''; $success = ''; $schemaReady = false; $rows = []; $history = []; $gross = 0;
 $cutoff = disbursementDate($nowLocal, 'Collections through');
@@ -57,7 +57,7 @@ if ($schemaReady) {
     }
 }
 if (($_SESSION['disbursement_success']['tenant_id'] ?? 0) === $tenantId) {
-    $success = 'Disbursement #' . (int)$_SESSION['disbursement_success']['id'] . ' recorded. The tenant can now see the transfer and their updated balance.';
+    $success = 'Payout #' . (int)$_SESSION['disbursement_success']['id'] . ' recorded. The tenant’s outstanding balance and payout history have been updated.';
     unset($_SESSION['disbursement_success']);
 }
 function dh($value) { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }

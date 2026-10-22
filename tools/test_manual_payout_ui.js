@@ -1,0 +1,28 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const nodes={};
+const fields={};
+const node=()=>({value:'',dataset:{},listeners:{},addEventListener(event,fn){this.listeners[event]=fn;}});
+for(const name of ['payout_amount','fees_amount','platform_cost','cutoff_date','disbursed_at','notes'])fields[name]=node();
+fields.fees_amount.value='0';fields.platform_cost.value='0';fields.cutoff_date.value='2026-10-22T12:00';
+const form=node();form.dataset={available:'15000.00',previewDate:fields.cutoff_date.value};form.elements={namedItem:name=>fields[name]};
+nodes['disbursement-form']=form;
+for(const id of ['record-disbursement','amount-feedback','preview-stale','summary-cash','summary-fees','summary-platform','summary-reduction','summary-remaining'])nodes[id]=node();
+vm.runInNewContext(fs.readFileSync('super_admin/js/disbursements.js','utf8'),{document:{getElementById:id=>nodes[id]}});
+function preview(payout,fee,platform='0') {fields.payout_amount.value=payout;fields.fees_amount.value=fee;fields.platform_cost.value=platform;fields.payout_amount.listeners.input();}
+preview('10,000','50');
+assert.equal(nodes['summary-cash'].textContent,'KES 9,950.00');
+assert.equal(nodes['summary-reduction'].textContent,'KES 10,000.00');
+assert.equal(nodes['summary-remaining'].textContent,'KES 5,000.00');
+assert.equal(nodes['record-disbursement'].disabled,false);
+preview('10000','50','25');
+assert.equal(nodes['summary-reduction'].textContent,'KES 10,000.00');
+assert.equal(nodes['summary-platform'].textContent,'KES 25.00');
+preview('10000','10000');assert.equal(nodes['record-disbursement'].disabled,true);
+preview('16000','50');assert.equal(nodes['record-disbursement'].disabled,true);
+preview('10000','-50');assert.equal(nodes['record-disbursement'].disabled,true);
+preview('10000','0');assert.equal(nodes['summary-cash'].textContent,'KES 10,000.00');
+fields.cutoff_date.value='2026-10-21T12:00';fields.cutoff_date.listeners.input();
+assert.equal(nodes['record-disbursement'].disabled,true);
+console.log('PASS: net payout, transaction cost, balance reduction, separate platform costs, invalid amounts and stale preview.');
