@@ -1576,9 +1576,9 @@ function verifyProvision() {
 
             const rows = (d.checks || []).map(c =>
                 '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06);">'
-                + '<i class="fas ' + (c.ok ? 'fa-circle-check" style="color:#34d399;' : 'fa-circle-xmark" style="color:#f87171;') + 'font-size:14px;flex-shrink:0;"></i>'
+                + '<i class="fas ' + (c.ok ? 'fa-circle-check" style="color:#34d399;' : c.required===false ? 'fa-circle-info" style="color:#fbbf24;' : 'fa-circle-xmark" style="color:#f87171;') + 'font-size:14px;flex-shrink:0;"></i>'
                 + '<span style="flex:1;font-size:13px;color:#d4d4d2;">' + escapeHtml(c.label) + '</span>'
-                + '<span style="font-size:11px;color:rgba(255,255,255,.4);text-align:right;">' + escapeHtml(c.detail || '') + '</span>'
+                + '<span style="font-size:11px;color:rgba(255,255,255,.4);text-align:right;">' + escapeHtml((!c.ok && c.required===false ? 'Advisory: ' : '') + (c.detail || '')) + '</span>'
                 + '</div>').join('');
 
             const banner = d.all_ok

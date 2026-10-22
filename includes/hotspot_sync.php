@@ -363,6 +363,12 @@ function syncHotspotCatalogPage($api, string $html, string $pageUrl): int
 
 function syncTenantHotspotCatalog(PDO $pdo, $api, int $tenant): void
 {
+    // Package jobs and portal jobs share the same files. Serialize their
+    // write/readback sequence so simultaneous workers cannot overwrite it.
+    $lockName='hotspot-catalog-tenant-'.$tenant;
+    $lock=$pdo->prepare('SELECT GET_LOCK(?,0)');$lock->execute([$lockName]);
+    if ((int)$lock->fetchColumn()!==1) throw new RuntimeException('Another portal update is in progress; this update will retry.');
+    try {
     require_once __DIR__.'/../hotspot/render_login.php';
     $st=$pdo->prepare('SELECT * FROM tenants WHERE id=?'); $st->execute([$tenant]); $row=$st->fetch(PDO::FETCH_ASSOC);
     $urls=hotspotPortalUrls($pdo,$tenant);
@@ -372,4 +378,5 @@ function syncTenantHotspotCatalog(PDO $pdo, $api, int $tenant): void
         $installed=installHotspotSyncScheduler($api,$urls['page'],$urls['version']);
         if (!$installed['installed']) throw new RuntimeException('Portal fallback schedule could not be installed');
     }
+    } finally {$pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]);}
 }

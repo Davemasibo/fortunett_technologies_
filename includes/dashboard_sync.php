@@ -164,7 +164,12 @@ function dashboardProcessSync(PDO $pdo, ?int $tenant = null, int $limit = 1): vo
             }
         } catch (Throwable $e) {
             error_log('Dashboard sync ' . $job['id'] . ': ' . $e->getMessage());
-            $pdo->prepare('UPDATE dashboard_sync_jobs SET attempts=attempts+1,last_error=?,next_retry_at=DATE_ADD(NOW(), INTERVAL 30 SECOND) WHERE id=?')->execute([substr($e->getMessage(),0,2000),$job['id']]);
+            if (in_array($job['kind'],['portal','package'],true) && isset($snapshotId)) {
+                $pdo->prepare('UPDATE dashboard_sync_jobs SET attempts=attempts+1,last_error=?,next_retry_at=DATE_ADD(NOW(), INTERVAL 30 SECOND) WHERE tenant_id=? AND kind=? AND entity_id=? AND router_id=? AND id<=? AND applied_at IS NULL')
+                    ->execute([substr($e->getMessage(),0,2000),$job['tenant_id'],$job['kind'],$job['entity_id'],$job['router_id'],$snapshotId]);
+            } else {
+                $pdo->prepare('UPDATE dashboard_sync_jobs SET attempts=attempts+1,last_error=?,next_retry_at=DATE_ADD(NOW(), INTERVAL 30 SECOND) WHERE id=?')->execute([substr($e->getMessage(),0,2000),$job['id']]);
+            }
         } finally { $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]); }
     }
 }

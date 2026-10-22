@@ -48,11 +48,15 @@ class MikrotikAPI {
         $service = null;
         foreach ($this->comm('/ip/service/print',['?name=ftp']) as $row) if (($row['name'] ?? '') === 'ftp') $service=$row;
         if (!$service || ($service['disabled'] ?? 'false') === 'true') throw new RuntimeException('This RouterOS lacks large-file API readback and its FTP service is disabled. Update RouterOS or provide FTP access over the router VPN.');
-        $ftp = @ftp_connect($this->host,(int)($service['port'] ?? 21),8);
-        if (!$ftp) throw new RuntimeException('Router FTP readback is unreachable.');
-        $stream = null;
+        $rule=null;$ftp=null;$stream=null;
         try {
+            $rule=$this->portalFtpVpnRule((int)($service['port'] ?? 21));
+            $ftp = @ftp_connect($this->host,(int)($service['port'] ?? 21),8);
+            if (!$ftp) throw new RuntimeException('Router FTP readback is unreachable over its management connection.');
             if (!@ftp_login($ftp,$this->username,$this->password)) throw new RuntimeException('Router FTP readback login failed.');
+            // Ignore a PASV reply advertising the router public/LAN address.
+            // Transfer data through the same management VPN as the control socket.
+            ftp_set_option($ftp,FTP_USEPASVADDRESS,false);
             @ftp_pasv($ftp,true);
             $stream = fopen('php://temp','w+b');
             if (!$stream) throw new RuntimeException('Portal transfer buffer is unavailable.');
@@ -69,8 +73,40 @@ class MikrotikAPI {
             return $contents;
         } finally {
             if (is_resource($stream)) fclose($stream);
-            ftp_close($ftp);
+            if ($ftp) ftp_close($ftp);
+            if ($rule) {
+                try {$this->portalFtpCheckedCommand('/ip/firewall/filter/remove',['=.id='.$rule]);}
+                catch (Throwable $e) {error_log('Portal FTP temporary rule cleanup failed: '.$e->getMessage());}
+            }
         }
+    }
+
+    /** Temporary access only from the platform peer on the actual WireGuard link. */
+    protected function portalFtpVpnRule(int $port): ?string {
+        if (!preg_match('/^10\\.200\\.200\\.(?:[1-9][0-9]{0,2})$/D',(string)$this->host)) return null;
+        $interface=null;
+        foreach ($this->portalFtpCheckedCommand('/ip/address/print') as $row) {
+            if (explode('/',$row['address'] ?? '')[0]===$this->host) $interface=$row['interface'] ?? null;
+        }
+        if (!$interface) return null;
+        $wireguard=false;
+        foreach ($this->portalFtpCheckedCommand('/interface/wireguard/print') as $row) if (($row['name'] ?? '')===$interface) $wireguard=true;
+        if (!$wireguard) return null;
+        $params=['=chain=input','=action=accept','=protocol=tcp','=src-address=10.200.200.1/32',
+            '=dst-address='.$this->host.'/32','=in-interface='.$interface,
+            '=dst-port='.$port.',1024-65535','=comment=Fortunett-Portal-FTP-Temporary-'.bin2hex(random_bytes(6))];
+        foreach ($this->portalFtpCheckedCommand('/ip/firewall/filter/print') as $row) {
+            if (isset($row['.id']) && ($row['dynamic'] ?? 'false')!=='true'
+                && !str_starts_with($row['comment'] ?? '','Fortunett-Portal-FTP-Temporary-')) {$params[]='=place-before='.$row['.id'];break;}
+        }
+        foreach ($this->portalFtpCheckedCommand('/ip/firewall/filter/add',$params) as $row) if (isset($row['ret'])) return $row['ret'];
+        throw new RuntimeException('Could not prepare portal file transfer over the management VPN.');
+    }
+
+    private function portalFtpCheckedCommand(string $path,array $params=[]): array {
+        $rows=$this->comm($path,$params);
+        foreach ($rows as $row) if (isset($row['!trap']) || isset($row['!fatal'])) throw new RuntimeException($row['message'] ?? 'Router rejected portal transfer access.');
+        return $rows;
     }
 
     public function connect() {

@@ -84,6 +84,7 @@ wanAssert(end($api->calls)[0]==='/system/script/remove','Temporary verification 
 $api->comment='true,true,true,false';$checks=verifyRouterWan($api,$record);
 wanAssert(!$checks[3]['ok'],'Billing fetch failure prevents verification');
 wanAssert(!routerWanFailedChecks($checks),'Automatic DHCP can continue when its lease and route pass despite a billing HTTPS failure');
+wanAssert(count(routerWanFailedChecks(array_merge($checks,[['label'=>'Hotspot login page','ok'=>false,'detail'=>'Missing']])) )===1,'Optional DHCP diagnostics never hide a missing customer service or login page');
 $staticRecord=['config_json'=>json_encode($static),'billing_url'=>$url];
 wanAssert(count(routerWanFailedChecks(verifyRouterWan($api,$staticRecord)))===1,'Static setup still requires billing HTTPS verification');
 wanAssert(!str_contains(routerWanProbeSource($dhcp,$url),':if (!$wh)') && str_contains(routerWanProbeSource($static,$url),':if (!$wh)'),'Generated scripts use the same DHCP continuation rules as the dashboard');

@@ -41,7 +41,7 @@ if (!$services) $services=explode(',',onboardingServices($router['service_types'
 $services=array_values(array_filter($services));
 register_shutdown_function(function() use ($pdo,$tenantId,$routerId,&$services,&$result) {
     if (!isset($result)) return;
-    $failed=array_filter($result['checks'] ?? [],fn($c)=>!$c['ok']);
+    $failed=routerWanFailedChecks($result['checks'] ?? []);
     $summary=$result['error'] ?? implode('; ',array_map(fn($c)=>$c['label'].': '.$c['detail'],$failed));
     saveOnboardingCheck($pdo,$tenantId,$routerId,implode(',',$services),!empty($services) && !empty($result['all_ok']),$summary);
 });
@@ -76,7 +76,7 @@ try {
     $wanRecord=loadRouterWan($pdo,$tenantId,$routerId);
     $checks=$wanRecord ? verifyRouterWan($api,$wanRecord) : [['label'=>'WAN setup','ok'=>false,'detail'=>'Prepare WAN settings before verifying services']];
     $wanConfig=$wanRecord ? json_decode($wanRecord['config_json'],true) : null;
-    if ($wanRecord) $pdo->prepare('UPDATE router_wan_config SET verified_at=IF(?,NOW(),NULL) WHERE id=? AND tenant_id=?')->execute([!array_filter($checks,fn($c)=>!$c['ok']),$wanRecord['id'],$tenantId]);
+    if ($wanRecord) $pdo->prepare('UPDATE router_wan_config SET verified_at=IF(?,NOW(),NULL) WHERE id=? AND tenant_id=?')->execute([!routerWanFailedChecks($checks),$wanRecord['id'],$tenantId]);
     $fasttrackSafe=true;
     foreach (routerCheckedCommand($api,'/ip/firewall/filter/print',['?action=fasttrack-connection']) as $rule) if (isset($rule['.id']) && ($rule['disabled']??'false')!=='true') $fasttrackSafe=false;
     $checks[]=['label'=>'Package queue enforcement','ok'=>$fasttrackSafe,'detail'=>$fasttrackSafe ? 'FastTrack bypass disabled' : 'FastTrack bypasses paid speed limits; reapply service provisioning'];
@@ -180,7 +180,7 @@ try {
     $api->disconnect();
 
     $result['checks']  = $checks;
-    $result['all_ok']  = !empty($services) && !empty($checks) && !array_filter($checks, fn($c) => !$c['ok']);
+    $result['all_ok']  = !empty($services) && !empty($checks) && !routerWanFailedChecks($checks);
 
 } catch (Throwable $e) {
     $result['error'] = $e->getMessage();

@@ -1160,7 +1160,7 @@ include 'includes/sidebar.php';
 <script src="sms-retry.js"></script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="dashboard-sync.js?v=20261014" data-csrf="<?= htmlspecialchars($_SESSION['dashboard_sync_csrf'], ENT_QUOTES) ?>"></script>
+<script src="dashboard-sync.js?v=20261022" data-csrf="<?= htmlspecialchars($_SESSION['dashboard_sync_csrf'], ENT_QUOTES) ?>"></script>
 <script>
 let currentCustomer = null;
 let clientPaymentChart = null;

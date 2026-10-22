@@ -47,7 +47,7 @@ window.DashboardSync = (() => {
                 if (result.errors?.length) {
                     const detail = document.createElement('div');
                     detail.style.cssText = 'margin-top:8px;font-size:12px;white-space:pre-line';
-                    detail.textContent = result.errors.map(error => `${error.router_name || 'Unassigned router'}: ${error.kind} #${error.entity_id} — ${error.last_error}`).join('\n');
+                    detail.textContent = [...new Set(result.errors.map(error => `${error.router_name || 'Unassigned router'}: ${error.kind==='portal' ? 'Hotspot portal' : error.kind+' #'+error.entity_id} — ${error.last_error}`))].join('\n');
                     panel.appendChild(detail);
                 }
                 delay = result.waiting === result.pending ? 10000 : 300;
