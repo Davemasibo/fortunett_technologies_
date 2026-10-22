@@ -94,8 +94,10 @@ function routerWanProbeSource(array $c,string $billingUrl,string $resultName='')
     } else {
         $parts[]=':if (!$wa) do={:error "WAN address or topology check failed"}';
         $parts[]=':if (!$wr) do={:error "No active main default route through the configured WAN"}';
-        $parts[]=':if (!$wd) do={:error "Billing server DNS resolution failed"}';
-        $parts[]=':if (!$wh) do={:error "Billing server HTTPS check failed; check Internet access and router clock/certificates"}';
+        if ($c['mode']!=='dhcp') {
+            $parts[]=':if (!$wd) do={:error "Billing server DNS resolution failed"}';
+            $parts[]=':if (!$wh) do={:error "Billing server HTTPS check failed; check Internet access and router clock/certificates"}';
+        }
     }
     return '{ '.implode('; ',$parts).'; }';
 }
@@ -175,12 +177,16 @@ function verifyRouterWan($api,array $record): array {
         ];
         foreach (['WAN address and LAN separation','Default route through '.$c['wan'],'Billing DNS resolution','Billing server HTTPS access'] as $i=>$label) {
             $ok=in_array($values[$i] ?? '',['true','yes','1'],true);
-            $checks[]=['label'=>$label,'ok'=>$ok,'detail'=>$ok?'Verified from router':$details[$i]];
+            $checks[]=['label'=>$label,'ok'=>$ok,'required'=>$c['mode']!=='dhcp' || $i<2,'detail'=>$ok?'Verified from router':$details[$i]];
         }
         return $checks;
     } finally {
         if ($id) {try {routerWanApiCommand($api,'/system/script/remove',['numbers'=>$id]);} catch (Throwable $e) {error_log('WAN diagnostic cleanup failed');}}
     }
+}
+
+function routerWanFailedChecks(array $checks): array {
+    return array_values(array_filter($checks,fn($check)=>!$check['ok'] && ($check['required'] ?? true)));
 }
 
 function routerWanRegistrationSource(array $c,string $url,array $fields): string {

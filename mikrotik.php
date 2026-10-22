@@ -622,7 +622,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </footer>
  </div>
 </div>
-<script src="assets/router-wan.js?v=3" defer></script>
+<script src="assets/router-wan.js?v=4" defer></script>
 <!-- Toast Notification -->
 <?php if ($action_result): ?>
 <div class="position-fixed top-0 end-0 p-3" style="z-index: 1100">

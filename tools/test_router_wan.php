@@ -83,6 +83,10 @@ wanAssert(str_starts_with($api->calls[0][1][0],'=name=') && $api->calls[1][1]===
 wanAssert(end($api->calls)[0]==='/system/script/remove','Temporary verification script is removed');
 $api->comment='true,true,true,false';$checks=verifyRouterWan($api,$record);
 wanAssert(!$checks[3]['ok'],'Billing fetch failure prevents verification');
+wanAssert(!routerWanFailedChecks($checks),'Automatic DHCP can continue when its lease and route pass despite a billing HTTPS failure');
+$staticRecord=['config_json'=>json_encode($static),'billing_url'=>$url];
+wanAssert(count(routerWanFailedChecks(verifyRouterWan($api,$staticRecord)))===1,'Static setup still requires billing HTTPS verification');
+wanAssert(!str_contains(routerWanProbeSource($dhcp,$url),':if (!$wh)') && str_contains(routerWanProbeSource($static,$url),':if (!$wh)'),'Generated scripts use the same DHCP continuation rules as the dashboard');
 wanAssert(str_contains($checks[3]['detail'],'certificates') && str_contains($checks[3]['detail'],'date/time'),'HTTPS failures identify clock and certificate checks instead of requesting WAN reconfiguration');
 $api->comment='pending';$checks=verifyRouterWan($api,$record);
 wanAssert(count(array_filter($checks,fn($c)=>$c['ok']))===0,'Unfinished or stale diagnostic output cannot pass');

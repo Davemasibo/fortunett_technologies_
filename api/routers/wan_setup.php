@@ -32,7 +32,7 @@ try {
         $pdo->prepare('UPDATE router_wan_config SET verified_at=NULL WHERE id=? AND tenant_id=?')->execute([$record['id'],$tenantId]);
         $api=new MikrotikAPI($router['vpn_ip'] ?: $router['ip_address'],$router['username'],$router['password'],(int)($router['api_port'] ?: 8728));
         try {$api->connect(); $checks=verifyRouterWan($api,$record);} finally {$api->disconnect();}
-        $ok=!array_filter($checks,fn($c)=>!$c['ok']);
+        $ok=!routerWanFailedChecks($checks);
         if (!$ok) saveOnboardingCheck($pdo,$tenantId,$routerId,(string)($router['service_types'] ?? ''),false,'WAN verification failed. Fix connectivity and verify services again.');
         $pdo->prepare('UPDATE router_wan_config SET verified_at=IF(?,NOW(),NULL) WHERE id=? AND tenant_id=?')->execute([$ok,$record['id'],$tenantId]);
         echo json_encode(['status'=>'success','all_ok'=>$ok,'checks'=>$checks,'lan_bridge'=>$record['lan_bridge'],'router_name'=>$router['name']]); exit;

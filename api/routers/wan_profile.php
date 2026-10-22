@@ -39,6 +39,15 @@ try {
         if($ownTransaction)$pdo->commit();
         } catch(Throwable $e){if($ownTransaction && $pdo->inTransaction())$pdo->rollBack();throw $e;}
     }
+    if(!$record && $action==='connect') {
+        ensureRouterWanStorage($pdo);
+        $saved=loadRouterWan($pdo,$tenantId,$routerId);
+        $cfg=$saved ? json_decode($saved['config_json'],true,512,JSON_THROW_ON_ERROR) : routerWanInput(['wan_mode'=>'dhcp'],false);
+        if($cfg['mode']!=='dhcp')throw new RuntimeException('Save your ISP connection details first.');
+        $pdo->prepare("INSERT INTO router_wan_profiles (tenant_id,router_id,config_json,state,message) VALUES (?,?,?,'verifying',?) ON DUPLICATE KEY UPDATE router_id=VALUES(router_id)")
+            ->execute([$tenantId,$routerId,json_encode($cfg),'Detecting the automatic connection.']);
+        $record=wanProfileRecord($pdo,$tenantId,$routerId);
+    }
     if(!$record)throw new RuntimeException('Save your ISP connection details first.');
     if($action==='connect' && in_array($record['state'],['needs_attention','connected'],true)) {
         // Explicit retry verifies the dispatched change; it does not reapply it.

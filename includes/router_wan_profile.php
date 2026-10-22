@@ -141,6 +141,20 @@ function processWanProfile(PDO $pdo,array $router,string $billingUrl,$apiOverrid
     };
     try {
         $api->connect();
+        // Adopt a working automatic uplink without dispatching WAN changes or
+        // requiring an installer marker from a prior platform setup.
+        if ($c['mode']==='dhcp') {
+            $checks=verifyRouterWan($api,['config_json'=>$record['config_json'],'billing_url'=>$billingUrl]);
+            if (!routerWanFailedChecks($checks)) {
+                syncWanProfileMetadata($pdo,$router,$c,$billingUrl,true);
+                $set('connected','Automatic connection detected. Your router has a bound DHCP address and an active Internet route. Continue to customer services.');
+                return wanProfileRecord($pdo,$tenantId,$routerId);
+            }
+            if ($record['state']==='verifying') {
+                $set('needs_attention',implode(' ',array_column(routerWanFailedChecks($checks),'detail')));
+                return wanProfileRecord($pdo,$tenantId,$routerId);
+            }
+        }
         $marker=(string)$record['id'].':'.$revision;
         if ($record['state']==='pending') {
             inspectWanProfile($api,$c);
@@ -185,7 +199,7 @@ function processWanProfile(PDO $pdo,array $router,string $billingUrl,$apiOverrid
         foreach(routerWanApiCommand($api,'/system/script/print',['?name=fortunett-wan-last-apply']) as $row)if(($row['comment'] ?? '')===$marker)$completed=true;
         if(!$completed){$set('needs_attention','The WAN change did not finish. Inspect existing uplink conflicts before saving again.');return wanProfileRecord($pdo,$tenantId,$routerId);}
         $checks=verifyRouterWan($api,['config_json'=>$record['config_json'],'billing_url'=>$billingUrl]);
-        if(!array_filter($checks,fn($check)=>!$check['ok'])){syncWanProfileMetadata($pdo,$router,$c,$billingUrl,true);$set('connected','ISP connection verified from the router.');}
+        if(!routerWanFailedChecks($checks)){syncWanProfileMetadata($pdo,$router,$c,$billingUrl,true);$set('connected','ISP connection verified from the router.');}
         else $set('needs_attention','ISP settings were applied, but Internet checks have not passed. Check provider credentials, VLAN settings, DNS and the uplink cable, then check the connection again.');
     } catch(Throwable $e) {
         if($record['state']==='pending')$set('needs_attention',$e instanceof PDOException ? 'Could not update the connection profile.' : (str_contains($e->getMessage(),'selected provider') || str_contains($e->getMessage(),'provider port') ? $e->getMessage() : 'The device could not be inspected. Check API access and saved device credentials.'));

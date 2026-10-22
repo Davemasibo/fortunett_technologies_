@@ -166,6 +166,7 @@ async function openWanSetup(routerId) {
         }
         output.replaceChildren();wanBusy('editWan',false,wanElement('editWanPrepare'));
         if(data.profile){showWanProfile(data.profile);pollWanProfile(data.profile,version);}
+        if(!data.profile || data.profile.config.mode==='dhcp')await checkWanProfile(wanElement('editWanVerify'));
         wanLoadBridges(routerId,version);
     } catch(error) {
         if(version!==wanViewVersion)return;
@@ -177,6 +178,12 @@ function showWanProfile(profile) {
     const titles={pending:'ISP login saved — waiting for your device',applying:'Applying your ISP settings',verifying:'Waiting for the ISP connection',connected:'Your device is connected',needs_attention:'Connection needs attention'};
     wanStatus(wanElement('editWanCheckOutput'),titles[profile.state] || 'ISP connection saved',profile.message,profile.state==='connected'?'success':profile.state==='needs_attention'?'error':'');
     wanProgress(profile.state==='connected'?3:2);
+    if(profile.state==='connected' && typeof openProvision==='function') {
+        const next=wanNode('button','wan-button wan-button-primary','Configure customer services');next.type='button';
+        const routerId=wanRouterId;
+        next.onclick=()=>{closeWanSetup();openProvision(routerId,wanElement('wanDeviceName').textContent || 'Your device');wanElement('provBridgeName').value=profile.config.lan || wanElement('editWanLan').value || '';};
+        wanElement('editWanCheckOutput').firstElementChild.append(next);
+    }
 }
 function pollWanProfile(profile,version) {
     clearTimeout(wanProfileTimer);
@@ -207,11 +214,12 @@ async function saveWanProfile(button) {
 }
 async function checkWanProfile(button) {
     const version=wanViewVersion;wanBusy('editWan',true,button);
+    wanStatus(wanElement('editWanCheckOutput'),'Checking connection','Detecting the existing provider connection. No ISP login is needed for Automatic.');
     try {
         const body=new FormData();body.append('csrf',wanCsrf);body.append('router_id',wanRouterId);body.append('action','connect');
         const response=await fetch('api/routers/wan_profile.php',{method:'POST',body});const data=await response.json();
         if(version!==wanViewVersion)return;
-        if(!response.ok)throw new Error(data.message);
+        if(!response.ok || data.status!=='success' || !data.profile)throw new Error(data.message || 'Could not read connection status.');
         showWanProfile(data.profile);pollWanProfile(data.profile,version);wanRevealOutput(wanElement('editWanCheckOutput'));
     } catch(error){if(version===wanViewVersion)wanError(wanElement('editWanCheckOutput'),error,'Could not check ISP connection');}
     finally {if(version===wanViewVersion)wanBusy('editWan',false,button);}
