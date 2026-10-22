@@ -167,9 +167,15 @@ function verifyRouterWan($api,array $record): array {
         $values=[];
         foreach ($rows as $r) if (isset($r['!re'])) $values=explode(',',$r['comment'] ?? '');
         $checks=[];
+        $details=[
+            'Check that '.$c['wan'].' has an address'.($c['mode']==='dhcp'?' and a bound DHCP client':'').', and that the saved WAN and customer LAN interfaces are separate.',
+            'Check for an active default route in the main routing table through '.$c['wan'].'. A bound DHCP lease alone does not confirm a default route.',
+            'The router could not resolve '.parse_url($record['billing_url'],PHP_URL_HOST).'. Check its DNS servers.',
+            'The router could not fetch the billing health endpoint over HTTPS. Check Internet access, firewall rules, router date/time and trusted certificates.',
+        ];
         foreach (['WAN address and LAN separation','Default route through '.$c['wan'],'Billing DNS resolution','Billing server HTTPS access'] as $i=>$label) {
             $ok=in_array($values[$i] ?? '',['true','yes','1'],true);
-            $checks[]=['label'=>$label,'ok'=>$ok,'detail'=>$ok?'Verified from router':'Failed; inspect WAN settings, uplink, DNS and router clock'];
+            $checks[]=['label'=>$label,'ok'=>$ok,'detail'=>$ok?'Verified from router':$details[$i]];
         }
         return $checks;
     } finally {

@@ -72,7 +72,17 @@ try {
     if ($bridgeName==='' || $bridgeName!==$wanConfig['lan']) throw new RuntimeException('Select the customer LAN bridge saved in WAN setup: '.$wanConfig['lan']);
     $api=new MikrotikAPI($router['vpn_ip'] ?: $router['ip_address'],$router['username'],$router['password'],(int)($router['api_port'] ?: 8728));
     try {$api->connect(); $wanChecks=verifyRouterWan($api,$wanRecord);} finally {$api->disconnect();}
-    if (array_filter($wanChecks,fn($c)=>!$c['ok'])) throw new RuntimeException('WAN verification failed. Apply WAN setup and fix the failed connectivity checks first.');
+    $failedWanChecks=array_values(array_filter($wanChecks,fn($c)=>!$c['ok']));
+    if ($failedWanChecks) {
+        http_response_code(409);
+        echo json_encode([
+            'status'=>'error',
+            'code'=>'wan_verification_failed',
+            'message'=>'WAN verification failed: '.implode(' ',array_map(fn($c)=>$c['label'].': '.$c['detail'],$failedWanChecks)),
+            'checks'=>$wanChecks,
+        ]);
+        exit;
+    }
     $pdo->prepare('UPDATE router_wan_config SET verified_at=NOW() WHERE id=? AND tenant_id=?')->execute([$wanRecord['id'],$tenantId]);
 
     // Persist both service_types and the hotspot sharing setting
