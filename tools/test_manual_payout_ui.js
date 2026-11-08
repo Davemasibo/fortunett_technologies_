@@ -12,12 +12,12 @@ for(const id of ['record-disbursement','amount-feedback','preview-stale','summar
 vm.runInNewContext(fs.readFileSync('super_admin/js/disbursements.js','utf8'),{document:{getElementById:id=>nodes[id]}});
 function preview(payout,fee,platform='0') {fields.payout_amount.value=payout;fields.fees_amount.value=fee;fields.platform_cost.value=platform;fields.payout_amount.listeners.input();}
 preview('10,000','50');
-assert.equal(nodes['summary-cash'].textContent,'KES 9,950.00');
-assert.equal(nodes['summary-reduction'].textContent,'KES 10,000.00');
-assert.equal(nodes['summary-remaining'].textContent,'KES 5,000.00');
+assert.equal(nodes['summary-cash'].textContent,'KES 10,000.00');
+assert.equal(nodes['summary-reduction'].textContent,'KES 10,050.00');
+assert.equal(nodes['summary-remaining'].textContent,'KES 4,950.00');
 assert.equal(nodes['record-disbursement'].disabled,false);
 preview('10000','50','25');
-assert.equal(nodes['summary-reduction'].textContent,'KES 10,000.00');
+assert.equal(nodes['summary-reduction'].textContent,'KES 10,050.00');
 assert.equal(nodes['summary-platform'].textContent,'KES 25.00');
 preview('10000','10000');assert.equal(nodes['record-disbursement'].disabled,true);
 preview('16000','50');assert.equal(nodes['record-disbursement'].disabled,true);
@@ -25,4 +25,4 @@ preview('10000','-50');assert.equal(nodes['record-disbursement'].disabled,true);
 preview('10000','0');assert.equal(nodes['summary-cash'].textContent,'KES 10,000.00');
 fields.cutoff_date.value='2026-10-21T12:00';fields.cutoff_date.listeners.input();
 assert.equal(nodes['record-disbursement'].disabled,true);
-console.log('PASS: net payout, transaction cost, balance reduction, separate platform costs, invalid amounts and stale preview.');
+console.log('PASS: full cash payout, transaction cost, balance reduction, separate platform costs, invalid amounts and stale preview.');

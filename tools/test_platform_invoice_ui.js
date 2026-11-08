@@ -57,3 +57,11 @@ assert.equal(elements.invSmsQty.textContent,'0 units');
 assert.equal(elements.invSmsRate.textContent,'KES 1.5000/unit');
 assert.equal(elements.invSmsAmount.textContent,'KES 0.00');
 console.log('PASS zero usage displays package rate with zero charge');
+
+context.openInvoiceModal({...bill,carryover_amount:6,total_due:586,balance_due:486});
+assert.equal(elements.invCarryoverAmount.textContent,'KES 6.00');
+assert.equal(elements.invCarryoverRow.style.display,'');
+assert.equal(elements.invTotalDue.textContent,'KES 486.00');
+context.openInvoiceModal(bill);
+assert.equal(elements.invCarryoverRow.style.display,'none');
+console.log('PASS prior-period commission appears separately and contributes to the invoice balance');

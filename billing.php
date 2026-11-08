@@ -138,7 +138,7 @@ $billsStmt = $pdo->prepare("
            invoice_number,
            billing_period,
            hotspot_collections            AS total_collections,
-           base_fee, router_count, router_fee_per_router, sms_message_count, sms_units, sms_amount, sms_rate,
+           base_fee, router_count, router_fee_per_router, sms_message_count, sms_units, sms_amount, sms_rate, carryover_amount,
            pppoe_subtotal,
            pppoe_user_count AS pppoe_count,
            pppoe_fee_per_user AS pppoe_rate,
@@ -679,6 +679,7 @@ include 'includes/sidebar.php';
             'sms_units' => (int)($currentBill['sms_units'] ?? 0),
             'sms_amount' => (float)($currentBill['sms_amount'] ?? 0),
             'sms_rate' => (float)($currentBill['sms_rate'] ?? 0),
+            'carryover_amount' => (float)($currentBill['carryover_amount'] ?? 0),
             'pppoe_subtotal'    => $pppoeSubtotal,
             'total_due'         => $serviceSubtotal,
             'due_date'          => $currentBill['due_date'] ?? null,
@@ -893,6 +894,7 @@ document.getElementById('confirmWithdrawal').addEventListener('click',async func
                     <td>1</td>
                     <td id="invCommAmt">KES <?php echo number_format($hotspotFee, 2); ?></td>
                 </tr>
+                <tr id="invCarryoverRow"><td><div class="desc-main">Prior-period collections commission</div><div class="desc-sub">Unbilled commission carried from earlier months</div></td><td>?</td><td>1</td><td id="invCarryoverAmount">KES 0.00</td></tr>
                 <tr id="invSmsRow">
                     <td><div class="desc-main">Platform SMS</div><div class="desc-sub" id="invSmsDescription">Accepted customer messages</div></td>
                     <td id="invSmsRate">KES 0.00/unit</td><td id="invSmsQty">0 units</td><td id="invSmsAmount">KES 0.00</td>
@@ -1084,7 +1086,10 @@ function openInvoiceModal(bill) {
     const pppoe      = parseFloat(bill.pppoe_subtotal || 0);
     const comm       = parseFloat(bill.commission_amount || 0);
     const sms = Number(bill.sms_amount || 0);
-    const total      = Number(bill.total_due ?? (base + pppoe + comm + sms));
+    const carryover = Number(bill.carryover_amount || 0);
+    document.getElementById('invCarryoverAmount').textContent = 'KES ' + fmt(carryover);
+    document.getElementById('invCarryoverRow').style.display = carryover > 0 ? '' : 'none';
+    const total      = Number(bill.total_due ?? (base + pppoe + comm + sms + carryover));
     const smsUnits = Number(bill.sms_units || 0);
     document.getElementById("invSmsQty").textContent = smsUnits + (smsUnits === 1 ? " unit" : " units");
     const smsRate = Number(bill.sms_rate ?? (smsUnits ? sms / smsUnits : 0));

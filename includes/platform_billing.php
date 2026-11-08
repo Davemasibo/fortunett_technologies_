@@ -33,6 +33,7 @@ require_once __DIR__ . '/schema_guard.php';
 require_once __DIR__ . '/trial_billing.php';
 require_once __DIR__.'/router_billing.php';
 require_once __DIR__.'/sms_billing.php';
+require_once __DIR__.'/invoice_carryovers.php';
 
 /**
  * A tenant's permanent paybill reference, e.g. "FN5".
@@ -252,6 +253,7 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingP
 
     $periodStart = $billingPeriod ?? date('Y-m-01');
     ensureSmsInvoiceSchema($pdo);
+    ensureInvoiceCarryoverSchema($pdo);
     if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])-01$/D', $periodStart)) {
         throw new InvalidArgumentException('Invalid billing period');
     }
@@ -259,6 +261,8 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingP
     try {
         repairUnpaidTrialInvoices($pdo, $tenantId);
         $pdo->beginTransaction();
+        $tenantLock=$pdo->prepare('SELECT id FROM tenants WHERE id=? FOR UPDATE');$tenantLock->execute([$tenantId]);
+        if(!$tenantLock->fetchColumn())throw new InvalidArgumentException('Tenant not found.');
         $find = $pdo->prepare("SELECT * FROM platform_invoices WHERE tenant_id = ? AND billing_period = ? LIMIT 1 FOR UPDATE");
         $find->execute([$tenantId, $periodStart]);
         $existing = $find->fetch(PDO::FETCH_ASSOC);
@@ -269,6 +273,13 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingP
         if ($existing && !$emptyTrialInvoice && (!in_array($existing['status'], ['pending', 'overdue'], true) || (float)($existing['amount_paid'] ?? 0) > 0)) {
             $pdo->commit();
             return $existing;
+        }
+        $carryovers=platformCollectionCarryovers($pdo,$tenantId,$periodStart,$existing?(int)$existing['id']:0);
+        $carryoverTotal=round(array_sum(array_column($carryovers,'amount')),2);
+        if($existing && !empty($existing['manual_override'])) {
+            storePlatformCarryovers($pdo,(int)$existing['id'],$carryovers);
+            $find->execute([$tenantId,$periodStart]);$invoice=$find->fetch(PDO::FETCH_ASSOC);
+            $pdo->commit();return $invoice;
         }
         repriceCurrentPlatformSmsUsage($pdo, $tenantId);
 
@@ -321,8 +332,8 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingP
         $r['base_fee'] = $charges['base_fee'];
         $sms = platformSmsMonthUsage($pdo,$tenantId,$periodStart,$existing ? (int)$existing['id'] : null);
         $smsInvoiceRate = $sms['units'] > 0 ? round($sms['amount'] / $sms['units'],4) : (float)($r['sms_rate'] ?? 0);
-        $invoiceTotal = $pppoeCount * $r['pppoe_fee'] + $hotspotCollections * $r['hotspot_rate'] + $r['base_fee'] + $sms['amount'];
-        if (((!$charges['eligible'] && $sms['amount'] <= 0) || $invoiceTotal <= 0) && !$existing) { $pdo->commit(); return null; }
+        $invoiceTotal = $pppoeCount * $r['pppoe_fee'] + $hotspotCollections * $r['hotspot_rate'] + $r['base_fee'] + $sms['amount'] + $carryoverTotal;
+        if (((!$charges['eligible'] && $sms['amount'] <= 0 && $carryoverTotal <= 0) || $invoiceTotal <= 0) && !$existing) { $pdo->commit(); return null; }
 
         // pppoe_subtotal, hotspot_commission and total_due are STORED GENERATED
         // columns — the database derives them from the inputs below. Writing to
@@ -367,6 +378,10 @@ function ensureCurrentPlatformInvoice(PDO $pdo, int $tenantId, ?string $billingP
 
         $find->execute([$tenantId, $periodStart]);
         $invoice = $find->fetch(PDO::FETCH_ASSOC) ?: null;
+        if($invoice) {
+            storePlatformCarryovers($pdo,(int)$invoice['id'],$carryovers);
+            $find->execute([$tenantId,$periodStart]);$invoice=$find->fetch(PDO::FETCH_ASSOC);
+        }
         if ($invoice && $sms['ids']) {
             $bind = $pdo->prepare('UPDATE platform_sms_usage SET invoice_id=? WHERE id=? AND tenant_id=? AND invoice_id IS NULL');
             foreach ($sms['ids'] as $usageId) $bind->execute([$invoice['id'],$usageId,$tenantId]);

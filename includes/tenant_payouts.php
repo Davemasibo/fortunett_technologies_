@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__.'/payouts.php';
 require_once __DIR__.'/disbursements.php';
+require_once __DIR__.'/invoice_collections.php';
 
 /** Only confirmed, unreleased platform receipts belong in a withdrawal. */
 function tenantWithdrawableRows(PDO $pdo,int $tenantId,bool $lock=false): array {
@@ -21,7 +22,9 @@ function tenantWithdrawalState(PDO $pdo,int $tenantId): array {
     $pre=disbursementPreflight($pdo);
     $st=$pdo->prepare("SELECT id,status,sent_amount,created_at FROM isp_payout_batches WHERE tenant_id=? AND status IN ('sending','accepted','unknown') ORDER BY id DESC LIMIT 1");$st->execute([$tenantId]);$inFlight=$st->fetch(PDO::FETCH_ASSOC) ?: null;
     $reason='';
-    if(!$pre['ok'])$reason='M-Pesa withdrawals are not available yet. Platform payout setup is required.';
+    $invoiceDue=collectionInvoiceOutstanding(collectionInvoiceBalances($pdo,$tenantId));
+    if($invoiceDue>0)$reason='Outstanding invoices of KES '.number_format($invoiceDue/100,2).' must be deducted from collections by the platform administrator before a payout.';
+    elseif(!$pre['ok'])$reason='M-Pesa withdrawals are not available yet. Platform payout setup is required.';
     elseif(empty($settings['payout_phone']) || empty($settings['verified_at']))$reason='Add and verify your payout number with the platform administrator.';
     elseif($inFlight)$reason='Your previous payout is still being confirmed.';
     elseif($send<max(1,(float)($settings['min_payout'] ?? 100)))$reason='Minimum withdrawal: KES '.number_format(max(1,(float)($settings['min_payout'] ?? 100)),2).'.';
@@ -48,6 +51,9 @@ function submitTenantWithdrawal(PDO $pdo,int $tenantId,string $requestId,bool $a
         $pre=disbursementPreflight($pdo);
         if(!$pre['ok'])throw new RuntimeException('Platform payout setup is incomplete.');
         $pdo->beginTransaction();
+        $st=$pdo->prepare('SELECT id FROM tenants WHERE id=? FOR UPDATE');$st->execute([$tenantId]);
+        if(!$st->fetchColumn())throw new RuntimeException('Tenant not found.');
+        assertCollectionInvoicesSettled($pdo,$tenantId,true);
         $st=$pdo->prepare('SELECT * FROM tenant_payout_settings WHERE tenant_id=? FOR UPDATE');$st->execute([$tenantId]);
         $lockedSettings=$st->fetch(PDO::FETCH_ASSOC);
         if(!$lockedSettings || empty($lockedSettings['verified_at']) || $lockedSettings['payout_phone']!==$state['phone'])throw new RuntimeException('Your payout destination changed. Reload billing.');

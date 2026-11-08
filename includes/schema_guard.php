@@ -307,6 +307,8 @@ function ensurePlatformBillingSchema(PDO $pdo): void
     if ($done) return;
     $done = true;
 
+    ensureColumn($pdo,'platform_invoices','manual_override','TINYINT NOT NULL DEFAULT 0');
+
     // Nullable on old invoices: historical charges retain their original basis.
     ensureColumn($pdo,'platform_invoices','router_count','INT UNSIGNED DEFAULT NULL');
     ensureColumn($pdo,'platform_invoices','router_fee_per_router','DECIMAL(12,2) DEFAULT NULL');

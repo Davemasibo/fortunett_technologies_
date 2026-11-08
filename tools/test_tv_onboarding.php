@@ -14,5 +14,5 @@ checkConnectivity(str_contains($router->data['/system/scheduler']['*1']['on-even
 provisionRouterPaidUser($router,'hotspot','tv-device','test','pkg9-timed','TV',$expiry,'all','AA:BB:CC:DD:EE:FF');
 checkConnectivity($router->data['/ip/hotspot/user']['*1']['mac-address']==='AA:BB:CC:DD:EE:FF','Provisioning retries preserve the TV MAC restriction');
 $watchdogs = array_values(array_filter($router->data['/system/scheduler'],fn($r)=>$r['name']==='fn-paid-expiry-watchdog'));
-checkConnectivity(!str_contains($watchdogs[0]['on-event'],'find where disabled=no') && str_contains($watchdogs[0]['on-event'],'ip-binding remove'),'Expiry watchdog also disconnects already-disabled accounts and removes bound-device bypasses');
+checkConnectivity(str_contains($watchdogs[0]['on-event'],':foreach sid in=[/ip hotspot active find]') && str_contains($watchdogs[0]['on-event'],'ip-binding remove'),'Expiry watchdog also disconnects already-disabled accounts and removes bound-device bypasses');
 echo "TV onboarding regression checks passed.\n";

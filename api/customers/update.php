@@ -50,6 +50,7 @@ if (empty($id) || empty($name)) {
         $locked = (int)$lock->fetchColumn() === 1;
         if (!$locked) throw new Exception('Customer update in progress. Please try again.');
         dashboardSyncSchema($pdo);
+        ensureColumn($pdo, 'clients', 'bound_mac_address', 'VARCHAR(17) NULL DEFAULT NULL');
     $pdo->beginTransaction();
     
         // 1. Get Old Details (to check if package changed) AND verify tenant
@@ -91,6 +92,17 @@ if (empty($id) || empty($name)) {
             }
         }
     
+    require_once __DIR__ . '/../../includes/hotspot_device.php';
+    $boundMac = trim($_POST['bound_mac_address'] ?? ($oldClient['bound_mac_address'] ?? ''));
+    if ($boundMac !== '' && $connection_type !== 'hotspot') throw new InvalidArgumentException('Clear the MAC address before changing away from Hotspot.');
+    $boundMac = $boundMac === '' ? null : hotspotBoundMac($boundMac);
+
+    if ($boundMac !== null) {
+        $macOwner = $pdo->prepare('SELECT id FROM clients WHERE tenant_id=? AND bound_mac_address=? AND id<>? LIMIT 1');
+        $macOwner->execute([$tenant_id, $boundMac, $id]);
+        if ($macOwner->fetchColumn()) throw new InvalidArgumentException('This MAC address already belongs to another customer.');
+    }
+
     // 3. Update DB
     $expiry_date = !empty($_POST['expiry_date']) ? $_POST['expiry_date'] : null;
     $portal_password = !empty($_POST['password']) ? password_hash($_POST['password'], PASSWORD_DEFAULT) : null;
@@ -98,11 +110,11 @@ if (empty($id) || empty($name)) {
     // Base fields
     $fields = [
         'full_name = ?', 'name = ?', 'email = ?', 'phone = ?', 'address = ?', 'username = ?', 
-        'mikrotik_username = ?', 'status = ?', 'connection_type = ?'
+        'mikrotik_username = ?', 'status = ?', 'connection_type = ?', 'bound_mac_address = ?'
     ];
     $values = [
         $name, $name, $email, $phone, $address, $username, 
-        $mikrotik_username, $status, $connection_type
+        $mikrotik_username, $status, $connection_type, $boundMac
     ];
     
     if (isset($_POST['router_ownership'])) {
@@ -148,7 +160,7 @@ if (empty($id) || empty($name)) {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($values);
     
-    $networkChanged = $mikrotik_username !== $oldClient['mikrotik_username']
+    $networkChanged = $boundMac !== ($oldClient['bound_mac_address'] ?? null) || $mikrotik_username !== $oldClient['mikrotik_username']
         || $status !== $oldClient['status'] || $connection_type !== $oldClient['connection_type']
         || ($package_id && (int)$package_id !== (int)$oldClient['package_id'])
         || ($mikrotik_password !== '' && $mikrotik_password !== $oldClient['mikrotik_password'])

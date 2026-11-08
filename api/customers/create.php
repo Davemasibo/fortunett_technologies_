@@ -46,6 +46,11 @@ try {
     $router_id = customerCreationRouter($pdo, (int)$tenant_id, $_POST['router_id'] ?? '');
     ensureColumn($pdo, 'clients', 'assigned_router_id', 'INT NULL DEFAULT NULL');
     customerWelcomeSchema($pdo);
+    ensureColumn($pdo, 'clients', 'bound_mac_address', 'VARCHAR(17) NULL DEFAULT NULL');
+    require_once __DIR__ . '/../../includes/hotspot_device.php';
+    $boundMac = trim($_POST['bound_mac_address'] ?? '');
+    if ($boundMac !== '' && $connection_type !== 'hotspot') throw new InvalidArgumentException('MAC access requires a Hotspot package.');
+    $boundMac = $boundMac === '' ? null : hotspotBoundMac($boundMac);
 } catch (Throwable $e) {
     ob_clean();
     http_response_code(422);
@@ -150,6 +155,12 @@ try {
         throw new Exception("Package type mismatch: cannot assign a " . strtoupper($pkgType) . " package to a " . strtoupper($custType) . " customer. Please select a matching package or update the package type.");
     }
 
+    if ($boundMac !== null) {
+        $macOwner = $pdo->prepare('SELECT id FROM clients WHERE tenant_id=? AND bound_mac_address=? AND id<>? LIMIT 1');
+        $macOwner->execute([$tenant_id, $boundMac, 0]);
+        if ($macOwner->fetchColumn()) throw new InvalidArgumentException('This MAC address already belongs to another customer.');
+    }
+
     // 2. Calculate Expiry
     if (!empty($_POST['expiry_date'])) {
         $expiry_date = date('Y-m-d H:i:s', strtotime($_POST['expiry_date']));
@@ -170,12 +181,12 @@ try {
     $stmt = $pdo->prepare("INSERT INTO clients
         (tenant_id, full_name, name, email, phone, address, username, auth_password,
          mikrotik_username, mikrotik_password, package_id, subscription_plan,
-         expiry_date, status, connection_type, router_ownership, assigned_router_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+         expiry_date, status, connection_type, router_ownership, assigned_router_id, bound_mac_address)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     $stmt->execute([
         $tenant_id, $name, $name, $email, $phone, $address,
         $username, $hashed_password, $mikrotik_username, $mikrotik_password,
-        $package_id, $package['name'], $expiry_date, $initialStatus, $connection_type, $routerOwnership, $router_id ?: null
+        $package_id, $package['name'], $expiry_date, $initialStatus, $connection_type, $routerOwnership, $router_id ?: null, $boundMac
     ]);
     $client_id = $pdo->lastInsertId();
     // Saved atomically with the customer, so interrupted requests retain the notice.

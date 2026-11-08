@@ -86,10 +86,11 @@ function ensureSmsInvoiceSchema(PDO $pdo): void {
     ensureColumn($pdo,'platform_invoices','sms_units','INT UNSIGNED NOT NULL DEFAULT 0');
     ensureColumn($pdo,'platform_invoices','sms_amount','DECIMAL(15,2) NOT NULL DEFAULT 0');
     ensureColumn($pdo,'platform_invoices','sms_rate','DECIMAL(12,4) DEFAULT NULL');
+    if(!ensureColumn($pdo,'platform_invoices','carryover_amount','DECIMAL(15,2) NOT NULL DEFAULT 0')) throw new RuntimeException('Could not prepare invoice carryovers.');
     $st=$pdo->query("SELECT GENERATION_EXPRESSION FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='platform_invoices' AND COLUMN_NAME='total_due'");
     $expression=(string)$st->fetchColumn();
-    if ($expression !== '' && stripos($expression,'sms_amount') === false) {
-        $pdo->exec('ALTER TABLE platform_invoices MODIFY total_due DECIMAL(15,2) GENERATED ALWAYS AS (pppoe_user_count * pppoe_fee_per_user + hotspot_collections * hotspot_commission_rate + base_fee + sms_amount) STORED');
+    if ($expression !== '' && (stripos($expression,'sms_amount') === false || stripos($expression,'carryover_amount') === false)) {
+        $pdo->exec('ALTER TABLE platform_invoices MODIFY total_due DECIMAL(15,2) GENERATED ALWAYS AS (pppoe_user_count * pppoe_fee_per_user + hotspot_collections * hotspot_commission_rate + base_fee + sms_amount + carryover_amount) STORED');
     } elseif ($expression === '') {
         throw new RuntimeException('Invoice total must be a generated column before enabling SMS billing.');
     }

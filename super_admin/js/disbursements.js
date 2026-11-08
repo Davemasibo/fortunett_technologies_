@@ -15,13 +15,14 @@
     const format = cents => 'KES ' + (cents / 100).toLocaleString('en-KE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     function update() {
         const payout = money(field('payout_amount').value), fees = money(field('fees_amount').value), cost = money(field('platform_cost').value);
-        const cash = payout - fees;
+        const cash = payout;
+        const reduction = payout + fees;
         const stale = field('cutoff_date').value !== form.dataset.previewDate;
         const invalid = ![payout, fees, cost].every(Number.isFinite);
-        const over = !invalid && payout > available;
+        const over = !invalid && reduction > available;
         const excessiveCost = !invalid && fees >= payout && payout > 0;
         document.getElementById('preview-stale').hidden = !stale;
-        const values = {cash, fees, platform: cost, reduction: payout, remaining: available - payout};
+        const values = {cash, fees, platform: cost, reduction, remaining: available - reduction};
         Object.entries(values).forEach(([name, value]) => { document.getElementById('summary-' + name).textContent = Number.isFinite(value) ? format(value) : '—'; });
         feedback.textContent = invalid ? 'Use a valid amount with up to two decimal places.' : over
             ? 'The payout exceeds the tenant’s available balance.' : excessiveCost ? 'The transaction cost must be smaller than the payout.' : '';

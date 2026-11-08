@@ -1,0 +1,29 @@
+READ-ONLY PPPOE HEALTH CHECK
+
+Extract pppoe-diagnostics.zip into the LIVE application root, preserving includes/ and tools/ paths.
+Use the VPS provider web console while SSH identity verification is unresolved.
+From the application root run:
+
+php tools/pppoe_health_check.php --inventory
+
+Use the exact tenant subdomain returned by that command, then run:
+
+php tools/pppoe_health_check.php --tenant=EXACT_SUBDOMAIN
+
+To inspect one router belonging to that tenant:
+
+php tools/pppoe_health_check.php --tenant=EXACT_SUBDOMAIN --router=ID
+
+If production already runs this project in Docker, run the same PHP command in the app service,
+for example: docker compose exec app php tools/pppoe_health_check.php --inventory
+Do not start the local development Compose stack on production just to run this check.
+
+The tool uses the application's existing database and RouterOS API configuration.
+It requires existing includes/db_master.php, includes/cron_heartbeat.php and classes/MikrotikAPI.php.
+SQL work is performed inside a READ ONLY transaction. Router operations are limited to print commands.
+The tool does not sync, provision, change passwords, kick sessions, repair accounting or modify billing.
+Passwords, RADIUS shared secrets and individual subscriber usernames are not included in its report.
+Configuration proves the configured authentication path, not that RADIUS accepts a login.
+Unreachable routers or incomplete reads are reported as unknown; they are not assumed offline.
+The local Docker inventory was empty, so no live authentication mode has yet been established.
+Share the tenant-specific JSON report to choose the next recovery change.

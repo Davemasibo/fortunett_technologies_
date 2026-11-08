@@ -1,0 +1,85 @@
+FINANCIAL CORRECTIONS RELEASE
+
+Status: tested locally; not deployed. Live records have not been modified.
+
+Deployment:
+1. Back up the live database and the existing files listed below.
+2. Extract release.zip in the application root, preserving includes/ and super_admin/ paths.
+3. Open Super Admin > Billing > an invoice > Edit invoice / view corrections.
+   Opening the editor installs the audit table and manual_override column automatically.
+   The application database user must have CREATE TABLE and ALTER TABLE permission.
+4. For a manual payout: Super Admin > Collections > tenant payouts > Payout history > Correct entry.
+5. Enter the corrected amounts and a reason, review the calculated total, then Save correction.
+
+For the two requested manual payout corrections:
+COLLECTIONS-INVOICE-18: cash_amount 1564.00; fees_amount 7.00; total deduction 1571.00.
+UK1702KK6: cash_amount 21703.00; fees_amount 54.00; total deduction 21757.00.
+Correct the notes to say the cost is charged after the full cash received.
+Keep platform cost unchanged unless the platform actually paid a separate charge.
+The combined additional tenant deduction is KES 61.00 compared with the old entries.
+Additional deductions need sufficient available tenant collections; the editor will reject an overdraft.
+A genuine invoice collections offset must be edited through its linked invoice.
+
+Invoice editing changes user counts, rates, monthly fee, SMS amount, due date and notes.
+The database computes subtotals and total. Corrected invoices are held at the entered charges;
+automatic monthly recalculation and trial repair preserve them.
+For invoices settled from collections, the linked deduction and amount_paid update atomically.
+Separately paid or partly paid invoice totals require a payment adjustment and cannot be overwritten here.
+No transfer is initiated by these controls. No production records are corrected automatically.
+
+Validation: 77 isolated MySQL checks; 5 mocked withdrawal checks; invoice-first browser workflow; browser regression covering payout and invoice correction,
+audit history and mobile layout; payout UI math; invoice rendering; trial fee checks; PHP lint.
+
+SSH deployment was blocked: the saved host key for 72.61.147.86 differs from the key presented.
+Verify the server identity through the hosting console before updating the local known_hosts entry.
+Presented ED25519 fingerprint: SHA256:OEiJtKBdzOaW5YA/DUjFu/GYk8PYMYgGG4sLo4/iULA
+
+
+INVOICES BEFORE PAYOUT
+Open Super Admin > Collections > tenant payouts > Settle invoices before payout.
+Review all outstanding issued invoices, the deduction total, and the remaining balance.
+Confirm and click Deduct invoices from collections, then record the remaining payout.
+This settles only unpaid balances, including invoices not overdue yet. Previously paid
+amounts are preserved. Insufficient funds or an in-flight payout rejects the batch atomically.
+Manual payouts, tenant withdrawals and automatic payout submissions remain blocked until
+all issued invoices are settled. This does not automatically debit invoices during a withdrawal.
+A partially used collection remains held for a manual payout, following the existing queue behavior.
+No live deductions have been made by preparing this release.
+
+LATE COLLECTIONS AFTER EARLY INVOICE PAYMENT
+Paid and part-paid invoices keep their recorded charges. At subsequent invoice generation,
+unbilled hotspot commission from earlier frozen invoice periods appears separately as
+Prior-period collections commission. It uses each source invoice's stored rate, not the
+current plan rate. Existing carried charges are excluded to prevent duplicates.
+Collection principal remains part of the tenant's payout balance; only commission is invoiced.
+Fixed monthly/router fees are not repeated. SMS retains its existing unbilled-usage carryforward.
+The carryover ledger records source invoice, target invoice, collection basis, rate and amount.
+In Super Admin > Billing, open the earlier paid invoice and click Refresh current invoice.
+This creates or refreshes the current editable invoice and links the historical breakdown.
+A current invoice already paid/part-paid remains fixed; its still-unbilled difference is
+picked up when an editable subsequent invoice is generated. Manual invoice charges remain
+preserved while the carryover line updates on an otherwise unpaid invoice.
+The schema upgrade adds carryover_amount and updates the generated total expression;
+old invoice totals remain unchanged because existing carryover_amount defaults to zero.
+Ghettolink live amounts have not been reconciled: production access is still blocked.
+Validation includes historical rates, early/part-paid source invoices, repeated refresh,
+backdated receipts, paid target invoices, carry-only invoices, cent rounding, tenant isolation,
+manual corrections, SMS carryforward, and the super-admin browser refresh workflow.
+
+Files:
+includes/disbursements.php
+includes/financial_corrections.php
+includes/platform_billing.php
+includes/schema_guard.php
+includes/trial_billing.php
+super_admin/billing.php
+super_admin/correct_financial.php
+super_admin/disbursements.php
+super_admin/includes/auth.php
+super_admin/includes/disbursements_view.php
+super_admin/js/disbursements.js
+includes/invoice_collections.php
+includes/tenant_payouts.php
+billing.php
+includes/sms_billing.php
+includes/invoice_carryovers.php

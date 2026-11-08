@@ -1069,6 +1069,12 @@ include 'includes/sidebar.php';
                 </div>
             </div>
 
+            <div style="margin-bottom:14px;">
+                <label for="formBoundMac">MAC access (Hotspot, optional)</label>
+                <input name="bound_mac_address" id="formBoundMac" placeholder="AA:BB:CC:DD:EE:FF" maxlength="17" style="width:100%;padding:9px;box-sizing:border-box;">
+                <p style="font-size:12px;color:#9CA3AF;">Enter the MAC seen by MikroTik. In AP mode, register each end device separately. For one household subscription, use router/NAT mode, connect the cable to WAN, choose Dynamic IP/DHCP, and register the WAN MAC. The switch must connect to the MikroTik Hotspot network.</p>
+            </div>
+
             <!-- Section: Access Credentials -->
             <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.07);margin-top:6px;">Access Credentials</div>
             <div style="background:var(--neu-surf,#1c1c1b);border:1px solid var(--neu-border,rgba(255,255,255,.06));border-radius:8px;padding:14px;margin-bottom:6px;">
@@ -1626,6 +1632,7 @@ function openEditModal(customer) {
     const connType = (customer.connection_type || 'pppoe').toLowerCase();
     document.getElementById('formConnectionType').value = connType;
     document.getElementById('formRouterOwnership').value = customer.router_ownership || 'unknown';
+    document.getElementById('formBoundMac').value = customer.bound_mac_address || '';
     filterPackagesByType(connType);
     // Set package AFTER filtering (so the reset-if-hidden logic doesn't clear it)
     if (customer.package_id) {

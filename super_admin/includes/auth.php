@@ -36,7 +36,7 @@ function superAdminLogin(int $userId, string $username): void {
 function superAdminDestination(): string {
     $destination = (string)($_SESSION['super_admin_return_to'] ?? 'index.php');
     unset($_SESSION['super_admin_return_to']);
-    return preg_match('~^(?:index|tenants|billing|collections|disbursements|plans|mpesa|diagnostics|settings)\.php(?:\?[^\r\n]*)?$~D', $destination)
+    return preg_match('~^(?:index|tenants|billing|collections|disbursements|correct_financial|plans|mpesa|diagnostics|settings)\.php(?:\?[^\r\n]*)?$~D', $destination)
         ? $destination : 'index.php';
 }
 

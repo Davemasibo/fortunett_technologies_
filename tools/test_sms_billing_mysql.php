@@ -3,7 +3,7 @@
 if (PHP_SAPI !== 'cli') exit;
 require_once __DIR__.'/test_sms_billing.php';
 if ($dsn=getenv('SMS_BILLING_TEST_DSN')) {
-    $pdo=new PDO($dsn,'root','',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+    $pdo=new PDO($dsn,'root',getenv('SMS_BILLING_TEST_PASSWORD')?:'',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
     date_default_timezone_set('Africa/Nairobi');
     $pdo->exec("SET time_zone='+03:00'");
 } else { require_once __DIR__.'/../includes/db_master.php'; }
@@ -59,6 +59,41 @@ try {
     $pdo->exec('UPDATE platform_invoices SET amount_paid=1 WHERE id='.(int)$repriced['id']);
     $pdo->exec('UPDATE platform_subscription_plans SET sms_rate=10 WHERE id=2');
     smsBillCheck((float)ensureCurrentPlatformInvoice($pdo,2,$period)['sms_amount']===3.0,'Part-paid invoice remains frozen after rate update');
+    // Early-paid collections carry to later invoices at the stored historical rate.
+    $prior=date('Y-m-01',strtotime($period.' -1 month'));
+    $following=date('Y-m-01',strtotime($period.' +1 month'));
+    $pdo->exec("INSERT INTO tenants(id,subscription_plan_id,status) VALUES (4,1,'active'),(5,1,'active')");
+    $pdo->exec("INSERT INTO clients VALUES(40,4,'active','hotspot'),(50,5,'active','hotspot')");
+    $sourceInsert=$pdo->prepare("INSERT INTO platform_invoices(invoice_number,tenant_id,billing_period,hotspot_collections,hotspot_commission_rate,status,amount_paid,due_date) VALUES(?,?,?,1000,0.03,?,?,?)");
+    $sourceInsert->execute(['EARLY-PAID',4,$prior,'paid',30,$prior]);$sourceId=(int)$pdo->lastInsertId();
+    $sourceInsert->execute(['PART-PAID',5,$prior,'pending',10,$prior]);
+    $receipt=$pdo->prepare("INSERT INTO payments VALUES(?,?,?,'completed',?,?)");
+    $receipt->execute([100,4,40,1000,$prior]);$receipt->execute([101,4,40,200,date('Y-m-d',strtotime($prior.' +27 days'))]);
+    $receipt->execute([102,5,50,1100,$prior]);
+    $pdo->exec('UPDATE platform_subscription_plans SET hotspot_commission_rate=0.09 WHERE id=1');
+    $nextBill=ensureCurrentPlatformInvoice($pdo,4,$period);
+    smsBillCheck($nextBill && (float)$nextBill['carryover_amount']===6.0 && (float)$nextBill['total_due']===6.0,'Late prior-month collections create a carry-only next invoice at historical 3 percent');
+    smsBillCheck((float)$pdo->query('SELECT total_due FROM platform_invoices WHERE id='.$sourceId)->fetchColumn()===30.0,'Early-paid source invoice is unchanged');
+    smsBillCheck((float)ensureCurrentPlatformInvoice($pdo,4,$period)['total_due']===6.0,'Refreshing carryover never charges it twice');
+    $receipt->execute([103,4,40,333.33,$prior]);
+    $nextBill=ensureCurrentPlatformInvoice($pdo,4,$period);
+    smsBillCheck((float)$nextBill['carryover_amount']===16.0,'Late backdated collections update only the editable invoice with cent-accurate rounding');
+    $pdo->exec('UPDATE platform_invoices SET status=\'paid\',amount_paid=total_due WHERE id='.(int)$nextBill['id']);
+    $receipt->execute([104,4,40,100,$prior]);
+    smsBillCheck((float)ensureCurrentPlatformInvoice($pdo,4,$period)['total_due']===16.0,'Paid target invoice remains frozen after further late receipts');
+    $later=ensureCurrentPlatformInvoice($pdo,4,$following);
+    smsBillCheck($later && (float)$later['carryover_amount']===3.0,'Only the still-unbilled difference moves to the following invoice');
+    $pdo->exec('UPDATE platform_invoices SET status=\'paid\',amount_paid=total_due WHERE id='.(int)$later['id']);
+    smsBillCheck(ensureCurrentPlatformInvoice($pdo,4,date('Y-m-01',strtotime($following.' +1 month')))===null,'Already carried collections do not create another invoice');
+    $partialNext=ensureCurrentPlatformInvoice($pdo,5,$period);
+    smsBillCheck($partialNext && (float)$partialNext['carryover_amount']===3.0,'Part-paid historical invoice carries only later unbilled commission, scoped to its tenant');
+    $pdo->exec('UPDATE platform_invoices SET manual_override=1,base_fee=5 WHERE id='.(int)$partialNext['id']);
+    $receipt->execute([105,5,50,100,$prior]);
+    $partialNext=ensureCurrentPlatformInvoice($pdo,5,$period);
+    smsBillCheck((float)$partialNext['carryover_amount']===6.0 && (float)$partialNext['base_fee']===5.0 && (float)$partialNext['total_due']===11.0,'Carryover updates preserve manually corrected invoice charges');
+    $ledger=$pdo->query('SELECT SUM(amount) FROM platform_invoice_carryovers WHERE source_invoice_id='.$sourceId)->fetchColumn();
+    smsBillCheck((float)$ledger===19.0,'Carryover ledger reconciles all extra commission without duplicating collections');
+    $pdo->exec("INSERT INTO clients VALUES(5,1,'active','hotspot')");
     require_once __DIR__.'/../classes/SMSHelper.php';
     $pdo->exec("CREATE TABLE sms_configurations (tenant_id INT,provider VARCHAR(50),api_key VARCHAR(255),sender_id VARCHAR(50),api_url VARCHAR(255),is_active INT)");
     $pdo->exec("CREATE TABLE platform_sms_config (id INT,provider VARCHAR(50),api_key VARCHAR(255),sender_id VARCHAR(50),api_url VARCHAR(255),is_active INT)");

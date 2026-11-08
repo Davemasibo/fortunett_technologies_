@@ -5,6 +5,7 @@ superAdminGuard();
 require_once __DIR__ . '/../includes/platform_billing.php';
 ensurePlatformBillingSchema($pdo);
 ensureSmsInvoiceSchema($pdo);
+ensureInvoiceCarryoverSchema($pdo);
 foreach ($pdo->query("SELECT id FROM tenants WHERE status='trial'")->fetchAll(PDO::FETCH_COLUMN) as $trialId) {
     repairUnpaidTrialInvoices($pdo, (int)$trialId);
 }
@@ -38,16 +39,24 @@ if ($invoiceId) {
 $_SESSION['invoice_offset_csrf'] ??= bin2hex(random_bytes(32));
 $offsetError = ''; $offsetAvailable = 0; $offsetRows = []; $offsetReady = false;
 $offsetCutoff = (new DateTimeImmutable('now', new DateTimeZone('Africa/Nairobi')))->format('Y-m-d H:i:s');
+$invoiceOffsetDue=$invoiceDetail ? max(0,(float)$invoiceDetail['total_due']-($invoiceDetail['status']==='paid'?0:(float)$invoiceDetail['amount_paid'])) : 0;
 if ($invoiceDetail) {
     try {
         require_once __DIR__ . '/../includes/disbursements.php';
         ensureDisbursementSchema($pdo);
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'refresh_invoice') {
+            if (!hash_equals($_SESSION['invoice_offset_csrf'], (string)($_POST['csrf'] ?? ''))) throw new InvalidArgumentException('Session expired. Reload and try again.');
+            $refreshed=ensureCurrentPlatformInvoice($pdo,(int)$invoiceDetail['tenant_id']);
+            if(!$refreshed)throw new InvalidArgumentException('No current invoice could be prepared. Check the billing configuration and retry.');
+            $_SESSION['invoice_refresh_success']=(int)$refreshed['id'];
+            header('Location: billing.php?invoice='.(int)$refreshed['id']);exit;
+        }
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'invoice_offset') {
             if (!hash_equals($_SESSION['invoice_offset_csrf'], (string)($_POST['csrf'] ?? ''))) throw new InvalidArgumentException('Session expired. Reload and try again.');
             if (empty($_POST['confirm_offset'])) throw new InvalidArgumentException('Confirm the invoice deduction first.');
             $offsetId = recordDisbursement($pdo, (int)$invoiceDetail['tenant_id'], (int)$_SESSION['user_id'], [
                 'cutoff'=>$_POST['cutoff'] ?? '', 'disbursed_at'=>$offsetCutoff,
-                'cash_amount'=>'0', 'fees_amount'=>(string)$invoiceDetail['total_due'], 'platform_cost'=>'0',
+                'cash_amount'=>'0', 'fees_amount'=>number_format($invoiceOffsetDue,2,'.',''), 'platform_cost'=>'0',
                 'notes'=>'Invoice settlement from collections', 'replace_manual'=>!empty($_POST['replace_manual']),
                 'expected_gross'=>$_POST['expected_gross'] ?? '', 'expected_count'=>$_POST['expected_count'] ?? 0,
             ], $invoiceId);
@@ -216,6 +225,9 @@ table a:hover{color:#93c5fd;}
             </div>
 
             <p><a href="sms_usage.php">View tenant SMS usage and charges</a></p>
+            <p><a href="correct_financial.php?type=invoice&amp;id=<?= (int)$invoiceDetail['id'] ?>">Edit invoice / view corrections</a></p>
+            <form method="post"><input type="hidden" name="action" value="refresh_invoice"><input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['invoice_offset_csrf']) ?>"><p>Refresh the current invoice to include unbilled commission from earlier paid periods. Paid invoices retain their recorded amounts.</p><button type="submit" class="btn-filter">Refresh current invoice</button></form>
+            <?php if(($_SESSION['invoice_refresh_success']??0)===$invoiceId): unset($_SESSION['invoice_refresh_success']); ?><p role="status">Billing reviewed. Unbilled prior-period collection charges are included on editable subsequent invoices.</p><?php endif; ?>
             <!-- Line items -->
             <div class="inv-lines">
                 <div class="line-item">
@@ -236,11 +248,21 @@ table a:hover{color:#93c5fd;}
                     <span>Platform SMS (<?= (int)$invoiceDetail['sms_message_count'] ?> messages / <?= (int)$invoiceDetail['sms_units'] ?> units)</span>
                     <strong>KSH <?= number_format($invoiceDetail['sms_amount'], 2) ?></strong>
                 </div>
+                <?php if((float)$invoiceDetail['carryover_amount']>0): ?>
+                <div class="line-item"><span>Prior-period collections commission</span><strong>KSH <?= number_format($invoiceDetail['carryover_amount'],2) ?></strong></div>
+                <?php endif; ?>
                 <div class="line-total">
                     <span>Total Due</span>
                     <span>KSH <?= number_format($invoiceDetail['total_due'], 2) ?></span>
                 </div>
             </div>
+
+            <?php if((float)$invoiceDetail['carryover_amount']>0):
+                $carryDetail=$pdo->prepare('SELECT c.*,s.invoice_number,s.billing_period FROM platform_invoice_carryovers c JOIN platform_invoices s ON s.id=c.source_invoice_id WHERE c.target_invoice_id=? AND s.tenant_id=? ORDER BY s.billing_period,s.id');
+                $carryDetail->execute([$invoiceId,$invoiceDetail['tenant_id']]); ?>
+                <div class="inv-lines"><h3>Unbilled collections carried forward</h3>
+                <?php foreach($carryDetail->fetchAll(PDO::FETCH_ASSOC) as $cd): ?><p><a href="billing.php?invoice=<?= (int)$cd['source_invoice_id'] ?>"><?= htmlspecialchars($cd['invoice_number']) ?></a> · <?= htmlspecialchars(date('M Y',strtotime($cd['billing_period']))) ?>: KSH <?= number_format($cd['collections_amount'],2) ?> collections × <?= round($cd['commission_rate']*100,2) ?>% = KSH <?= number_format($cd['amount'],2) ?></p><?php endforeach; ?></div>
+            <?php endif; ?>
 
             <div class="detail-grid">
                 <div class="detail-item"><label>Billing Period</label><span><?= date('M Y', strtotime($invoiceDetail['billing_period'])) ?></span></div>
@@ -260,8 +282,8 @@ table a:hover{color:#93c5fd;}
             <form method="post" class="inv-actions" style="display:block;">
                 <h3>Deduct invoice from collections</h3>
                 <p>Awaiting payout: <strong>KSH <?= number_format($offsetAvailable, 2) ?></strong>.
-                Invoice deduction: <strong>KSH <?= number_format($invoiceDetail['total_due'], 2) ?></strong>.
-                Remaining after deduction: <strong>KSH <?= number_format($offsetAvailable - (float)$invoiceDetail['total_due'], 2) ?></strong>.</p>
+                Invoice deduction: <strong>KSH <?= number_format($invoiceOffsetDue, 2) ?></strong>.
+                Remaining after deduction: <strong>KSH <?= number_format($offsetAvailable - (float)$invoiceOffsetDue, 2) ?></strong>.</p>
                 <p>This settles this invoice once using currently undistributed collections. It does not send money.</p>
                 <input type="hidden" name="action" value="invoice_offset">
                 <input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['invoice_offset_csrf']) ?>">
@@ -271,9 +293,9 @@ table a:hover{color:#93c5fd;}
                 <?php if ($invoiceDetail['status'] === 'paid'): ?>
                 <p><label><input type="checkbox" name="replace_manual" value="1" required> The manual Paid entry was only a placeholder to prevent suspension. No separate payment was received for this invoice.</label></p>
                 <?php endif; ?>
-                <p><label><input type="checkbox" name="confirm_offset" value="1" required> Deduct KSH <?= number_format($invoiceDetail['total_due'], 2) ?> from this tenant's awaiting payout balance.</label></p>
-                <button type="submit" class="btn-paid" <?= $offsetAvailable < (float)$invoiceDetail['total_due'] ? 'disabled' : '' ?>>Deduct invoice from collections</button>
-                <?php if ($offsetAvailable < (float)$invoiceDetail['total_due']): ?><p>Insufficient undistributed collections to settle this invoice.</p><?php endif; ?>
+                <p><label><input type="checkbox" name="confirm_offset" value="1" required> Deduct KSH <?= number_format($invoiceOffsetDue, 2) ?> from this tenant's awaiting payout balance.</label></p>
+                <button type="submit" class="btn-paid" <?= $offsetAvailable < (float)$invoiceOffsetDue ? 'disabled' : '' ?>>Deduct invoice from collections</button>
+                <?php if ($offsetAvailable < (float)$invoiceOffsetDue): ?><p>Insufficient undistributed collections to settle this invoice.</p><?php endif; ?>
             </form>
             <?php endif; ?>
 
