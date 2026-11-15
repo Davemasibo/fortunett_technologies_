@@ -271,7 +271,7 @@ function recordDisbursement(PDO $pdo, int $tenantId, int $actorId, array $input,
         if ($dup->fetchColumn()) throw new InvalidArgumentException('This transfer reference is already recorded.');
 
         // Lock queue rows before payments, as the B2C settlement path does.
-        $queue = $pdo->prepare('SELECT id, payment_id, status FROM isp_payout_queue WHERE tenant_id = ? FOR UPDATE');
+        $queue = $pdo->prepare('SELECT id, payment_id, status, notes FROM isp_payout_queue WHERE tenant_id = ? FOR UPDATE');
         $queue->execute([$tenantId]);
         $queued = $queue->fetchAll(PDO::FETCH_ASSOC);
         $rows = disbursementPayments($pdo, $tenantId, $cutoff, true);
