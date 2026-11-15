@@ -312,6 +312,8 @@ function ensurePlatformBillingSchema(PDO $pdo): void
     // Nullable on old invoices: historical charges retain their original basis.
     ensureColumn($pdo,'platform_invoices','router_count','INT UNSIGNED DEFAULT NULL');
     ensureColumn($pdo,'platform_invoices','router_fee_per_router','DECIMAL(12,2) DEFAULT NULL');
+    // Per-device platform fee exemption. Existing routers remain billable by default.
+    ensureColumn($pdo,'mikrotik_routers','platform_billable','TINYINT(1) NOT NULL DEFAULT 1');
 
     // Part-payment support: a tenant paying 500 against a 1,200 invoice must
     // reduce the balance rather than be rejected or over-credited.

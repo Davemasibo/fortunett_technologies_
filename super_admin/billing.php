@@ -226,6 +226,7 @@ table a:hover{color:#93c5fd;}
 
             <p><a href="sms_usage.php">View tenant SMS usage and charges</a></p>
             <p><a href="correct_financial.php?type=invoice&amp;id=<?= (int)$invoiceDetail['id'] ?>">Edit invoice / view corrections</a></p>
+            <p><a href="router_billing.php?tenant_id=<?= (int)$invoiceDetail['tenant_id'] ?>">Manage this tenant's billable MikroTik routers</a></p>
             <form method="post"><input type="hidden" name="action" value="refresh_invoice"><input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['invoice_offset_csrf']) ?>"><p>Refresh the current invoice to include unbilled commission from earlier paid periods. Paid invoices retain their recorded amounts.</p><button type="submit" class="btn-filter">Refresh current invoice</button></form>
             <?php if(($_SESSION['invoice_refresh_success']??0)===$invoiceId): unset($_SESSION['invoice_refresh_success']); ?><p role="status">Billing reviewed. Unbilled prior-period collection charges are included on editable subsequent invoices.</p><?php endif; ?>
             <!-- Line items -->

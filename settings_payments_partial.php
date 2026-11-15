@@ -775,7 +775,16 @@ input:checked + .live-slider:before { transform: translateX(18px); }
 
             <!-- Action buttons -->
             <div class="gw-footer" style="flex-wrap:wrap;gap:6px;">
-                <button class="gw-btn" onclick='editGateway(<?= htmlspecialchars(json_encode($g), ENT_QUOTES) ?>)'>
+                <?php
+                $editGateway = $g;
+                $editCredentials = $creds;
+                $editCredentials['_has_consumer_key'] = !empty($editCredentials['consumer_key']);
+                $editCredentials['_has_consumer_secret'] = !empty($editCredentials['consumer_secret']);
+                $editCredentials['_has_passkey'] = !empty($editCredentials['passkey']);
+                unset($editCredentials['consumer_key'], $editCredentials['consumer_secret'], $editCredentials['passkey']);
+                $editGateway['credentials'] = $editCredentials;
+                ?>
+                <button class="gw-btn" onclick='editGateway(<?= htmlspecialchars(json_encode($editGateway), ENT_QUOTES) ?>)'>
                     <i class="fas fa-edit"></i> Edit
                 </button>
                 <button class="gw-btn test" onclick="testGateway(<?= $g['id'] ?>, this)">
@@ -1048,7 +1057,7 @@ function editGateway(g) {
         document.getElementById('use_generated_accounts').checked = creds.use_generated_accounts === '1';
 
     } else if (g.gateway_type === 'mpesa_api') {
-        document.getElementById('mpesa_consumer_key').value    = creds.consumer_key    || '';
+        document.getElementById('mpesa_consumer_key').value    = '';
         document.getElementById('mpesa_shortcode').value       = creds.shortcode       || '';
         document.getElementById('mpesa_shortcode_type').value  = creds.shortcode_type  || 'paybill';
         document.getElementById('mpesa_store_number').value    = creds.store_number    || '';
@@ -1063,9 +1072,8 @@ function editGateway(g) {
 
         // Consumer Secret badge + placeholder
         const secretBadge = document.getElementById('badge_consumer_secret');
-        if (creds.consumer_secret) {
-            const tail = creds.consumer_secret.slice(-4);
-            secretEl.placeholder = '••••••••' + tail + ' (leave blank to keep)';
+        if (creds._has_consumer_secret) {
+            secretEl.placeholder = 'Saved (leave blank to keep)';
             secretBadge.textContent = '✓ Saved';
             secretBadge.className = 'cred-badge saved';
         } else {
@@ -1077,9 +1085,8 @@ function editGateway(g) {
 
         // Passkey badge + placeholder
         const passKeyBadge = document.getElementById('badge_passkey');
-        if (creds.passkey) {
-            const tail = creds.passkey.slice(-6);
-            passEl.placeholder = '••••••••…' + tail + ' (leave blank to keep)';
+        if (creds._has_passkey) {
+            passEl.placeholder = 'Saved (leave blank to keep)';
             passKeyBadge.textContent = '✓ Saved';
             passKeyBadge.className = 'cred-badge saved';
         } else {
@@ -1091,7 +1098,7 @@ function editGateway(g) {
 
         // Consumer Key badge
         const keyBadge = document.getElementById('badge_consumer_key');
-        if (creds.consumer_key) {
+        if (creds._has_consumer_key) {
             keyBadge.textContent = '✓ Saved';
             keyBadge.className = 'cred-badge saved';
         } else {

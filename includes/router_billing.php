@@ -1,9 +1,9 @@
 <?php
-/** A saved placeholder is not configured. Connectivity history survives outages. */
+/** Bill only routers currently in service; offline/inactive devices are excluded. */
 function platformConfiguredRouterCount(PDO $pdo,int $tenantId,?string $period=null):int {
     $until=date('Y-m-01',strtotime(($period??date('Y-m-01')).' +1 month'));
     $st=$pdo->prepare("SELECT COUNT(*) FROM mikrotik_routers WHERE tenant_id=?
-        AND last_seen IS NOT NULL AND status IN ('active','online','offline','inactive')
+        AND platform_billable=1 AND last_seen IS NOT NULL AND status IN ('active','online')
         AND created_at<?");
     $st->execute([$tenantId,$until]);return (int)$st->fetchColumn();
 }

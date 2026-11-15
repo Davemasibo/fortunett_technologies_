@@ -87,8 +87,11 @@ function correctFinancialRecord(PDO $pdo, string $type, int $id, int $actor, arr
         } else {
             $count=filter_var($input['pppoe_user_count']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>0,'max_range'=>1000000]]);
             if($count===false) throw new InvalidArgumentException('Enter a valid PPPoE user count.');
+            $routerCount=filter_var($input['router_count']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>0,'max_range'=>1000]]);
+            if($routerCount===false) throw new InvalidArgumentException('Enter a valid billable MikroTik device count.');
             $amounts=[];
-            foreach(['pppoe_fee_per_user','hotspot_collections','base_fee','sms_amount'] as $field) $amounts[$field]=disbursementMoney((string)($input[$field]??''));
+            foreach(['pppoe_fee_per_user','hotspot_collections','router_fee_per_router','sms_amount'] as $field) $amounts[$field]=disbursementMoney((string)($input[$field]??''));
+            $amounts['base_fee']=$routerCount*$amounts['router_fee_per_router'];
             $rate=trim((string)($input['hotspot_commission_rate']??''));
             if(!preg_match('/^(?:0(?:\.\d{1,4})?|1(?:\.0{1,4})?)$/D',$rate)) throw new InvalidArgumentException('Commission rate must be between 0 and 1, up to four decimal places.');
             $total=$count*$amounts['pppoe_fee_per_user']+(int)round($amounts['hotspot_collections']*(float)$rate)+$amounts['base_fee']+$amounts['sms_amount']+(int)round((float)($before['carryover_amount']??0)*100);
@@ -108,8 +111,8 @@ function correctFinancialRecord(PDO $pdo, string $type, int $id, int $actor, arr
             }
             $status=$before['status'];
             if(in_array($status,['pending','overdue'],true)) $status=$due<date('Y-m-d')?'overdue':'pending';
-            $pdo->prepare('UPDATE platform_invoices SET pppoe_user_count=?,pppoe_fee_per_user=?,hotspot_collections=?,hotspot_commission_rate=?,base_fee=?,sms_amount=?,due_date=?,notes=?,status=?,manual_override=1,router_count=NULL,router_fee_per_router=NULL WHERE id=? AND tenant_id=?')
-                ->execute([$count,$amounts['pppoe_fee_per_user']/100,$amounts['hotspot_collections']/100,$rate,$amounts['base_fee']/100,$amounts['sms_amount']/100,$due,$notes,$status,$id,$tenant]);
+            $pdo->prepare('UPDATE platform_invoices SET pppoe_user_count=?,pppoe_fee_per_user=?,hotspot_collections=?,hotspot_commission_rate=?,base_fee=?,router_count=?,router_fee_per_router=?,sms_amount=?,due_date=?,notes=?,status=?,manual_override=1 WHERE id=? AND tenant_id=?')
+                ->execute([$count,$amounts['pppoe_fee_per_user']/100,$amounts['hotspot_collections']/100,$rate,$amounts['base_fee']/100,$routerCount,$amounts['router_fee_per_router']/100,$amounts['sms_amount']/100,$due,$notes,$status,$id,$tenant]);
             if($before['payment_method']==='collections_offset') $pdo->prepare('UPDATE platform_invoices SET amount_paid=total_due WHERE id=?')->execute([$id]);
         }
         $st=$pdo->prepare("SELECT * FROM $table WHERE id=?");$st->execute([$id]);

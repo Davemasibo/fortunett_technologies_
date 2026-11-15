@@ -19,11 +19,15 @@ if($_SERVER['REQUEST_METHOD']==='POST') {
     } catch(InvalidArgumentException $e){$error=$e->getMessage();}
     catch(Throwable $e){error_log('Financial correction: '.$e->getMessage());$error='Correction could not be saved. No changes were applied.';}
 }
-$values=array_merge($record,$_SERVER['REQUEST_METHOD']==='POST'?$_POST:[]);
 $st=$pdo->prepare('SELECT * FROM financial_corrections WHERE record_type=? AND record_id=? ORDER BY id DESC');$st->execute([$type,$id]);$history=$st->fetchAll(PDO::FETCH_ASSOC);
 function fh($v){return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 $back=$type==='invoice'?'billing.php?invoice='.$id:'disbursements.php?tenant_id='.(int)$record['tenant_id'];
-$fields=$type==='invoice'?['pppoe_user_count'=>'PPPoE user count','pppoe_fee_per_user'=>'PPPoE fee per user','hotspot_collections'=>'Hotspot collections','hotspot_commission_rate'=>'Hotspot commission rate (0.03 = 3%)','base_fee'=>'Monthly fee','sms_amount'=>'SMS charge']:['cash_amount'=>'Full cash received','fees_amount'=>'Transaction cost charged to tenant','platform_cost'=>'Transfer charge paid by platform'];
+$fields=$type==='invoice'?['pppoe_user_count'=>'PPPoE user count','pppoe_fee_per_user'=>'PPPoE fee per user','hotspot_collections'=>'Hotspot collections','hotspot_commission_rate'=>'Hotspot commission rate (0.03 = 3%)','router_count'=>'Billable MikroTik devices','router_fee_per_router'=>'Monthly fee per MikroTik','sms_amount'=>'SMS charge']:['cash_amount'=>'Full cash received','fees_amount'=>'Transaction cost charged to tenant','platform_cost'=>'Transfer charge paid by platform'];
+$values=array_merge($record,$_SERVER['REQUEST_METHOD']==='POST'?$_POST:[]);
+if($type==='invoice' && $values['router_count']===null) {
+    $values['router_count']=(float)$values['base_fee']>0?1:0;
+    $values['router_fee_per_router']=$values['base_fee'];
+}
 ?>
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Correct <?= fh($type) ?> · FortuNett</title>
 <link rel="stylesheet" href="css/dark.css?v=2"><link rel="stylesheet" href="css/shell.css?v=2"><link rel="stylesheet" href="css/admin.css?v=1"><script src="js/shell.js?v=2" defer></script></head><body class="sa-shell">
@@ -35,11 +39,11 @@ $fields=$type==='invoice'?['pppoe_user_count'=>'PPPoE user count','pppoe_fee_per
 <?php if($error): ?><p class="sa-alert sa-alert-error" role="alert"><?= fh($error) ?></p><?php endif; ?>
 <?php if(isset($_GET['saved'])): ?><p class="sa-alert sa-alert-success" role="status">Correction saved. Linked balances have been updated.</p><?php endif; ?>
 <?php if($type==='payout'): ?><p>The tenant balance reduces by the full cash received plus the transaction cost. Any extra deduction uses available collections as of now. This records a correction to money already sent.</p>
-<?php else: ?><p>Invoice total uses user count ? fee, collections ? commission rate, monthly fee, and SMS charge. For an invoice settled from collections, its linked deduction updates with the total. Separately paid invoices retain their paid total.</p><?php endif; ?>
+<?php else: ?><p>Invoice total uses user count, collections commission, billable MikroTik devices, SMS, and any carryover. Set the device count to zero for devices that should not be billed. For an invoice settled from collections, its linked deduction updates with the total. Separately paid invoices retain their paid total.</p><?php endif; ?>
 <?php if($type==='invoice' && (float)($record['carryover_amount']??0)>0): ?><p>Prior-period collections commission: KES <?= number_format($record['carryover_amount'],2) ?>. This carried amount stays linked to the source invoices.</p><?php endif; ?>
 <form method="post"><input type="hidden" name="csrf" value="<?= fh($_SESSION['financial_csrf']) ?>"><input type="hidden" name="revision" value="<?= fh($values['revision']??financialRevision($record)) ?>">
 <div class="sa-form-grid">
-<?php foreach($fields as $key=>$label): ?><div class="sa-field"><label for="<?= $key ?>"><?= fh($label) ?><?= in_array($key,['pppoe_user_count','hotspot_commission_rate'],true)?'':' (KES)' ?></label><input id="<?= $key ?>" name="<?= $key ?>" inputmode="decimal" value="<?= fh($values[$key]) ?>" required></div><?php endforeach; ?>
+<?php foreach($fields as $key=>$label): ?><div class="sa-field"><label for="<?= $key ?>"><?= fh($label) ?><?= in_array($key,['pppoe_user_count','router_count','hotspot_commission_rate'],true)?'':' (KES)' ?></label><input id="<?= $key ?>" name="<?= $key ?>" inputmode="decimal" value="<?= fh($values[$key]) ?>" required></div><?php endforeach; ?>
 <?php if($type==='invoice'): ?><div class="sa-field"><label for="due_date">Due date</label><input type="date" id="due_date" name="due_date" value="<?= fh(substr($values['due_date'],0,10)) ?>" required></div><?php endif; ?>
 <div class="sa-field sa-field-wide"><label for="notes">Notes</label><textarea id="notes" name="notes" rows="3" <?= $type==='payout'?'maxlength="255"':'' ?>><?= fh($values['notes']??'') ?></textarea></div>
 <div class="sa-field sa-field-wide"><label for="reason">Reason for correction</label><textarea id="reason" name="reason" maxlength="255" required><?= fh($values['reason']??'') ?></textarea></div>
@@ -51,6 +55,6 @@ $fields=$type==='invoice'?['pppoe_user_count'=>'PPPoE user count','pppoe_fee_per
 </tbody></table></div></details><?php endforeach; ?></div></section></main></div>
 <script>
 (()=>{const fields=<?= json_encode(array_keys($fields)) ?>,type=<?= json_encode($type) ?>,carryover=<?= json_encode((float)($record['carryover_amount']??0)) ?>;
-function update(){const amounts=fields.map(k=>Number(document.getElementById(k).value.replaceAll(',','')));const total=type==='payout'?amounts[0]+amounts[1]:amounts[0]*amounts[1]+amounts[2]*amounts[3]+amounts[4]+amounts[5]+carryover;document.getElementById('correction-total').textContent=(type==='payout'?'Tenant balance reduction: KES ':'Invoice total: KES ')+(Number.isFinite(total)?total.toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2}):'—');}
+function update(){let total;if(type==='payout'){const a=fields.map(k=>Number(document.getElementById(k).value.replaceAll(',','')));total=a[0]+a[1];}else{const v=Object.fromEntries(fields.map(k=>[k,Number(document.getElementById(k).value.replaceAll(',',''))]));total=v.pppoe_user_count*v.pppoe_fee_per_user+v.hotspot_collections*v.hotspot_commission_rate+v.router_count*v.router_fee_per_router+v.sms_amount+carryover;}document.getElementById('correction-total').textContent=(type==='payout'?'Tenant balance reduction: KES ':'Invoice total: KES ')+(Number.isFinite(total)?total.toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2}):'—');}
 fields.forEach(k=>document.getElementById(k).addEventListener('input',update));update();})();
 </script></body></html>

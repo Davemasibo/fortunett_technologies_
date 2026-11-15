@@ -20,16 +20,16 @@
  * Replace sandbox values with your production credentials before going live.
  */
 
-// Environment: 'sandbox' or 'production'
-define('MPESA_ENV', 'sandbox');
+// Credentials are supplied by the server environment and must never live in source.
+define('MPESA_ENV', getenv('MPESA_ENV') ?: 'sandbox');
 
 // FortuNett platform consumer credentials (from Safaricom Daraja portal)
-define('MPESA_CONSUMER_KEY',    'XhBs3sSu9aNffPnYtGrDz52J7SlKe7D4jgN5STgfbydmR0LR');
-define('MPESA_CONSUMER_SECRET', 'fvS7Mnj0HKyKscKXgIW1YRBDcc6kPcvhIdLRzjks2Mm2pK4Msb0JL77SGob3Ol7d');
+define('MPESA_CONSUMER_KEY',    getenv('MPESA_CONSUMER_KEY') ?: '');
+define('MPESA_CONSUMER_SECRET', getenv('MPESA_CONSUMER_SECRET') ?: '');
 
 // Platform paybill / till number and Lipa na M-Pesa passkey
-define('MPESA_SHORTCODE', '174379');
-define('MPESA_PASSKEY',   'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919');
+define('MPESA_SHORTCODE', getenv('MPESA_SHORTCODE') ?: '');
+define('MPESA_PASSKEY',   getenv('MPESA_PASSKEY') ?: '');
 
 /**
  * STK Push callback URL.

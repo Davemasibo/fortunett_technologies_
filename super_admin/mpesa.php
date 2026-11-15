@@ -138,21 +138,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
         <div id="toastMsg" class="toast-msg"></div>
 
         <?php
-        // Detect known-bad passkey: sandbox test passkey used in production
-        $sandboxPasskey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919';
         $isLiveEnv = in_array($cfg['environment'] ?? 'sandbox', ['production', 'live'], true);
-        $hasSandboxPasskeyInProd = $isLiveEnv && !empty($cfg['passkey']) && $cfg['passkey'] === $sandboxPasskey;
         $hasMissingPasskey = $isLiveEnv && empty($cfg['passkey']);
         ?>
-        <?php if ($hasSandboxPasskeyInProd): ?>
-        <div style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:12px;align-items:flex-start;">
-            <i class="fas fa-exclamation-triangle" style="color:#fca5a5;margin-top:2px;flex-shrink:0;"></i>
-            <div style="font-size:13px;color:#fca5a5;line-height:1.6;">
-                <strong>Wrong passkey detected!</strong> The saved passkey is the Safaricom sandbox test passkey — it does not work with production shortcodes. STK Push requests will fail with error 500.001.1001.<br>
-                <strong>Fix:</strong> Log into <a href="https://developer.safaricom.co.ke/MyApps" target="_blank" style="color:#93c5fd;">developer.safaricom.co.ke</a> → select your app → go to <strong>Lipa Na M-Pesa Online</strong> → copy the <strong>Online Passkey</strong> and paste it below.
-            </div>
-        </div>
-        <?php elseif ($hasMissingPasskey): ?>
+        <?php if ($hasMissingPasskey): ?>
         <div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:12px;align-items:flex-start;">
             <i class="fas fa-exclamation-triangle" style="color:#fcd34d;margin-top:2px;flex-shrink:0;"></i>
             <div style="font-size:13px;color:#fcd34d;line-height:1.6;">

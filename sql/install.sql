@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS `mikrotik_routers` (
     hotspot_shared_users TINYINT(1) UNSIGNED NOT NULL DEFAULT 0 COMMENT '0=unlimited sessions, 1=one session per user (no sharing)',
     last_seen TIMESTAMP NULL,
     tenant_id INT DEFAULT NULL,
+    platform_billable TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Whether this router incurs a platform monthly fee',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_tenant_id (tenant_id)

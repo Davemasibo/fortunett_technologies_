@@ -475,7 +475,7 @@ table a:hover{color:#93c5fd;}
 
         <!-- Invoice history -->
         <div class="card">
-            <div style="padding:16px 20px;border-bottom:1px solid var(--neu-border);"><h3 style="font-size:15px;font-weight:700;">Invoice History</h3></div>
+            <div style="padding:16px 20px;border-bottom:1px solid var(--neu-border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;"><h3 style="font-size:15px;font-weight:700;">Invoice History</h3><a class="btn-sm btn-view" href="router_billing.php?tenant_id=<?= (int)$detailTenant['id'] ?>" style="text-decoration:none;">Manage billable routers</a></div>
             <table>
                 <thead><tr><th>Invoice #</th><th>Period</th><th>PPPoE Users</th><th>Hotspot Rev.</th><th>Total Due</th><th>Status</th><th>Paid At</th><th></th></tr></thead>
                 <tbody>
