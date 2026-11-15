@@ -876,7 +876,7 @@ document.getElementById('confirmWithdrawal').addEventListener('click',async func
                     <td id="invRouterQty">0 routers</td>
                     <td id="invMonthlyFee">KES <?php echo number_format($baseMonthlyFee, 2); ?></td>
                 </tr>
-                <tr>
+                <tr id="invPppoeFeeRow" style="display:none">
                     <td>
                         <div class="desc-main">Platform Fee</div>
                         <div class="desc-sub">Monthly ISP management fee — per active user</div>
@@ -1105,6 +1105,7 @@ function openInvoiceModal(bill) {
     document.getElementById('invPppoeRate').textContent       = 'KES ' + fmt(pppoeRate) + '/user';
     document.getElementById('invPppoeQty').textContent        = pppoeCount + ' user' + (pppoeCount !== 1 ? 's' : '');
     document.getElementById('invBaseFee').textContent         = 'KES ' + fmt(pppoe);
+    document.getElementById('invPppoeFeeRow').style.display   = pppoe > 0 ? '' : 'none';
     const hasRouterSnapshot = bill.router_count != null;
     const routerQty = hasRouterSnapshot ? Number(bill.router_count) : 1;
     const routerRate = bill.router_fee_per_router == null ? base : Number(bill.router_fee_per_router);

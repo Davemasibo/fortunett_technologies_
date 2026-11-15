@@ -231,10 +231,12 @@ table a:hover{color:#93c5fd;}
             <?php if(($_SESSION['invoice_refresh_success']??0)===$invoiceId): unset($_SESSION['invoice_refresh_success']); ?><p role="status">Billing reviewed. Unbilled prior-period collection charges are included on editable subsequent invoices.</p><?php endif; ?>
             <!-- Line items -->
             <div class="inv-lines">
+                <?php if ((float)$invoiceDetail['pppoe_subtotal'] > 0): ?>
                 <div class="line-item">
                     <span>PPPoE Users (<?= $invoiceDetail['pppoe_user_count'] ?> × KSH <?= number_format($invoiceDetail['pppoe_fee_per_user'], 2) ?>)</span>
                     <strong>KSH <?= number_format($invoiceDetail['pppoe_subtotal'], 2) ?></strong>
                 </div>
+                <?php endif; ?>
                 <div class="line-item">
                     <span>Hotspot Commission (<?= round($invoiceDetail['hotspot_commission_rate']*100, 2) ?>% × KSH <?= number_format($invoiceDetail['hotspot_collections'], 2) ?> collections)</span>
                     <strong>KSH <?= number_format($invoiceDetail['hotspot_commission'], 2) ?></strong>

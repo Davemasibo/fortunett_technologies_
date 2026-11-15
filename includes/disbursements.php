@@ -16,7 +16,7 @@ function ensureDisbursementSchema(PDO $pdo): void
         reference VARCHAR(100) NOT NULL, gross_amount DECIMAL(12,2) NOT NULL,
         cash_amount DECIMAL(12,2) NOT NULL, fees_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
         platform_cost DECIMAL(12,2) NOT NULL DEFAULT 0,
-        disbursed_at DATETIME NOT NULL, recorded_by INT NOT NULL,
+        disbursed_at DATETIME NOT NULL, collections_through DATETIME DEFAULT NULL, recorded_by INT NOT NULL,
         notes VARCHAR(255) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY tenant_reference (tenant_id, reference)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
@@ -27,9 +27,11 @@ function ensureDisbursementSchema(PDO $pdo): void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     // Upgrade earlier installations without discarding already recorded payouts.
     if (!ensureColumn($pdo, 'payments', 'disbursed_amount', 'DECIMAL(12,2) NOT NULL DEFAULT 0')
-        || !ensureColumn($pdo, 'tenant_disbursements', 'platform_cost', 'DECIMAL(12,2) NOT NULL DEFAULT 0')) {
+        || !ensureColumn($pdo, 'tenant_disbursements', 'platform_cost', 'DECIMAL(12,2) NOT NULL DEFAULT 0')
+        || !ensureColumn($pdo, 'tenant_disbursements', 'collections_through', 'DATETIME DEFAULT NULL')) {
         throw new RuntimeException('Could not prepare disbursement balances.');
     }
+    $pdo->exec('UPDATE tenant_disbursements SET collections_through = disbursed_at WHERE collections_through IS NULL');
     $primary = $pdo->query("SHOW INDEX FROM tenant_disbursement_items WHERE Key_name = 'PRIMARY'")->fetchAll(PDO::FETCH_ASSOC);
     if (count($primary) === 1 && $primary[0]['Column_name'] === 'payment_id') {
         $pdo->exec('ALTER TABLE tenant_disbursement_items DROP PRIMARY KEY, ADD PRIMARY KEY(disbursement_id, payment_id), ADD KEY payment_id(payment_id)');
@@ -71,12 +73,140 @@ function disbursementMoney(string $value): int
 
 function disbursementPayments(PDO $pdo, int $tenantId, string $cutoff, bool $lock = false): array
 {
-    $st = $pdo->prepare("SELECT id, amount AS original_amount, amount - disbursed_amount AS amount FROM payments
-        WHERE tenant_id = ? AND collection_type = 'platform' AND status = 'completed'
-          AND released_at IS NULL AND amount > disbursed_amount AND payment_date <= ? AND created_at <= ?
-        ORDER BY payment_date, id" . ($lock ? ' FOR UPDATE' : ''));
-    $st->execute([$tenantId, $cutoff, $cutoff]);
+    // Older automated releases do not have per-payout allocation rows. Their
+    // exact historical balance cannot be reconstructed, so use the live
+    // balance for a current preview and stop rather than guess for a backdate.
+    if (disbursementHasUntrackedReleases($pdo, $tenantId)) {
+        $zone = new DateTimeZone('Africa/Nairobi');
+        $nowMinute = (new DateTimeImmutable('now', $zone))->format('Y-m-d H:i');
+        if (substr($cutoff, 0, 16) < $nowMinute) {
+            throw new InvalidArgumentException('This tenant has an automatic or older payout without a timestamped allocation. Its balance on that past date cannot be verified safely; reconcile that payout before recording a backdated transfer.');
+        }
+        $st = $pdo->prepare("SELECT id, amount AS original_amount, amount - disbursed_amount AS amount FROM payments
+            WHERE tenant_id = ? AND collection_type = 'platform' AND status = 'completed'
+              AND released_at IS NULL AND amount > disbursed_amount AND payment_date <= ? AND created_at <= ?
+            ORDER BY payment_date, id" . ($lock ? ' FOR UPDATE' : ''));
+        $st->execute([$tenantId, $cutoff, $cutoff]);
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    $st = $pdo->prepare("SELECT p.id, p.amount AS original_amount,
+            p.amount - COALESCE(SUM(CASE WHEN d.disbursed_at <= ? THEN i.amount ELSE 0 END), 0) AS amount
+        FROM payments p
+        LEFT JOIN tenant_disbursement_items i ON i.payment_id = p.id
+        LEFT JOIN tenant_disbursements d ON d.id = i.disbursement_id AND d.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ? AND p.collection_type = 'platform' AND p.status = 'completed'
+          AND p.payment_date <= ? AND p.created_at <= ?
+        GROUP BY p.id, p.amount
+        HAVING amount > 0
+        ORDER BY p.payment_date, p.id" . ($lock ? ' FOR UPDATE' : ''));
+    $st->execute([$cutoff, $tenantId, $cutoff, $cutoff]);
     return $st->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/** True when payment balances contain releases not represented in the dated ledger. */
+function disbursementHasUntrackedReleases(PDO $pdo, int $tenantId): bool
+{
+    $payments = $pdo->prepare("SELECT id, disbursed_amount, released_at FROM payments
+        WHERE tenant_id = ? AND collection_type = 'platform' AND status = 'completed'");
+    $payments->execute([$tenantId]);
+    $totals = $pdo->prepare("SELECT i.payment_id, COALESCE(SUM(i.amount), 0) AS allocated
+        FROM tenant_disbursement_items i
+        JOIN tenant_disbursements d ON d.id = i.disbursement_id
+        WHERE d.tenant_id = ? GROUP BY i.payment_id");
+    $totals->execute([$tenantId]);
+    $byPayment = [];
+    foreach ($totals->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $byPayment[(int)$row['payment_id']] = disbursementMoney((string)$row['allocated']);
+    }
+    foreach ($payments->fetchAll(PDO::FETCH_ASSOC) as $payment) {
+        $recorded = $byPayment[(int)$payment['id']] ?? 0;
+        $current = disbursementMoney((string)$payment['disbursed_amount']);
+        if (abs($current - $recorded) > 1 || (!empty($payment['released_at']) && $recorded === 0)) return true;
+    }
+    return false;
+}
+
+/**
+ * Rebuild dated manual payout allocations after adding a historical transfer.
+ * Later invoice offsets/payouts are shifted to later collections where possible.
+ */
+function rebuildDisbursementAllocations(PDO $pdo, int $tenantId): void
+{
+    if (disbursementHasUntrackedReleases($pdo, $tenantId)) {
+        throw new InvalidArgumentException('This tenant has an automatic or older payout without a timestamped allocation. The historical payout was not saved because later allocations cannot be reconciled safely. Reconcile that payout first.');
+    }
+
+    $paymentsSt = $pdo->prepare("SELECT id, amount, payment_date, created_at
+        FROM payments WHERE tenant_id = ? AND collection_type = 'platform' AND status = 'completed'
+        ORDER BY payment_date, id FOR UPDATE");
+    $paymentsSt->execute([$tenantId]);
+    $payments = [];
+    foreach ($paymentsSt->fetchAll(PDO::FETCH_ASSOC) as $payment) {
+        $id = (int)$payment['id'];
+        $payments[$id] = [
+            'id' => $id,
+            'amount' => disbursementMoney((string)$payment['amount']),
+            'payment_date' => (string)$payment['payment_date'],
+            'created_at' => (string)$payment['created_at'],
+            'used' => 0,
+            'release_at' => null,
+            'release_note' => null,
+        ];
+    }
+
+    $eventsSt = $pdo->prepare("SELECT * FROM tenant_disbursements WHERE tenant_id = ? ORDER BY disbursed_at, id FOR UPDATE");
+    $eventsSt->execute([$tenantId]);
+    $events = $eventsSt->fetchAll(PDO::FETCH_ASSOC);
+    $plans = [];
+    foreach ($events as $event) {
+        $remaining = disbursementMoney((string)$event['gross_amount']);
+        $allocations = [];
+        foreach ($payments as $id => &$payment) {
+            if ($remaining <= 0) break;
+            $through = (string)($event['collections_through'] ?? $event['disbursed_at']);
+            if ($payment['payment_date'] > $through || $payment['created_at'] > $through) continue;
+            $available = $payment['amount'] - $payment['used'];
+            if ($available <= 0) continue;
+            $allocated = min($available, $remaining);
+            $payment['used'] += $allocated;
+            $payment['release_note'] = 'Manual disbursement #' . (int)$event['id'] . ': ' . (string)$event['reference'];
+            if ($payment['used'] === $payment['amount']) {
+                $payment['release_at'] = (string)$event['disbursed_at'];
+            }
+            $allocations[] = ['payment_id' => $id, 'amount' => $allocated];
+            $remaining -= $allocated;
+        }
+        unset($payment);
+        if ($remaining > 0) {
+            throw new InvalidArgumentException('A later recorded payout or invoice deduction exceeds the collections available on its date after adding this backdated transfer. No changes were saved. Review newer collections or correct the later payout date/amount.');
+        }
+        $plans[(int)$event['id']] = $allocations;
+    }
+
+    $pdo->prepare('DELETE i FROM tenant_disbursement_items i JOIN tenant_disbursements d ON d.id = i.disbursement_id WHERE d.tenant_id = ?')->execute([$tenantId]);
+    $item = $pdo->prepare('INSERT INTO tenant_disbursement_items (disbursement_id, payment_id, amount) VALUES (?, ?, ?)');
+    foreach ($plans as $disbursementId => $allocations) {
+        foreach ($allocations as $allocation) {
+            $item->execute([$disbursementId, $allocation['payment_id'], $allocation['amount'] / 100]);
+        }
+    }
+
+    $update = $pdo->prepare('UPDATE payments SET disbursed_amount = ?, released_at = ?, release_note = ? WHERE id = ? AND tenant_id = ?');
+    $queueUpdate = $pdo->prepare("UPDATE isp_payout_queue SET status = ?, processed_at = ?, notes = ?
+        WHERE payment_id = ? AND tenant_id = ?
+          AND (notes LIKE 'Manual disbursement #%' OR (? > 0 AND status IN ('pending','cancelled')))");
+    foreach ($payments as $id => $payment) {
+        $full = $payment['used'] === $payment['amount'];
+        $update->execute([$payment['used'] / 100, $full ? $payment['release_at'] : null, $payment['release_note'], $id, $tenantId]);
+        $queueNote = $payment['release_note'] ?: 'Available after historical payout reallocation.';
+        $queueUpdate->execute([
+            $payment['used'] > 0 ? ($full ? 'paid' : 'cancelled') : 'pending',
+            $full ? $payment['release_at'] : null,
+            $queueNote . ($full ? '' : ' - remaining balance requires manual disbursement'),
+            $id, $tenantId, $payment['used'],
+        ]);
+    }
 }
 
 /** Payout is full cash received; transaction cost is charged on top to the tenant. */
@@ -166,14 +296,18 @@ function recordDisbursement(PDO $pdo, int $tenantId, int $actorId, array $input,
         }
         $ids = array_column($allocations, 'id');
         foreach ($queued as $q) {
-            if (in_array($q['payment_id'], $ids) && !in_array($q['status'], ['pending', 'cancelled'], true)) {
+            $manualQueue = str_starts_with((string)($q['notes'] ?? ''), 'Manual disbursement #');
+            if (in_array((int)$q['payment_id'], $ids, true) && !in_array($q['status'], ['pending', 'cancelled'], true) && !$manualQueue) {
                 throw new InvalidArgumentException('A selected payment has an automatic payout in progress or already paid. Reconcile it first.');
             }
         }
+        $futureSt = $pdo->prepare('SELECT COUNT(*) FROM tenant_disbursements WHERE tenant_id = ? AND disbursed_at >= ?');
+        $futureSt->execute([$tenantId, $paidAt]);
+        $hasLaterDisbursements = (int)$futureSt->fetchColumn() > 0;
         $pdo->prepare('INSERT INTO tenant_disbursements
-            (tenant_id, reference, gross_amount, cash_amount, fees_amount, platform_cost, disbursed_at, recorded_by, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')->execute([
-                $tenantId, $reference, $settledAmount / 100, $cash / 100, $fees / 100, $platformCost / 100, $paidAt, $actorId, $notes,
+            (tenant_id, reference, gross_amount, cash_amount, fees_amount, platform_cost, disbursed_at, collections_through, recorded_by, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')->execute([
+                $tenantId, $reference, $settledAmount / 100, $cash / 100, $fees / 100, $platformCost / 100, $paidAt, $cutoff, $actorId, $notes,
             ]);
         $id = (int)$pdo->lastInsertId();
         $item = $pdo->prepare('INSERT INTO tenant_disbursement_items (disbursement_id, payment_id, amount) VALUES (?, ?, ?)');
@@ -189,6 +323,7 @@ function recordDisbursement(PDO $pdo, int $tenantId, int $actorId, array $input,
             $settle->execute([$row['full'] ? 'paid' : 'cancelled', $row['full'] ? $paidAt : null,
                 $note . ($row['full'] ? '' : ' - remaining balance requires manual disbursement'), $row['id'], $tenantId]);
         }
+        if ($hasLaterDisbursements) rebuildDisbursementAllocations($pdo, $tenantId);
         if ($invoice !== null) {
             $audit = $notes . ' Previous paid date: ' . ($invoice['paid_at'] ?? 'none');
             $pdo->prepare("UPDATE platform_invoices SET status='paid', amount_paid=total_due, paid_at=?, payment_method='collections_offset',

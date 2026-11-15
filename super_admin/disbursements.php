@@ -66,6 +66,9 @@ if ($schemaReady) {
         $st = $pdo->prepare("SELECT d.*, EXISTS(SELECT 1 FROM platform_invoices pi WHERE pi.tenant_id=d.tenant_id AND pi.payment_method='collections_offset' AND pi.transaction_ref=d.reference) AS is_invoice_offset FROM tenant_disbursements d WHERE d.tenant_id = ? ORDER BY d.disbursed_at DESC, d.id DESC LIMIT 100");
         $st->execute([$tenantId]);
         $history = $st->fetchAll(PDO::FETCH_ASSOC);
+    } catch (InvalidArgumentException $e) {
+        $error = $e->getMessage();
+        $schemaReady = false;
     } catch (Throwable $e) {
         error_log('Disbursement preview: ' . $e->getMessage());
         $error = 'Collections could not be loaded. Please retry before recording a transfer.';
