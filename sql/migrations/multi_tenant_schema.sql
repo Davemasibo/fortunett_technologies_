@@ -69,6 +69,9 @@ CREATE TABLE IF NOT EXISTS mikrotik_routers (
     identity VARCHAR(100),
     status ENUM('active', 'inactive', 'pending') DEFAULT 'pending',
     last_seen TIMESTAMP NULL,
+    last_wan_heartbeat_at DATETIME NULL DEFAULT NULL COMMENT 'Last authenticated WAN check-in from the router',
+    last_wg_handshake_at DATETIME NULL DEFAULT NULL COMMENT 'Most recent WireGuard handshake observed on the VPS',
+    last_api_success_at DATETIME NULL DEFAULT NULL COMMENT 'Last successful RouterOS API login',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

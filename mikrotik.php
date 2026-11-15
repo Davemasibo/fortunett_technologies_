@@ -79,19 +79,11 @@ try {
     $stmt->execute([$tenant_id]);
     $total_routers = (int)$stmt->fetchColumn();
     
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ?");
-    $stmt->execute([$tenant_id]);
-    $online_routers = (int)$stmt->fetchColumn();
-    
-    $offline_routers = $total_routers - $online_routers;
-    
     // Bandwidth/Connections are hard to sum without active monitoring table, keeping placeholder or 0
     $total_bandwidth = 0; 
     $active_connections = 0;
 } catch (Exception $e) {
     $total_routers = 0;
-    $online_routers = 0;
-    $offline_routers = 0;
     $total_bandwidth = 0; 
     $active_connections = 0;
 }
@@ -402,18 +394,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="stats-row">
             <div class="stat-card">
                 <div class="stat-header"><div class="stat-icon routers"><i class="fas fa-server"></i></div></div>
-                <div class="stat-value"><?php echo $total_routers; ?></div>
+                <div class="stat-value" id="router-stat-total"><?php echo $total_routers; ?></div>
                 <div class="stat-label">Total Routers</div>
             </div>
             <div class="stat-card">
                 <div class="stat-header"><div class="stat-icon online"><i class="fas fa-check-circle"></i></div></div>
-                <div class="stat-value"><?php echo $online_routers; ?></div>
-                <div class="stat-label">Online</div>
+                <div class="stat-value" id="router-stat-online">—</div>
+                <div class="stat-label">API Online</div>
             </div>
             <div class="stat-card">
                 <div class="stat-header"><div class="stat-icon offline"><i class="fas fa-times-circle"></i></div></div>
-                <div class="stat-value"><?php echo $offline_routers; ?></div>
-                <div class="stat-label">Offline</div>
+                <div class="stat-value" id="router-stat-offline">—</div>
+                <div class="stat-label">API Offline</div>
             </div>
         </div>
 
@@ -508,23 +500,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <!-- Router Cards -->
         <div class="routers-grid">
             <?php foreach ($routers as $router):
-                $status    = strtolower($router['status'] ?? 'pending');
                 $svcTypes  = array_filter(array_map('trim', explode(',', $router['service_types'] ?? '')));
-                $statusIcon = $status === 'active' ? 'check-circle' : ($status === 'inactive' ? 'times-circle' : 'question-circle');
+                $wanCheckin = !empty($router['last_wan_heartbeat_at']) ? date('d M H:i', strtotime($router['last_wan_heartbeat_at'])) : 'Never';
+                $wgHandshake = !empty($router['last_wg_handshake_at']) ? date('d M H:i', strtotime($router['last_wg_handshake_at'])) : 'Not observed yet';
+                $apiSuccess = !empty($router['last_api_success_at']) ? date('d M H:i', strtotime($router['last_api_success_at'])) : 'Never';
             ?>
             <div class="router-card" id="rcard-<?php echo $router['id']; ?>">
                 <div class="router-card-header">
                     <div class="router-info">
-                        <div class="router-status-dot <?php echo $status; ?>" id="rdot-<?php echo $router['id']; ?>"></div>
+                        <div class="router-status-dot pending" id="rdot-<?php echo $router['id']; ?>"></div>
                         <div>
                             <div class="router-name"><?php echo htmlspecialchars($router['name']); ?></div>
                             <div class="router-ip"><?php echo htmlspecialchars($router['ip_address'] ?? 'N/A'); ?></div>
                         </div>
                     </div>
                     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-                        <span class="status-badge <?php echo $status; ?>" id="rbadge-<?php echo $router['id']; ?>">
-                            <i class="fas fa-<?php echo $statusIcon; ?>"></i>
-                            <?php echo ucfirst($status); ?>
+                        <span class="status-badge pending" id="rbadge-<?php echo $router['id']; ?>">
+                            <i class="fas fa-circle-notch fa-spin"></i>
+                            Checking API
                         </span>
                         <?php if (!empty($svcTypes)): ?>
                         <div style="display:flex;gap:4px;">
@@ -562,7 +555,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
                 <div class="router-card-footer">
-                    <div class="footer-info"><i class="fas fa-clock" style="opacity:.5;margin-right:4px;"></i>Last seen: <?php echo $router['last_seen'] ? date('d M H:i', strtotime($router['last_seen'])) : 'Never'; ?></div>
+                    <div class="router-health-signals" style="display:grid;gap:3px;margin-bottom:8px;font-size:11px;color:rgba(255,255,255,.48);">
+                        <div style="color:rgba(255,255,255,.7);">Health: <span id="rsig-summary-<?php echo (int)$router['id']; ?>">Loading WAN, VPN and API status…</span></div>
+                        <div><i class="fas fa-globe" style="width:14px;opacity:.65;"></i> WAN heartbeat: <span id="rsig-wan-<?php echo (int)$router['id']; ?>"><?php echo htmlspecialchars($wanCheckin); ?></span></div>
+                        <div><i class="fas fa-shield-alt" style="width:14px;opacity:.65;"></i> WireGuard handshake: <span id="rsig-wg-<?php echo (int)$router['id']; ?>"><?php echo htmlspecialchars($wgHandshake); ?></span></div>
+                        <div><i class="fas fa-plug" style="width:14px;opacity:.65;"></i> RouterOS API success: <span id="rsig-api-<?php echo (int)$router['id']; ?>"><?php echo htmlspecialchars($apiSuccess); ?></span></div>
+                    </div>
                     <div class="footer-actions">
                         <!-- Primary tools -->
                         <div class="footer-actions-group">
@@ -1391,13 +1389,58 @@ function copyToClipboard(text) {
     });
 }
 
+function routerSignalAge(seconds) {
+    if (seconds === null || seconds === undefined) return 'never';
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+    if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm ago';
+    return Math.floor(seconds / 86400) + 'd ago';
+}
+
+function updateRouterHealthSignals(id, signals) {
+    if (!signals) return;
+    const set = (key, value, title) => {
+        const el = document.getElementById('rsig-' + key + '-' + id);
+        if (el) { el.textContent = value; el.title = title || value; }
+    };
+
+    const wan = signals.wan || {};
+    const wanText = wan.state === 'never' ? 'Never' : (wan.state + ' · ' + routerSignalAge(wan.age_seconds));
+    set('wan', wanText, wan.last_at || 'No WAN check-in recorded');
+
+    const wg = signals.wireguard || {};
+    let wgText = 'State unavailable';
+    if (wg.state === 'not_configured') wgText = 'Not configured';
+    else if (wg.state === 'unknown') wgText = 'VPS check unavailable';
+    else if (wg.state === 'peer_not_loaded') wgText = 'Peer not visible on VPS';
+    else if (wg.state === 'never') wgText = 'No completed handshake';
+    else if (wg.state === 'recent' || wg.state === 'stale') wgText = wg.state + ' · ' + routerSignalAge(wg.age_seconds);
+    set('wg', wgText, (wg.last_at || 'No handshake recorded') + (wg.endpoint ? ' · endpoint ' + wg.endpoint : ''));
+
+    const api = signals.api || {};
+    const lastApi = routerSignalAge(api.last_success_age_seconds);
+    let apiText;
+    if (api.state === 'online') apiText = 'Login successful just now';
+    else if (api.state === 'login_failed') apiText = 'TCP answers; login failed · last success ' + lastApi;
+    else apiText = 'Unreachable · last success ' + lastApi;
+    set('api', apiText, api.last_success_at || 'No successful RouterOS API login recorded');
+
+    const wgSummary = ['recent', 'stale'].includes(wg.state) ? wg.state
+        : (wg.state === 'never' ? 'never handshook'
+            : (wg.state === 'not_configured' ? 'not configured'
+                : (wg.state === 'peer_not_loaded' ? 'peer not loaded' : 'unknown')));
+    const apiSummary = api.state === 'online' ? 'API available'
+        : (api.tcp_reachable ? 'API login failed' : 'API unreachable');
+    set('summary', 'WAN ' + (wan.state || 'unknown') + ' · VPN handshake ' + wgSummary + ' · ' + apiSummary);
+}
+
 function updateRouterCard(id, data) {
     const dot   = document.getElementById('rdot-'   + id);
     const badge = document.getElementById('rbadge-' + id);
 
     if (data.status === 'success') {
         if (dot)   { dot.className = 'router-status-dot active'; }
-        if (badge) { badge.className = 'status-badge active'; badge.innerHTML = '<i class="fas fa-check-circle"></i> Active'; }
+        if (badge) { badge.className = 'status-badge active'; badge.innerHTML = '<i class="fas fa-check-circle"></i> API Online'; }
 
         const s = data.stats || {};
         const setEl = (elId, val) => { const el = document.getElementById(elId); if (el) el.textContent = val; };
@@ -1412,6 +1455,9 @@ function updateRouterCard(id, data) {
             if (s.pppoe_active  > 0) parts.push(s.pppoe_active  + ' PPPoE');
             if (s.hotspot_active > 0) parts.push(s.hotspot_active + ' Hotspot');
             bd.textContent = parts.length ? parts.join(' · ') : 'No active sessions';
+            bd.title = '';
+            bd.style.color = 'rgba(255,255,255,.25)';
+            bd.style.cursor = '';
         }
 
         const cpuBar = document.getElementById('rstat-cpubar-' + id);
@@ -1422,7 +1468,11 @@ function updateRouterCard(id, data) {
         }
     } else {
         if (dot)   { dot.className = 'router-status-dot inactive'; }
-        if (badge) { badge.className = 'status-badge inactive'; badge.innerHTML = '<i class="fas fa-times-circle"></i> Offline'; }
+        if (badge) {
+            const apiLabel = data.reason === 'login_failed' ? 'API Login Failed' : 'API Unreachable';
+            badge.className = 'status-badge inactive';
+            badge.innerHTML = '<i class="fas fa-times-circle"></i> ' + apiLabel;
+        }
         const setEl = (elId, val) => { const el = document.getElementById(elId); if (el) el.textContent = val; };
         setEl('rstat-active-'    + id, '—');
         setEl('rstat-uptime-'    + id, '—');
@@ -1439,6 +1489,8 @@ function updateRouterCard(id, data) {
                 headline = /wireguard|vpn/i.test(full)
                     ? 'API unreachable over VPN — check VPN diagnostics'
                     : 'API port unreachable — check service and firewall';
+            } else if (data.reason === 'login_failed') {
+                headline = 'API TCP port answers, but RouterOS API login failed';
             }
             bd.textContent = headline;
             bd.title = full;               // full step-by-step guidance on hover
@@ -1675,6 +1727,7 @@ function testConnection(id, btn) {
     .then(r => r.json())
     .then(data => {
         updateRouterCard(id, data);
+        refreshRouterHealth();
         if (btn) {
             if (data.status === 'success') {
                 btn.innerHTML = '<i class="fas fa-check"></i> Connected';
@@ -1693,11 +1746,46 @@ function testConnection(id, btn) {
     });
 }
 
-// Auto-load live stats for all router cards on page load
+let routerHealthRefreshRunning = false;
+async function refreshRouterHealth() {
+    if (routerHealthRefreshRunning) return;
+    routerHealthRefreshRunning = true;
+    try {
+        const response = await fetch('api/dashboard/router_status.php', { cache: 'no-store' });
+        const data = await response.json();
+        if (!data.success || !Array.isArray(data.router_status)) return;
+        const onlineCount = Number(data.routers_online || 0);
+        const totalCount = Number(data.routers_total || 0);
+        const onlineStat = document.getElementById('router-stat-online');
+        const offlineStat = document.getElementById('router-stat-offline');
+        if (onlineStat) onlineStat.textContent = onlineCount;
+        if (offlineStat) offlineStat.textContent = Math.max(0, totalCount - onlineCount);
+        data.router_status.forEach(router => {
+            updateRouterHealthSignals(router.id, router.signals);
+            updateRouterCard(router.id, {
+                status: router.api_online ? 'success' : 'error',
+                reason: router.api_online ? '' : (router.signals?.api?.tcp_reachable ? 'login_failed' : 'unreachable'),
+                message: router.api_error || '',
+                stats: {
+                    active_total: router.active_clients,
+                    pppoe_active: router.pppoe_clients,
+                    hotspot_active: router.hotspot_clients,
+                    uptime: router.uptime || '—',
+                    cpu_load: router.cpu_load ?? 0
+                }
+            });
+        });
+    } catch (e) {
+        console.error('Could not refresh router health signals', e);
+    } finally {
+        routerHealthRefreshRunning = false;
+    }
+}
+
+// Refresh all three independent health signals at page load and once per minute.
 document.addEventListener('DOMContentLoaded', () => {
-    <?php foreach ($routers as $r): ?>
-    testConnection(<?php echo (int)$r['id']; ?>, null);
-    <?php endforeach; ?>
+    refreshRouterHealth();
+    window.setInterval(refreshRouterHealth, 60000);
 });
 
 function confirmDeleteRouter(routerId, routerName) {

@@ -20,6 +20,7 @@ ob_start();
 ini_set('display_errors', 0);
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/db_master.php';
+require_once __DIR__ . '/../../includes/router_health.php';
 require_once __DIR__ . '/../../classes/WireGuardManager.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -36,6 +37,7 @@ $rq = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE id = ? AND tenant_id =
 $rq->execute([$routerId, $tenantId]);
 $router = $rq->fetch(PDO::FETCH_ASSOC);
 if (!$router) { ob_clean(); echo json_encode(['success' => false, 'error' => 'Router not found']); exit; }
+$healthStorageReady = ensureRouterHealthColumns($pdo);
 
 $out = [
     'success' => true,
@@ -155,6 +157,13 @@ if ($routerPub && $vpsKeyLive) {
         if (!$persisted) $fail('The peer is only in memory and will be lost on reboot.');
 
         $out['handshake_age'] = $peer['handshake_age'];
+        if ($healthStorageReady && (int)$peer['handshake'] > 0) {
+            $oldHandshake = strtotime((string)($router['last_wg_handshake_at'] ?? '')) ?: 0;
+            if ((int)$peer['handshake'] > $oldHandshake) {
+                $pdo->prepare("UPDATE mikrotik_routers SET last_wg_handshake_at=FROM_UNIXTIME(?) WHERE id=? AND tenant_id=?")
+                    ->execute([(int)$peer['handshake'], $routerId, $tenantId]);
+            }
+        }
         if ($peer['handshake'] === 0) {
             $add('Handshake', 'fail',
                 'Never completed. The router has the config but its packets are not arriving. Check, in order: '

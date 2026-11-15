@@ -6,6 +6,7 @@ error_reporting(E_ALL);
 
 require_once '../../includes/db_master.php';
 require_once '../../includes/auth.php';
+require_once '../../includes/router_health.php';
 require_once '../../classes/MikrotikAPI.php';
 
 // Discard any output that came from require_once (BOM, notices, etc.)
@@ -37,6 +38,7 @@ try {
     if (!$tenant_id) {
         throw new Exception("Tenant not found");
     }
+    $healthStorageReady = ensureRouterHealthColumns($pdo);
 
     // Get Router with Tenant Validation
     $stmt = $pdo->prepare("SELECT * FROM mikrotik_routers WHERE id = ? AND tenant_id = ?");
@@ -107,7 +109,11 @@ try {
         $mk->disconnect();
 
         // Mark active — valid ENUM value
-        $pdo->prepare("UPDATE mikrotik_routers SET status = 'active', last_seen = NOW() WHERE id = ?")->execute([$id]);
+        if ($healthStorageReady) {
+            $pdo->prepare("UPDATE mikrotik_routers SET status = 'active', last_seen = NOW(), last_api_success_at = NOW() WHERE id = ?")->execute([$id]);
+        } else {
+            $pdo->prepare("UPDATE mikrotik_routers SET status = 'active', last_seen = NOW() WHERE id = ?")->execute([$id]);
+        }
 
         echo json_encode([
             'status'        => 'success',

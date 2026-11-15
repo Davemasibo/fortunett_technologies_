@@ -16,6 +16,7 @@ ob_start();
 ini_set('display_errors', 0);
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/db_master.php';
+require_once __DIR__ . '/../../includes/router_health.php';
 require_once __DIR__ . '/../../classes/MikrotikAPI.php';
 require_once __DIR__ . '/../../includes/hotspot_wireless.php';
 require_once __DIR__ . '/../../includes/package_speed.php';
@@ -26,6 +27,7 @@ if (!isset($_SESSION['user_id'])) { ob_clean(); echo json_encode(['success' => f
 $t = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
 $t->execute([$_SESSION['user_id']]);
 $tenantId = (int)$t->fetchColumn();
+$healthStorageReady = ensureRouterHealthColumns($pdo);
 
 $routerId = (int)($_POST['router_id'] ?? 0);
 $servicesRaw = trim($_POST['services'] ?? '');
@@ -71,8 +73,13 @@ try {
     $api = new MikrotikAPI($connectIp, $router['username'], $router['password'], $port);
     $api->connect();
     $result['api_ok'] = true;
-    $pdo->prepare("UPDATE mikrotik_routers SET status='active',last_seen=NOW() WHERE id=? AND tenant_id=?")
-        ->execute([$routerId,$tenantId]);
+    if ($healthStorageReady) {
+        $pdo->prepare("UPDATE mikrotik_routers SET status='active',last_seen=NOW(),last_api_success_at=NOW() WHERE id=? AND tenant_id=?")
+            ->execute([$routerId,$tenantId]);
+    } else {
+        $pdo->prepare("UPDATE mikrotik_routers SET status='active',last_seen=NOW() WHERE id=? AND tenant_id=?")
+            ->execute([$routerId,$tenantId]);
+    }
     $wanRecord=loadRouterWan($pdo,$tenantId,$routerId);
     $checks=$wanRecord ? verifyRouterWan($api,$wanRecord) : [['label'=>'WAN setup','ok'=>false,'detail'=>'Prepare WAN settings before verifying services']];
     $wanConfig=$wanRecord ? json_decode($wanRecord['config_json'],true) : null;

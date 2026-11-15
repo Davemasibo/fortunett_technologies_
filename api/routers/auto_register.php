@@ -6,6 +6,7 @@
 header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../includes/tenant.php';
+require_once '../../includes/router_health.php';
 
 // Allow CORS for MikroTik requests
 header('Access-Control-Allow-Origin: *');
@@ -89,6 +90,7 @@ try {
         ]);
         exit;
     }
+    $healthStorageReady = ensureRouterHealthColumns($pdo);
     
     // Resolve VPN IP: trust the posted value (it came from the RSC we generated)
     // but only if it's in our VPN subnet
@@ -113,6 +115,7 @@ try {
 
     if ($existingRouter) {
         // Update existing router — also store MAC and VPN IP if available
+        $heartbeatSet = $healthStorageReady ? ', last_wan_heartbeat_at = CURRENT_TIMESTAMP' : '';
         $stmt = $pdo->prepare("
             UPDATE mikrotik_routers
             SET ip_address  = ?,
@@ -122,7 +125,7 @@ try {
                 password    = ?,
                 vpn_ip      = COALESCE(?, vpn_ip),
                 status      = 'active',
-                last_seen   = CURRENT_TIMESTAMP,
+                last_seen   = CURRENT_TIMESTAMP{$heartbeatSet},
                 updated_at  = CURRENT_TIMESTAMP
             WHERE id = ?
         ");
@@ -147,13 +150,23 @@ try {
         // Insert new router
         $routerName = $router_identity ?: "Router-" . substr($router_mac, -8);
 
-        $stmt = $pdo->prepare("
-            INSERT INTO mikrotik_routers (
-                tenant_id, name, ip_address, mac_address,
-                identity, username, password, vpn_ip,
-                status, last_seen
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP)
-        ");
+        if ($healthStorageReady) {
+            $stmt = $pdo->prepare("
+                INSERT INTO mikrotik_routers (
+                    tenant_id, name, ip_address, mac_address,
+                    identity, username, password, vpn_ip,
+                    status, last_seen, last_wan_heartbeat_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ");
+        } else {
+            $stmt = $pdo->prepare("
+                INSERT INTO mikrotik_routers (
+                    tenant_id, name, ip_address, mac_address,
+                    identity, username, password, vpn_ip,
+                    status, last_seen
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP)
+            ");
+        }
         $stmt->execute([
             $tenantId, $routerName, $router_ip, $router_mac,
             $router_identity, $router_username, $router_password, $vpn_ip,
