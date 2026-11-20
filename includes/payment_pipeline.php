@@ -181,7 +181,7 @@ function process_payment_success(
 
         if ($paymentId) {
             $pdo->prepare("
-                UPDATE payments SET transaction_id = ?,
+                UPDATE payments SET transaction_id = ?, status = 'completed',
                        collection_type = ?, payment_method = ?, checkout_request_id = COALESCE(checkout_request_id, ?), updated_at = NOW()
                 WHERE id = ?
             ")->execute([$receipt, $collectionType, $paymentMethod, $checkoutIdentity, $paymentId]);
@@ -189,7 +189,7 @@ function process_payment_success(
             $pdo->prepare("
                 INSERT INTO payments
                     (client_id, tenant_id, amount, payment_method, transaction_id, status, payment_date, collection_type, checkout_request_id)
-                VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)
+                VALUES (?, ?, ?, ?, ?, 'completed', NOW(), ?, ?)
             ")->execute([$clientId, $tenantId, $amount, $paymentMethod, $receipt, $collectionType, $checkoutIdentity]);
             $paymentId = (int)$pdo->lastInsertId();
         }
@@ -199,7 +199,9 @@ function process_payment_success(
         throw new RuntimeException('Payment ledger recording failed; retry required', 0, $e);
     }
 
-    // Keep newly recorded payments pending until their activation succeeds.
+    // The payment has been confirmed by its caller. Mark it completed before
+    // activation or router work so fulfillment failures cannot label collected
+    // money as pending.
     $activation = activatePaidSubscription(
         $pdo, $clientId, $tenantId, $activationKey ?: $receipt, $receipt, $package, $amount
     );
@@ -208,7 +210,7 @@ function process_payment_success(
     $results['periods'] = (int)($activation['periods'] ?? 1);
     $results['account_balance'] = $activation['balance'] ?? null;
     if ($package && !empty($activation['validity_value'])) $package['validity_value'] = $activation['validity_value'];
-    $pdo->prepare("UPDATE payments SET status='completed' WHERE id=? AND tenant_id=?")->execute([$paymentId,$tenantId]);
+    $pdo->prepare("UPDATE payments SET status='completed', updated_at=NOW() WHERE id=? AND tenant_id=?")->execute([$paymentId,$tenantId]);
 
     if (!$activation['already_applied']) {
     // ── 4. Client invoice ──────────────────────────────────────────────────────
