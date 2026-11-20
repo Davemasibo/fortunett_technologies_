@@ -50,8 +50,11 @@ function reconcileCustomerStk(PDO $pdo, array $tx, bool $allowQuery = true): str
     $client = (int)$tx['client_id'];
     if (!$client || !$tenant || !$checkout) return 'pending';
     if(paymentWasReset($pdo,$tenant,$checkout,(string)($tx['mpesa_receipt_number'] ?? '')))return 'completed';
-    // Initiating a prompt is not confirmation, even on old rows with result_code=0.
-    $confirmed = $tx['status'] === 'completed' && (string)($tx['result_code'] ?? '') === '0';
+    // A Safaricom receipt is proof of a completed payment even when a callback
+    // only wrote the receipt and failed before updating status/result_code.
+    // Query Safaricom only when we have neither a receipt nor a completed result.
+    $confirmed = trim((string)($tx['mpesa_receipt_number'] ?? '')) !== ''
+        || ($tx['status'] === 'completed' && (string)($tx['result_code'] ?? '') === '0');
     $query = ['result_code' => 0, 'raw' => [], 'result_desc' => $tx['result_desc'] ?? 'Confirmed'];
     if (!$confirmed) {
         if ($tx['status'] === 'failed' && !str_contains($tx['result_desc'] ?? '', '15 minutes')) {
@@ -88,17 +91,29 @@ function reconcileCustomerStk(PDO $pdo, array $tx, bool $allowQuery = true): str
     $pdo->prepare("UPDATE mpesa_transactions SET status='completed',result_code=0,result_desc=?,updated_at=NOW() WHERE checkout_request_id=? AND tenant_id=?")->execute([$query['result_desc'] ?? 'Confirmed by STK query', $checkout, $tenant]);
     $applied = false;
     try {
-        $check = $pdo->prepare('SELECT 1 FROM payment_activations WHERE tenant_id=? AND client_id=? AND activation_key=?');
-        $check->execute([$tenant, $client, $checkout]);
+        $check = $pdo->prepare('SELECT 1 FROM payment_activations WHERE tenant_id=? AND client_id=? AND activation_key IN (?,?) LIMIT 1');
+        $check->execute([$tenant, $client, $checkout, $terms['receipt']]);
         $applied = (bool)$check->fetchColumn();
     } catch (PDOException $e) { if (($e->errorInfo[1] ?? null) !== 1146) throw $e; }
-    // Old completed payments may predate activation keys. A completed payment
-    // with an existing expiry is not a new purchase to replay at today's time.
-    if (!$applied && $confirmed) {
-        $legacy = $pdo->prepare("SELECT c.expiry_date FROM clients c JOIN payments p ON p.client_id=c.id AND p.tenant_id=c.tenant_id
+    // Older confirmed payments can predate idempotency keys. Do not run them
+    // through subscription activation again; repair router state only.
+    if (!$applied) {
+        $legacy = $pdo->prepare("SELECT c.status,c.expiry_date FROM clients c JOIN payments p ON p.client_id=c.id AND p.tenant_id=c.tenant_id
             WHERE c.id=? AND c.tenant_id=? AND p.status='completed' AND p.transaction_id IN (?,?) AND c.expiry_date IS NOT NULL LIMIT 1");
         $legacy->execute([$client, $tenant, $checkout, $terms['receipt']]);
-        if ($legacy->fetchColumn()) return 'completed';
+        $old = $legacy->fetch(PDO::FETCH_ASSOC);
+        if ($old) {
+            if ($old['status'] === 'active' && strtotime($old['expiry_date']) > time()) {
+                $result = autoProvisionClient($pdo, $client, $tenant, 0, false);
+                if (empty($result['success'])) {
+                    $pdo->prepare("INSERT INTO pending_provisions (tenant_id,client_id,package_id,receipt,fail_reason,next_retry_at)
+                        SELECT tenant_id,id,package_id,? ,?,NOW()+INTERVAL 1 MINUTE FROM clients WHERE id=? AND tenant_id=?
+                        ON DUPLICATE KEY UPDATE fail_reason=VALUES(fail_reason),next_retry_at=VALUES(next_retry_at)")
+                        ->execute([$terms['receipt'],substr((string)($result['message'] ?? 'Router repair failed'),0,500),$client,$tenant]);
+                }
+            }
+            return 'completed';
+        }
     }
     $paymentCheck = $pdo->prepare("SELECT 1 FROM payments WHERE tenant_id=? AND client_id=? AND status='completed' AND transaction_id IN (?,?)");
     $paymentCheck->execute([$tenant,$client,$checkout,$terms['receipt']]);
@@ -107,15 +122,18 @@ function reconcileCustomerStk(PDO $pdo, array $tx, bool $allowQuery = true): str
     $notice = $pdo->prepare('SELECT 1 FROM payment_notifications n JOIN payments p ON p.id=n.payment_id AND p.tenant_id=n.tenant_id WHERE p.tenant_id=? AND p.client_id=? AND p.transaction_id IN (?,?) LIMIT 1');
     $notice->execute([$tenant,$client,$checkout,$terms['receipt']]);
     $missingNotice = !$notice->fetchColumn();
-    // Repair only the current purchased plan: polling older renewals must not
-    // resend obsolete passwords/expiry notices for every historical purchase.
-    $current = $pdo->prepare("SELECT 1 FROM clients c JOIN payment_activations a ON a.client_id=c.id AND a.tenant_id=c.tenant_id
-        WHERE c.id=? AND c.tenant_id=? AND c.status='active' AND c.expiry_date>NOW()
-          AND a.activation_key IN (?,?) AND a.expiry_date=c.expiry_date LIMIT 1");
-    $current->execute([$client,$tenant,$checkout,$terms['receipt']]);
-    if (!$applied || !$recorded || ($missingNotice && $current->fetchColumn())) process_payment_success($pdo, $client, $tenant, $terms['amount'], $terms['receipt'], 'mpesa_stk', null, null, $checkout);
-    else {
-        $pdo->prepare("UPDATE payments SET payment_method='mpesa_stk' WHERE tenant_id=? AND client_id=? AND transaction_id IN (?,?)")->execute([$tenant, $client, $checkout, $terms['receipt']]);
+    $provisioned = $pdo->prepare("SELECT 1 FROM router_services rs JOIN clients c ON c.id=rs.client_id AND c.tenant_id=rs.tenant_id
+        WHERE rs.tenant_id=? AND rs.client_id=? AND rs.status='active' AND rs.paid_expiry_at=c.expiry_date
+          AND c.status='active' AND c.expiry_date>NOW()
+          AND NOT EXISTS (SELECT 1 FROM pending_provisions pp WHERE pp.tenant_id=rs.tenant_id AND pp.client_id=rs.client_id) LIMIT 1");
+    $provisioned->execute([$tenant,$client]);
+    $currentProvisioned = (bool)$provisioned->fetchColumn();
+    // Always re-enter the idempotent pipeline for a Safaricom-confirmed
+    // checkout. Its activation key prevents duplicate time grants, while its
+    // provisioning step repairs missing/stale router state even when the
+    // payment ledger and subscription activation were already written.
+    if (!$applied || !$recorded || !$currentProvisioned || ($missingNotice && $currentProvisioned)) {
+        process_payment_success($pdo, $client, $tenant, $terms['amount'], $terms['receipt'], 'mpesa_stk', null, null, $checkout);
     }
     return 'completed';
 }

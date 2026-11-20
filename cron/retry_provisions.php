@@ -72,6 +72,24 @@ try {
     $log('Could not queue deadline backfill: ' . $e->getMessage());
 }
 
+// Periodically reconcile eligible PPPoE accounts against the router. Power
+// loss can leave a router's local secret/profile behind the source of truth;
+// autoProvisionClient rewrites the saved credentials and purchased deadline.
+// deployed_at is refreshed only after a verified router apply, so this runs at
+// most once per client every 15 minutes while keeping repairs on the normal retry path.
+try {
+    $pdo->exec("INSERT INTO pending_provisions (tenant_id, client_id, package_id, fail_reason, next_retry_at)
+        SELECT c.tenant_id, c.id, c.package_id, 'Periodic PPPoE router reconciliation', NOW()
+        FROM clients c
+        JOIN router_services rs ON rs.client_id=c.id AND rs.tenant_id=c.tenant_id
+            AND rs.service_type='pppoe' AND rs.status='active'
+        WHERE c.connection_type='pppoe' AND c.status='active' AND c.expiry_date>NOW()
+          AND c.package_id IS NOT NULL AND rs.deployed_at < NOW()-INTERVAL 15 MINUTE
+        ON DUPLICATE KEY UPDATE client_id=VALUES(client_id)");
+} catch (Throwable $e) {
+    $log('Could not queue PPPoE reconciliation: ' . $e->getMessage());
+}
+
 // Max 10 attempts — beyond that requires human intervention
 $due = $pdo->query("
     SELECT pp.*, c.status AS client_status

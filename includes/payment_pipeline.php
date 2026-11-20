@@ -375,8 +375,15 @@ function process_payment_success(
     }
 
     // ── 9. Auto-provision on MikroTik ──────────────────────────────────────────
-    // Part-payments remain credit and must not be advertised as new access.
-    if ($results['periods'] === 0) return $results;
+    // A partial payment does not grant extra time, but a customer who already
+    // has a valid active subscription can still need router repair. Continue to
+    // the idempotent provision step; inactive/unexpired checks remain enforced
+    // inside autoProvisionClient().
+    if ($results['periods'] === 0) {
+        $active = $pdo->prepare("SELECT 1 FROM clients WHERE id=? AND tenant_id=? AND status='active' AND expiry_date>NOW() LIMIT 1");
+        $active->execute([$clientId, $tenantId]);
+        if (!$active->fetchColumn()) return $results;
+    }
 
     // Persist the login and SMS job before router I/O, even on repeated callbacks.
     $creds = ensurePaidLoginCredentials($pdo, $tenantId, $clientId);
@@ -434,6 +441,19 @@ function process_payment_success(
     } catch (Throwable $e) {
         error_log("pipeline provision [$receipt]: " . $e->getMessage());
         $results['steps']['provision'] = false;
+        // Keep confirmed purchases durable even if provisioning itself throws
+        // before returning its normal failure result (for example, a DB/router
+        // exception). The minute worker can then finish activation's router step.
+        try {
+            $pdo->prepare("INSERT INTO pending_provisions
+                (tenant_id, client_id, package_id, receipt, fail_reason, next_retry_at)
+                VALUES (?, ?, ?, ?, ?, NOW() + INTERVAL 1 MINUTE)
+                ON DUPLICATE KEY UPDATE package_id=VALUES(package_id), receipt=VALUES(receipt),
+                    fail_reason=VALUES(fail_reason), attempts=1, next_retry_at=NOW() + INTERVAL 1 MINUTE")
+                ->execute([$tenantId, $clientId, $resolvedPackageId ?: null, $receipt, substr($e->getMessage(), 0, 500)]);
+        } catch (Throwable $queueError) {
+            error_log("pipeline: could not queue thrown provision failure for client $clientId: " . $queueError->getMessage());
+        }
     }
 
     // SMS provider latency must not postpone the customer's router connection.
