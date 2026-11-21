@@ -40,6 +40,7 @@ try {
             p.amount,
             p.payment_method  AS method,
             p.transaction_id  AS reference,
+            p.checkout_request_id AS checkout_request_id,
             p.status,
             p.payment_date    AS paid_at,
             {$notesCol},
@@ -64,6 +65,7 @@ try {
     $hasMpesaTenant  = in_array('tenant_id', $mpesaCols);
     // Receipt number may be stored as transaction_id (newer) or mpesa_receipt_number (original schema)
     $receiptCol      = in_array('transaction_id', $mpesaCols)      ? 'transaction_id'       : (in_array('mpesa_receipt_number', $mpesaCols) ? 'mpesa_receipt_number' : 'NULL');
+    $mpesaReceiptCol = in_array('mpesa_receipt_number', $mpesaCols) ? 'mpesa_receipt_number' : $receiptCol;
     $resultCodeCol   = in_array('result_code', $mpesaCols)         ? 'result_code'          : 'NULL';
 
     // Merge in M-Pesa transaction details (phone, confirmation code from callback)
@@ -72,8 +74,9 @@ try {
     $mtSt = $pdo->prepare("
         SELECT phone_number, checkout_request_id,
                {$receiptCol}   AS transaction_id,
+               {$mpesaReceiptCol} AS receipt_number,
                {$resultCodeCol} AS result_code,
-               amount, created_at
+               status AS mpesa_status, amount, created_at
         FROM mpesa_transactions
         WHERE client_id = ? {$mpesaTenantClause}
         ORDER BY created_at DESC
@@ -88,24 +91,31 @@ try {
         if ($tx['checkout_request_id']) {
             $mpesaMap[$tx['checkout_request_id']] = $tx;
         }
+        if (!empty($tx['receipt_number'])) {
+            $mpesaMap[$tx['receipt_number']] = $tx;
+        }
     }
 
     // Enrich payments with mpesa confirmation data
     foreach ($payments as &$p) {
         $ref = $p['reference'] ?? '';
-        if ($ref && isset($mpesaMap[$ref])) {
-            $mt = $mpesaMap[$ref];
+        $checkoutId = $p['checkout_request_id'] ?? '';
+        $mt = ($ref && isset($mpesaMap[$ref])) ? $mpesaMap[$ref]
+            : (($checkoutId && isset($mpesaMap[$checkoutId])) ? $mpesaMap[$checkoutId] : null);
+        if ($mt) {
             if (empty($p['phone'])) $p['phone'] = $mt['phone_number'];
-            $p['mpesa_code']  = $mt['transaction_id'] ?? '';
+            $p['mpesa_code']  = $mt['receipt_number'] ?: ($mt['transaction_id'] ?? '');
             $p['result_code'] = $mt['result_code'] ?? '';
+            $p['mpesa_status'] = $mt['mpesa_status'] ?? '';
         } else {
             $p['mpesa_code']  = '';
             $p['result_code'] = '';
+            $p['mpesa_status'] = '';
         }
         // Only confirmed if result_code is explicitly '0' (M-Pesa success) or integer 0
         // Manual unverified entries have result_code='MANUAL', pending have null
         $rc = (string)($p['result_code'] ?? '');
-        $p['confirmed'] = ($rc === '0');
+        $p['confirmed'] = (($rc === '0') || (($p['mpesa_status'] ?? '') === 'completed') || (($p['status'] ?? '') === 'completed'));
     }
     unset($p);
 

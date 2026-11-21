@@ -30,7 +30,7 @@ The receipt reconnect endpoint was found to extend expiry on every submission an
 | G045 | 420 | inactive | 0 | NO_RECORDED_CONNECTION |
 | G044 | 419 | inactive | 0 |  |
 | G043 | 418 | pending | 0 | NO_RECORDED_CONNECTION |
-| G042 | 417 | inactive | 0 |  |
+| G042 | 417 | inactive | 0  |  |
 | G041 | 416 | active | 0 | PAID_ACCESS_NO_ACTIVE_SESSION, NO_RECENT_DEVICE_FOR_AUTOMATIC_LOGIN |
 | G040 | 415 | inactive | 0 | NO_RECORDED_CONNECTION |
 | G039 | 414 | pending | 0 | NO_RECORDED_CONNECTION |
