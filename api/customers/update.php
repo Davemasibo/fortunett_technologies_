@@ -41,10 +41,12 @@ if (empty($id) || empty($name)) {
     $t_stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
     $t_stmt->execute([$user_id]);
     $tenant_id = $t_stmt->fetchColumn();
-
     $lockName = 'payment-client-' . $tenant_id . '-' . $id;
     $locked = false;
     try {
+        require_once __DIR__ . '/../../includes/customer_router.php';
+        ensureColumn($pdo, 'clients', 'assigned_router_id', 'INT NULL DEFAULT NULL');
+        $router_id = customerCreationRouter($pdo, (int)$tenant_id, $_POST['router_id'] ?? '');
         $lock = $pdo->prepare('SELECT GET_LOCK(?,30)');
         $lock->execute([$lockName]);
         $locked = (int)$lock->fetchColumn() === 1;
@@ -116,6 +118,9 @@ if (empty($id) || empty($name)) {
         $name, $name, $email, $phone, $address, $username, 
         $mikrotik_username, $status, $connection_type, $boundMac
     ];
+
+    $fields[] = 'assigned_router_id = ?';
+    $values[] = $router_id ?: null;
     
     if (isset($_POST['router_ownership'])) {
         if (!in_array($_POST['router_ownership'], ['unknown','isp','customer'], true)) throw new Exception('Invalid router ownership');
@@ -162,10 +167,22 @@ if (empty($id) || empty($name)) {
     
     $networkChanged = $boundMac !== ($oldClient['bound_mac_address'] ?? null) || $mikrotik_username !== $oldClient['mikrotik_username']
         || $status !== $oldClient['status'] || $connection_type !== $oldClient['connection_type']
+        || (int)($router_id ?: 0) !== (int)($oldClient['assigned_router_id'] ?? 0)
         || ($package_id && (int)$package_id !== (int)$oldClient['package_id'])
         || ($mikrotik_password !== '' && $mikrotik_password !== $oldClient['mikrotik_password'])
         || ($expiry_date && strtotime($expiry_date) !== strtotime($oldClient['expiry_date']));
-    if ($networkChanged) dashboardQueueCustomer($pdo, (int)$tenant_id, (int)$id, $oldClient);
+    if ($networkChanged) {
+        $routerChanged = (int)($router_id ?: 0) !== (int)($oldClient['assigned_router_id'] ?? 0);
+        if ($routerChanged) {
+            // Old unassigned retries (router_id=0) cannot succeed after an assignment.
+            // Retarget the customer's work explicitly to the chosen tenant router.
+            $pdo->prepare("UPDATE dashboard_sync_jobs SET applied_at=NOW(),last_error=NULL WHERE tenant_id=? AND kind='customer' AND entity_id=? AND applied_at IS NULL")
+                ->execute([(int)$tenant_id, (int)$id]);
+            dashboardQueueCustomer($pdo, (int)$tenant_id, (int)$id, $oldClient, $router_id ?: null);
+        } else {
+            dashboardQueueCustomer($pdo, (int)$tenant_id, (int)$id, $oldClient);
+        }
+    }
     $pdo->commit();
     ob_clean();
     echo json_encode(['success' => true, 'sync_pending' => (bool)$networkChanged, 'message' => $networkChanged ? 'Customer saved. Applying access settings.' : 'Customer saved.']);

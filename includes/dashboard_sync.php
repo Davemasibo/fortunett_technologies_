@@ -15,10 +15,14 @@ function dashboardSyncSchema(PDO $pdo): void {
     ensureColumn($pdo, 'dashboard_sync_jobs', 'last_error', 'TEXT NULL');
 }
 
-function dashboardQueueCustomer(PDO $pdo, int $tenant, int $id, array $old = []): void {
-    $routers = $pdo->prepare('SELECT DISTINCT router_id FROM router_services WHERE tenant_id=? AND client_id=?');
-    $routers->execute([$tenant, $id]);
-    $ids = $routers->fetchAll(PDO::FETCH_COLUMN) ?: [0];
+function dashboardQueueCustomer(PDO $pdo, int $tenant, int $id, array $old = [], ?int $targetRouterId = null): void {
+    if ($targetRouterId !== null) {
+        $ids = [$targetRouterId];
+    } else {
+        $routers = $pdo->prepare('SELECT DISTINCT router_id FROM router_services WHERE tenant_id=? AND client_id=?');
+        $routers->execute([$tenant, $id]);
+        $ids = $routers->fetchAll(PDO::FETCH_COLUMN) ?: [0];
+    }
     $insert = $pdo->prepare('INSERT INTO dashboard_sync_jobs (tenant_id,kind,entity_id,router_id,old_username,old_service) VALUES (?,\'customer\',?,?,?,?)');
     foreach ($ids as $router) $insert->execute([$tenant, $id, $router, $old['mikrotik_username'] ?? '', $old['connection_type'] ?? '']);
 }

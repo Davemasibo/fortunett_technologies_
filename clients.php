@@ -1619,14 +1619,16 @@ function openAddModal() {
 function openEditModal(customer) {
     document.getElementById('formModalTitle').textContent = 'Edit Customer';
     document.getElementById('customerForm').reset();
-    document.getElementById('formRouterPicker').hidden = true;
-    document.getElementById('formRouterId').disabled = true;
+    document.getElementById('formRouterPicker').hidden = false;
+    document.getElementById('formRouterId').disabled = false;
     
     document.getElementById('formId').value = customer.id;
     document.getElementById('formName').value = customer.full_name || customer.name;
     document.getElementById('formPhone').value = customer.phone;
     document.getElementById('formEmail').value = customer.email;
     document.getElementById('formAddress').value = customer.address || customer.location;
+    const routerSelect = document.getElementById('formRouterId');
+    routerSelect.value = customer.assigned_router_id || (routerSelect.options.length === 2 ? routerSelect.options[1].value : '');
     
     // Set connection type first, then filter packages, then select the customer's package
     const connType = (customer.connection_type || 'pppoe').toLowerCase();
