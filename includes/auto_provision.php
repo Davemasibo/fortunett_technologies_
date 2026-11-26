@@ -145,6 +145,34 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
             $bridgeCheck['ok'] = false;
             $bridgeCheck['message'] = "PPPoE server is bound to '{$bridgeCheck['server_interface']}', but the saved customer LAN is '{$expectedServiceInterface}'. Bind the PPPoE server to the customer LAN interface.";
         }
+        // A PPPoE server bound to an empty bridge cannot receive discovery packets
+        // from any customer device. Do not report provisioning as complete in this
+        // state; adding the correct physical port is a router-specific action and
+        // must be selected by the tenant/admin.
+        if ($connType === 'pppoe' && $expectedServiceInterface
+            && ($bridgeCheck['server_interface'] ?? null) === $expectedServiceInterface) {
+            try {
+                $bridgePorts = $api->comm('/interface/bridge/port/print', ['?bridge=' . $expectedServiceInterface]);
+                $activeMembers = array_filter($bridgePorts, static function ($port): bool {
+                    return isset($port['!re'])
+                        && !empty($port['interface'])
+                        && ($port['disabled'] ?? 'false') !== 'true';
+                });
+                if (count($activeMembers) === 0) {
+                    throw new RuntimeException(
+                        "PPPoE cannot reach customers: bridge '{$expectedServiceInterface}' has no member ports. "
+                        . "In RouterOS, add the Ethernet port connected to the customer modem to this bridge, "
+                        . "then retry. Choose the actual modem-facing port; do not add the WAN uplink."
+                    );
+                }
+            } catch (RuntimeException $e) {
+                throw $e;
+            } catch (Throwable $e) {
+                // Keep provisioning available if this RouterOS/API version cannot
+                // read bridge membership; the separate verification view reports it.
+                error_log("autoProvisionClient($clientId): unable to inspect PPPoE bridge ports: " . $e->getMessage());
+            }
+        }
         if (!$bridgeCheck['ok']) {
             if ($connType === 'pppoe') throw new RuntimeException($bridgeCheck['message']);
             error_log("autoProvisionClient($clientId): pre-flight warning — " . $bridgeCheck['message']);
