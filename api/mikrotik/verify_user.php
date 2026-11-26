@@ -87,9 +87,12 @@ try {
         'secret_disabled'  => null,
         'secret_service'   => null,
         'pppoe_server_found' => null,
+        'pppoe_server_running' => null,
+        'pppoe_service_name' => null,
         'pppoe_server_interface' => null,
         'expected_service_interface' => null,
         'pppoe_interface_matches' => null,
+        'customer_bridge_ports' => [],
         'pppoe_events' => [],
     ];
 
@@ -182,6 +185,8 @@ try {
             foreach ($servers as $server) {
                 if (!isset($server['!re']) || ($server['disabled'] ?? 'false') === 'true') continue;
                 $result['pppoe_server_found'] = true;
+                $result['pppoe_server_running'] = isset($server['running']) ? ($server['running'] === 'true') : null;
+                $result['pppoe_service_name'] = $server['service-name'] ?? '';
                 $result['pppoe_server_interface'] = $server['interface'] ?? null;
                 if ($result['expected_service_interface']) {
                     $result['pppoe_interface_matches'] = $result['pppoe_server_interface'] === $result['expected_service_interface'];
@@ -189,6 +194,32 @@ try {
                 break;
             }
             if ($result['pppoe_server_found'] === null) $result['pppoe_server_found'] = false;
+            if ($result['expected_service_interface']) {
+                try {
+                    $ports = $api->comm('/interface/bridge/port/print', ['?bridge=' . $result['expected_service_interface']]);
+                    $interfaces = $api->comm('/interface/print');
+                    $interfaceState = [];
+                    foreach ($interfaces as $ifaceRow) {
+                        if (!isset($ifaceRow['!re'], $ifaceRow['name'])) continue;
+                        $interfaceState[$ifaceRow['name']] = [
+                            'running' => ($ifaceRow['running'] ?? 'false') === 'true',
+                            'disabled' => ($ifaceRow['disabled'] ?? 'false') === 'true',
+                        ];
+                    }
+                    foreach ($ports as $portRow) {
+                        $member = $portRow['interface'] ?? '';
+                        if (!isset($portRow['!re']) || $member === '') continue;
+                        $state = $interfaceState[$member] ?? ['running'=>false,'disabled'=>($portRow['disabled'] ?? 'false') === 'true'];
+                        $result['customer_bridge_ports'][] = [
+                            'name' => $member,
+                            'running' => $state['running'],
+                            'disabled' => $state['disabled'] || ($portRow['disabled'] ?? 'false') === 'true',
+                        ];
+                    }
+                } catch (Throwable $_e) {
+                    // Keep the router account/session checks available if bridge inspection is unsupported.
+                }
+            }
             try {
                 $events = [];
                 foreach ($api->comm('/log/print', ['?topics~ppp']) as $entry) {

@@ -1869,9 +1869,15 @@ function verifyOnRouter() {
                 if (d.db_connection === 'pppoe') {
                     lines.push('Enabled PPPoE server: ' + (d.pppoe_server_found ? 'Found' : d.pppoe_server_found === false ? 'NOT FOUND' : 'Not checked'));
                     if (d.pppoe_server_interface) lines.push('PPPoE server interface: ' + d.pppoe_server_interface);
+                    if (d.pppoe_service_name) lines.push('PPPoE service name: ' + d.pppoe_service_name);
+                    if (d.pppoe_server_running !== null) lines.push('PPPoE server running: ' + (d.pppoe_server_running ? 'Yes' : 'No'));
                     if (d.expected_service_interface) {
                         lines.push('Configured customer LAN: ' + d.expected_service_interface);
                         lines.push('PPPoE server uses customer LAN: ' + (d.pppoe_interface_matches ? 'Yes' : d.pppoe_interface_matches === false ? 'NO — wrong interface' : 'Not verified'));
+                        const ports = d.customer_bridge_ports || [];
+                        lines.push('Customer LAN bridge ports: ' + (ports.length
+                            ? ports.map(port => port.name + (port.disabled ? ' (disabled)' : port.running ? ' (link up)' : ' (no link)')).join(', ')
+                            : 'NONE — add the modem-facing router port to this bridge'));
                     }
                 }
                 if (d.router_ok) {
