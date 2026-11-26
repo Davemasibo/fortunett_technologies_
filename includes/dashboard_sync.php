@@ -13,6 +13,7 @@ function dashboardSyncSchema(PDO $pdo): void {
         INDEX due_jobs (applied_at, next_retry_at), INDEX tenant_jobs (tenant_id, applied_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     ensureColumn($pdo, 'dashboard_sync_jobs', 'last_error', 'TEXT NULL');
+    ensureColumn($pdo, 'dashboard_sync_jobs', 'blocked_at', 'DATETIME NULL');
 }
 
 function dashboardQueueCustomer(PDO $pdo, int $tenant, int $id, array $old = [], ?int $targetRouterId = null): void {
@@ -21,7 +22,12 @@ function dashboardQueueCustomer(PDO $pdo, int $tenant, int $id, array $old = [],
     } else {
         $routers = $pdo->prepare('SELECT DISTINCT router_id FROM router_services WHERE tenant_id=? AND client_id=?');
         $routers->execute([$tenant, $id]);
-        $ids = $routers->fetchAll(PDO::FETCH_COLUMN) ?: [0];
+        $ids = $routers->fetchAll(PDO::FETCH_COLUMN);
+        if (!$ids) {
+            $assigned = $pdo->prepare('SELECT assigned_router_id FROM clients WHERE tenant_id=? AND id=?');
+            $assigned->execute([$tenant, $id]);
+            $ids = [(int)($assigned->fetchColumn() ?: 0)];
+        }
     }
     $insert = $pdo->prepare('INSERT INTO dashboard_sync_jobs (tenant_id,kind,entity_id,router_id,old_username,old_service) VALUES (?,\'customer\',?,?,?,?)');
     foreach ($ids as $router) $insert->execute([$tenant, $id, $router, $old['mikrotik_username'] ?? '', $old['connection_type'] ?? '']);
@@ -142,14 +148,14 @@ function dashboardApplyJob(PDO $pdo, array $job): void {
 
 // Both browser polling and the minute cron drain the same durable queue.
 function dashboardProcessSync(PDO $pdo, ?int $tenant = null, int $limit = 1): void {
-    $stmt = $pdo->prepare('SELECT * FROM dashboard_sync_jobs WHERE applied_at IS NULL AND next_retry_at<=NOW()' . ($tenant === null ? '' : ' AND tenant_id=?') . ' ORDER BY next_retry_at,id LIMIT ' . max(1, min(30, $limit)));
+    $stmt = $pdo->prepare('SELECT * FROM dashboard_sync_jobs WHERE applied_at IS NULL AND blocked_at IS NULL AND next_retry_at<=NOW()' . ($tenant === null ? '' : ' AND tenant_id=?') . ' ORDER BY next_retry_at,id LIMIT ' . max(1, min(30, $limit)));
     $stmt->execute($tenant === null ? [] : [$tenant]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $job) {
         $lockName = $job['kind'] === 'customer' ? 'payment-client-' . $job['tenant_id'] . '-' . $job['entity_id'] : 'dashboard-package-' . $job['tenant_id'] . '-' . $job['entity_id'];
         $lock = $pdo->prepare('SELECT GET_LOCK(?,0)'); $lock->execute([$lockName]);
         if ((int)$lock->fetchColumn() !== 1) continue;
         try {
-            $check = $pdo->prepare('SELECT id FROM dashboard_sync_jobs WHERE id=? AND applied_at IS NULL AND next_retry_at<=NOW()');
+            $check = $pdo->prepare('SELECT id FROM dashboard_sync_jobs WHERE id=? AND applied_at IS NULL AND blocked_at IS NULL AND next_retry_at<=NOW()');
             $check->execute([$job['id']]);
             if (!$check->fetchColumn()) continue;
             $snapshotId = (int)$job['id'];
@@ -168,11 +174,23 @@ function dashboardProcessSync(PDO $pdo, ?int $tenant = null, int $limit = 1): vo
             }
         } catch (Throwable $e) {
             error_log('Dashboard sync ' . $job['id'] . ': ' . $e->getMessage());
+            $errorMessage = substr($e->getMessage(),0,2000);
+            $needsAssignment = in_array($e->getMessage(), [
+                'Customer router assignment is required',
+                'Waiting for the router serving this hotspot device',
+                'Assigned customer router is no longer available in this account',
+                'Router not configured',
+            ], true);
+            if ($needsAssignment) {
+                $pdo->prepare('UPDATE dashboard_sync_jobs SET attempts=attempts+1,blocked_at=NOW(),last_error=? WHERE id=?')
+                    ->execute([$errorMessage,$job['id']]);
+                continue;
+            }
             if (in_array($job['kind'],['portal','package'],true) && isset($snapshotId)) {
-                $pdo->prepare('UPDATE dashboard_sync_jobs SET attempts=attempts+1,last_error=?,next_retry_at=DATE_ADD(NOW(), INTERVAL 30 SECOND) WHERE tenant_id=? AND kind=? AND entity_id=? AND router_id=? AND id<=? AND applied_at IS NULL')
-                    ->execute([substr($e->getMessage(),0,2000),$job['tenant_id'],$job['kind'],$job['entity_id'],$job['router_id'],$snapshotId]);
+                $pdo->prepare('UPDATE dashboard_sync_jobs SET attempts=attempts+1,last_error=?,next_retry_at=DATE_ADD(NOW(), INTERVAL 30 SECOND) WHERE tenant_id=? AND kind=? AND entity_id=? AND router_id=? AND id<=? AND applied_at IS NULL AND blocked_at IS NULL')
+                    ->execute([$errorMessage,$job['tenant_id'],$job['kind'],$job['entity_id'],$job['router_id'],$snapshotId]);
             } else {
-                $pdo->prepare('UPDATE dashboard_sync_jobs SET attempts=attempts+1,last_error=?,next_retry_at=DATE_ADD(NOW(), INTERVAL 30 SECOND) WHERE id=?')->execute([substr($e->getMessage(),0,2000),$job['id']]);
+                $pdo->prepare('UPDATE dashboard_sync_jobs SET attempts=attempts+1,last_error=?,next_retry_at=DATE_ADD(NOW(), INTERVAL 30 SECOND) WHERE id=?')->execute([$errorMessage,$job['id']]);
             }
         } finally { $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]); }
     }

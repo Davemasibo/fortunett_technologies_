@@ -134,8 +134,19 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
         // RouterOS itself returns a clear trap if the hotspot/PPPoE server is truly
         // missing (handled in _provisionHotspot/_provisionPPPoE). Hard-failing here
         // blocked working setups and broke hotspot connect + renewal.
+        $expectedServiceInterface = null;
+        try {
+            $wan = $pdo->prepare('SELECT lan_bridge FROM router_wan_config WHERE tenant_id=? AND router_id=? ORDER BY id DESC LIMIT 1');
+            $wan->execute([$tenantId, $routerId]);
+            $expectedServiceInterface = $wan->fetchColumn() ?: null;
+        } catch (Throwable $_e) {}
         $bridgeCheck = _verifyServiceOnBridge($api, $connType);
+        if ($connType === 'pppoe' && $expectedServiceInterface && !empty($bridgeCheck['server_interface']) && $bridgeCheck['server_interface'] !== $expectedServiceInterface) {
+            $bridgeCheck['ok'] = false;
+            $bridgeCheck['message'] = "PPPoE server is bound to '{$bridgeCheck['server_interface']}', but the saved customer LAN is '{$expectedServiceInterface}'. Bind the PPPoE server to the customer LAN interface.";
+        }
         if (!$bridgeCheck['ok']) {
+            if ($connType === 'pppoe') throw new RuntimeException($bridgeCheck['message']);
             error_log("autoProvisionClient($clientId): pre-flight warning — " . $bridgeCheck['message']);
         }
 
@@ -518,9 +529,19 @@ function preProvisionPPPoEClient(PDO $pdo, int $clientId, int $tenantId): array
         $api->connect();
 
         // ── Pre-flight: advisory check only (never blocks — see autoProvisionClient) ──
+        $expectedServiceInterface = null;
+        try {
+            $wan = $pdo->prepare('SELECT lan_bridge FROM router_wan_config WHERE tenant_id=? AND router_id=? ORDER BY id DESC LIMIT 1');
+            $wan->execute([$tenantId, $routerId]);
+            $expectedServiceInterface = $wan->fetchColumn() ?: null;
+        } catch (Throwable $_e) {}
         $bridgeCheck = _verifyServiceOnBridge($api, 'pppoe');
+        if ($expectedServiceInterface && !empty($bridgeCheck['server_interface']) && $bridgeCheck['server_interface'] !== $expectedServiceInterface) {
+            $bridgeCheck['ok'] = false;
+            $bridgeCheck['message'] = "PPPoE server is bound to '{$bridgeCheck['server_interface']}', but the saved customer LAN is '{$expectedServiceInterface}'. Bind the PPPoE server to the customer LAN interface.";
+        }
         if (!$bridgeCheck['ok']) {
-            error_log("preProvisionPPPoEClient($clientId): pre-flight warning — " . $bridgeCheck['message']);
+            throw new RuntimeException($bridgeCheck['message']);
         }
 
         // Get server IP and ensure captive portal infrastructure exists
@@ -927,6 +948,23 @@ function _detectBridgeInterface(MikrotikAPI $api): ?string
 function _verifyServiceOnBridge(MikrotikAPI $api, string $connType): array
 {
     $bridge = _detectBridgeInterface($api);
+
+    // PPPoE may run directly on a physical interface or VLAN. Check its server
+    // independently of bridge discovery so a missing service cannot be reported
+    // as successful customer provisioning.
+    if ($connType !== 'hotspot') {
+        $servers = $api->comm('/interface/pppoe-server/server/print');
+        foreach ($servers as $server) {
+            if (!isset($server['!re']) || ($server['disabled'] ?? 'true') === 'true') continue;
+            $iface = $server['interface'] ?? '(unknown interface)';
+            $name = $server['service-name'] ?? ($server['name'] ?? 'PPPoE');
+            if ($bridge !== null && $iface !== $bridge) {
+                error_log("PPPoE server '{$name}' is on '{$iface}', detected bridge is '{$bridge}'. Verify customer-facing interface.");
+            }
+            return ['ok'=>true, 'message'=>"Enabled PPPoE server '{$name}' on '{$iface}'", 'bridge'=>$bridge, 'server_name'=>$name, 'server_interface'=>$iface];
+        }
+        return ['ok'=>false, 'message'=>'No enabled PPPoE server exists on this router. Configure one on the customer-facing interface before provisioning.', 'bridge'=>$bridge, 'server_name'=>null];
+    }
 
     if ($bridge === null) {
         return [

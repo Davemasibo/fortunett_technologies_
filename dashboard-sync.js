@@ -8,6 +8,13 @@ window.DashboardSync = (() => {
     panel.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:10000;max-width:420px;padding:14px 18px;border-radius:10px;background:#18344c;color:#fff;box-shadow:0 4px 20px #0004;display:none';
     document.body.appendChild(panel);
     function message(text) { panel.textContent = text; panel.style.display = 'block'; }
+    function showErrors(errors) {
+        if (!errors?.length) return;
+        const detail = document.createElement('div');
+        detail.style.cssText = 'margin-top:8px;font-size:12px;white-space:pre-line';
+        detail.textContent = [...new Set(errors.map(error => `${error.blocked ? 'Needs router assignment' : (error.router_name || 'Router')}: ${error.kind==='portal' ? 'Hotspot portal' : error.kind+' #'+error.entity_id} — ${error.last_error}`))].join('\n');
+        panel.appendChild(detail);
+    }
     async function refresh() {
         const version = ++refreshVersion;
         const response = await fetch(location.href, { cache: 'no-store' });
@@ -42,19 +49,21 @@ window.DashboardSync = (() => {
             if (result.pending) {
                 hadPending = true;
                 message(result.waiting
-                    ? `Saved. ${result.pending} update(s) pending; some could not be applied. Retrying automatically.`
+                    ? `Saved. ${result.pending} update(s) are retrying; ${result.waiting} are waiting for retry.`
                     : `Saved. Applying ${result.pending} update(s) to routers…`);
-                if (result.errors?.length) {
-                    const detail = document.createElement('div');
-                    detail.style.cssText = 'margin-top:8px;font-size:12px;white-space:pre-line';
-                    detail.textContent = [...new Set(result.errors.map(error => `${error.router_name || 'Unassigned router'}: ${error.kind==='portal' ? 'Hotspot portal' : error.kind+' #'+error.entity_id} — ${error.last_error}`))].join('\n');
-                    panel.appendChild(detail);
-                }
+                showErrors(result.errors);
                 delay = result.waiting === result.pending ? 10000 : 300;
-            } else if (hadPending) {
-                hadPending = false;
-                message('Saved and applied to routers.');
-                await refresh();
+            } else {
+                if (hadPending) {
+                    hadPending = false;
+                    await refresh();
+                }
+                if (result.blocked) {
+                    message(`Saved. ${result.blocked} update(s) need attention before they can be applied.`);
+                    showErrors(result.errors);
+                } else if (hadPending) {
+                    message('Saved and applied to routers.');
+                }
             }
         } catch (_) {
             if (hadPending) message('Saved. Connection interrupted while checking progress. Updates will retry automatically.');

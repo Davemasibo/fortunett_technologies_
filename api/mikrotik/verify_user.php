@@ -88,6 +88,9 @@ try {
         'secret_service'   => null,
         'pppoe_server_found' => null,
         'pppoe_server_interface' => null,
+        'expected_service_interface' => null,
+        'pppoe_interface_matches' => null,
+        'pppoe_events' => [],
     ];
 
     $username        = $client['mikrotik_username'];
@@ -117,6 +120,11 @@ try {
         echo json_encode($result);
         exit;
     }
+    try {
+        $wan = $pdo->prepare('SELECT lan_bridge FROM router_wan_config WHERE tenant_id=? AND router_id=? ORDER BY id DESC LIMIT 1');
+        $wan->execute([$tenant_id, (int)$router['id']]);
+        $result['expected_service_interface'] = $wan->fetchColumn() ?: null;
+    } catch (Throwable $_e) {}
 
     // Quick reachability check before attempting full API connection
     $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
@@ -175,9 +183,23 @@ try {
                 if (!isset($server['!re']) || ($server['disabled'] ?? 'false') === 'true') continue;
                 $result['pppoe_server_found'] = true;
                 $result['pppoe_server_interface'] = $server['interface'] ?? null;
+                if ($result['expected_service_interface']) {
+                    $result['pppoe_interface_matches'] = $result['pppoe_server_interface'] === $result['expected_service_interface'];
+                }
                 break;
             }
             if ($result['pppoe_server_found'] === null) $result['pppoe_server_found'] = false;
+            try {
+                $events = [];
+                foreach ($api->comm('/log/print', ['?topics~ppp']) as $entry) {
+                    $message = (string)($entry['message'] ?? '');
+                    if (!isset($entry['!re']) || stripos($message, $username) === false) continue;
+                    $events[] = trim((string)($entry['time'] ?? '') . ' ' . $message);
+                }
+                $result['pppoe_events'] = array_slice($events, -5);
+            } catch (Throwable $_e) {
+                // Log access is diagnostic only; it must not invalidate the secret/server report.
+            }
             // Check active PPPoE session
             $sessMap = $api->getActiveSessionsMap();
             if (isset($sessMap[strtolower($username)])) {

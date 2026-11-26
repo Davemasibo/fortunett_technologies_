@@ -1166,7 +1166,7 @@ include 'includes/sidebar.php';
 <script src="sms-retry.js"></script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="dashboard-sync.js?v=20261022" data-csrf="<?= htmlspecialchars($_SESSION['dashboard_sync_csrf'], ENT_QUOTES) ?>"></script>
+<script src="dashboard-sync.js?v=20261126" data-csrf="<?= htmlspecialchars($_SESSION['dashboard_sync_csrf'], ENT_QUOTES) ?>"></script>
 <script>
 let currentCustomer = null;
 let clientPaymentChart = null;
@@ -1869,6 +1869,10 @@ function verifyOnRouter() {
                 if (d.db_connection === 'pppoe') {
                     lines.push('Enabled PPPoE server: ' + (d.pppoe_server_found ? 'Found' : d.pppoe_server_found === false ? 'NOT FOUND' : 'Not checked'));
                     if (d.pppoe_server_interface) lines.push('PPPoE server interface: ' + d.pppoe_server_interface);
+                    if (d.expected_service_interface) {
+                        lines.push('Configured customer LAN: ' + d.expected_service_interface);
+                        lines.push('PPPoE server uses customer LAN: ' + (d.pppoe_interface_matches ? 'Yes' : d.pppoe_interface_matches === false ? 'NO — wrong interface' : 'Not verified'));
+                    }
                 }
                 if (d.router_ok) {
                     lines.push('Profile on router: ' + (d.router_profile || 'unknown'));
@@ -1884,6 +1888,10 @@ function verifyOnRouter() {
                     } else {
                         lines.push('⚫ Not currently connected');
                     }
+                }
+                if (d.db_connection === 'pppoe') {
+                    lines.push('Recent PPPoE events:');
+                    lines.push(...((d.pppoe_events && d.pppoe_events.length) ? d.pppoe_events : ['No recent matching PPPoE log entries on this router.']));
                 }
             }
 

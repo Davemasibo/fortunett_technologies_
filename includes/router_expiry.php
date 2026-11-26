@@ -257,6 +257,15 @@ function provisionRouterPaidUser($api, string $service, string $username, string
         installPaidExpiryWatchdog($api);
         if (strtotime($expiry) <= time()) throw new RuntimeException('Purchased time elapsed while installing expiry protection');
         routerCheckedCommand($api, $base . '/set', ['=.id=' . $id, '=disabled=no']);
+        $enabledVerified = false;
+        foreach (routerCheckedCommand($api, $base . '/print', ['?name=' . $username]) as $row) {
+            if (($row['name'] ?? '') !== $username) continue;
+            $serviceMatches = $service === 'hotspot' || ($row['service'] ?? '') === 'pppoe';
+            $enabledVerified = ($row['disabled'] ?? 'true') === 'false'
+                && ($row['profile'] ?? '') === $profile && $serviceMatches;
+            break;
+        }
+        if (!$enabledVerified) throw new RuntimeException('Router user remains disabled or has an unexpected service/profile');
     } catch (Throwable $e) {
         if ($id !== null) {
             try { routerCheckedCommand($api, $base . '/set', ['=.id=' . $id, '=disabled=yes']); } catch (Throwable $_) {}
