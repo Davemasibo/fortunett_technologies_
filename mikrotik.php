@@ -1624,8 +1624,18 @@ function verifyProvision() {
     fd.append('services', Array.from(provSelected).join(','));
     fd.append('replace_services', provReplaceServices ? '1' : '0');
 
-    fetch('api/routers/verify_provisioning.php', { method: 'POST', body: fd })
-        .then(r => r.json())
+    const verifyUrl = <?= json_encode(rtrim($_base_path, '/') . '/api/routers/verify_provisioning.php', JSON_UNESCAPED_SLASHES) ?>;
+    fetch(verifyUrl, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(async r => {
+            const body = await r.text();
+            let data;
+            try { data = JSON.parse(body); }
+            catch (_) {
+                throw new Error('The server returned HTTP ' + r.status + ' instead of JSON. Check the PHP/Apache error log.');
+            }
+            if (!r.ok) throw new Error(data.error || ('Server returned HTTP ' + r.status));
+            return data;
+        })
         .then(d => {
             btn.disabled = false;
             btn.innerHTML = orig;
@@ -1660,7 +1670,10 @@ function verifyProvision() {
         .catch(e => {
             btn.disabled = false;
             btn.innerHTML = orig;
-            out.innerHTML = '<div style="color:#f87171;font-size:13px;">Verify request failed: ' + escapeHtml(e.message) + '</div>';
+            const message = e instanceof TypeError
+                ? 'The browser could not reach ' + verifyUrl + '. Check that the app URL is correct, Apache/PHP is running, and the browser is not blocking the request (mixed content or network policy).'
+                : e.message;
+            out.innerHTML = '<div style="color:#f87171;font-size:13px;">Verify request failed: ' + escapeHtml(message) + '</div>';
         });
 }
 
