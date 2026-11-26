@@ -17,7 +17,9 @@ session_write_close(); // Router I/O must not block other dashboard requests.
 if (!$tenant) { http_response_code(403); echo json_encode(['success' => false]); exit; }
 try {
     dashboardSyncSchema($pdo);
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') dashboardProcessSync($pdo, $tenant);
+    // Drain a small batch so one old retry cannot make newer saved changes
+    // appear stalled. Failed jobs are deferred by next_retry_at independently.
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') dashboardProcessSync($pdo, $tenant, 3);
     $stmt = $pdo->prepare('SELECT COUNT(*) AS pending, COALESCE(SUM(attempts>0),0) AS waiting FROM dashboard_sync_jobs WHERE tenant_id=? AND applied_at IS NULL');
     $stmt->execute([$tenant]);
     $status = $stmt->fetch(PDO::FETCH_ASSOC);

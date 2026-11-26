@@ -1690,14 +1690,7 @@ function handleFormSubmit(e) {
                 // Show credentials modal so admin can copy before page reloads
                 showCredentialsResult(data);
             } else if (isNew) {
-                if (data.mikrotik_synced) {
-                    showToast(`Customer saved & pushed to router (${data.router_ip}) · Profile: ${data.profile_used}`, 'success');
-                } else if (data.no_router) {
-                    showToast('Customer saved — no active router configured, provision manually later.', 'warning');
-                } else {
-                    showToast(`Customer saved but router sync failed: ${data.mikrotik_error || 'unknown'}`, 'warning');
-                }
-                setTimeout(() => location.reload(), 1800);
+                showProvisioningResult(data);
             } else {
                 if (btn) btn.disabled = false;
                 closeFormModal();
@@ -1715,6 +1708,34 @@ function handleFormSubmit(e) {
     .finally(() => {
         if (btn) { btn.textContent = originalText; btn.disabled = false; }
     });
+}
+
+function showProvisioningResult(data) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:3100;display:flex;align-items:center;justify-content:center;padding:18px;';
+    const card = document.createElement('div');
+    card.style.cssText = 'background:#222221;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:24px;max-width:480px;width:100%;color:#e2e2e0;';
+    const title = document.createElement('h3');
+    title.textContent = data.mikrotik_synced ? 'Customer created and provisioned' : 'Customer created; provisioning needs attention';
+    title.style.cssText = 'margin:0 0 14px;font-size:17px;';
+    const detail = document.createElement('p');
+    detail.textContent = data.payment_required
+        ? 'Provisioning will run after payment is confirmed.'
+        : data.mikrotik_synced
+            ? `Provisioned on ${data.router_ip || 'the selected router'} using profile ${data.profile_used || '(unknown)'}.`
+            : `Router provisioning failed: ${data.mikrotik_error || 'No result was returned.'}`;
+    detail.style.cssText = 'font-size:13px;line-height:1.6;color:' + (data.mikrotik_synced ? '#6ee7b7' : '#fbbf24') + ';';
+    const username = document.createElement('p');
+    username.textContent = 'PPPoE username: ' + (data.username || '(not set)');
+    username.style.cssText = 'font-size:13px;';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Done';
+    button.style.cssText = 'width:100%;padding:10px;background:#3B6EA5;color:white;border:0;border-radius:7px;cursor:pointer;font-weight:600;';
+    button.onclick = () => { overlay.remove(); location.reload(); };
+    card.append(title, detail, username, button);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
 }
 
 function showCredentialsResult(data) {
@@ -1792,16 +1813,22 @@ async function provisionToRouter() {
         fd.append('router_id',routerId);
     }
     showToast('Provisioning…', 'info');
-    fetch('api/customers/provision.php', { method: 'POST', body: fd })
-        .then(r => r.json())
-        .then(d => {
-            if (d.success) {
-                showToast('Provisioned: ' + (d.username || '') + ' via ' + (d.service || '') + ' on ' + (d.router || ''), 'success');
-            } else {
-                showToast('Provision failed: ' + d.message, 'error');
-            }
+    fetch('api/customers/provision.php', { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(async r => {
+            const body = await r.text();
+            let data;
+            try { data = JSON.parse(body); }
+            catch (_) { throw new Error('The server returned HTTP ' + r.status + ' without a provisioning result.'); }
+            if (!r.ok) throw new Error(data.message || ('HTTP ' + r.status));
+            return data;
         })
-        .catch(e => showToast('Provisioning request failed: ' + e.message, 'error'));
+        .then(d => {
+            const lines = d.success
+                ? ['Result: Provisioned successfully', 'Router: ' + (d.router || '(unknown)'), 'Service: ' + (d.service || currentCustomer.connection_type || '(unknown)'), 'Username: ' + (d.username || currentCustomer.mikrotik_username || '(unknown)'), 'Profile: ' + (d.profile || '(unknown)')]
+                : ['Result: Provisioning failed', 'Reason: ' + (d.message || 'No reason was returned.')];
+            alert('Router provisioning — ' + (currentCustomer.full_name || currentCustomer.name || 'Customer') + '\n\n' + lines.join('\n'));
+        })
+        .catch(e => alert('Router provisioning request failed\n\n' + e.message));
 }
 
 function chooseProvisionRouter(routers) {
@@ -1838,8 +1865,17 @@ function verifyOnRouter() {
                 lines.push('Router: ✗ ' + d.router_error);
             } else {
                 lines.push('Router (' + d.router_ip + '): ' + (d.router_ok ? '✓ User exists' : '✗ User NOT found'));
+                if (d.router_name) lines.push('Assigned router: ' + d.router_name);
+                if (d.db_connection === 'pppoe') {
+                    lines.push('Enabled PPPoE server: ' + (d.pppoe_server_found ? 'Found' : d.pppoe_server_found === false ? 'NOT FOUND' : 'Not checked'));
+                    if (d.pppoe_server_interface) lines.push('PPPoE server interface: ' + d.pppoe_server_interface);
+                }
                 if (d.router_ok) {
                     lines.push('Profile on router: ' + (d.router_profile || 'unknown'));
+                    if (d.db_connection === 'pppoe') {
+                        lines.push('Secret enabled: ' + (d.secret_disabled === false ? 'Yes' : 'No'));
+                        lines.push('Secret service: ' + (d.secret_service || 'not reported'));
+                    }
                     lines.push('Expected profile: ' + d.expected_profile);
                     lines.push('Profile match: ' + (d.profile_match ? '✓ Yes' : '✗ Mismatch — re-provision to fix'));
                     if (d.is_online) {

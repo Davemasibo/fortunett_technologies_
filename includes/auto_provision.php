@@ -27,7 +27,7 @@ require_once __DIR__ . '/payment_notifications.php';
  * @param int $tenantId
  * @return array
  */
-function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $routerId = 0, bool $uploadPortal = true, ?string $reconnectMac = null): array
+function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $routerId = 0, bool $uploadPortal = true, ?string $reconnectMac = null, bool $detailedFailure = false): array
 {
     $lockName = 'payment-client-' . $tenantId . '-' . $clientId;
     $locked = false;
@@ -242,7 +242,15 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
 
     } catch (Throwable $e) {
         error_log("autoProvisionClient($clientId, $tenantId): " . $e->getMessage());
-        return hotspotConnectionFailure($e);
+        $failure = hotspotConnectionFailure($e);
+        if ($detailedFailure) {
+            $detail = $e->getMessage();
+            if (isset($client['mikrotik_password']) && $client['mikrotik_password'] !== '') {
+                $detail = str_replace($client['mikrotik_password'], '[redacted]', $detail);
+            }
+            $failure['message'] = 'Router provisioning failed: ' . $detail;
+        }
+        return $failure;
     } finally {
         if (isset($api)) { try { $api->disconnect(); } catch (Throwable $_) {} }
         if ($locked) $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]);

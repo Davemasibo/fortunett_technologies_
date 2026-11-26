@@ -215,7 +215,7 @@ try {
         $welcomeStatus = deliverPaymentNotification($pdo,$welcomeId,null,true);
         $welcomeMessage = $welcomeStatus === 'sent' ? 'Accepted by the SMS provider.' : 'Queued for retry, or awaiting provider/configuration confirmation. Check SMS history.';
     } catch (Throwable $e) { error_log('Customer welcome SMS: '.$e->getMessage()); }
-    $provResult = $initialStatus === 'pending' ? ['success'=>false,'message'=>'Awaiting payment'] : autoProvisionClient($pdo, $client_id, $tenant_id,$router_id,false);
+    $provResult = $initialStatus === 'pending' ? ['success'=>false,'message'=>'Awaiting payment'] : autoProvisionClient($pdo, $client_id, $tenant_id,$router_id,false,null,true);
     $mikrotikSynced = $provResult['success'];
     $mikrotikError  = $provResult['success'] ? null : ($provResult['message'] ?? 'Provisioning failed');
     $noRouter       = (strpos($mikrotikError ?? '', 'No active router') !== false);

@@ -60,5 +60,5 @@ if ($router_id) {
         exit;
     }
 }
-$result = autoProvisionClient($pdo, $client_id, $tenant_id, $router_id);
+$result = autoProvisionClient($pdo, $client_id, $tenant_id, $router_id, true, null, true);
 echo json_encode($result);

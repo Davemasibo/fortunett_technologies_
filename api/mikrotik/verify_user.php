@@ -18,6 +18,7 @@ register_shutdown_function(function () {
 header('Content-Type: application/json');
 require_once '../../includes/db_master.php';
 require_once '../../classes/MikrotikAPI.php';
+require_once '../../includes/schema_guard.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user_id'])) {
@@ -30,6 +31,7 @@ try {
     $t_stmt = $pdo->prepare("SELECT tenant_id FROM users WHERE id = ?");
     $t_stmt->execute([$_SESSION['user_id']]);
     $tenant_id = (int)$t_stmt->fetchColumn();
+    ensureColumn($pdo, 'clients', 'assigned_router_id', 'INT NULL DEFAULT NULL');
 
     $client_id = (int)($_REQUEST['client_id'] ?? 0);
     if (!$client_id) {
@@ -40,7 +42,8 @@ try {
 
     // Fetch client + package profile in one query
     $stmt = $pdo->prepare("
-        SELECT c.id, c.status, c.mikrotik_username, c.connection_type,
+        SELECT c.id, c.status, c.mikrotik_username, c.connection_type, c.assigned_router_id,
+               (SELECT rs.router_id FROM router_services rs WHERE rs.tenant_id=c.tenant_id AND rs.client_id=c.id ORDER BY rs.id DESC LIMIT 1) AS service_router_id,
                COALESCE(p.mikrotik_profile, '') AS stored_profile,
                COALESCE(NULLIF(p.mikrotik_profile,''),
                         REGEXP_REPLACE(LOWER(COALESCE(p.name,'')), '[^a-z0-9-]', ''),
@@ -80,6 +83,11 @@ try {
         'session'          => null,
         'router_error'     => null,
         'router_ip'        => null,
+        'router_name'      => null,
+        'secret_disabled'  => null,
+        'secret_service'   => null,
+        'pppoe_server_found' => null,
+        'pppoe_server_interface' => null,
     ];
 
     $username        = $client['mikrotik_username'];
@@ -93,11 +101,14 @@ try {
     }
 
     // Fetch router
+    $assignedRouterId = (int)($client['assigned_router_id'] ?: $client['service_router_id'] ?: 0);
     $router_stmt = $pdo->prepare(
-        "SELECT id, ip_address, vpn_ip, username, password, api_port
-         FROM mikrotik_routers WHERE status IN ('active','online') AND tenant_id = ? LIMIT 1"
+        "SELECT id, name, ip_address, vpn_ip, username, password, api_port
+         FROM mikrotik_routers
+         WHERE tenant_id=? AND ((? > 0 AND id=?) OR (? = 0 AND status IN ('active','online')))
+         ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END, id LIMIT 1"
     );
-    $router_stmt->execute([$tenant_id]);
+    $router_stmt->execute([$tenant_id, $assignedRouterId, $assignedRouterId, $assignedRouterId, $assignedRouterId]);
     $router = $router_stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$router) {
@@ -110,6 +121,7 @@ try {
     // Quick reachability check before attempting full API connection
     $connectIp = !empty($router['vpn_ip']) ? $router['vpn_ip'] : $router['ip_address'];
     $result['router_ip'] = $connectIp;
+    $result['router_name'] = $router['name'] ?? null;
     $port      = (int)($router['api_port'] ?? 8728);
     $fp = @fsockopen($connectIp, $port, $errno, $errstr, 3);
     if (!$fp) {
@@ -153,9 +165,19 @@ try {
                 if (isset($u['!re']) && ($u['name'] ?? '') === $username) {
                     $result['router_ok']      = true;
                     $result['router_profile'] = $u['profile'] ?? null;
+                    $result['secret_disabled'] = ($u['disabled'] ?? 'false') === 'true';
+                    $result['secret_service'] = $u['service'] ?? null;
                     break;
                 }
             }
+            $servers = $api->comm('/interface/pppoe-server/server/print');
+            foreach ($servers as $server) {
+                if (!isset($server['!re']) || ($server['disabled'] ?? 'false') === 'true') continue;
+                $result['pppoe_server_found'] = true;
+                $result['pppoe_server_interface'] = $server['interface'] ?? null;
+                break;
+            }
+            if ($result['pppoe_server_found'] === null) $result['pppoe_server_found'] = false;
             // Check active PPPoE session
             $sessMap = $api->getActiveSessionsMap();
             if (isset($sessMap[strtolower($username)])) {
