@@ -12,7 +12,14 @@ try {
     if(!$tenantId || !$router){http_response_code(404);throw new RuntimeException('Device not found.');}
     ensureWanProfiles($pdo);$record=wanProfileRecord($pdo,$tenantId,$routerId);
     if($_SERVER['REQUEST_METHOD']==='GET') {
-        echo json_encode(['status'=>'success','router_name'=>$router['name'],'profile'=>$record ? wanProfilePublic($record) : null]);exit;
+        $public=$record ? wanProfilePublic($record) : null;
+        $savedWan=loadRouterWan($pdo,$tenantId,$routerId);
+        if($public && is_array($public['config'] ?? null) && $savedWan){
+            $wanConfig=json_decode($savedWan['config_json'],true) ?: [];
+            if(empty($public['config']['lan']))$public['config']['lan']=$savedWan['lan_bridge'] ?: ($wanConfig['lan'] ?? '');
+            if(empty($public['config']['customer_ports']))$public['config']['customer_ports']=$wanConfig['customer_ports'] ?? [];
+        }
+        echo json_encode(['status'=>'success','router_name'=>$router['name'],'profile'=>$public]);exit;
     }
     if($_SERVER['REQUEST_METHOD']!=='POST'){http_response_code(405);throw new RuntimeException('Method not allowed.');}
     if(empty($_SESSION['wan_csrf']) || !hash_equals($_SESSION['wan_csrf'],(string)($_POST['csrf'] ?? ''))){http_response_code(403);throw new RuntimeException('Reload the page before saving.');}
@@ -27,10 +34,16 @@ try {
         try {
         $locked=$pdo->prepare('SELECT * FROM router_wan_profiles WHERE tenant_id=? AND router_id=? FOR UPDATE');$locked->execute([$tenantId,$routerId]);$record=$locked->fetch(PDO::FETCH_ASSOC) ?: null;
         if($record && in_array($record['state'],['applying','verifying'],true) && strtotime($record['updated_at'])>time()-120)throw new RuntimeException('A connection change is in progress. Wait up to two minutes before changing the ISP details again.');
-        $input=$_POST;$input['lan_bridge']='';$password=(string)($_POST['wan_password'] ?? '');
         $old=$record ? json_decode($record['config_json'],true) : [];
+        $wanRecord=loadRouterWan($pdo,$tenantId,$routerId);
+        $savedWanConfig=$wanRecord ? json_decode($wanRecord['config_json'],true) : [];
+        $input=$_POST;
+        $input['lan_bridge']=trim((string)($_POST['lan_bridge'] ?? '')) ?: (string)($wanRecord['lan_bridge'] ?? $old['lan'] ?? '');
+        if (!isset($input['customer_ports']) || trim((string)$input['customer_ports'])==='') $input['customer_ports']=$old['customer_ports'] ?? $savedWanConfig['customer_ports'] ?? [];
+        $password=(string)($_POST['wan_password'] ?? '');
         if(($input['wan_mode'] ?? '')==='pppoe' && $password==='' && !empty($record['password_ciphertext']) && ($input['wan_username'] ?? '')===($old['username'] ?? ''))$password=decryptWanPassword($record['password_ciphertext']);
         $input['wan_password']=$password;$cfg=routerWanInput($input,false);
+        if ($cfg['lan']==='' || !$cfg['customer_ports']) throw new InvalidArgumentException('Select the customer LAN bridge and at least one customer-facing port. Do not select the provider/WAN port.');
         $cipher=$cfg['mode']==='pppoe' ? encryptWanPassword($password) : null;
         $pdo->prepare("INSERT INTO router_wan_profiles (tenant_id,router_id,config_json,password_ciphertext,state,message) VALUES (?,?,?,?,'pending',?) ON DUPLICATE KEY UPDATE config_json=VALUES(config_json),password_ciphertext=VALUES(password_ciphertext),state='pending',message=VALUES(message),revision=revision+1,checked_at=NULL,updated_at=NOW()")
             ->execute([$tenantId,$routerId,json_encode($cfg,JSON_THROW_ON_ERROR),$cipher,'ISP details saved. Waiting for a reachable API/VPN management connection.']);

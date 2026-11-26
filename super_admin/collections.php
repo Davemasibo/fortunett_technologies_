@@ -224,8 +224,8 @@ tr:hover td{background:rgba(255,255,255,.03);}
                         : 'fully allocated' ?></div>
             </div>
             <div class="stat-card">
-                <div class="label">Held for ISPs</div>
-                <div class="value warn">KSH <?= number_format($heldTotals['unreleased'], 0) ?></div>
+                <div class="label">Held for ISPs · before fees</div>
+                <div class="value warn">KES <?= number_format($heldTotals['unreleased'], 2) ?></div>
                 <div class="sub">not yet paid out</div>
             </div>
             <div class="stat-card">
@@ -302,7 +302,7 @@ tr:hover td{background:rgba(255,255,255,.03);}
             </div>
             <div class="table-wrap">
             <table>
-                <thead><tr><th>Tenant</th><th>Awaiting payout</th><th>Payments</th><th>Oldest</th><th>Already released</th><th></th></tr></thead>
+                <thead><tr><th>Tenant</th><th>Held · gross before fees</th><th>Payments</th><th>Oldest</th><th>Already released</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($held as $h): ?>
                 <tr>
@@ -322,8 +322,10 @@ tr:hover td{background:rgba(255,255,255,.03);}
             </table>
             </div>
             <div class="note">
-                <strong>Mark as disbursed</strong> after sending the money. Record the transfer reference,
-                cash sent and fees withheld. The tenant can see the record and their reduced outstanding balance.
+                <strong>This held amount is gross, before commission and payout fees.</strong> It is the same basis as
+                “Held by platform · before fees” in the tenant billing dashboard. The tenant’s withdrawal card shows
+                the eligible net amount after commission, invoice deductions, minimums and payout limits. Record a manual
+                disbursement only after sending the money, and enter the transfer reference, cash sent and fees withheld.
             </div>
         </div>
 

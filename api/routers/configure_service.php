@@ -77,9 +77,11 @@ try {
     if ($bridgeName==='') throw new RuntimeException('Select your customer LAN bridge.');
     if ($wanConfig['lan']!=='' && $bridgeName!==$wanConfig['lan']) throw new RuntimeException('Select the customer LAN bridge saved in WAN setup: '.$wanConfig['lan']);
     if ($wanConfig['lan']==='') {
-        $wanConfig=routerWanInput(['wan_mode'=>$wanConfig['mode'],'wan_interface'=>$wanConfig['base'],'vlan_id'=>$wanConfig['vlan'] ?? '','wan_dns'=>$wanConfig['dns'],'lan_bridge'=>$bridgeName]);
+        $wanConfig=routerWanInput(['wan_mode'=>$wanConfig['mode'],'wan_interface'=>$wanConfig['base'],'vlan_id'=>$wanConfig['vlan'] ?? '','wan_dns'=>$wanConfig['dns'],'lan_bridge'=>$bridgeName,'customer_ports'=>$wanConfig['customer_ports'] ?? []],false);
         $wanRecord['config_json']=json_encode($wanConfig,JSON_THROW_ON_ERROR);
     }
+    $customerPorts=(array)($wanConfig['customer_ports'] ?? []);
+    if (!$removalOnly && !$customerPorts) throw new RuntimeException('Save customer-facing ports in the router Internet setup before configuring services. The WAN port must not be selected.');
     if (!$removalOnly) {
         $api=new MikrotikAPI($router['vpn_ip'] ?: $router['ip_address'],$router['username'],$router['password'],(int)($router['api_port'] ?: 8728));
         try {$api->connect(); $wanChecks=verifyRouterWan($api,$wanRecord);} finally {$api->disconnect();}
@@ -156,7 +158,7 @@ try {
     // When managing an existing router, reconfigure only services being added.
     // A kept PPPoE service does not need to be torn down and recreated just to
     // remove Hotspot beside it.
-    $command = buildRouterServiceCommand($configureServices, (bool)$noSharing, $portalHost, $loginServeUrl, $portalIp, $bridgeName, $companyName);
+    $command = buildRouterServiceCommand($configureServices, (bool)$noSharing, $portalHost, $loginServeUrl, $portalIp, $bridgeName, $companyName, $customerPorts, array_unique([$wanConfig['base'] ?? '',$wanConfig['link'] ?? '',$wanConfig['wan'] ?? '']));
     if ($replaceServices) {
         $cleanup = [];
         if (in_array('hotspot', $removed, true)) {
@@ -193,6 +195,7 @@ try {
         'removed_services'   => array_values($removed),
         'command'            => $command,
         'hotspot_no_sharing' => (bool)$noSharing,
+        'customer_ports'     => $customerPorts,
     ]);
 
 } catch (Exception $e) {

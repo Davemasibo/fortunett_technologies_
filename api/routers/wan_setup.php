@@ -45,6 +45,7 @@ try {
         if($saved && ($savedConfig['username'] ?? '')===($wanInput['wan_username'] ?? '') && !empty($saved['password_ciphertext']))$wanInput['wan_password']=decryptWanPassword($saved['password_ciphertext']);
     }
     $cfg=routerWanInput($wanInput);
+    if (!$cfg['customer_ports']) throw new InvalidArgumentException('Select at least one customer-facing port. Do not select the provider/WAN port.');
     // Use tenant/platform configuration, never a browser supplied probe URL.
     $st=$pdo->prepare('SELECT subdomain FROM tenants WHERE id=?'); $st->execute([$tenantId]); $sub=(string)$st->fetchColumn();
     $domain=$pdo->query("SELECT setting_value FROM platform_settings WHERE setting_key='platform_domain' LIMIT 1")->fetchColumn() ?: 'fortunetttech.site';

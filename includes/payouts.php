@@ -116,6 +116,24 @@ function ensurePayoutTables(PDO $pdo): void
     $done=true;
 }
 
+/** Admin reconciliation evidence for payout batches with delayed/unknown callbacks. */
+function ensurePayoutReconciliationSchema(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) return;
+    $pdo->exec("CREATE TABLE IF NOT EXISTS isp_payout_reconciliations (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        batch_id INT NOT NULL,
+        admin_user_id INT NOT NULL,
+        decision ENUM('paid','failed') NOT NULL,
+        receipt VARCHAR(64) DEFAULT NULL,
+        evidence TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_batch (batch_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $done = true;
+}
+
 /** Read a platform_settings key. */
 function payoutSetting(PDO $pdo, string $key, string $default = ''): string
 {

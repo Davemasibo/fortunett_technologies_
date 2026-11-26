@@ -5,6 +5,39 @@ function routerServiceString(string $value): string
     return '"' . str_replace(['\\', '"', '$', "\r", "\n"], ['\\\\', '\\"', '\\$', '', ''], $value) . '"';
 }
 
+function routerServiceCustomerPortsSource(string $bridge,array $ports,array $wanInterfaces=[]): string
+{
+    if (!$ports) return '';
+    $source=[];
+    foreach (array_values(array_unique($ports)) as $index=>$port) {
+        $port=(string)$port;
+        if (!preg_match('/^[A-Za-z0-9_.-]{1,64}$/D',$port) || in_array($port,$wanInterfaces,true) || $port===$bridge) throw new InvalidArgumentException('A saved customer port is invalid or conflicts with the WAN. Review router LAN setup.');
+        $n='ftCustomerPort'.$index; $entry='ftCustomerPortEntry'.$index; $assigned='ftCustomerPortBridge'.$index;
+        $source[]=':local '.$n.' '.routerServiceString($port);
+        $source[]=':if ([:len [/interface find where name=$'.$n.' disabled=no]]=0) do={:error ("Selected customer port is missing or disabled: " . $'.$n.')}';
+        $source[]=':if ([:len [/interface list member find where list="WAN" interface=$'.$n.']]>0) do={:error ("Selected customer port is in the WAN interface list: " . $'.$n.')}';
+        $source[]=':local '.$entry.' [/interface bridge port find where interface=$'.$n.']';
+        $source[]=':if ([:len $'.$entry.']=0) do={/interface bridge port add bridge='.routerServiceString($bridge).' interface=$'.$n.' comment="FortuNett-Customer-LAN"} else={:local '.$assigned.' [/interface bridge port get ($'.$entry.'->0) bridge]; :if ($'.$assigned.'!='.routerServiceString($bridge).') do={:error ("Selected customer port already belongs to bridge " . $'.$assigned.')} ; :if ([/interface bridge port get ($'.$entry.'->0) disabled]=true) do={:error ("Selected customer port is disabled: " . $'.$n.')}}';
+    }
+    return implode('; ',$source);
+}
+
+function routerServiceCustomerPortsGuard(string $bridge,array $ports,array $wanInterfaces=[]): string
+{
+    $source=[];
+    foreach(array_values(array_unique($ports)) as $index=>$port){
+        $port=(string)$port;
+        if(!preg_match('/^[A-Za-z0-9_.-]{1,64}$/D',$port) || in_array($port,$wanInterfaces,true) || $port===$bridge)throw new InvalidArgumentException('A saved customer port is invalid or conflicts with the WAN. Review router LAN setup.');
+        $n='ftCustomerGuardPort'.$index;$entry='ftCustomerGuardEntry'.$index;$assigned='ftCustomerGuardBridge'.$index;
+        $source[]=':local '.$n.' '.routerServiceString($port);
+        $source[]=':if ([:len [/interface find where name=$'.$n.' disabled=no]]=0) do={:error ("Selected customer port is missing or disabled: " . $'.$n.')}';
+        foreach(['/ip address','/ip dhcp-client','/interface pppoe-client','/interface pppoe-server server','/ip hotspot','/ip dhcp-server'] as $path) $source[]=':if ([:len ['.$path.' find where interface=$'.$n.' disabled=no]]>0) do={:error ("Selected customer port is already used by another router service: " . $'.$n.')}';
+        $source[]=':local '.$entry.' [/interface bridge port find where interface=$'.$n.']';
+        $source[]=':if ([:len $'.$entry.']>0) do={:local '.$assigned.' [/interface bridge port get ($'.$entry.'->0) bridge]; :if ($'.$assigned.'!='.routerServiceString($bridge).') do={:error ("Selected customer port already belongs to bridge " . $'.$assigned.')} ; :if ([/interface bridge port get ($'.$entry.'->0) disabled]=true) do={:error ("Selected customer port is disabled: " . $'.$n.')}}';
+    }
+    return implode('; ',$source);
+}
+
 /** Stop before changing a router when device-mode blocks required features. */
 function routerDeviceModeGuard(bool $hotspot = false): string
 {
@@ -28,7 +61,7 @@ function mergeRouterServiceTypes(string $existing, array $requested): string
     return implode(',', array_values(array_unique($types)));
 }
 
-function buildRouterServiceCommand(array $services, bool $noSharing, string $portalHost = '', string $loginServeUrl = '', string $portalIp = '', string $bridgeName = '', string $companyName = ''): string
+function buildRouterServiceCommand(array $services, bool $noSharing, string $portalHost = '', string $loginServeUrl = '', string $portalIp = '', string $bridgeName = '', string $companyName = '', array $customerPorts = [], array $wanInterfaces = []): string
 {
     if ($bridgeName === '') throw new InvalidArgumentException('Select the customer LAN bridge explicitly.');
     $sharedUsers = $noSharing ? '1' : 'unlimited';
@@ -39,6 +72,10 @@ function buildRouterServiceCommand(array $services, bool $noSharing, string $por
     $parts[] = ':local targetBridge [/interface bridge find where name=$bn]';
     $parts[] = ':if ([:len $targetBridge]=0) do={:error ("LAN bridge not found: " . $bn . ". Run /interface bridge print and use its exact name")}';
     $parts[] = ':if ([/interface bridge get ($targetBridge->0) disabled]=true) do={:error ("LAN bridge is disabled: " . $bn)}';
+    if ($services && $customerPorts) {
+        $parts[] = routerServiceCustomerPortsGuard($bridgeName,$customerPorts,$wanInterfaces);
+        $parts[] = routerServiceCustomerPortsSource($bridgeName,$customerPorts,$wanInterfaces);
+    }
 
     if (in_array('pppoe', $services, true)) {
         $parts[] = ':do {/interface pppoe-server server remove [find service-name=pppoe-service]} on-error={}';

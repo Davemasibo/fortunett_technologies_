@@ -109,11 +109,13 @@ function wanProfileCommand($api,string $path,array $params=[]): array {
 function syncWanProfileMetadata(PDO $pdo,array $router,array $c,string $billingUrl,bool $verified): void {
     ensureRouterWanStorage($pdo);$tenantId=(int)$router['tenant_id'];$routerId=(int)$router['id'];
     $existing=loadRouterWan($pdo,$tenantId,$routerId);
-    $c['lan']=$existing['lan_bridge'] ?? '';
+    $savedConfig=$existing ? json_decode($existing['config_json'],true) : [];
+    $c['lan']=($c['lan'] ?? '') ?: ($existing['lan_bridge'] ?? $savedConfig['lan'] ?? '');
+    if (empty($c['customer_ports'])) $c['customer_ports']=$savedConfig['customer_ports'] ?? [];
     if($existing){
-        $pdo->prepare('UPDATE router_wan_config SET config_json=?,billing_url=?,verified_at=IF(?,NOW(),NULL),updated_at=NOW() WHERE id=? AND tenant_id=?')->execute([json_encode($c),$billingUrl,$verified,$existing['id'],$tenantId]);
+        $pdo->prepare('UPDATE router_wan_config SET config_json=?,lan_bridge=?,billing_url=?,verified_at=IF(?,NOW(),NULL),updated_at=NOW() WHERE id=? AND tenant_id=?')->execute([json_encode($c),$c['lan'],$billingUrl,$verified,$existing['id'],$tenantId]);
     }else{
-        $pdo->prepare('INSERT INTO router_wan_config (tenant_id,identity,router_id,config_json,lan_bridge,billing_url,verified_at) VALUES (?,?,?,?,?,?,IF(?,NOW(),NULL))')->execute([$tenantId,$router['name'],$routerId,json_encode($c),'',$billingUrl,$verified]);
+        $pdo->prepare('INSERT INTO router_wan_config (tenant_id,identity,router_id,config_json,lan_bridge,billing_url,verified_at) VALUES (?,?,?,?,?,?,IF(?,NOW(),NULL))')->execute([$tenantId,$router['name'],$routerId,json_encode($c),$c['lan'],$billingUrl,$verified]);
     }
 }
 /** Claim pending work once. Interrupted application is verified, never blindly replayed. */

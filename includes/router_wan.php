@@ -20,12 +20,23 @@ function routerWanInput(array $input,bool $requireLan=true): array {
     $base=$name('wan_interface','ether1');
     $lan=trim((string)($input['lan_bridge'] ?? ''));
     if ($requireLan || $lan!=='') $lan=$name('lan_bridge');
+    $rawPorts=$input['customer_ports'] ?? [];
+    if (is_string($rawPorts)) $rawPorts=preg_split('/[,\s]+/',trim($rawPorts),-1,PREG_SPLIT_NO_EMPTY) ?: [];
+    if (!is_array($rawPorts)) throw new InvalidArgumentException('Enter customer-facing ports separated by commas.');
+    $customerPorts=[];
+    foreach ($rawPorts as $rawPort) {
+        $port=trim((string)$rawPort);
+        if ($port==='' || !preg_match('/^[A-Za-z0-9_.-]{1,64}$/D',$port)) throw new InvalidArgumentException('Invalid customer port name. Use RouterOS interface names such as ether2 or sfp-sfpplus1.');
+        if (!in_array($port,$customerPorts,true)) $customerPorts[]=$port;
+    }
+    if (count($customerPorts)>32) throw new InvalidArgumentException('Select no more than 32 customer ports.');
     $vlan=trim((string)($input['vlan_id'] ?? ''));
     if ($vlan!=='' && (!ctype_digit($vlan) || (int)$vlan<1 || (int)$vlan>4094)) throw new InvalidArgumentException('VLAN ID must be between 1 and 4094.');
     $link=$vlan!=='' ? 'fortunett-wan-vlan' : $base;
     $wan=$mode==='pppoe' ? 'fortunett-wan-pppoe' : $link;
     if (in_array($lan,[$base,$link,$wan],true) || str_starts_with($base,'fortunett-wan-')) throw new InvalidArgumentException('Select a separate customer LAN bridge and an existing uplink interface.');
-    $cfg=['mode'=>$mode,'base'=>$base,'vlan'=>$vlan==='' ? null : (int)$vlan,'link'=>$link,'wan'=>$wan,'lan'=>$lan,'address'=>'','gateway'=>'','dns'=>'','username'=>''];
+    if (array_intersect($customerPorts,[$base,$link,$wan,$lan])) throw new InvalidArgumentException('A customer port cannot be the WAN uplink or LAN bridge.');
+    $cfg=['mode'=>$mode,'base'=>$base,'vlan'=>$vlan==='' ? null : (int)$vlan,'link'=>$link,'wan'=>$wan,'lan'=>$lan,'customer_ports'=>$customerPorts,'address'=>'','gateway'=>'','dns'=>'','username'=>''];
     $dns=trim((string)($input['wan_dns'] ?? ''));
     if ($mode==='static' && $dns==='') throw new InvalidArgumentException('Static WAN requires DNS servers.');
     if ($dns!=='') {
@@ -53,6 +64,39 @@ function loadRouterWan(PDO $pdo,int $tenantId,int $routerId): ?array {
     return $st->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
+/** Ensure the tenant-selected customer ports exist on the saved bridge. */
+function applyRouterCustomerPorts($api,array $config): array {
+    $bridge=(string)($config['lan'] ?? '');
+    $ports=array_values(array_unique((array)($config['customer_ports'] ?? [])));
+    if ($bridge==='' || !$ports) return [];
+    $wanInterfaces=array_unique(array_filter([(string)($config['base'] ?? ''),(string)($config['link'] ?? ''),(string)($config['wan'] ?? '')]));
+    $interfaces=[];
+    foreach(routerWanApiCommand($api,'/interface/print') as $row)if(isset($row['!re'],$row['name']))$interfaces[$row['name']]=$row;
+    $members=routerWanApiCommand($api,'/interface/bridge/port/print');
+    $serviceInterfaces=[];
+    foreach(['/ip/address/print','/ip/dhcp-client/print','/interface/pppoe-client/print','/interface/pppoe-server/server/print','/ip/hotspot/print','/ip/dhcp-server/print'] as $path){
+        foreach(routerWanApiCommand($api,$path) as $row)if(isset($row['!re']) && ($row['disabled'] ?? 'false')!=='true' && !empty($row['interface']))$serviceInterfaces[$row['interface']]=$path;
+    }
+    $wanListMembers=[];
+    foreach(routerWanApiCommand($api,'/interface/list/member/print') as $row)if(isset($row['!re']) && ($row['list'] ?? '')==='WAN')$wanListMembers[]=$row['interface'] ?? '';
+    foreach($ports as $port){
+        $port=(string)$port;
+        if(!preg_match('/^[A-Za-z0-9_.-]{1,64}$/D',$port) || in_array($port,$wanInterfaces,true) || $port===$bridge)throw new RuntimeException('Saved customer port conflicts with the WAN or bridge. Review router Internet setup.');
+        if(!isset($interfaces[$port]) || ($interfaces[$port]['disabled'] ?? 'false')==='true')throw new RuntimeException("Selected customer port '{$port}' is missing or disabled on the router.");
+        if(isset($serviceInterfaces[$port]))throw new RuntimeException("Selected customer port '{$port}' is already used by router configuration at {$serviceInterfaces[$port]}.");
+        if(in_array($port,$wanListMembers,true))throw new RuntimeException("Selected customer port '{$port}' belongs to the WAN interface list.");
+        $existing=null;
+        foreach($members as $member)if(isset($member['!re']) && ($member['interface'] ?? '')===$port){$existing=$member;break;}
+        if($existing){
+            if(($existing['bridge'] ?? '')!==$bridge)throw new RuntimeException("Selected customer port '{$port}' already belongs to bridge '".($existing['bridge'] ?? 'unknown')."'. It was not moved.");
+            if(($existing['disabled'] ?? 'false')==='true')throw new RuntimeException("Selected customer port '{$port}' is disabled in bridge '{$bridge}'. Enable it in the router setup.");
+            continue;
+        }
+        routerWanApiCommand($api,'/interface/bridge/port/add',['bridge'=>$bridge,'interface'=>$port,'comment'=>'FortuNett-Customer-LAN']);
+    }
+    return $ports;
+}
+
 /** Validate topology before any service or WAN mutation. Never detach bridge ports. */
 function routerWanTopologyGuard(array $c): string {
     $q='routerServiceString';
@@ -71,7 +115,8 @@ function routerWanTopologyGuard(array $c): string {
         .':if ([:len [/interface bridge port find where interface=$wb disabled=no]]>0) do={:error "Uplink is a bridge port. Select its dedicated WAN bridge; do not select the customer LAN bridge"}; '
         .':foreach p in=[/interface bridge port find where bridge=$wl disabled=no] do={:local pn [/interface bridge port get $p interface]; :if (($pn=$wb) || ($pn='.$q($c['link']).') || ($pn='.$q($c['wan']).')) do={:error "Customer bridge contains a WAN interface"}}; '
         .':if ([:len [/interface bridge port find where interface='.$q($c['link']).' disabled=no]]>0) do={:error "WAN link must not be a bridge port"}; '
-        .':if ([:len [/interface bridge port find where interface='.$q($c['wan']).' disabled=no]]>0) do={:error "WAN interface must not be a bridge port"}; ';
+        .':if ([:len [/interface bridge port find where interface='.$q($c['wan']).' disabled=no]]>0) do={:error "WAN interface must not be a bridge port"}; '
+        .routerServiceCustomerPortsGuard((string)$c['lan'],(array)($c['customer_ports'] ?? []),array_unique([$c['base'],$c['link'],$c['wan']]));
 }
 
 /** Checks run on the router; API reachability alone is not Internet verification. */
@@ -140,12 +185,13 @@ function routerWanSetupScript(array $c,string $password,string $billingUrl,bool 
     $parts[]='/ip dns set servers='.$q($c['dns']);
     $parts[]=':if ([:len [/ip firewall nat find where comment="Fortunett-WAN-NAT"]]>0) do={/ip firewall nat set [find where comment="Fortunett-WAN-NAT"] chain=srcnat action=masquerade out-interface='.$q($c['wan']).' disabled=no} else={:if ([:len [/ip firewall nat find where chain=srcnat action=masquerade out-interface='.$q($c['wan']).' disabled=no]]=0) do={/ip firewall nat add chain=srcnat action=masquerade out-interface='.$q($c['wan']).' comment="Fortunett-WAN-NAT"}}';
     $parts[]=':if ([:len [/interface list find where name="WAN"]]>0) do={:if ([:len [/interface list member find where list="WAN" interface='.$q($c['wan']).']]=0) do={/interface list member add list="WAN" interface='.$q($c['wan']).' comment="Fortunett-WAN"}}';
+    $parts[]=routerServiceCustomerPortsSource((string)$c['lan'],(array)($c['customer_ports'] ?? []),array_unique([$c['base'],$c['link'],$c['wan']]));
     if (!$remote) {
         $parts[]=':delay 15s';
         $parts[]=routerWanProbeSource($c,$billingUrl);
         $parts[]=':put "WAN connectivity verified. Continue with management and customer services."';
     }
-    return "# Fortunett WAN installer. Import through a customer LAN port.\n# Existing bridge membership is preserved. PPPoE credentials may be included.\n{ ".implode('; ',array_map(fn($p)=>rtrim($p,"; "),$parts))."; }\n";
+    return "# Fortunett WAN installer. Import through a customer LAN port.\n# Selected customer ports are added to the saved LAN bridge. PPPoE credentials may be included.\n{ ".implode('; ',array_map(fn($p)=>rtrim($p,"; "),$parts))."; }\n";
 }
 
 function routerWanApiCommand($api,string $path,array $params=[]): array {

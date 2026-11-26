@@ -4,11 +4,13 @@ if ($saCurrentPage === 'disbursements.php') $saCurrentPage = 'collections.php';
 $saLinks = [
     ['index.php', 'Overview', 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z'],
     ['tenants.php', 'Tenants', 'M4 21V3h12v18 M16 9h4v12 M8 7h4 M8 11h4 M8 15h4 M2 21h20'],
+    ['onboarding.php', 'Trial setup progress', 'M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5'],
     ['billing.php', 'Platform billing', 'M6 3h12v18l-3-2-3 2-3-2-3 2V3z M9 7h6 M9 11h6'],
     ['collections.php', 'Collections & payouts', 'M3 7h18v13H3z M3 7l14-4v4 M16 12h5v4h-5z'],
     ['payouts.php', 'Automated payouts', 'M12 2v20 M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6'],
     ['plans.php', 'Subscription plans', 'M12 3l10 5-10 5L2 8z M2 12l10 5 10-5 M2 16l10 5 10-5'],
     ['mpesa.php', 'M-Pesa', 'M7 2h10v20H7z M10 5h4 M11 18h2'],
+    ['sms_usage.php', 'SMS usage', 'M3 5h18v12H8l-5 4z M7 9h10 M7 13h7'],
     ['diagnostics.php', 'Diagnostics', 'M2 12h5l3-8 4 16 3-8h5'],
     ['settings.php', 'Settings', 'M4 7h16 M4 17h16 M8 4v6 M16 14v6'],
 ];

@@ -621,7 +621,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </footer>
  </div>
 </div>
-<script src="assets/router-wan.js?v=4" defer></script>
+<script src="assets/router-wan.js?v=5" defer></script>
 <!-- Toast Notification -->
 <?php if ($action_result): ?>
 <div class="position-fixed top-0 end-0 p-3" style="z-index: 1100">
@@ -1158,7 +1158,7 @@ function finishWizard() {
                             <i class="fas fa-check" style="font-size:24px;"></i>
                         </div>
                         <h3 style="font-size:18px; font-weight:600; margin-bottom:4px; color:#e2e2e0;">${label} setup ready</h3>
-                        <p style="color:rgba(255,255,255,.4); font-size:13px;">Copy the command below and paste it <strong>once</strong> into your MikroTik terminal (New Terminal in WinBox, or SSH). Uses your verified WAN settings and selected customer LAN bridge.</p>
+                        <p style="color:rgba(255,255,255,.4); font-size:13px;">Copy the command below and paste it <strong>once</strong> into your MikroTik terminal (New Terminal in WinBox, or SSH). Uses your verified WAN settings and adds the selected customer-facing ports to the customer LAN bridge.</p>
                     </div>
                     <div class="command-box" style="text-align:left;">
                         <button class="copy-btn" onclick="copyCmd(this)">Copy</button>
@@ -1295,6 +1295,7 @@ window.onclick = function(event) {
     <p style="font-size:12px;color:#a3a3a3;">Hotspot setup automatically enables customer Wi-Fi on compatible radios, using your company name with no Wi-Fi key. Connect through Ethernet while applying it. Wireless uplinks are preserved.</p>
     <label for="provBridgeName" style="display:block;color:#e2e2e0;font-size:13px;">LAN bridge name</label>
     <input id="provBridgeName" type="text" maxlength="64" placeholder="Required: bridge saved in WAN setup" style="width:100%;padding:9px;margin:6px 0 14px;background:#111;color:#e2e2e0;border:1px solid #555;border-radius:6px;">
+    <p id="provCustomerPortsHint" style="font-size:12px;color:#a3a3a3;margin:-8px 0 14px;">Customer-facing ports are loaded from Internet setup and added to this bridge by the generated script.</p>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
       <div class="prov-svc" id="prov-pppoe" onclick="provToggle('pppoe',this)" style="border:1px solid var(--neu-border);background:var(--neu-surf);padding:14px;border-radius:8px;cursor:pointer;transition:.15s;position:relative;">
@@ -1542,7 +1543,17 @@ function openProvision(id, name, services = [], manageServices = false) {
     document.getElementById('provNoSharing').checked = false;
     document.getElementById('provOutput').innerHTML = '';
     document.getElementById('provBridgeName').value = '';
+    const portsHint=document.getElementById('provCustomerPortsHint');
+    if(portsHint)portsHint.textContent='Loading saved customer-facing ports...';
     document.getElementById('provisionModal').style.display = 'flex';
+    fetch('api/routers/wan_setup.php?router_id='+encodeURIComponent(id)).then(r=>r.json()).then(d=>{
+        if(provRouterId!==id || !portsHint)return;
+        if(d.status==='success' && d.config){
+            if(!document.getElementById('provBridgeName').value)document.getElementById('provBridgeName').value=d.config.lan || '';
+            const ports=Array.isArray(d.config.customer_ports)?d.config.customer_ports:[];
+            portsHint.textContent=ports.length?'Selected customer-facing ports: '+ports.join(', ')+'. They will be added to this bridge if not already assigned.':'No customer ports saved. Open Internet setup and select the customer-facing ports first.';
+        } else portsHint.textContent='Customer-facing ports are loaded from Internet setup and added to this bridge by the generated script.';
+    }).catch(()=>{if(portsHint)portsHint.textContent='Customer-facing ports are loaded from Internet setup and added to this bridge by the generated script.';});
 }
 
 function closeProvision() { document.getElementById('provisionModal').style.display = 'none'; }
@@ -1588,10 +1599,12 @@ function generateProvision() {
                 return;
             }
             const kept = (d.services || []).map(s => String(s).toUpperCase()).join(' + ') || 'No customer services';
+            const customerPorts = Array.isArray(d.customer_ports) ? d.customer_ports.join(', ') : '';
             const removed = (d.removed_services || []).map(s => String(s).toUpperCase()).join(' + ');
             const label = removed ? 'Keep: ' + kept + ' · Remove: ' + removed : kept;
             out.innerHTML =
                 '<div style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:8px;">' + label + ' — paste this <strong>once</strong> into the RouterOS terminal:</div>'
+                + '<div style="font-size:12px;color:#a3a3a3;margin-bottom:8px;">Customer ports to add on ' + escapeHtml(document.getElementById('provBridgeName').value.trim()) + ': ' + escapeHtml(customerPorts || 'none saved') + '</div>'
                 + '<div class="command-box" style="position:relative;background:#111;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:14px;">'
                 + '<button class="copy-btn" onclick="copyCmd(this)" style="position:absolute;top:8px;right:8px;padding:4px 10px;font-size:11px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:5px;color:#d4d4d2;cursor:pointer;z-index:1;"><i class="fas fa-copy"></i> Copy</button>'
                 + '<div class="command-text" style="font-size:11px;color:#a3e635;white-space:pre-wrap;word-break:break-all;line-height:1.6;user-select:all;padding-right:64px;">' + escapeHtml(d.command || '') + '</div>'

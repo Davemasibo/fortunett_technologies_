@@ -18,6 +18,7 @@ require_once __DIR__ . '/hotspot_sync.php';
 require_once __DIR__ . '/hotspot_wireless.php';
 require_once __DIR__ . '/hotspot_connection.php';
 require_once __DIR__ . '/payment_notifications.php';
+require_once __DIR__ . '/router_wan.php';
 
 /**
  * Provision a newly activated client on their tenant's first active router.
@@ -135,11 +136,18 @@ function autoProvisionClient(PDO $pdo, int $clientId, int $tenantId, int $router
         // missing (handled in _provisionHotspot/_provisionPPPoE). Hard-failing here
         // blocked working setups and broke hotspot connect + renewal.
         $expectedServiceInterface = null;
+        $savedRouterWanConfig = [];
         try {
-            $wan = $pdo->prepare('SELECT lan_bridge FROM router_wan_config WHERE tenant_id=? AND router_id=? ORDER BY id DESC LIMIT 1');
+            $wan = $pdo->prepare('SELECT * FROM router_wan_config WHERE tenant_id=? AND router_id=? ORDER BY id DESC LIMIT 1');
             $wan->execute([$tenantId, $routerId]);
-            $expectedServiceInterface = $wan->fetchColumn() ?: null;
+            $wanRecord = $wan->fetch(PDO::FETCH_ASSOC);
+            if ($wanRecord) {
+                $expectedServiceInterface = $wanRecord['lan_bridge'] ?: null;
+                $savedRouterWanConfig = json_decode((string)$wanRecord['config_json'],true) ?: [];
+                $savedRouterWanConfig['lan'] = $expectedServiceInterface ?: ($savedRouterWanConfig['lan'] ?? '');
+            }
         } catch (Throwable $_e) {}
+        if (!empty($savedRouterWanConfig['customer_ports'])) applyRouterCustomerPorts($api,$savedRouterWanConfig);
         $bridgeCheck = _verifyServiceOnBridge($api, $connType);
         if ($connType === 'pppoe' && $expectedServiceInterface && !empty($bridgeCheck['server_interface']) && $bridgeCheck['server_interface'] !== $expectedServiceInterface) {
             $bridgeCheck['ok'] = false;
@@ -558,11 +566,18 @@ function preProvisionPPPoEClient(PDO $pdo, int $clientId, int $tenantId): array
 
         // ── Pre-flight: advisory check only (never blocks — see autoProvisionClient) ──
         $expectedServiceInterface = null;
+        $savedRouterWanConfig = [];
         try {
-            $wan = $pdo->prepare('SELECT lan_bridge FROM router_wan_config WHERE tenant_id=? AND router_id=? ORDER BY id DESC LIMIT 1');
+            $wan = $pdo->prepare('SELECT * FROM router_wan_config WHERE tenant_id=? AND router_id=? ORDER BY id DESC LIMIT 1');
             $wan->execute([$tenantId, $routerId]);
-            $expectedServiceInterface = $wan->fetchColumn() ?: null;
+            $wanRecord = $wan->fetch(PDO::FETCH_ASSOC);
+            if ($wanRecord) {
+                $expectedServiceInterface = $wanRecord['lan_bridge'] ?: null;
+                $savedRouterWanConfig = json_decode((string)$wanRecord['config_json'],true) ?: [];
+                $savedRouterWanConfig['lan'] = $expectedServiceInterface ?: ($savedRouterWanConfig['lan'] ?? '');
+            }
         } catch (Throwable $_e) {}
+        if ($savedRouterWanConfig && !empty($savedRouterWanConfig['customer_ports'])) applyRouterCustomerPorts($api,$savedRouterWanConfig);
         $bridgeCheck = _verifyServiceOnBridge($api, 'pppoe');
         if ($expectedServiceInterface && !empty($bridgeCheck['server_interface']) && $bridgeCheck['server_interface'] !== $expectedServiceInterface) {
             $bridgeCheck['ok'] = false;

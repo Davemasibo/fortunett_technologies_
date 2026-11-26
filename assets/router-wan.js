@@ -30,7 +30,7 @@ function wanFields(prefix) {
 }
 function wanPayload(prefix) {
     const data=new FormData();data.append('csrf',wanCsrf);
-    for (const [field,suffix] of Object.entries({wan_interface:'Interface',wan_mode:'Mode',vlan_id:'Vlan',wan_address:'Address',wan_gateway:'Gateway',wan_dns:'Dns',wan_username:'Username',wan_password:'Password',lan_bridge:'Lan'})) data.append(field,wanElement(prefix+suffix).value);
+    for (const [field,suffix] of Object.entries({wan_interface:'Interface',wan_mode:'Mode',vlan_id:'Vlan',wan_address:'Address',wan_gateway:'Gateway',wan_dns:'Dns',wan_username:'Username',wan_password:'Password',lan_bridge:'Lan',customer_ports:'Ports'})) data.append(field,wanElement(prefix+suffix).value);
     if (prefix==='editWan') data.append('router_id',wanRouterId);
     else data.append('identity',wanElement('mikrotikName').value.trim());
     return data;
@@ -55,7 +55,8 @@ function wanError(output,error,title='Could not prepare your setup file') {
     wanStatus(output,title,message,'error');wanRevealOutput(output);
 }
 function wanValidate(prefix,requireLan=true) {
-    wanElement(prefix+'Lan').required=requireLan;
+    wanElement(prefix+'Lan').required=true;
+    wanElement(prefix+'Ports').required=true;
     const fields=document.querySelectorAll(`[data-prefix="${prefix}"] input:not([type="hidden"]):not([type="radio"])`);
     for (const input of fields) input.removeAttribute('aria-invalid');
     for (const input of fields) {
@@ -146,10 +147,10 @@ async function openWanSetup(routerId) {
     wanProgress(1);
     wanElement('editWanCheckOutput').replaceChildren();
     wanStatus(output,'Loading your connection','Reading saved settings for this device.');
-    const defaults={Interface:'ether1',Mode:'dhcp',Vlan:'',Address:'',Gateway:'',Dns:'',Username:'',Password:'',Lan:''};
+    const defaults={Interface:'ether1',Mode:'dhcp',Vlan:'',Address:'',Gateway:'',Dns:'',Username:'',Password:'',Lan:'',Ports:''};
     for (const [suffix,value] of Object.entries(defaults)) {wanElement('editWan'+suffix).value=value;wanElement('editWan'+suffix).removeAttribute('aria-invalid');}
     wanElement('editWanAdvanced').open=false;wanElement('editWanBridges').replaceChildren();wanFields('editWan');
-    wanElement('editWanInstaller').open=false;wanElement('editWanLan').required=false;
+    wanElement('editWanInstaller').open=false;wanElement('editWanLan').required=true;wanElement('editWanPorts').required=true;
     wanBusy('editWan',true,wanElement('editWanPrepare'));
     modal.querySelector('input[type="radio"]')?.focus();
     try {
@@ -159,7 +160,7 @@ async function openWanSetup(routerId) {
         wanElement('wanDeviceName').textContent=data.router_name || '';
         if (data.profile?.config) {
             const cfg=data.profile.config;
-            for (const [key,suffix] of Object.entries({base:'Interface',mode:'Mode',vlan:'Vlan',address:'Address',gateway:'Gateway',dns:'Dns',username:'Username',lan:'Lan'})) wanElement('editWan'+suffix).value=cfg[key] ?? '';
+            for (const [key,suffix] of Object.entries({base:'Interface',mode:'Mode',vlan:'Vlan',address:'Address',gateway:'Gateway',dns:'Dns',username:'Username',lan:'Lan',customer_ports:'Ports'})) wanElement('editWan'+suffix).value=Array.isArray(cfg[key])?cfg[key].join(', '):(cfg[key] ?? '');
             wanProfileCredential={hasPassword:data.profile.has_password,username:cfg.username || ''};
             if(cfg.base!=='ether1' || cfg.vlan || cfg.dns)wanElement('editWanAdvanced').open=true;
             wanFields('editWan');
