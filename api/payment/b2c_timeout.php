@@ -1,6 +1,6 @@
 <?php
 /**
- * Safaricom B2C queue-timeout callback.
+ * Safaricom payout queue-timeout callback (B2C or B2B).
  *
  * Fired when Safaricom could not process the request in time. This is NOT proof
  * the money stayed put, so the batch is marked 'unknown' rather than failed and
@@ -37,9 +37,9 @@ try {
             SET status = 'unknown',
                 result_desc = 'Safaricom queue timeout — outcome unknown, check the M-Pesa statement',
                 raw_result = ?
-            WHERE (originator_conversation_id = ? OR (conversation_id = ? AND conversation_id <> ''))
+            WHERE (originator_conversation_id = ? OR safaricom_originator_id = ? OR (conversation_id = ? AND conversation_id <> ''))
               AND status IN ('sending','accepted')
-        ")->execute([$raw, $originatorId, $conversation]);
+        ")->execute([$raw, $originatorId, $originatorId, $conversation]);
 
         error_log("b2c_timeout: batch $originatorId/$conversation marked unknown");
     }

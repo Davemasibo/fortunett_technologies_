@@ -20,16 +20,26 @@ function tenantWithdrawalState(PDO $pdo,int $tenantId): array {
     $rows=tenantWithdrawableRows($pdo,$tenantId);
     $net=round(array_sum(array_column($rows,'net_amount')),2);$send=floor($net);
     $pre=disbursementPreflight($pdo);
+    $bank=tenantBankPayoutEnabled($pdo) ? tenantBankPayoutDestination($pdo,$tenantId) : ['configured'=>false,'valid'=>false];
+    $useBank=!empty($bank['configured']);
+    $b2bSender=trim((string)(($pre['config']['b2b_shortcode'] ?? '') ?: (($pre['config']['b2c_shortcode'] ?? '') ?: ($pre['config']['shortcode'] ?? ''))));
     $st=$pdo->prepare("SELECT id,status,sent_amount,created_at FROM isp_payout_batches WHERE tenant_id=? AND status IN ('sending','accepted','unknown') ORDER BY id DESC LIMIT 1");$st->execute([$tenantId]);$inFlight=$st->fetch(PDO::FETCH_ASSOC) ?: null;
     $reason='';
     $invoiceDue=collectionInvoiceOutstanding(collectionInvoiceBalances($pdo,$tenantId));
     if($invoiceDue>0)$reason='Outstanding invoices of KES '.number_format($invoiceDue/100,2).' must be deducted from collections by the platform administrator before a payout.';
     elseif(!$pre['ok'])$reason='M-Pesa withdrawals are not available yet. Platform payout setup is required.';
-    elseif(empty($settings['payout_phone']) || empty($settings['verified_at']))$reason='Add and verify your payout number with the platform administrator.';
+    elseif($useBank && !$bank['valid'])$reason='Complete the active bank gateway with bank name, account name, account number and the B2B recipient shortcode.';
+    elseif($useBank && !preg_match('/^\d{5,7}$/D',$b2bSender))$reason='Platform B2B sender shortcode is not configured.';
+    elseif($useBank && empty($settings['bank_verified_at']))$reason='Your bank destination is awaiting verification by the platform administrator.';
+    elseif(!$useBank && (empty($settings['payout_phone']) || empty($settings['verified_at'])))$reason='Add and verify your payout number with the platform administrator.';
     elseif($inFlight)$reason='Your previous payout is still being confirmed.';
     elseif($send<max(1,(float)($settings['min_payout'] ?? 100)))$reason='Minimum withdrawal: KES '.number_format(max(1,(float)($settings['min_payout'] ?? 100)),2).'.';
     elseif(payoutSentToday($pdo,$tenantId)+$send>(float)($settings['max_daily'] ?? 50000))$reason='This payout exceeds your remaining daily withdrawal limit.';
+    $destination=$useBank ? $bank : ['phone'=>$settings['payout_phone'] ?? ''];
+    $display=$useBank ? ($bank['bank_name'].' · '.$bank['account_name'].' · ****'.substr($bank['account_number'],-4)) : (string)($settings['payout_phone'] ?? '');
+    $destinationKey=hash('sha256',json_encode($destination));
     return ['ready'=>$reason==='','reason'=>$reason,'net'=>$net,'send_amount'=>$send,'phone'=>$settings['payout_phone'] ?? '',
+        'method'=>$useBank?'bank':'mpesa','destination'=>$destination,'destination_display'=>$display,'destination_key'=>$destinationKey,
         'name'=>$settings['payout_name'] ?? '', 'in_flight'=>$inFlight,'settings'=>$settings];
 }
 
@@ -46,41 +56,63 @@ function submitTenantWithdrawal(PDO $pdo,int $tenantId,string $requestId,bool $a
         if($previous=$st->fetch(PDO::FETCH_ASSOC))return $previous;
         $state=tenantWithdrawalState($pdo,$tenantId);
         if(!$state['ready'])throw new RuntimeException($state['reason']);
-        if($expected && ((float)$expected['amount']!==$state['send_amount'] || $expected['phone']!==$state['phone']))throw new RuntimeException('Your balance or payout destination changed. Reload billing and confirm the new details.');
+        if($expected && ((float)$expected['amount']!==$state['send_amount'] || ($expected['destination_key']??'')!==$state['destination_key']))throw new RuntimeException('Your balance or payout destination changed. Reload billing and confirm the new details.');
         if($automatic && empty($state['settings']['auto_payout']))throw new RuntimeException('Automatic payouts are disabled for this tenant.');
         $pre=disbursementPreflight($pdo);
         if(!$pre['ok'])throw new RuntimeException('Platform payout setup is incomplete.');
+        $callbackToken=null;
+        if($state['method']==='bank') {
+            $senderCode=trim((string)(($pre['config']['b2b_shortcode'] ?? '') ?: (($pre['config']['b2c_shortcode'] ?? '') ?: ($pre['config']['shortcode'] ?? ''))));
+            if(!preg_match('/^\d{5,7}$/D',$senderCode))throw new RuntimeException('Platform B2B sender shortcode is not configured.');
+            $callbackToken=payoutCallbackToken($pdo);
+        }
         $pdo->beginTransaction();
         $st=$pdo->prepare('SELECT id FROM tenants WHERE id=? FOR UPDATE');$st->execute([$tenantId]);
         if(!$st->fetchColumn())throw new RuntimeException('Tenant not found.');
         assertCollectionInvoicesSettled($pdo,$tenantId,true);
         $st=$pdo->prepare('SELECT * FROM tenant_payout_settings WHERE tenant_id=? FOR UPDATE');$st->execute([$tenantId]);
         $lockedSettings=$st->fetch(PDO::FETCH_ASSOC);
-        if(!$lockedSettings || empty($lockedSettings['verified_at']) || $lockedSettings['payout_phone']!==$state['phone'])throw new RuntimeException('Your payout destination changed. Reload billing.');
+        if(!$lockedSettings)throw new RuntimeException('Your payout destination changed. Reload billing.');
+        if($state['method']==='bank') {
+            if(!tenantBankPayoutEnabled($pdo))throw new RuntimeException('Platform B2B payouts were disabled. Reload billing.');
+            $lockedBank=tenantBankPayoutDestination($pdo,$tenantId,true);
+            if(empty($lockedSettings['bank_verified_at']) || empty($lockedBank['valid']) || hash('sha256',json_encode($lockedBank))!==$state['destination_key'])throw new RuntimeException('Your bank payout destination changed or needs verification. Reload billing.');
+        } elseif(empty($lockedSettings['verified_at']) || $lockedSettings['payout_phone']!==$state['phone']) throw new RuntimeException('Your payout destination changed. Reload billing.');
         if(($automatic && empty($lockedSettings['auto_payout'])) || $state['send_amount']<(float)$lockedSettings['min_payout'] || payoutSentToday($pdo,$tenantId)+$state['send_amount']>(float)$lockedSettings['max_daily'])throw new RuntimeException('Payout limits changed. Reload billing.');
         $rows=tenantWithdrawableRows($pdo,$tenantId,true);
         $gross=round(array_sum(array_column($rows,'gross_amount')),2);$commission=round(array_sum(array_column($rows,'commission_amount')),2);$net=round(array_sum(array_column($rows,'net_amount')),2);$send=floor($net);
         if(!$rows || $send!==$state['send_amount'])throw new RuntimeException('Your available balance changed. Reload billing.');
         $ids=array_column($rows,'id');$in=implode(',',array_fill(0,count($ids),'?'));
-        $pdo->prepare("INSERT INTO isp_payout_batches (tenant_id,originator_conversation_id,payout_phone,gross_amount,commission_amount,net_amount,sent_amount,queue_ids,status) VALUES (?,?,?,?,?,?,?,?,'sending')")
-            ->execute([$tenantId,$originator,$state['phone'],$gross,$commission,$net,$send,implode(',',$ids)]);
+        $reference=$state['method']==='bank' ? ($state['destination']['bank_name'].' · ****'.substr($state['destination']['account_number'],-4)) : null;
+        $pdo->prepare("INSERT INTO isp_payout_batches (tenant_id,originator_conversation_id,payout_phone,payout_method,payout_reference,gross_amount,commission_amount,net_amount,sent_amount,queue_ids,status) VALUES (?,?,?,?,?,?,?,?,?,?,'sending')")
+            ->execute([$tenantId,$originator,$state['method']==='mpesa'?$state['phone']:null,$state['method'],$reference,$gross,$commission,$net,$send,implode(',',$ids)]);
         $batchId=(int)$pdo->lastInsertId();
         $claim=$pdo->prepare("UPDATE isp_payout_queue SET status='processing',batch_id=?,attempts=attempts+1 WHERE tenant_id=? AND id IN ($in) AND status='pending'");$claim->execute(array_merge([$batchId,$tenantId],$ids));
         if($claim->rowCount()!==count($ids))throw new RuntimeException('Another payout claimed these collections. Reload billing.');
         $pdo->commit();
         // From this point a transport failure must remain unknown, never retryable.
         try {
-            if($sender)$res=$sender($state['phone'],$send,$originator,$pre['config']);
+            if($sender)$res=$state['method']==='bank'
+                ? $sender($state['destination'],$send,$originator,$pre['config'],'b2b')
+                : $sender($state['phone'],$send,$originator,$pre['config'],'b2c');
             else {
                 require_once __DIR__.'/../classes/MpesaAPI.php';$cfg=$pre['config'];
                 $mpesa=new MpesaAPI($pdo,null);$mpesa->loadFromArray($cfg);
                 $mpesa->setInitiator((string)$cfg['initiator_name'],(string)$cfg['security_credential'],(string)(($cfg['b2c_shortcode'] ?? '') ?: ($cfg['shortcode'] ?? '')));
                 $base=rtrim(payoutSetting($pdo,'public_base_url',''),'/');
-                $res=$mpesa->b2cPayment($state['phone'],$send,'Tenant withdrawal',$originator,$base.'/api/payment/b2c_result.php',$base.'/api/payment/b2c_timeout.php');
+                if($state['method']==='bank') {
+                    $senderCode=trim((string)(($cfg['b2b_shortcode'] ?? '') ?: (($cfg['b2c_shortcode'] ?? '') ?: ($cfg['shortcode'] ?? ''))));
+                    $mpesa->setInitiator((string)$cfg['initiator_name'],(string)$cfg['security_credential'],$senderCode);
+                    $res=$mpesa->b2bPayment($state['destination']['receiver_shortcode'],$state['destination']['account_number'],$send,
+                        'Tenant bank settlement',$originator,$base.'/api/payment/b2b_result.php?token='.rawurlencode((string)$callbackToken),
+                        $base.'/api/payment/b2b_timeout.php?token='.rawurlencode((string)$callbackToken));
+                } else {
+                    $res=$mpesa->b2cPayment($state['phone'],$send,'Tenant withdrawal',$originator,$base.'/api/payment/b2c_result.php',$base.'/api/payment/b2c_timeout.php');
+                }
             }
         }catch(Throwable $e){$res=['success'=>false,'accepted'=>null,'error'=>'Transfer outcome is unknown. Await confirmation before trying again.'];error_log('Tenant payout '.$batchId.': '.$e->getMessage());}
         if(!empty($res['success'])) {
-            $pdo->prepare("UPDATE isp_payout_batches SET status='accepted',conversation_id=? WHERE id=? AND status='sending'")->execute([$res['conversation_id'] ?? null,$batchId]);
+            $pdo->prepare("UPDATE isp_payout_batches SET status='accepted',conversation_id=?,safaricom_originator_id=? WHERE id=? AND status='sending'")->execute([$res['conversation_id'] ?? null,$res['originator_conversation_id'] ?? null,$batchId]);
         }elseif(($res['accepted'] ?? null)===null) {
             $pdo->prepare("UPDATE isp_payout_batches SET status='unknown',result_desc=? WHERE id=? AND status='sending'")->execute([substr($res['error'] ?? 'Outcome unknown',0,255),$batchId]);
         }else {

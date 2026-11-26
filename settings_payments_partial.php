@@ -461,10 +461,12 @@ input:checked + .live-slider:before { transform: translateX(18px); }
                             <input type="text" name="bank_account_number" id="bank_account_number" class="form-input" placeholder="e.g. 1234567890">
                         </div>
                         <div>
-                            <label class="form-label-sm">Bank Paybill (optional)</label>
-                            <input type="text" name="bank_paybill" id="bank_paybill" class="form-input" placeholder="e.g. 522522">
+                            <label class="form-label-sm">B2B recipient shortcode / bank paybill</label>
+                            <input type="text" name="bank_paybill" id="bank_paybill" class="form-input" placeholder="Shortcode provided by Safaricom">
+                            <small class="form-hint">Used as the B2B recipient shortcode for bank settlement. Confirm the correct shortcode and account reference format with Safaricom.</small>
                         </div>
                     </div>
+                    <label class="set-hint" style="display:flex;gap:9px;align-items:flex-start;margin-top:10px;"><input type="checkbox" name="bank_b2b_payout" id="bank_b2b_payout" value="1"><span>Use this bank account for automated M-Pesa B2B payouts when the platform enables the service. Your bank shortcode and account reference must be approved by Safaricom.</span></label>
                 </div>
 
                 <!-- PayPal Fields -->
@@ -1114,6 +1116,8 @@ function editGateway(g) {
         document.getElementById('bank_name').value          = creds.bank_name     || '';
         document.getElementById('bank_account_name').value  = creds.account_name  || creds.bank_account_name || '';
         document.getElementById('bank_account_number').value= creds.account_number|| creds.bank_account_number || '';
+        document.getElementById('bank_paybill').value = creds.bank_shortcode || creds.paybill_number || '';
+        document.getElementById('bank_b2b_payout').checked = String(creds.b2b_payout_enabled || '') === '1';
         document.getElementById('bank_paybill').value       = creds.paybill_number|| creds.bank_paybill || '';
 
     } else if (g.gateway_type === 'paypal') {

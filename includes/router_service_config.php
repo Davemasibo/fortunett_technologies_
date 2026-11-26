@@ -32,7 +32,7 @@ function buildRouterServiceCommand(array $services, bool $noSharing, string $por
 {
     if ($bridgeName === '') throw new InvalidArgumentException('Select the customer LAN bridge explicitly.');
     $sharedUsers = $noSharing ? '1' : 'unlimited';
-    $parts = [routerDeviceModeGuard(in_array('hotspot',$services,true))];
+    $parts = $services ? [routerDeviceModeGuard(in_array('hotspot',$services,true))] : [];
     $parts[] = ':foreach ft in=[/ip firewall filter find where action=fasttrack-connection] do={/ip firewall filter set $ft disabled=yes}';
     $parts[] = ':foreach flow in=[/ip firewall connection find where fasttrack=yes] do={/ip firewall connection remove $flow}';
     $parts[] = ':local bn ' . routerServiceString($bridgeName);

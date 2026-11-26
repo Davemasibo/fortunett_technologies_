@@ -67,6 +67,10 @@ try {
         exit;
     }
 
+    $previous = array_values(array_filter(array_map('trim', explode(',', (string)($router['service_types'] ?? ''))), fn($s) => in_array($s, ['pppoe','hotspot'], true)));
+    $configureServices = $replaceServices ? array_values(array_diff($services, $previous)) : $services;
+    $removalOnly = $replaceServices && !$configureServices;
+
     $wanRecord=loadRouterWan($pdo,$tenantId,(int)$router['id']);
     if (!$wanRecord) throw new RuntimeException('Prepare and apply WAN setup before customer services.');
     $wanConfig=json_decode($wanRecord['config_json'],true,512,JSON_THROW_ON_ERROR);
@@ -76,33 +80,35 @@ try {
         $wanConfig=routerWanInput(['wan_mode'=>$wanConfig['mode'],'wan_interface'=>$wanConfig['base'],'vlan_id'=>$wanConfig['vlan'] ?? '','wan_dns'=>$wanConfig['dns'],'lan_bridge'=>$bridgeName]);
         $wanRecord['config_json']=json_encode($wanConfig,JSON_THROW_ON_ERROR);
     }
-    $api=new MikrotikAPI($router['vpn_ip'] ?: $router['ip_address'],$router['username'],$router['password'],(int)($router['api_port'] ?: 8728));
-    try {$api->connect(); $wanChecks=verifyRouterWan($api,$wanRecord);} finally {$api->disconnect();}
-    $failedWanChecks=routerWanFailedChecks($wanChecks);
-    if ($failedWanChecks) {
-        http_response_code(409);
-        echo json_encode([
-            'status'=>'error',
-            'code'=>'wan_verification_failed',
-            'message'=>'WAN verification failed: '.implode(' ',array_map(fn($c)=>$c['label'].': '.$c['detail'],$failedWanChecks)),
-            'checks'=>$wanChecks,
-        ]);
-        exit;
+    if (!$removalOnly) {
+        $api=new MikrotikAPI($router['vpn_ip'] ?: $router['ip_address'],$router['username'],$router['password'],(int)($router['api_port'] ?: 8728));
+        try {$api->connect(); $wanChecks=verifyRouterWan($api,$wanRecord);} finally {$api->disconnect();}
+        $failedWanChecks=routerWanFailedChecks($wanChecks);
+        if ($failedWanChecks) {
+            http_response_code(409);
+            echo json_encode([
+                'status'=>'error',
+                'code'=>'wan_verification_failed',
+                'message'=>'WAN verification failed: '.implode(' ',array_map(fn($c)=>$c['label'].': '.$c['detail'],$failedWanChecks)),
+                'checks'=>$wanChecks,
+            ]);
+            exit;
+        }
+        $pdo->prepare('UPDATE router_wan_config SET verified_at=NOW() WHERE id=? AND tenant_id=?')->execute([$wanRecord['id'],$tenantId]);
     }
-    $pdo->prepare('UPDATE router_wan_config SET verified_at=NOW() WHERE id=? AND tenant_id=?')->execute([$wanRecord['id'],$tenantId]);
     $pdo->prepare('UPDATE router_wan_config SET config_json=?,lan_bridge=? WHERE id=? AND tenant_id=?')->execute([$wanRecord['config_json'],$bridgeName,$wanRecord['id'],$tenantId]);
 
     // Persist both service_types and the hotspot sharing setting
     $serviceTypesStr = $replaceServices
         ? implode(',', $services)
         : mergeRouterServiceTypes((string)($router['service_types'] ?? ''), $services);
-    $pdo->prepare("
+    if (!$replaceServices) $pdo->prepare("
         UPDATE mikrotik_routers
         SET service_types = ?, hotspot_shared_users = CASE WHEN ? THEN ? ELSE hotspot_shared_users END
         WHERE id = ? AND tenant_id = ?
     ")->execute([$serviceTypesStr, in_array('hotspot', $services, true), $noSharing, $router['id'], $tenantId]);
 
-    saveOnboardingCheck($pdo,$tenantId,(int)$router['id'],$serviceTypesStr,false,'Service setup prepared. Apply the script and verify configuration.');
+    if (!$replaceServices) saveOnboardingCheck($pdo,$tenantId,(int)$router['id'],$serviceTypesStr,false,'Service setup prepared. Apply the script and verify configuration.');
 
     // Resolve tenant portal info for walled garden + login page fetch
     $companyName    = '';
@@ -146,15 +152,16 @@ try {
         }
     } catch (Throwable $_e) {}
 
-    $command = buildRouterServiceCommand($services, (bool)$noSharing, $portalHost, $loginServeUrl, $portalIp, $bridgeName, $companyName);
+    $removed = $replaceServices ? array_diff($previous, $services) : [];
+    // When managing an existing router, reconfigure only services being added.
+    // A kept PPPoE service does not need to be torn down and recreated just to
+    // remove Hotspot beside it.
+    $command = buildRouterServiceCommand($configureServices, (bool)$noSharing, $portalHost, $loginServeUrl, $portalIp, $bridgeName, $companyName);
     if ($replaceServices) {
-        $previous = array_values(array_filter(array_map('trim', explode(',', (string)($router['service_types'] ?? ''))), fn($s) => in_array($s, ['pppoe','hotspot'], true)));
-        $removed = array_diff($previous, $services);
         $cleanup = [];
         if (in_array('hotspot', $removed, true)) {
             $cleanup = array_merge($cleanup, [
-                ':do {/ip hotspot disable [find name=hotspot1]} on-error={}',
-                ':do {/ip hotspot remove [find name=hotspot1]} on-error={}',
+                ':local ftHs [/ip hotspot find where name="hotspot1"]; :if ([:len $ftHs]>0) do={/ip hotspot disable $ftHs; /ip hotspot remove $ftHs}',
                 ':do {/ip hotspot profile remove [find name=hsprof1]} on-error={}',
                 ':do {/ip dhcp-server remove [find name=hs-dhcp]} on-error={}',
                 ':do {/ip dhcp-server network remove [find address="10.5.50.0/24"]} on-error={}',
@@ -174,13 +181,16 @@ try {
         if ($cleanup) $command = '{ '.implode('; ', $cleanup).'; '.$command.'; }';
     }
 
-    $command='{ '.routerWanProbeSource($wanConfig,$wanRecord['billing_url']).'; '.$command.'; }';
+    $command=$removalOnly ? '{ '.$command.'; }' : '{ '.routerWanProbeSource($wanConfig,$wanRecord['billing_url']).'; '.$command.'; }';
 
     echo json_encode([
         'status'             => 'success',
         'router_id'          => (int)$router['id'],
-        'message'            => 'Configuration generated for: ' . implode(', ', $services),
+        'message'            => $removalOnly && $removed
+            ? 'Removal script generated for: ' . implode(', ', $removed)
+            : 'Configuration generated for: ' . implode(', ', $services),
         'services'           => $services,
+        'removed_services'   => array_values($removed),
         'command'            => $command,
         'hotspot_no_sharing' => (bool)$noSharing,
     ]);

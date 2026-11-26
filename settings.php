@@ -89,6 +89,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $credentials['account_name']   = $_POST['bank_account_name'] ?? '';
             $credentials['account_number'] = $_POST['bank_account_number'] ?? '';
             $credentials['paybill_number'] = $_POST['bank_paybill'] ?? '';
+            $credentials['bank_shortcode'] = preg_replace('/\D/', '', (string)($_POST['bank_paybill'] ?? ''));
+            $credentials['b2b_payout_enabled'] = isset($_POST['bank_b2b_payout']) ? '1' : '0';
         } elseif ($gateway_type === 'mpesa_api') {
             $credentials['consumer_key']    = $_POST['mpesa_consumer_key'] ?? '';
             $credentials['consumer_secret'] = $_POST['mpesa_consumer_secret'] ?? '';
@@ -158,6 +160,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ->execute([$tenant_id, $gateway_type, $gateway_name, encrypt_gateway_credentials($credentials)]);
                     $savedGatewayId = (int)$pdo->lastInsertId();
                     $action_result = 'success|New payment gateway added successfully';
+                }
+            }
+
+            if ($gateway_type === 'bank_account' && $savedGatewayId) {
+                try {
+                    require_once __DIR__.'/includes/payouts.php';
+                    ensurePayoutTables($pdo);
+                    $pdo->prepare('UPDATE tenant_payout_settings SET bank_verified_at=NULL WHERE tenant_id=?')->execute([(int)$tenant_id]);
+                } catch (Throwable $e) {
+                    error_log('Bank payout verification reset: '.$e->getMessage());
                 }
             }
 

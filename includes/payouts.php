@@ -42,6 +42,7 @@ function ensurePayoutTables(PDO $pdo): void
     foreach(['initiator_name'=>'VARCHAR(120) DEFAULT NULL','security_credential'=>'TEXT DEFAULT NULL','b2c_shortcode'=>'VARCHAR(20) DEFAULT NULL'] as $column=>$definition) {
         if(!ensureColumn($pdo,'platform_mpesa_config',$column,$definition))throw new RuntimeException('Platform payout configuration needs a schema update.');
     }
+    if(!ensureColumn($pdo,'platform_mpesa_config','b2b_shortcode','VARCHAR(20) DEFAULT NULL'))throw new RuntimeException('Platform B2B shortcode needs a schema update.');
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS tenant_payout_settings (
@@ -52,6 +53,7 @@ function ensurePayoutTables(PDO $pdo): void
             min_payout    DECIMAL(10,2) NOT NULL DEFAULT 100.00,
             max_daily     DECIMAL(10,2) NOT NULL DEFAULT 50000.00,
             verified_at   DATETIME      DEFAULT NULL,
+            bank_verified_at DATETIME   DEFAULT NULL,
             verified_by   INT           DEFAULT NULL,
             notes         TEXT          DEFAULT NULL,
             updated_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -67,9 +69,12 @@ function ensurePayoutTables(PDO $pdo): void
             id                        INT AUTO_INCREMENT PRIMARY KEY,
             tenant_id                 INT           NOT NULL,
             originator_conversation_id VARCHAR(64)  NOT NULL,
+            safaricom_originator_id   VARCHAR(64)   DEFAULT NULL,
             conversation_id           VARCHAR(64)   DEFAULT NULL,
             transaction_id            VARCHAR(64)   DEFAULT NULL,
             payout_phone              VARCHAR(20)   NOT NULL,
+            payout_method             ENUM('mpesa','bank') NOT NULL DEFAULT 'mpesa',
+            payout_reference          VARCHAR(120)  DEFAULT NULL,
             gross_amount              DECIMAL(10,2) NOT NULL,
             commission_amount         DECIMAL(10,2) NOT NULL DEFAULT 0,
             net_amount                DECIMAL(10,2) NOT NULL,
@@ -95,6 +100,19 @@ function ensurePayoutTables(PDO $pdo): void
     ] as $sql) {
         try { $pdo->exec($sql); } catch (Throwable $e) { /* already present */ }
     }
+    foreach ([
+        'bank_verified_at' => 'DATETIME DEFAULT NULL',
+    ] as $column=>$definition) {
+        if(!ensureColumn($pdo,'tenant_payout_settings',$column,$definition))throw new RuntimeException('Tenant bank payout schema needs a migration.');
+    }
+    foreach ([
+        'safaricom_originator_id' => 'VARCHAR(64) DEFAULT NULL',
+        'payout_method' => "ENUM('mpesa','bank') NOT NULL DEFAULT 'mpesa'",
+        'payout_reference' => 'VARCHAR(120) DEFAULT NULL',
+    ] as $column=>$definition) {
+        if(!ensureColumn($pdo,'isp_payout_batches',$column,$definition))throw new RuntimeException('Payout batch schema needs a migration.');
+    }
+    try { $pdo->exec('ALTER TABLE isp_payout_batches MODIFY payout_phone VARCHAR(20) DEFAULT NULL'); } catch (Throwable $e) { /* already nullable */ }
     $done=true;
 }
 
@@ -108,6 +126,22 @@ function payoutSetting(PDO $pdo, string $key, string $default = ''): string
         return ($v === false || $v === null) ? $default : (string)$v;
     } catch (Throwable $e) {
         return $default;
+    }
+}
+
+/** A private per-installation bearer token for Safaricom payout callbacks. */
+function payoutCallbackToken(PDO $pdo): string
+{
+    $token=payoutSetting($pdo,'b2b_callback_token','');
+    if($token!=='')return $token;
+    $token=bin2hex(random_bytes(32));
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS platform_settings (setting_key VARCHAR(100) NOT NULL PRIMARY KEY, setting_value TEXT DEFAULT NULL, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $pdo->prepare("INSERT INTO platform_settings (setting_key,setting_value) VALUES ('b2b_callback_token',?) ON DUPLICATE KEY UPDATE setting_value=IF(setting_value IS NULL OR setting_value='',VALUES(setting_value),setting_value)")->execute([$token]);
+        return payoutSetting($pdo,'b2b_callback_token',$token);
+    } catch(Throwable $e) {
+        error_log('Could not persist private B2B callback token: '.$e->getMessage());
+        throw new RuntimeException('Secure B2B callbacks are not configured.');
     }
 }
 
@@ -175,6 +209,27 @@ function disbursementPreflight(PDO $pdo): array
     return ['ok' => empty($reasons), 'reasons' => $reasons, 'config' => $config];
 }
 
+/** Active tenant bank details are encrypted in payment_gateways.credentials. */
+function tenantBankPayoutDestination(PDO $pdo,int $tenantId,bool $lock=false): array
+{
+    require_once __DIR__.'/credential_helper.php';
+    $st=$pdo->prepare("SELECT id,credentials FROM payment_gateways WHERE tenant_id=? AND gateway_type='bank_account' AND is_active=1 ORDER BY is_default DESC,id LIMIT 1".($lock?' FOR UPDATE':''));
+    $st->execute([$tenantId]);$gateway=$st->fetch(PDO::FETCH_ASSOC);
+    if(!$gateway)return ['configured'=>false,'valid'=>false];
+    $c=decrypt_gateway_credentials((string)$gateway['credentials']);
+    $short=preg_replace('/\D/','',(string)($c['bank_shortcode'] ?? $c['paybill_number'] ?? ''));
+    $account=trim((string)($c['account_number'] ?? ''));
+    $configured=(string)($c['b2b_payout_enabled']??'')==='1';
+    return ['configured'=>$configured,'valid'=>$configured && (bool)(preg_match('/^\d{5,7}$/D',$short) && $account!=='' && strlen($account)<=20 && !empty($c['bank_name']) && !empty($c['account_name'])),
+        'gateway_id'=>(int)$gateway['id'],'receiver_shortcode'=>$short,'account_number'=>$account,
+        'bank_name'=>trim((string)($c['bank_name'] ?? '')),'account_name'=>trim((string)($c['account_name'] ?? ''))];
+}
+
+function tenantBankPayoutEnabled(PDO $pdo): bool
+{
+    return payoutSetting($pdo,'payouts_b2b_enabled','0')==='1';
+}
+
 /**
  * Per-tenant gate. Separate from the platform one so a misconfigured tenant
  * never blocks the rest, and so the reason is reportable per tenant.
@@ -195,13 +250,17 @@ function tenantPayoutGate(PDO $pdo, int $tenantId): array
     if ((int)$s['auto_payout'] !== 1) {
         return ['ok' => false, 'reason' => 'auto payout is off for this tenant', 'settings' => $s];
     }
-    if (empty($s['payout_phone'])) {
-        return ['ok' => false, 'reason' => 'no payout phone number on file', 'settings' => $s];
+    $bank=tenantBankPayoutEnabled($pdo) ? tenantBankPayoutDestination($pdo,$tenantId) : ['configured'=>false,'valid'=>false];
+    if ($bank['configured']) {
+        if (!$bank['valid']) return ['ok'=>false,'reason'=>'active bank gateway needs a bank name, account name, account number and B2B recipient shortcode','settings'=>$s];
+        if (empty($s['bank_verified_at'])) return ['ok'=>false,'reason'=>'bank destination has not been verified by the platform administrator','settings'=>$s];
+    } elseif (empty($s['payout_phone'])) {
+        return ['ok' => false, 'reason' => 'no verified bank destination or payout phone number on file', 'settings' => $s];
     }
     // Verification is a human confirming the number belongs to this ISP. Paying
     // an unverified number is how money reaches the wrong person permanently —
     // M-Pesa has no chargeback.
-    if (empty($s['verified_at'])) {
+    if (!$bank['configured'] && empty($s['verified_at'])) {
         return ['ok' => false, 'reason' => 'payout number has not been verified', 'settings' => $s];
     }
 

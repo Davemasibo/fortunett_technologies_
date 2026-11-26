@@ -1,0 +1,35 @@
+<?php
+require_once __DIR__.'/../includes/db_master.php';
+require_once __DIR__.'/includes/auth.php';
+superAdminGuard();
+require_once __DIR__.'/../includes/tenant_payouts.php';
+ensurePayoutTables($pdo);
+$_SESSION['payout_review_csrf'] ??= bin2hex(random_bytes(32));
+$pdo->exec("CREATE TABLE IF NOT EXISTS isp_payout_reconciliations (
+    id INT AUTO_INCREMENT PRIMARY KEY,batch_id INT NOT NULL,admin_user_id INT NOT NULL,
+    decision ENUM('paid','failed') NOT NULL,receipt VARCHAR(64) DEFAULT NULL,evidence TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,INDEX idx_batch(batch_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+$unknown=$pdo->query("SELECT b.*,t.company_name FROM isp_payout_batches b JOIN tenants t ON t.id=b.tenant_id WHERE b.status='unknown' OR (b.status='accepted' AND b.created_at < DATE_SUB(NOW(),INTERVAL 15 MINUTE)) ORDER BY b.created_at ASC")->fetchAll(PDO::FETCH_ASSOC);
+$bankRows=[];
+$banks=$pdo->query("SELECT t.id,t.company_name,s.bank_verified_at FROM tenants t LEFT JOIN tenant_payout_settings s ON s.tenant_id=t.id JOIN payment_gateways g ON g.tenant_id=t.id AND g.gateway_type='bank_account' AND g.is_active=1 GROUP BY t.id ORDER BY t.company_name")->fetchAll(PDO::FETCH_ASSOC);
+foreach($banks as $r){$d=tenantBankPayoutDestination($pdo,(int)$r['id']);$r['destination']=$d;if(!empty($d['configured']) && empty($r['bank_verified_at']))$bankRows[]=$r;}
+function payoutAdminEscape($v): string {return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
+?>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Automated payouts · FortuNett</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet"><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet"><link href="css/dark.css?v=2" rel="stylesheet"><link href="css/shell.css?v=2" rel="stylesheet"><link href="css/admin.css?v=1" rel="stylesheet"><script src="js/shell.js?v=2" defer></script>
+<style>:root{--neu-bg:#141414;--neu-surf:#1c1c1b;--neu-s2:#222221;--neu-border:rgba(255,255,255,.08);--neu-text:#e2e2e0;--neu-muted:#9a9a95}body{background:var(--neu-bg);color:var(--neu-text)}.payout-main{margin-left:var(--sidebar-w,240px);width:calc(100% - var(--sidebar-w,240px));padding:32px;max-width:1500px}.payout-panel{background:var(--neu-s2);border:1px solid var(--neu-border);border-radius:12px;padding:20px;margin:18px 0}.payout-panel h2{font-size:18px}.payout-row{border-top:1px solid var(--neu-border);padding:16px 0}.payout-row:first-of-type{border-top:0}.muted{color:var(--neu-muted)}.field-dark{background:#111;color:#eee;border:1px solid #444}.review-form{display:grid;grid-template-columns:1fr 1fr 2fr auto;gap:8px;align-items:end}@media(max-width:900px){.payout-main{margin-left:0;width:100%;padding:20px}.review-form{grid-template-columns:1fr}}</style></head><body>
+<?php require __DIR__.'/includes/navigation.php'; ?><main id="sa-main-content" class="payout-main"><h1>Automated payouts</h1><p class="muted">Review bank destinations and reconcile transfers whose Safaricom outcome is still unknown. An unknown transfer stays locked and cannot be retried until this review is complete.</p><div id="payoutReviewFeedback" role="status"></div>
+<section class="payout-panel"><h2>Bank destinations awaiting verification</h2><p class="muted">Verify the tenant’s bank ownership and the receiver shortcode/account reference with the supporting documents before approving B2B payouts.</p>
+<?php if(!$bankRows): ?><p class="muted">No bank destinations are waiting for review.</p><?php endif; ?>
+<?php foreach($bankRows as $r): $d=$r['destination']; ?><div class="payout-row"><strong><?=payoutAdminEscape($r['company_name'])?></strong><div class="muted"><?=payoutAdminEscape($d['bank_name']??'Incomplete bank details')?> · <?=payoutAdminEscape($d['account_name']??'')?> · <?=!empty($d['account_number'])?'****'.payoutAdminEscape(substr($d['account_number'],-4)):'No account number'?> · recipient shortcode <?=payoutAdminEscape($d['receiver_shortcode']??'missing')?></div>
+<?php if(!empty($d['valid'])): ?><button class="btn btn-success btn-sm" onclick="verifyBank(<?= (int)$r['id'] ?>)">Mark bank destination verified</button><?php else: ?><span class="text-warning">Tenant must complete the bank details and shortcode first.</span><?php endif; ?></div><?php endforeach; ?></section>
+<section class="payout-panel"><h2>Transfers awaiting reconciliation</h2><p class="muted">Transfers still awaiting a callback after 15 minutes also appear here. Check the M-Pesa statement or obtain confirmation from Safaricom before choosing an outcome. A failed decision releases the queued collections for a later payout attempt.</p>
+<?php if(!$unknown): ?><p class="muted">No payout transfers are awaiting reconciliation.</p><?php endif; ?>
+<?php foreach($unknown as $b): ?><div class="payout-row"><strong>#<?= (int)$b['id']?> · <?=payoutAdminEscape($b['company_name'])?> · KES <?=number_format((float)$b['sent_amount'],2)?></strong><div class="muted"><?=payoutAdminEscape(strtoupper($b['payout_method']??'mpesa'))?> · <?=payoutAdminEscape($b['payout_reference'] ?: $b['payout_phone'])?> · <?=payoutAdminEscape($b['created_at'])?> · <?=payoutAdminEscape($b['result_desc'])?></div>
+<form class="review-form" onsubmit="return resolvePayout(event,<?= (int)$b['id']?>)"><select name="decision" class="form-select field-dark"><option value="paid">Confirm paid</option><option value="failed">Confirm not paid</option></select><input name="receipt" class="form-control field-dark" placeholder="M-Pesa receipt (required if paid)"><input name="evidence" class="form-control field-dark" placeholder="Statement reference / Safaricom confirmation" required minlength="8" maxlength="1000"><button class="btn btn-primary">Reconcile</button></form></div><?php endforeach; ?></section>
+</main><script>
+const reviewCsrf=<?=json_encode($_SESSION['payout_review_csrf'])?>;
+async function reviewPost(values){const fd=new FormData();fd.append('csrf',reviewCsrf);Object.entries(values).forEach(([k,v])=>fd.append(k,v));const r=await fetch('../api/super_admin/payout_review.php',{method:'POST',body:fd});const d=await r.json();if(!d.success)throw new Error(d.message||'Review could not be saved.');return d;}
+async function verifyBank(tenantId){try{const d=await reviewPost({action:'verify_bank',tenant_id:tenantId});document.getElementById('payoutReviewFeedback').textContent=d.message;location.reload();}catch(e){document.getElementById('payoutReviewFeedback').textContent=e.message;}}
+async function resolvePayout(event,batchId){event.preventDefault();const form=event.currentTarget;const values=Object.fromEntries(new FormData(form));values.action='resolve_unknown';values.batch_id=batchId;try{const d=await reviewPost(values);document.getElementById('payoutReviewFeedback').textContent=d.message;location.reload();}catch(e){document.getElementById('payoutReviewFeedback').textContent=e.message;}return false;}
+</script></body></html>

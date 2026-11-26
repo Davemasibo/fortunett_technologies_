@@ -31,6 +31,7 @@ $healthStorageReady = ensureRouterHealthColumns($pdo);
 
 $routerId = (int)($_POST['router_id'] ?? 0);
 $servicesRaw = trim($_POST['services'] ?? '');
+$replaceServices = (string)($_POST['replace_services'] ?? '') === '1';
 $services = array_values(array_filter(array_map('trim', explode(',', $servicesRaw)),
     fn($s) => in_array($s, ['pppoe', 'hotspot'], true)));
 
@@ -39,7 +40,7 @@ $rq->execute([$routerId, $tenantId]);
 $router = $rq->fetch(PDO::FETCH_ASSOC);
 if (!$router) { ob_clean(); echo json_encode(['success' => false, 'error' => 'Router not found']); exit; }
 
-if (!$services) $services=explode(',',onboardingServices($router['service_types'] ?? ''));
+if (!$services && !$replaceServices) $services=explode(',',onboardingServices($router['service_types'] ?? ''));
 $services=array_values(array_filter($services));
 register_shutdown_function(function() use ($pdo,$tenantId,$routerId,&$services,&$result) {
     if (!isset($result)) return;
@@ -120,6 +121,12 @@ try {
         $checks[] = ['label' => 'PPP profile (pppoe-profile)', 'ok' => $profOk, 'detail' => $profOk ? 'Present' : 'Missing'];
     }
 
+    if ($replaceServices && !in_array('pppoe', $services, true)) {
+        $pp = $api->comm('/interface/pppoe-server/server/print');
+        $left = $anyRow($pp, fn($r) => ($r['service-name'] ?? '') === 'pppoe-service' && ($r['disabled'] ?? 'false') !== 'true');
+        $checks[] = ['label' => 'PPPoE removal', 'ok' => !$left, 'detail' => $left ? 'FortuNett PPPoE server is still present and enabled' : 'FortuNett PPPoE server is absent or disabled'];
+    }
+
     // ── Hotspot ─────────────────────────────────────────────────────────────────
     if (in_array('hotspot', $services, true)) {
         $hs = $api->comm('/ip/hotspot/print');
@@ -184,10 +191,21 @@ try {
                      'detail' => $wgIpOk ? 'Portal IP whitelisted' : 'No IP entry — HTTPS to the portal is blocked, M-Pesa STK push will fail'];
     }
 
+    if ($replaceServices && !in_array('hotspot', $services, true)) {
+        $hs = $api->comm('/ip/hotspot/print');
+        $left = $anyRow($hs, fn($r) => ($r['name'] ?? '') === 'hotspot1' && ($r['disabled'] ?? 'false') !== 'true');
+        $checks[] = ['label' => 'Hotspot removal', 'ok' => !$left, 'detail' => $left ? 'FortuNett hotspot1 is still present and enabled' : 'FortuNett hotspot1 is absent or disabled'];
+    }
+
     $api->disconnect();
 
     $result['checks']  = $checks;
-    $result['all_ok']  = !empty($services) && !empty($checks) && !routerWanFailedChecks($checks);
+    $result['all_ok']  = !empty($checks) && !routerWanFailedChecks($checks);
+    if ($replaceServices && $result['all_ok']) {
+        $serviceTypes = implode(',', $services);
+        $pdo->prepare('UPDATE mikrotik_routers SET service_types=? WHERE id=? AND tenant_id=?')->execute([$serviceTypes,$routerId,$tenantId]);
+        saveOnboardingCheck($pdo,$tenantId,$routerId,$serviceTypes,true,'Router services verified from live RouterOS state.');
+    }
 
 } catch (Throwable $e) {
     $result['error'] = $e->getMessage();

@@ -55,10 +55,10 @@ try {
     $pdo->beginTransaction();
     $bSt = $pdo->prepare("
         SELECT * FROM isp_payout_batches
-        WHERE originator_conversation_id = ? OR (conversation_id = ? AND conversation_id <> '')
+        WHERE originator_conversation_id = ? OR safaricom_originator_id = ? OR (conversation_id = ? AND conversation_id <> '')
         ORDER BY id DESC LIMIT 1 FOR UPDATE
     ");
-    $bSt->execute([$originatorId, $conversation]);
+    $bSt->execute([$originatorId, $originatorId, $conversation]);
     $batch = $bSt->fetch(PDO::FETCH_ASSOC);
 
     if (!$batch) {
@@ -66,7 +66,7 @@ try {
         // Never invent a batch from a callback. An unmatched result means money
         // may have moved for something we have no record of — that is a human
         // problem, and the raw log above is the evidence.
-        error_log("b2c_result: no batch for originator=$originatorId conversation=$conversation");
+        error_log("payout_result: no batch for originator=$originatorId conversation=$conversation");
         $ok('ignored — unknown batch');
     }
 
@@ -101,10 +101,12 @@ try {
     $queueIds = array_filter(array_map('intval', explode(',', (string)$batch['queue_ids'])));
 
     if ($success) {
-        $note = 'Disbursed via M-Pesa B2C' . ($receipt ? ' — ' . $receipt : '');
+        $note = (($batch['payout_method'] ?? 'mpesa') === 'bank' ? 'Disbursed via M-Pesa B2B to ' : 'Disbursed via M-Pesa B2C')
+            . (($batch['payout_method'] ?? 'mpesa') === 'bank' ? (string)($batch['payout_reference'] ?? 'bank account') : '')
+            . ($receipt ? ' — ' . $receipt : '');
         $n = settlePayoutBatch($pdo, $batch, $note);
         $pdo->commit();
-        error_log("b2c_result: batch {$batch['id']} PAID, {$n} payment(s) released");
+        error_log("payout_result: batch {$batch['id']} PAID, {$n} payment(s) released");
         $ok('settled');
     }
 
@@ -119,7 +121,7 @@ try {
         ")->execute(array_merge([substr($resultDesc, 0, 255)], $queueIds));
     }
 
-    error_log("b2c_result: batch {$batch['id']} FAILED ($resultCode) $resultDesc — returned to queue");
+    error_log("payout_result: batch {$batch['id']} FAILED ($resultCode) $resultDesc — returned to queue");
     $pdo->commit();
     $ok('failed, requeued');
 

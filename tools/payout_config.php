@@ -10,6 +10,8 @@
  * the initiator password already encrypted against Safaricom's certificate):
  *   php tools/payout_config.php --initiator=fortunett_api --security-credential='<blob>' --b2c-shortcode=123456
  *   php tools/payout_config.php --base-url=https://fortunetttech.site
+ *   php tools/payout_config.php --b2b-shortcode=123456
+ *   php tools/payout_config.php --enable-b2b   # only after Safaricom activates the shortcode
  *
  * A tenant's destination. Setting the phone clears any prior verification on
  * purpose — a changed number is a new number and needs confirming again:
@@ -70,13 +72,15 @@ function setSetting(PDO $pdo, string $key, string $value): void
 // ── Platform-level ────────────────────────────────────────────────────────────
 if ($flag('enable-payouts'))  { setSetting($pdo, 'payouts_enabled', '1'); $changed[] = 'platform payouts ENABLED'; }
 if ($flag('disable-payouts')) { setSetting($pdo, 'payouts_enabled', '0'); $changed[] = 'platform payouts DISABLED'; }
+if ($flag('enable-b2b')) { setSetting($pdo, 'payouts_b2b_enabled', '1'); $changed[] = 'B2B bank payouts ENABLED'; }
+if ($flag('disable-b2b')) { setSetting($pdo, 'payouts_b2b_enabled', '0'); $changed[] = 'B2B bank payouts DISABLED'; }
 
 if (($v = $opt('base-url')) !== null) {
     setSetting($pdo, 'public_base_url', rtrim($v, '/'));
     $changed[] = 'public base URL = ' . rtrim($v, '/');
 }
 
-foreach (['initiator' => 'initiator_name', 'security-credential' => 'security_credential', 'b2c-shortcode' => 'b2c_shortcode'] as $arg => $col) {
+foreach (['initiator' => 'initiator_name', 'security-credential' => 'security_credential', 'b2c-shortcode' => 'b2c_shortcode', 'b2b-shortcode' => 'b2b_shortcode'] as $arg => $col) {
     if (($v = $opt($arg)) !== null) {
         $pdo->prepare("UPDATE platform_mpesa_config SET $col = ? WHERE id = 1")->execute([$v]);
         $changed[] = $col . ' set' . ($col === 'security_credential' ? ' (' . strlen($v) . ' chars)' : ' = ' . $v);
@@ -128,6 +132,16 @@ if ($tenantId) {
         $pdo->prepare("UPDATE tenant_payout_settings SET verified_at = NULL WHERE tenant_id = ?")->execute([$tenantId]);
         $changed[] = "tenant $tenantId verification cleared";
     }
+    if ($flag('verify-bank')) {
+        $bank=tenantBankPayoutDestination($pdo,$tenantId);
+        if (empty($bank['valid'])) exit("Tenant $tenantId has no complete active bank destination to verify.\n");
+        $pdo->prepare('UPDATE tenant_payout_settings SET bank_verified_at=NOW() WHERE tenant_id=?')->execute([$tenantId]);
+        $changed[]="tenant $tenantId bank destination {$bank['bank_name']} ****".substr($bank['account_number'],-4).' VERIFIED';
+    }
+    if ($flag('unverify-bank')) {
+        $pdo->prepare('UPDATE tenant_payout_settings SET bank_verified_at=NULL WHERE tenant_id=?')->execute([$tenantId]);
+        $changed[]="tenant $tenantId bank verification cleared";
+    }
     if ($flag('enable')) {
         $pdo->prepare("UPDATE tenant_payout_settings SET auto_payout = 1 WHERE tenant_id = ?")->execute([$tenantId]);
         $changed[] = "tenant $tenantId auto payout ON";
@@ -147,6 +161,7 @@ $pre = disbursementPreflight($pdo);
 printf("  ready to send : %s\n", $pre['ok'] ? 'YES' : 'NO');
 foreach ($pre['reasons'] as $r) echo "    - $r\n";
 printf("  base URL      : %s\n", payoutSetting($pdo, 'public_base_url', '(not set — B2C needs it for the result callback)'));
+printf("  B2B bank send : %s\n", tenantBankPayoutEnabled($pdo) ? 'ENABLED' : 'disabled (Safaricom activation and --enable-b2b required)');
 
 echo "\n=== Tenants ===\n";
 $sql = "SELECT t.id, t.company_name, s.payout_phone, s.payout_name, s.auto_payout,

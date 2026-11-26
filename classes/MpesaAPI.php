@@ -605,6 +605,67 @@ class MpesaAPI {
         ];
     }
 
+    /** Submit an M-Pesa B2B transfer. Acceptance is not settlement; wait for ResultURL. */
+    public function b2bPayment(
+        string $receiverShortcode,
+        string $accountReference,
+        float $amount,
+        string $remarks,
+        string $originatorConversationId,
+        string $resultUrl,
+        string $timeoutUrl,
+        string $commandId = 'BusinessPayBill'
+    ): array {
+        $fail = function (string $message, ?bool $accepted = false) use ($originatorConversationId) {
+            $this->last_error = $message;
+            error_log("MpesaAPI b2bPayment [$originatorConversationId]: $message");
+            return ['success'=>false,'accepted'=>$accepted,'conversation_id'=>null,
+                'originator_conversation_id'=>$originatorConversationId,'error'=>$message,'raw'=>null];
+        };
+        $ready = $this->canSendB2C();
+        if (!$ready['ok']) return $fail('B2B is not configured — missing: '.implode(', ',$ready['missing']));
+        $whole=(int)floor($amount);
+        if ($whole<1) return $fail('amount rounds to less than KES 1 — nothing to send');
+        if (!preg_match('/^\d{5,7}$/D',$receiverShortcode)) return $fail('B2B receiver shortcode must be 5–7 digits');
+        if ($accountReference==='' || strlen($accountReference)>20) return $fail('Bank account reference is required and must be at most 20 characters');
+        if ($resultUrl==='' || $timeoutUrl==='' || $this->isLocalUrl($resultUrl)) return $fail('Public HTTPS result and timeout callback URLs are required');
+        $token=$this->getAccessToken();
+        if (!$token) return $fail('could not obtain an access token: '.$this->last_error);
+
+        $payload=[
+            'InitiatorName'=>$this->initiator_name,
+            'SecurityCredential'=>$this->security_credential,
+            'CommandID'=>$commandId,
+            'SenderIdentifierType'=>'4',
+            'RecieverIdentifierType'=>'4',
+            'Amount'=>$whole,
+            'PartyA'=>$this->b2c_shortcode,
+            'PartyB'=>$receiverShortcode,
+            'AccountReference'=>substr($accountReference,0,20),
+            'Remarks'=>substr($remarks,0,100),
+            'QueueTimeOutURL'=>$timeoutUrl,
+            'ResultURL'=>$resultUrl,
+        ];
+        $this->last_payload=$payload;
+        $curl=curl_init();
+        curl_setopt_array($curl,[
+            CURLOPT_URL=>$this->base_url.'/mpesa/b2b/v1/paymentrequest',
+            CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$token],
+            CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode($payload),CURLOPT_RETURNTRANSFER=>true,
+            CURLOPT_SSL_VERIFYPEER=>true,CURLOPT_CONNECTTIMEOUT=>15,CURLOPT_TIMEOUT=>40,
+        ]);
+        $response=curl_exec($curl);$curlError=curl_error($curl);$httpCode=curl_getinfo($curl,CURLINFO_HTTP_CODE);curl_close($curl);
+        if ($curlError) return $fail('network error, outcome UNKNOWN: '.$curlError,null);
+        $json=json_decode((string)$response,true);$code=$json['ResponseCode']??null;
+        if ($code==='0' || $code===0) return ['success'=>true,'accepted'=>true,
+            'conversation_id'=>$json['ConversationID']??null,
+            'originator_conversation_id'=>$json['OriginatorConversationID']??null,
+            'error'=>null,'raw'=>$json];
+        $message=(string)($json['errorMessage']??$json['ResponseDescription']??('HTTP '.$httpCode.' — '.substr((string)$response,0,200)));
+        if($code===null && ($httpCode>=500 || $httpCode===0 || $httpCode===200)) return $fail($message,null);
+        return $fail($message,false);
+    }
+
     private function formatPhone($phone) {
         require_once __DIR__ . '/../includes/kenyan_phone.php';
         return kenyanMobileNumber((string)$phone);

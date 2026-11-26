@@ -1287,7 +1287,7 @@ window.onclick = function(event) {
 <div id="provisionModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center;">
   <div style="background:#1e1e1d;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:24px;width:100%;max-width:660px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.7);">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-      <h3 style="margin:0;color:#e2e2e0;font-size:16px;"><i class="fas fa-scroll" style="color:#93c5fd;margin-right:8px;"></i>Provisioning Script</h3>
+      <h3 style="margin:0;color:#e2e2e0;font-size:16px;"><i class="fas fa-scroll" style="color:#93c5fd;margin-right:8px;"></i><span id="provModalTitle">Provisioning Script</span></h3>
       <button onclick="closeProvision()" style="background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;">✕</button>
     </div>
     <p id="provRouterLabel" style="font-size:12px;color:rgba(255,255,255,.4);margin:0 0 14px;"></p>
@@ -1528,7 +1528,8 @@ function openProvision(id, name, services = [], manageServices = false) {
     provSelected   = new Set(services);
     document.getElementById('provServiceHelp').textContent = manageServices
         ? 'Select the services you want to keep on this router. Removing a service deletes its FortuNett-managed router configuration and disconnects customers using it. Apply the generated script in WinBox → New Terminal.'
-        : 'Select the services to configure. Existing services are preselected; this keeps them enabled. Apply the generated script in WinBox → New Terminal.';
+        : 'Provision adds or reconfigures the selected services and preserves other existing services, even when unchecked. To remove a service, use Manage services. Apply the script in WinBox → New Terminal, then verify it on the router.';
+    document.getElementById('provModalTitle').textContent = manageServices ? 'Manage router services' : 'Provisioning Script';
     document.getElementById('provRouterLabel').textContent = 'Router: ' + name;
     document.querySelectorAll('#provisionModal .prov-svc').forEach(c => {
         const active = provSelected.has(c.id.replace('prov-', ''));
@@ -1586,7 +1587,9 @@ function generateProvision() {
                 out.innerHTML = '<div style="color:#f87171;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);border-radius:8px;padding:12px;font-size:13px;">' + escapeHtml(d.message || 'Failed to generate script.') + '</div>';
                 return;
             }
-            const label = (d.services || []).map(s => String(s).toUpperCase()).join(' + ') || 'Router';
+            const kept = (d.services || []).map(s => String(s).toUpperCase()).join(' + ') || 'No customer services';
+            const removed = (d.removed_services || []).map(s => String(s).toUpperCase()).join(' + ');
+            const label = removed ? 'Keep: ' + kept + ' · Remove: ' + removed : kept;
             out.innerHTML =
                 '<div style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:8px;">' + label + ' — paste this <strong>once</strong> into the RouterOS terminal:</div>'
                 + '<div class="command-box" style="position:relative;background:#111;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:14px;">'
@@ -1619,6 +1622,7 @@ function verifyProvision() {
     const fd = new FormData();
     fd.append('router_id', provRouterId);
     fd.append('services', Array.from(provSelected).join(','));
+    fd.append('replace_services', provReplaceServices ? '1' : '0');
 
     fetch('api/routers/verify_provisioning.php', { method: 'POST', body: fd })
         .then(r => r.json())
@@ -1647,7 +1651,11 @@ function verifyProvision() {
 
             out.innerHTML = banner + '<div style="background:var(--neu-surf);border:1px solid var(--neu-border);border-radius:8px;padding:4px 14px;">' + rows + '</div>';
 
-            if (d.all_ok) { showToast('Provisioning verified on '+provRouterName,'success'); const done=document.getElementById('wizardDoneBtn'); if(done) {done.disabled=false;done.textContent='Continue onboarding';} }
+            if (d.all_ok) {
+                showToast((provReplaceServices ? 'Services updated and verified on ' : 'Provisioning verified on ') + provRouterName,'success');
+                const done=document.getElementById('wizardDoneBtn'); if(done) {done.disabled=false;done.textContent='Continue onboarding';}
+                if (provReplaceServices) setTimeout(() => window.location.reload(), 1200);
+            }
         })
         .catch(e => {
             btn.disabled = false;

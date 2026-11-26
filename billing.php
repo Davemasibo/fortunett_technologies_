@@ -225,11 +225,11 @@ $withdrawal=null;$payoutBatches=[];
 $canWithdraw=(int)($tenant['admin_user_id'] ?? 0)===(int)$user_id || ($billingUser['role'] ?? '')==='admin';
 try {
     $withdrawal=tenantWithdrawalState($pdo,(int)$tenant_id);
-    $st=$pdo->prepare('SELECT id,sent_amount,status,created_at,transaction_id FROM isp_payout_batches WHERE tenant_id=? ORDER BY id DESC LIMIT 10');$st->execute([$tenant_id]);$payoutBatches=$st->fetchAll(PDO::FETCH_ASSOC);
+    $st=$pdo->prepare('SELECT id,sent_amount,status,created_at,transaction_id,payout_method,payout_reference,payout_phone FROM isp_payout_batches WHERE tenant_id=? ORDER BY id DESC LIMIT 10');$st->execute([$tenant_id]);$payoutBatches=$st->fetchAll(PDO::FETCH_ASSOC);
     $st=$pdo->prepare("SELECT COALESCE(SUM(sent_amount),0) FROM isp_payout_batches WHERE tenant_id=? AND status='paid' AND completed_at>=? AND completed_at<?");$st->execute([$tenant_id,$currentMonthStart,date('Y-m-01',strtotime($currentMonthStart.' +1 month'))]);$monthlyDisbursed+=(float)$st->fetchColumn();
 }catch(Throwable $e){error_log('Billing withdrawal state: '.$e->getMessage());}
 $_SESSION['billing_csrf'] ??= bin2hex(random_bytes(24));
-$payoutRequest=bin2hex(random_bytes(16));$_SESSION['payout_requests'][$payoutRequest]=['amount'=>$withdrawal['send_amount'] ?? 0,'phone'=>$withdrawal['phone'] ?? ''];
+$payoutRequest=bin2hex(random_bytes(16));$_SESSION['payout_requests'][$payoutRequest]=['amount'=>$withdrawal['send_amount'] ?? 0,'phone'=>$withdrawal['phone'] ?? '', 'destination_key'=>$withdrawal['destination_key'] ?? ''];
 $_SESSION['payout_requests']=array_slice($_SESSION['payout_requests'],-10,null,true);
 include 'includes/header.php';
 include 'includes/sidebar.php';
@@ -711,7 +711,7 @@ include 'includes/sidebar.php';
     <div class="withdrawal-card">
         <div>
             <h3>M-Pesa payout · KES <?= number_format($withdrawal['send_amount'] ?? 0,2) ?></h3>
-            <p><?= htmlspecialchars($withdrawal ? ($withdrawal['reason'] ?: 'Send your available balance to '.$withdrawal['phone'].'.') : 'Payouts are temporarily unavailable.') ?></p>
+            <p><?= htmlspecialchars($withdrawal ? ($withdrawal['reason'] ?: 'Send your available balance to '.($withdrawal['destination_display'] ?? $withdrawal['phone']).'.') : 'Payouts are temporarily unavailable.') ?></p>
         </div>
         <?php if($canWithdraw): ?><button type="button" class="view-invoice-btn" <?= empty($withdrawal['ready'])?'disabled':'' ?> onclick="document.getElementById('withdrawalDialog').showModal()">Withdraw</button><?php endif; ?>
     </div>
@@ -733,7 +733,7 @@ include 'includes/sidebar.php';
         <?php if($payoutBatches): ?>
         <div class="history-card-header">M-Pesa payouts</div>
         <div style="overflow-x:auto;"><table class="billing-history-table"><thead><tr><th>Date</th><th>Amount</th><th>Status</th><th>Reference</th></tr></thead><tbody>
-        <?php foreach($payoutBatches as $batch): ?><tr><td><?= htmlspecialchars($batch['created_at']) ?></td><td>KES <?= number_format($batch['sent_amount'],2) ?></td><td><?= htmlspecialchars(match($batch['status']){'paid'=>'Paid','failed'=>'Failed','unknown'=>'Awaiting confirmation',default=>'Processing'}) ?></td><td><?= htmlspecialchars($batch['transaction_id'] ?: '#'.$batch['id']) ?></td></tr><?php endforeach; ?>
+        <?php foreach($payoutBatches as $batch): ?><tr><td><?= htmlspecialchars($batch['created_at']) ?></td><td>KES <?= number_format($batch['sent_amount'],2) ?></td><td><?= htmlspecialchars(match($batch['status']){'paid'=>'Paid','failed'=>'Failed','unknown'=>'Awaiting confirmation',default=>'Processing'}) ?></td><td><?= htmlspecialchars(($batch['transaction_id'] ?: '#'.$batch['id']).' · '.strtoupper($batch['payout_method']??'mpesa')) ?></td></tr><?php endforeach; ?>
         </tbody></table></div>
         <?php endif; ?>
     </details>
@@ -785,7 +785,7 @@ include 'includes/sidebar.php';
 <!-- ========================= INVOICE MODAL ========================= -->
 <dialog id="withdrawalDialog" aria-labelledby="withdrawalTitle">
     <h3 id="withdrawalTitle">Confirm M-Pesa payout</h3>
-    <p>Send <strong>KES <?= number_format($withdrawal['send_amount'] ?? 0,2) ?></strong> to <strong><?= htmlspecialchars($withdrawal['phone'] ?? '') ?></strong>?</p>
+    <p>Send <strong>KES <?= number_format($withdrawal['send_amount'] ?? 0,2) ?></strong> to <strong><?= htmlspecialchars($withdrawal['destination_display'] ?? $withdrawal['phone'] ?? '') ?></strong> using <?= ($withdrawal['method'] ?? 'mpesa') === 'bank' ? 'B2B bank settlement' : 'M-Pesa' ?>?</p>
     <p>Platform commission is already deducted. Any balance below KES 1 stays available for your next payout.</p>
     <div class="withdrawal-actions"><button type="button" class="view-invoice-btn" id="confirmWithdrawal">Confirm payout</button><button type="button" onclick="document.getElementById('withdrawalDialog').close()">Cancel</button></div>
 </dialog>
