@@ -25,12 +25,13 @@ if (strlen($bridgeName) > 64 || preg_match('/[\x00-\x1f]/', $bridgeName)) {
 
 // Accept comma-separated list: 'pppoe', 'hotspot', or 'pppoe,hotspot'
 $servicesRaw = trim($_POST['services'] ?? $_POST['service'] ?? '');
+$replaceServices = (string)($_POST['replace_services'] ?? '') === '1';
 
 // Hotspot session-sharing setting: 1 = one session per user, 0 = unlimited
 $noSharing = (int)($_POST['hotspot_no_sharing'] ?? 0);
 $sharedUsers = $noSharing ? '1' : 'unlimited';
 
-if (!$tenantId || (!$routerId && !$identity) || !$servicesRaw) {
+if (!$tenantId || (!$routerId && !$identity) || (!$servicesRaw && !$replaceServices)) {
     echo json_encode(['status' => 'error', 'message' => 'Missing parameters']);
     exit;
 }
@@ -42,7 +43,7 @@ $services = array_values(array_filter(
     fn($s) => in_array($s, $allowed, true)
 ));
 
-if (empty($services)) {
+if (empty($services) && !$replaceServices) {
     echo json_encode(['status' => 'error', 'message' => 'No valid service selected']);
     exit;
 }
@@ -92,7 +93,9 @@ try {
     $pdo->prepare('UPDATE router_wan_config SET config_json=?,lan_bridge=? WHERE id=? AND tenant_id=?')->execute([$wanRecord['config_json'],$bridgeName,$wanRecord['id'],$tenantId]);
 
     // Persist both service_types and the hotspot sharing setting
-    $serviceTypesStr = mergeRouterServiceTypes((string)($router['service_types'] ?? ''), $services);
+    $serviceTypesStr = $replaceServices
+        ? implode(',', $services)
+        : mergeRouterServiceTypes((string)($router['service_types'] ?? ''), $services);
     $pdo->prepare("
         UPDATE mikrotik_routers
         SET service_types = ?, hotspot_shared_users = CASE WHEN ? THEN ? ELSE hotspot_shared_users END
@@ -144,6 +147,32 @@ try {
     } catch (Throwable $_e) {}
 
     $command = buildRouterServiceCommand($services, (bool)$noSharing, $portalHost, $loginServeUrl, $portalIp, $bridgeName, $companyName);
+    if ($replaceServices) {
+        $previous = array_values(array_filter(array_map('trim', explode(',', (string)($router['service_types'] ?? ''))), fn($s) => in_array($s, ['pppoe','hotspot'], true)));
+        $removed = array_diff($previous, $services);
+        $cleanup = [];
+        if (in_array('hotspot', $removed, true)) {
+            $cleanup = array_merge($cleanup, [
+                ':do {/ip hotspot disable [find name=hotspot1]} on-error={}',
+                ':do {/ip hotspot remove [find name=hotspot1]} on-error={}',
+                ':do {/ip hotspot profile remove [find name=hsprof1]} on-error={}',
+                ':do {/ip dhcp-server remove [find name=hs-dhcp]} on-error={}',
+                ':do {/ip dhcp-server network remove [find address="10.5.50.0/24"]} on-error={}',
+                ':do {/ip address remove [find address="10.5.50.1/24"]} on-error={}',
+                ':do {/ip pool remove [find name=hs-pool]} on-error={}',
+                ':do {/ip firewall nat remove [find comment="FortuNett-Hotspot-NAT"]} on-error={}',
+            ]);
+        }
+        if (in_array('pppoe', $removed, true)) {
+            $cleanup = array_merge($cleanup, [
+                ':do {/interface pppoe-server server remove [find service-name=pppoe-service]} on-error={}',
+                ':do {/ppp profile remove [find name=pppoe-profile]} on-error={}',
+                ':do {/ip pool remove [find name=pppoe-pool]} on-error={}',
+                ':do {/ip firewall nat remove [find comment="FortuNett-PPPoE-NAT"]} on-error={}',
+            ]);
+        }
+        if ($cleanup) $command = '{ '.implode('; ', $cleanup).'; '.$command.'; }';
+    }
 
     $command='{ '.routerWanProbeSource($wanConfig,$wanRecord['billing_url']).'; '.$command.'; }';
 

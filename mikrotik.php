@@ -528,6 +528,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <?php endforeach; ?>
                         </div>
                         <?php endif; ?>
+                        <button type="button" class="footer-btn edit" style="margin-top:4px" onclick="openProvision(<?php echo (int)$router['id']; ?>, <?php echo htmlspecialchars(json_encode($router['name'], JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_TAG|JSON_HEX_AMP), ENT_QUOTES); ?>, <?php echo htmlspecialchars(json_encode(array_values($svcTypes)), ENT_QUOTES); ?>, true)"><i class="fas fa-sliders-h"></i> Manage services</button>
                     </div>
                 </div>
                 <div class="router-card-body">
@@ -567,7 +568,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <button class="footer-btn test" id="rbtn-test-<?php echo $router['id']; ?>" onclick="testConnection(<?php echo $router['id']; ?>, this)" title="Test connection"><i class="fas fa-plug"></i> Test</button>
                             <button class="footer-btn test" onclick="verifyPackageSpeeds(<?php echo (int)$router['id']; ?>,this)">Verify speeds</button>
                             <button class="footer-btn terminal" onclick="openTerminal(<?php echo $router['id']; ?>, '<?php echo htmlspecialchars(addslashes($router['name'])); ?>', '<?php echo htmlspecialchars($router['ip_address']); ?>')" title="Open remote terminal"><i class="fas fa-terminal"></i> Terminal</button>
-                            <button class="footer-btn provision" onclick="openProvision(<?php echo (int)$router['id']; ?>, '<?php echo htmlspecialchars(addslashes($router['name'])); ?>')" title="Get this router's provisioning script (bridge + PPPoE/hotspot) anytime"><i class="fas fa-scroll"></i> Provision</button>
+                            <button class="footer-btn provision" onclick="openProvision(<?php echo (int)$router['id']; ?>, <?php echo htmlspecialchars(json_encode($router['name'], JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_TAG|JSON_HEX_AMP), ENT_QUOTES); ?>, <?php echo htmlspecialchars(json_encode(array_values($svcTypes)), ENT_QUOTES); ?>, false)" title="Get this router's provisioning script"><i class="fas fa-scroll"></i> Provision</button>
                         </div>
                         <!-- Hotspot tools -->
                         <div class="footer-actions-group" style="align-items:center;gap:6px;">
@@ -1290,7 +1291,7 @@ window.onclick = function(event) {
       <button onclick="closeProvision()" style="background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;">✕</button>
     </div>
     <p id="provRouterLabel" style="font-size:12px;color:rgba(255,255,255,.4);margin:0 0 14px;"></p>
-    <p style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:14px;">Select the services to configure now. To add PPPoE later, select only PPPoE and keep the existing Hotspot configuration. Copy the script into WinBox → New Terminal.</p>
+    <p id="provServiceHelp" style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:14px;">Select the services to configure now. Copy the script into WinBox → New Terminal.</p>
     <p style="font-size:12px;color:#a3a3a3;">Hotspot setup automatically enables customer Wi-Fi on compatible radios, using your company name with no Wi-Fi key. Connect through Ethernet while applying it. Wireless uplinks are preserved.</p>
     <label for="provBridgeName" style="display:block;color:#e2e2e0;font-size:13px;">LAN bridge name</label>
     <input id="provBridgeName" type="text" maxlength="64" placeholder="Required: bridge saved in WAN setup" style="width:100%;padding:9px;margin:6px 0 14px;background:#111;color:#e2e2e0;border:1px solid #555;border-radius:6px;">
@@ -1517,18 +1518,24 @@ function syncPackageProfiles(btn) {
 // ─── Provisioning script (persistent — re-openable per router) ───────────────
 let provRouterName = '';
 let provRouterId   = 0;
+let provReplaceServices = false;
 let provSelected   = new Set();
 
-function openProvision(id, name) {
+function openProvision(id, name, services = [], manageServices = false) {
     provRouterId   = id;
     provRouterName = name;
-    provSelected   = new Set();
+    provReplaceServices = manageServices;
+    provSelected   = new Set(services);
+    document.getElementById('provServiceHelp').textContent = manageServices
+        ? 'Select the services you want to keep on this router. Removing a service deletes its FortuNett-managed router configuration and disconnects customers using it. Apply the generated script in WinBox → New Terminal.'
+        : 'Select the services to configure. Existing services are preselected; this keeps them enabled. Apply the generated script in WinBox → New Terminal.';
     document.getElementById('provRouterLabel').textContent = 'Router: ' + name;
     document.querySelectorAll('#provisionModal .prov-svc').forEach(c => {
-        c.style.borderColor = 'var(--neu-border)';
-        c.style.background  = 'var(--neu-surf)';
+        const active = provSelected.has(c.id.replace('prov-', ''));
+        c.style.borderColor = active ? 'var(--primary-color,#3B6EA5)' : 'var(--neu-border)';
+        c.style.background  = active ? 'rgba(59,110,165,.15)' : 'var(--neu-surf)';
         const chk = c.querySelector('.prov-check');
-        if (chk) chk.style.display = 'none';
+        if (chk) chk.style.display = active ? 'block' : 'none';
     });
     document.getElementById('provNoSharingWrap').style.display = 'none';
     document.getElementById('provNoSharing').checked = false;
@@ -1555,7 +1562,7 @@ function provToggle(svc, el) {
 }
 
 function generateProvision() {
-    if (provSelected.size === 0) { showToast('Select at least one service.', 'error'); return; }
+    if (provSelected.size === 0 && !provReplaceServices) { showToast('Select at least one service.', 'error'); return; }
     const btn  = document.getElementById('provGenBtn');
     const orig = btn.innerHTML;
     btn.disabled = true;
@@ -1566,6 +1573,7 @@ function generateProvision() {
     fd.append('router_id', provRouterId);
     fd.append('bridge_name', document.getElementById('provBridgeName').value.trim());
     fd.append('services', Array.from(provSelected).join(','));
+    fd.append('replace_services', provReplaceServices ? '1' : '0');
     fd.append('hotspot_no_sharing', document.getElementById('provNoSharing').checked ? '1' : '0');
 
     fetch('api/routers/configure_service.php', { method: 'POST', body: fd })
